@@ -17,3 +17,13 @@ htmlcov/
 /.idea
 /.vscode
 frontend/src/api/types.generated.ts
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/.env.production
+frontend/.vercel/
+
+# Storage (local files)
+storage/whatsinvoice/
