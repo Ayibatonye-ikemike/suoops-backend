@@ -27,3 +27,4 @@ frontend/.vercel/
 
 # Storage (local files)
 storage/whatsinvoice/
+.vercel
