@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class BaseAppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    APP_NAME: str = "WhatsInvoice"
+    APP_NAME: str = "SuoPay"
     ENV: str = "dev"
     DATABASE_URL: str | None = None
     S3_ENDPOINT: str | None = None
