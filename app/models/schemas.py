@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import datetime as dt
+from decimal import Decimal
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class InvoiceLineIn(BaseModel):
+    description: str
+    quantity: int = 1
+    unit_price: Decimal
+
+
+class InvoiceCreate(BaseModel):
+    customer_name: str
+    customer_phone: str | None = None
+    amount: Decimal
+    due_date: dt.datetime | None = None
+    lines: list[InvoiceLineIn] | None = None
+    discount_amount: Decimal | None = None
+
+
+class CustomerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    phone: str | None = None
+
+
+class InvoiceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    invoice_id: str
+    amount: Decimal
+    status: str
+    pdf_url: str | None
+    created_at: dt.datetime | None = None
+    due_date: dt.datetime | None = None
+
+
+class InvoiceLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    description: str
+    quantity: int
+    unit_price: Decimal
+
+
+class InvoiceOutDetailed(InvoiceOut):
+    model_config = ConfigDict(from_attributes=True)
+
+    discount_amount: Decimal | None = None
+    customer: CustomerOut | None = None
+    lines: list[InvoiceLineOut] = Field(default_factory=list)
+
+
+class InvoiceStatusUpdate(BaseModel):
+    status: Literal["pending", "paid", "failed"]
+
+
+class WebhookEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    provider: str
+    external_id: str
+    created_at: dt.datetime
+
+
+class WorkerCreate(BaseModel):
+    name: str
+    daily_rate: Decimal
+
+
+class WorkerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    daily_rate: Decimal
+
+
+class PayrollRunCreate(BaseModel):
+    period_label: str
+    # simplistic: list of worker_id -> days
+    days: dict[int, int] = Field(default_factory=dict)
+
+
+class PayrollRecordOut(BaseModel):
+    worker_id: int
+    gross_pay: Decimal
+    net_pay: Decimal
+
+
+class PayrollRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    period_label: str
+    total_gross: Decimal
+    records: list[PayrollRecordOut]
+
+
+# ----------------- Auth -----------------
+
+class UserCreate(BaseModel):
+    phone: str
+    name: str
+    password: str
+
+
+class UserLogin(BaseModel):
+    phone: str
+    password: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    phone: str
+    name: str
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    access_expires_at: dt.datetime
+    refresh_token: str | None = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str | None = None
+
+
+class MessageOut(BaseModel):
+    detail: str

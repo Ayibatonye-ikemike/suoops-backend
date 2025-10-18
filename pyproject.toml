@@ -1,0 +1,66 @@
+[tool.poetry]
+name = "whatsinvoice"
+version = "0.1.0"
+description = "WhatsApp-first micro business invoicing & payroll platform (MVP)"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+packages = [ { include = "app" } ]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.30.0"}
+sqlalchemy = "^2.0.32"
+psycopg2-binary = "^2.9.9"
+pydantic = "^2.8.2"
+pydantic-settings = "^2.0.0"
+jinja2 = "^3.1.4"
+requests = "^2.32.3"
+boto3 = "^1.34.0"
+python-multipart = "^0.0.9"
+redis = "^5.0.7"
+celery = "^5.4.0"
+reportlab = "^4.2.0"  # chosen for fewer system deps vs WeasyPrint
+Pillow = "^10.4.0"
+pyjwt = "^2.9.0"
+qrcode = "^7.4.2"
+alembic = "^1.13.2"
+passlib = {version = "^1.7.4", extras = ["bcrypt"]}
+python-dotenv = "^1.0.1"
+weasyprint = "^62.3"
+prometheus-client = "^0.20.0"
+bcrypt = "3.2.2"
+slowapi = "^0.1.9"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.2"
+pytest-asyncio = "^0.23.8"
+httpx = "^0.27.0"
+black = "^24.8.0"
+ruff = "^0.5.7"
+mypy = "^1.11.2"
+
+[tool.poetry.scripts]
+celery-worker = "app.workers.worker:main"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+ignore = []
+
+[tool.mypy]
+python_version = 3.10
+strict = false
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"

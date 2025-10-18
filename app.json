@@ -1,0 +1,75 @@
+{
+  "name": "suopay-backend",
+  "description": "WhatsApp-first micro business invoicing & payroll platform",
+  "repository": "https://github.com/your-username/suopay.io",
+  "logo": "",
+  "keywords": ["python", "fastapi", "whatsapp", "invoicing", "payroll"],
+  "stack": "heroku-20",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    },
+    "worker": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql:mini"
+    },
+    {
+      "plan": "heroku-redis:mini"
+    }
+  ],
+  "scripts": {
+    "postdeploy": "./release.sh"
+  },
+  "env": {
+    "APP_NAME": {
+      "description": "Application name",
+      "value": "SuoPay"
+    },
+    "ENV": {
+      "description": "Environment",
+      "value": "prod"
+    },
+    "JWT_SECRET": {
+      "description": "JWT secret key",
+      "generator": "secret"
+    },
+    "WHATSAPP_API_KEY": {
+      "description": "WhatsApp Business API token"
+    },
+    "PAYSTACK_SECRET": {
+      "description": "Paystack secret key"
+    },
+    "FLUTTERWAVE_SECRET": {
+      "description": "Flutterwave secret key"
+    },
+    "S3_ACCESS_KEY": {
+      "description": "AWS S3 access key"
+    },
+    "S3_SECRET_KEY": {
+      "description": "AWS S3 secret key"
+    },
+    "S3_BUCKET": {
+      "description": "S3 bucket name",
+      "value": "suopay-storage"
+    },
+    "PRIMARY_PAYMENT_PROVIDER": {
+      "description": "Primary payment provider",
+      "value": "paystack"
+    },
+    "HTML_PDF_ENABLED": {
+      "description": "Enable HTML to PDF conversion",
+      "value": "true"
+    }
+  }
+}
