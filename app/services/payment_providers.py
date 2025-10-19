@@ -42,7 +42,7 @@ class PaystackProvider:
             "reference": reference,
             "amount": int(Decimal(amount) * 100),
             "email": email or "placeholder@example.com",
-            "callback_url": "https://example.com/payments/confirm",
+            "callback_url": f"{settings.FRONTEND_URL}/payments/confirm",
         }
         try:
             r = requests.post(
@@ -77,7 +77,7 @@ class FlutterwaveProvider:
             "tx_ref": reference,
             "amount": str(amount),
             "currency": "NGN",  # could be configurable
-            "redirect_url": "https://example.com/payments/confirm",
+            "redirect_url": f"{settings.FRONTEND_URL}/payments/confirm",
             "customer": {"email": email or "placeholder@example.com"},
             "customizations": {"title": "Invoice Payment", "description": reference},
         }
