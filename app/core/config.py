@@ -25,6 +25,7 @@ class BaseAppSettings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     HTML_PDF_ENABLED: bool = False
     PRIMARY_PAYMENT_PROVIDER: str = "paystack"
+    FRONTEND_URL: str = "https://suopay.io"
     CORS_ALLOW_ORIGINS: list[str] = ["*"]
     CORS_ALLOW_METHODS: list[str] = ["*"]
     CORS_ALLOW_HEADERS: list[str] = ["*"]
