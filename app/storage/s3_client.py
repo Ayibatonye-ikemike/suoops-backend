@@ -50,11 +50,20 @@ class S3Client:
                 aws_secret_access_key=settings.S3_SECRET_KEY or None,
             )
             endpoint = settings.S3_ENDPOINT or None
-            client = session.client(
-                "s3",
-                endpoint_url=endpoint,
-                config=Config(signature_version="s3v4"),
-            )
+            region = getattr(settings, "S3_REGION", "us-east-1")
+            
+            # For AWS S3, don't set endpoint_url (let boto3 use default AWS endpoints)
+            client_kwargs = {
+                "service_name": "s3",
+                "region_name": region,
+                "config": Config(signature_version="s3v4"),
+            }
+            
+            # Only set endpoint_url for non-AWS S3-compatible services
+            if endpoint:
+                client_kwargs["endpoint_url"] = endpoint
+            
+            client = session.client(**client_kwargs)
             # Ensure bucket exists; create if missing in non-prod setups
             try:
                 client.head_bucket(Bucket=self.bucket)

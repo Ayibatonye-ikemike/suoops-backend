@@ -17,6 +17,7 @@ class BaseAppSettings(BaseSettings):
     S3_ACCESS_KEY: str | None = None
     S3_SECRET_KEY: str | None = None
     S3_BUCKET: str = "whatsinvoice"
+    S3_REGION: str = "us-east-1"  # AWS region for S3 bucket
     S3_PRESIGN_TTL: int = 3600
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
