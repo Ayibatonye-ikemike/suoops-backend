@@ -22,14 +22,31 @@ def get_invoice_service_for_user(current_user_id: CurrentUserDep, db: DbDep) -> 
 
 
 @router.post("/", response_model=schemas.InvoiceOut)
-def create_invoice(
+async def create_invoice(
     data: schemas.InvoiceCreate,
     current_user_id: CurrentUserDep,
     db: DbDep,
 ):
     svc = get_invoice_service_for_user(current_user_id, db)
     try:
-        return svc.create_invoice(issuer_id=current_user_id, data=data.model_dump())
+        invoice = svc.create_invoice(issuer_id=current_user_id, data=data.model_dump())
+        
+        # Send email if customer email provided
+        if data.customer_email:
+            from app.services.notification_service import NotificationService
+            notification_service = NotificationService()
+            email_sent = await notification_service.send_invoice_email(
+                invoice=invoice,
+                recipient_email=data.customer_email,
+                pdf_url=invoice.pdf_url,
+                subject="New Invoice"
+            )
+            if email_sent:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info("Invoice email sent to %s", data.customer_email)
+        
+        return invoice
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

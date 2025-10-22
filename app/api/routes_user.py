@@ -1,15 +1,16 @@
 """User profile and settings management endpoints."""
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
-from app.core.logger import logger
 from app.db.session import get_db
 from app.models import models, schemas
 from app.storage.s3_client import s3_client
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 

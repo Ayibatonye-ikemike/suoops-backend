@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, TypeAlias
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -5,11 +6,11 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.logger import logger
 from app.db.session import get_db
 from app.models import models
 from app.queue.whatsapp_queue import enqueue_message
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 

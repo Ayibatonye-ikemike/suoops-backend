@@ -124,6 +124,7 @@ class InvoiceService:
         customer = self._get_or_create_customer(
             data.get("customer_name"),
             data.get("customer_phone"),
+            data.get("customer_email"),
         )
         discount_raw = data.get("discount_amount")
         discount_amount = Decimal(str(discount_raw)) if discount_raw else None
@@ -273,14 +274,21 @@ class InvoiceService:
             logger.error("Failed to send receipt to customer: %s", e)
 
     # ---------- Internal helpers ----------
-    def _get_or_create_customer(self, name: str, phone: str | None) -> models.Customer:
+    def _get_or_create_customer(
+        self, name: str, phone: str | None, email: str | None = None
+    ) -> models.Customer:
         q = self.db.query(models.Customer).filter(models.Customer.name == name)
         if phone:
             q = q.filter(models.Customer.phone == phone)
+        elif email:
+            q = q.filter(models.Customer.email == email)
         existing = q.one_or_none()
         if existing:
+            # Update email if provided and not already set
+            if email and not existing.email:
+                existing.email = email
             return existing
-        c = models.Customer(name=name, phone=phone)
+        c = models.Customer(name=name, phone=phone, email=email)
         self.db.add(c)
         self.db.flush()
         return c
