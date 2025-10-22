@@ -52,6 +52,7 @@ class Customer(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     phone: Mapped[str | None]
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     extra: Mapped[dict] = mapped_column(JSON, default=dict)
     invoices: Mapped[list[Invoice]] = relationship("Invoice", back_populates="customer")  # type: ignore
 

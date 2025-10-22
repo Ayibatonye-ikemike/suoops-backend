@@ -16,6 +16,7 @@ class InvoiceLineIn(BaseModel):
 class InvoiceCreate(BaseModel):
     customer_name: str
     customer_phone: str | None = None
+    customer_email: str | None = None
     amount: Decimal
     due_date: dt.datetime | None = None
     lines: list[InvoiceLineIn] | None = None
@@ -27,6 +28,7 @@ class CustomerOut(BaseModel):
 
     name: str
     phone: str | None = None
+    email: str | None = None
 
 
 class InvoiceOut(BaseModel):

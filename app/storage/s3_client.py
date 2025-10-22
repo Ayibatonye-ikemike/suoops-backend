@@ -89,3 +89,7 @@ class S3Client:
             self._filesystem_root = root
             logger.info("Using filesystem storage fallback at %s", root)
         return self._filesystem_root
+
+
+# Singleton instance for application use
+s3_client = S3Client()
