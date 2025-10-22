@@ -19,6 +19,12 @@ class BaseAppSettings(BaseSettings):
     S3_BUCKET: str = "whatsinvoice"
     S3_REGION: str = "us-east-1"  # AWS region for S3 bucket
     S3_PRESIGN_TTL: int = 3600
+    # Email/SMTP Configuration
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    FROM_EMAIL: str | None = None
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
     WHATSAPP_VERIFY_TOKEN: str = "suopay_verify_2025"
@@ -32,6 +38,13 @@ class BaseAppSettings(BaseSettings):
         return str(v)
     PAYSTACK_SECRET: str | None = None
     FLUTTERWAVE_SECRET: str | None = None
+    
+    # SMTP/Email Configuration
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    FROM_EMAIL: str | None = None
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     HTML_PDF_ENABLED: bool = False
