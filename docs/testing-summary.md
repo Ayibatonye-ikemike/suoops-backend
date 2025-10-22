@@ -32,7 +32,7 @@ This document summarizes the testing performed on SuoPay's production deployment
 
 **Test**:
 ```bash
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/auth/register \
+curl -X POST https://api.suopay.io/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "phone": "+2347012345678",
@@ -55,7 +55,7 @@ curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/auth/register \
 
 **Test**:
 ```bash
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/auth/login \
+curl -X POST https://api.suopay.io/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "phone": "+2347012345678",
@@ -87,7 +87,7 @@ curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/auth/login \
 
 **Test**:
 ```bash
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
+curl -X POST https://api.suopay.io/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
@@ -135,7 +135,7 @@ curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
 
 **Test**:
 ```bash
-curl "https://suopay-backend-a204d4816960.herokuapp.com/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suopay_verify_2025&hub.challenge=test_challenge_123"
+curl "https://api.suopay.io/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suopay_verify_2025&hub.challenge=test_challenge_123"
 ```
 
 **Result**: ✅ SUCCESS
@@ -153,7 +153,7 @@ test_challenge_123
 
 **Test**:
 ```bash
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/webhooks/whatsapp \
+curl -X POST https://api.suopay.io/webhooks/whatsapp \
   -H "Content-Type: application/json" \
   -d '{
     "from": "+2347012345678",
