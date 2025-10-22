@@ -126,13 +126,13 @@ pdf_url = self.pdf_service.generate_invoice_pdf(
 
 ```bash
 # 1. Login
-TOKEN=$(curl -s -X POST https://suopay-backend-a204d4816960.herokuapp.com/auth/login \
+TOKEN=$(curl -s -X POST https://api.suopay.io/auth/login \
   -H "Content-Type: application/json" \
   -d '{"phone": "+2347012345678", "password": "TestPassword123"}' \
   | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
 
 # 2. Create invoice
-INVOICE=$(curl -s -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
+INVOICE=$(curl -s -X POST https://api.suopay.io/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -254,13 +254,13 @@ curl -X GET "https://api.paystack.co/transaction/verify/INV-xxx" \
 ### Check Invoice Status in Database
 ```bash
 TOKEN="your_jwt_token"
-curl -s https://suopay-backend-a204d4816960.herokuapp.com/invoices/INV-xxx \
+curl -s https://api.suopay.io/invoices/INV-xxx \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ### View Webhook Events
 ```bash
-curl -s https://suopay-backend-a204d4816960.herokuapp.com/invoices/INV-xxx/events \
+curl -s https://api.suopay.io/invoices/INV-xxx/events \
   -H "Authorization: Bearer $TOKEN"
 ```
 

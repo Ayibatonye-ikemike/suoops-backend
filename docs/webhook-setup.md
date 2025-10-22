@@ -16,7 +16,10 @@ https://api.suopay.io/webhooks/paystack
 
 **Temporary URL (if custom domain not ready):**
 ```
-https://suopay-backend-a204d4816960.herokuapp.com/webhooks/paystack
+**Webhook URL:**
+```
+https://api.suopay.io/webhooks/paystack
+```
 ```
 
 ### Setup Steps in Paystack Dashboard
