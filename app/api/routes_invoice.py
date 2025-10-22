@@ -21,7 +21,7 @@ def get_invoice_service_for_user(current_user_id: CurrentUserDep, db: DbDep) -> 
     return build_invoice_service(db, user_id=current_user_id)
 
 
-@router.post("/invoices", response_model=schemas.InvoiceOut)
+@router.post("/", response_model=schemas.InvoiceOut)
 def create_invoice(
     data: schemas.InvoiceCreate,
     current_user_id: CurrentUserDep,
