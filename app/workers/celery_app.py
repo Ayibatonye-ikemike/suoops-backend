@@ -5,11 +5,21 @@ from celery import Celery
 from app.core.config import settings
 
 
+def _get_redis_url_with_ssl() -> str:
+    """Get Redis URL with SSL parameters for Heroku Redis"""
+    redis_url = settings.REDIS_URL
+    if redis_url and redis_url.startswith("rediss://"):
+        # Add SSL cert requirements parameter for Heroku Redis
+        return f"{redis_url}?ssl_cert_reqs=none"
+    return redis_url
+
+
 def _create_celery() -> Celery:
+    redis_url = _get_redis_url_with_ssl()
     celery = Celery(
         "whatsinvoice",
-        broker=settings.REDIS_URL,
-        backend=settings.REDIS_URL,
+        broker=redis_url,
+        backend=redis_url,
         include=["app.workers.tasks"],
     )
     celery.conf.update(
