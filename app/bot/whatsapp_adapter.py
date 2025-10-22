@@ -237,6 +237,35 @@ class WhatsAppHandler:
                     "Unable to identify your account. Please log in first.",
                 )
                 return
+            
+            # Check invoice quota before creating
+            try:
+                quota_check = self.invoice_service.check_invoice_quota(issuer_id)
+                
+                # Send warning if approaching limit
+                if quota_check["can_create"] and quota_check["limit"]:
+                    remaining = quota_check["limit"] - quota_check["used"]
+                    if remaining <= 5 and remaining > 0:
+                        self.client.send_text(
+                            sender,
+                            quota_check["message"]
+                        )
+                
+                # Block if at limit
+                if not quota_check["can_create"]:
+                    limit_message = f"🚫 Invoice Limit Reached!\n\n"
+                    limit_message += f"Plan: {quota_check['plan'].upper()}\n"
+                    limit_message += f"Used: {quota_check['used']}/{quota_check['limit']} invoices this month\n\n"
+                    limit_message += quota_check["message"]
+                    limit_message += f"\n\n📞 Contact us to upgrade your plan."
+                    
+                    self.client.send_text(sender, limit_message)
+                    return
+                    
+            except Exception as e:
+                logger.error("Failed to check quota: %s", e)
+                # Continue anyway to avoid blocking legitimate requests
+            
             try:
                 invoice = self.invoice_service.create_invoice(
                     issuer_id=issuer_id,
@@ -282,7 +311,15 @@ class WhatsAppHandler:
                     
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Failed to create invoice")
-                self.client.send_text(sender, f"Error: {exc}")
+                error_msg = str(exc)
+                if "invoice_limit_reached" in error_msg or "403" in error_msg:
+                    self.client.send_text(
+                        sender,
+                        "🚫 You've reached your monthly invoice limit.\n\n"
+                        "Upgrade your plan to create more invoices."
+                    )
+                else:
+                    self.client.send_text(sender, f"Error: {exc}")
         else:
             self.client.send_text(
                 sender,

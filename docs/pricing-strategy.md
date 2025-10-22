@@ -87,12 +87,13 @@ Based on our operational costs and Nigerian market competitor analysis, here's o
 **Price:** ₦0/month  
 **Target:** Freelancers, startups testing the platform  
 **Limits:**
-- 5 invoices/month
-- 1 payroll run/month (up to 5 workers)
+- ⚠️ **5 invoices/month** (hard limit)
+- No payroll access
 - WhatsApp notifications (text only)
 - Basic PDF invoices
 - No voice bot access
 - Email support only
+- Resets on 1st of each month
 
 **Why it works:**
 - Competitor comparison: Paystack/Wave are free but limited
@@ -100,34 +101,44 @@ Based on our operational costs and Nigerian market competitor analysis, here's o
 - Goal: Customer acquisition & product feedback
 - Conversion target: 10-15% upgrade to paid after hitting limits
 
+**When limit reached:**
+- Bot message: "🚫 You've used all 5 free invoices this month. Upgrade to Starter for 100 invoices at ₦2,500/month!"
+- Dashboard: Upgrade banner with pricing comparison
+
 ---
 
 ### **STARTER PLAN** - Small Businesses
 **Price:** ₦2,500/month  
 **Target:** Freelancers, solopreneurs, micro-businesses  
 **Limits:**
-- 50 invoices/month
-- 2 payroll runs/month (up to 10 workers each)
+- ⚠️ **100 invoices/month** (hard limit)
+- No payroll access (upgrade to Pro for payroll)
 - WhatsApp notifications (text + voice bot)
 - Professional PDF invoices with branding
 - Basic analytics
 - Email + WhatsApp support
+- Resets on 1st of each month
 
 **Competitor Comparison:**
 - ✅ **50% cheaper** than Zoho Standard (₦4,800)
-- ✅ **Unlimited vs Paystack** (which charges per transaction)
+- ✅ **100 invoices vs Paystack** (which charges per transaction)
 - ✅ **Voice bot feature** (no competitor has this)
 
 **Profitability:**
-- Our cost: ₦78,325 infrastructure ÷ 64 customers + (50 × ₦3) = ₦1,374/customer
+- Our cost: ₦78,325 infrastructure ÷ 64 customers + (100 × ₦3) = ₦1,224 + ₦300 = ₦1,524/customer
 - Revenue: ₦2,500/customer
-- **Profit: ₦1,126/customer (45% margin)**
+- **Profit: ₦976/customer (39% margin)**
 - Break-even: 64 Starter customers
 
 **Why it works:**
 - Sweet spot for Nigerian freelancers
 - Voice bot is a killer feature no competitor offers
 - WhatsApp-native fits Nigerian communication habits
+- 100 invoices covers 90% of freelancers' needs
+
+**When limit reached:**
+- Bot message: "⚠️ You've used 95/100 invoices this month. Upgrade to Pro for 1,000 invoices at ₦7,500/month!"
+- Dashboard: Usage bar showing 95/100 with upgrade prompt
 
 ---
 
@@ -135,14 +146,15 @@ Based on our operational costs and Nigerian market competitor analysis, here's o
 **Price:** ₦7,500/month  
 **Target:** Small-medium businesses (5-20 employees)  
 **Limits:**
-- Unlimited invoices
-- Unlimited payroll runs
+- ⚠️ **1,000 invoices/month** (hard limit)
+- ⚠️ **20 payroll runs/month** (up to 50 workers each)
 - Advanced voice bot (60-second notes)
 - Custom invoice templates
 - Payment reminders (auto WhatsApp messages)
 - Revenue analytics & reports
 - Priority email + WhatsApp support
 - API access
+- Resets on 1st of each month
 
 **Competitor Comparison:**
 - ✅ **15% cheaper** than Zoho Professional (₦8,800)
@@ -151,16 +163,20 @@ Based on our operational costs and Nigerian market competitor analysis, here's o
 - ✅ **50% cheaper** than Paystack Payroll + third-party invoicing
 
 **Profitability:**
-- Our cost: ₦78,325 ÷ 100 customers + (500 × ₦3) = ₦2,283/customer (assuming 500 invoices/month avg)
+- Our cost: ₦78,325 ÷ 100 customers + (1,000 × ₦3) = ₦783 + ₦3,000 = ₦3,783/customer
 - Revenue: ₦7,500/customer
-- **Profit: ₦5,217/customer (70% margin)**
+- **Profit: ₦3,717/customer (50% margin)**
 - Break-even: 21 Pro customers
 
 **Why it works:**
 - Priced at Zoho/Bujeti level but with unique WhatsApp features
-- "Unlimited" removes usage anxiety
+- 1,000 invoices covers 95% of SMBs
 - Voice bot is a premium feature justifying the price
 - Best value proposition in Nigerian market
+
+**When limit reached:**
+- Bot message: "⚠️ You've used 950/1,000 invoices this month. Upgrade to Business for 3,000 invoices at ₦15,000/month!"
+- Dashboard: Usage analytics showing invoice trends
 
 ---
 
@@ -168,7 +184,8 @@ Based on our operational costs and Nigerian market competitor analysis, here's o
 **Price:** ₦15,000/month  
 **Target:** Medium businesses (20-50 employees)  
 **Limits:**
-- Everything in Pro
+- ⚠️ **3,000 invoices/month** (hard limit)
+- ⚠️ **Unlimited payroll runs**
 - Multi-user accounts (up to 5 team members)
 - Role-based permissions
 - Advanced analytics & custom reports
@@ -177,22 +194,28 @@ Based on our operational costs and Nigerian market competitor analysis, here's o
 - Dedicated account manager
 - Phone + WhatsApp support
 - 99.9% SLA guarantee
+- Resets on 1st of each month
 
 **Competitor Comparison:**
 - ✅ **25% cheaper** than QuickBooks Essentials (₦20,000)
-- ✅ **40% cheaper** than Bujeti Professional (₦15,000 - same price but more features)
+- ✅ **Same price** as Bujeti Professional but with more features
 - ✅ **70% cheaper** than SeamlessHR (₦50,000+)
 
 **Profitability:**
-- Our cost: ₦78,325 ÷ 50 customers + (2,000 × ₦3) = ₦7,567/customer (assuming 2,000 invoices/month avg)
+- Our cost: ₦78,325 ÷ 50 customers + (3,000 × ₦3) = ₦1,567 + ₦9,000 = ₦10,567/customer
 - Revenue: ₦15,000/customer
-- **Profit: ₦7,433/customer (50% margin)**
+- **Profit: ₦4,433/customer (30% margin)**
 - Break-even: 11 Business customers
 
 **Why it works:**
 - Matches competitors but with team collaboration features
 - SLA guarantee differentiates from cheaper options
 - Payroll + invoicing unified (competitors charge separately)
+- 3,000 invoices handles most medium businesses
+
+**When limit reached:**
+- Account manager call: Discuss Enterprise plan or custom pricing
+- Dashboard: Contact sales for Enterprise upgrade
 
 ---
 

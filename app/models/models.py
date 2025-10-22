@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import datetime as dt
+import enum
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -12,6 +13,39 @@ from app.db.base_class import Base
 
 def utcnow() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
+
+
+class SubscriptionPlan(str, enum.Enum):
+    """Subscription tiers with invoice limits."""
+    FREE = "free"
+    STARTER = "starter"
+    PRO = "pro"
+    BUSINESS = "business"
+    ENTERPRISE = "enterprise"
+
+    @property
+    def invoice_limit(self) -> int | None:
+        """Monthly invoice limit for each plan. None = unlimited."""
+        limits = {
+            SubscriptionPlan.FREE: 5,
+            SubscriptionPlan.STARTER: 100,
+            SubscriptionPlan.PRO: 1000,
+            SubscriptionPlan.BUSINESS: 3000,
+            SubscriptionPlan.ENTERPRISE: None,  # Unlimited
+        }
+        return limits[self]
+
+    @property
+    def price(self) -> int:
+        """Monthly price in Naira."""
+        prices = {
+            SubscriptionPlan.FREE: 0,
+            SubscriptionPlan.STARTER: 2500,
+            SubscriptionPlan.PRO: 7500,
+            SubscriptionPlan.BUSINESS: 15000,
+            SubscriptionPlan.ENTERPRISE: 50000,
+        }
+        return prices[self]
 
 
 class Customer(Base):
@@ -97,6 +131,21 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120))
     hashed_password: Mapped[str]
     created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
+    # Subscription plan with default FREE tier
+    plan: Mapped[SubscriptionPlan] = mapped_column(
+        Enum(SubscriptionPlan),
+        default=SubscriptionPlan.FREE,
+        server_default="free",
+        nullable=False,
+    )
+    # Track monthly invoice usage (resets on 1st of each month)
+    invoices_this_month: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Track when usage was last reset (for monthly cycle)
+    usage_reset_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,
         server_default=func.now(),
