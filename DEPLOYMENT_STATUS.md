@@ -57,11 +57,11 @@
 
 ## 🔍 What to Test After Deployment
 
-### 1. Health Check
-### Manual Verification
+### Quick Verification
+
 ```bash
+# Check health
 curl https://api.suopay.io/healthz
-```
 
 ### 2. Verify OpenAI Key is Set
 ```bash
