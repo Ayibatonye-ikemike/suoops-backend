@@ -36,7 +36,6 @@ class InvoiceOut(BaseModel):
     amount: Decimal
     status: str
     pdf_url: str | None
-    payment_url: str | None
     created_at: dt.datetime | None = None
     due_date: dt.datetime | None = None
 
@@ -138,3 +137,24 @@ class RefreshRequest(BaseModel):
 
 class MessageOut(BaseModel):
     detail: str
+
+
+# ----------------- Bank Details -----------------
+
+class BankDetailsUpdate(BaseModel):
+    """Schema for updating business bank account details."""
+    business_name: str | None = Field(None, min_length=1, max_length=255, description="Business display name")
+    bank_name: str | None = Field(None, min_length=1, max_length=100, description="Bank name (e.g., GTBank, Access Bank)")
+    account_number: str | None = Field(None, min_length=10, max_length=10, pattern=r'^\d{10}$', description="10-digit account number")
+    account_name: str | None = Field(None, min_length=1, max_length=255, description="Account holder name")
+
+
+class BankDetailsOut(BaseModel):
+    """Schema for returning bank account details."""
+    model_config = ConfigDict(from_attributes=True)
+    
+    business_name: str | None = None
+    bank_name: str | None = None
+    account_number: str | None = None
+    account_name: str | None = None
+    is_configured: bool = Field(description="Whether bank details are fully configured")
