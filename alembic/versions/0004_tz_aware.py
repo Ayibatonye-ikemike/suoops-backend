@@ -1,6 +1,6 @@
 """Make timestamps timezone aware
 
-Revision ID: 0004_make_timestamps_timezone_aware
+Revision ID: 0004_tz_aware
 Revises: 0003_add_webhook_event
 Create Date: 2025-10-16
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "0004_make_timestamps_timezone_aware"
+revision = "0004_tz_aware"
 down_revision = "0003_add_webhook_event"
 branch_labels = None
 depends_on = None
