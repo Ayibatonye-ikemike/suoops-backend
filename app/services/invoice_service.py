@@ -130,15 +130,62 @@ class InvoiceService:
         status = payload.get("status")
         if not ref:
             return
-        inv = self.db.query(models.Invoice).filter(models.Invoice.invoice_id == ref).one_or_none()
+        inv = (
+            self.db.query(models.Invoice)
+            .options(selectinload(models.Invoice.customer))
+            .filter(models.Invoice.invoice_id == ref)
+            .one_or_none()
+        )
         if not inv:
             logger.warning("Webhook for unknown invoice ref=%s", ref)
             return
         if status == "success":
+            previous_status = inv.status
             inv.status = "paid"
             self.db.commit()
             logger.info("Invoice %s marked paid", ref)
             metrics.invoice_paid()
+            
+            # Send receipt to customer via WhatsApp
+            if previous_status != "paid" and inv.customer and inv.customer.phone:
+                self._send_receipt_to_customer(inv)
+
+    def _send_receipt_to_customer(self, invoice: models.Invoice) -> None:
+        """Send payment receipt to customer via WhatsApp."""
+        try:
+            from app.bot.whatsapp_adapter import WhatsAppClient
+            from app.core.config import settings
+            
+            whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
+            if not whatsapp_key or not invoice.customer or not invoice.customer.phone:
+                logger.info("Cannot send receipt: missing WhatsApp config or customer phone")
+                return
+            
+            client = WhatsAppClient(whatsapp_key)
+            
+            # Send receipt message
+            receipt_message = f"🎉 Payment Received!\n\n"
+            receipt_message += f"Thank you for your payment!\n\n"
+            receipt_message += f"📄 Invoice: {invoice.invoice_id}\n"
+            receipt_message += f"💰 Amount Paid: ₦{invoice.amount:,.2f}\n"
+            receipt_message += f"✅ Status: PAID\n\n"
+            receipt_message += f"Your receipt has been generated and sent to you."
+            
+            client.send_text(invoice.customer.phone, receipt_message)
+            
+            # If PDF URL is accessible, send receipt PDF
+            if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+                client.send_document(
+                    invoice.customer.phone,
+                    invoice.pdf_url,
+                    f"Receipt_{invoice.invoice_id}.pdf",
+                    f"Payment Receipt - ₦{invoice.amount:,.2f}"
+                )
+            
+            logger.info("Sent receipt for invoice %s to customer %s", 
+                       invoice.invoice_id, invoice.customer.phone)
+        except Exception as e:
+            logger.error("Failed to send receipt to customer: %s", e)
 
     # ---------- Internal helpers ----------
     def _get_or_create_customer(self, name: str, phone: str | None) -> models.Customer:

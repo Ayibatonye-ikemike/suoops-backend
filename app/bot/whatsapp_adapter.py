@@ -3,23 +3,82 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import requests
+
 from app.bot.nlp_service import NLPService
+from app.core.config import settings
 from app.services.invoice_service import InvoiceService
 
 logger = logging.getLogger(__name__)
 
 
 class WhatsAppClient:
-    """Placeholder WhatsApp Cloud API client."""
+    """WhatsApp Cloud API client for sending messages and documents."""
 
     def __init__(self, api_key: str):
         self.api_key = api_key
+        self.phone_number_id = getattr(settings, "WHATSAPP_PHONE_NUMBER_ID", None)
+        self.base_url = f"https://graph.facebook.com/v21.0/{self.phone_number_id}/messages"
 
     def send_text(self, to: str, body: str) -> None:
-        logger.info("[WHATSAPP] -> %s | %s", to, body)
+        """Send text message to WhatsApp number."""
+        if not self.phone_number_id or not self.api_key:
+            logger.warning("[WHATSAPP] Not configured, would send to %s: %s", to, body)
+            return
 
-    def send_document(self, to: str, url: str, filename: str) -> None:
-        logger.info("[WHATSAPP DOC] -> %s | %s (%s)", to, filename, url)
+        try:
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": to.replace("+", ""),  # Remove + sign
+                "type": "text",
+                "text": {"body": body}
+            }
+            response = requests.post(
+                self.base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout=10
+            )
+            response.raise_for_status()
+            logger.info("[WHATSAPP] ✓ Sent to %s: %s", to, body[:50])
+        except Exception as e:
+            logger.error("[WHATSAPP] Failed to send to %s: %s", to, e)
+
+    def send_document(self, to: str, url: str, filename: str, caption: str | None = None) -> None:
+        """Send document (PDF) to WhatsApp number."""
+        if not self.phone_number_id or not self.api_key:
+            logger.warning("[WHATSAPP DOC] Not configured, would send to %s: %s", to, filename)
+            return
+
+        try:
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": to.replace("+", ""),  # Remove + sign
+                "type": "document",
+                "document": {
+                    "link": url,
+                    "filename": filename
+                }
+            }
+            if caption:
+                payload["document"]["caption"] = caption
+
+            response = requests.post(
+                self.base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout=10
+            )
+            response.raise_for_status()
+            logger.info("[WHATSAPP DOC] ✓ Sent to %s: %s", to, filename)
+        except Exception as e:
+            logger.error("[WHATSAPP DOC] Failed to send to %s: %s", to, e)
 
 
 class WhatsAppHandler:
@@ -50,16 +109,44 @@ class WhatsAppHandler:
                     issuer_id=issuer_id,
                     data=data,
                 )
-                # Build response message with payment link
-                message = f"✅ Invoice {invoice.invoice_id} created!\n\n"
-                message += f"💰 Amount: ₦{invoice.amount:,.2f}\n"
-                message += f"📊 Status: {invoice.status}\n"
+                
+                # Send confirmation to business owner
+                business_message = f"✅ Invoice {invoice.invoice_id} created!\n\n"
+                business_message += f"💰 Amount: ₦{invoice.amount:,.2f}\n"
+                business_message += f"� Customer: {invoice.customer.name if invoice.customer else 'N/A'}\n"
+                business_message += f"�📊 Status: {invoice.status}\n"
                 
                 if invoice.payment_url:
-                    message += f"\n💳 Pay now: {invoice.payment_url}\n"
-                    message += "\nShare this link with your customer to receive payment instantly! 🚀"
+                    business_message += f"\n� Payment link sent to customer!"
                 
-                self.client.send_text(sender, message)
+                self.client.send_text(sender, business_message)
+                
+                # Send invoice and payment link to CUSTOMER
+                customer_phone = data.get("customer_phone")
+                if customer_phone and invoice.payment_url:
+                    # Send payment link to customer
+                    customer_message = f"Hello {invoice.customer.name if invoice.customer else 'there'}! 👋\n\n"
+                    customer_message += f"You have a new invoice from your business partner.\n\n"
+                    customer_message += f"📄 Invoice: {invoice.invoice_id}\n"
+                    customer_message += f"💰 Amount: ₦{invoice.amount:,.2f}\n\n"
+                    customer_message += f"💳 Pay now: {invoice.payment_url}\n\n"
+                    customer_message += f"Click the link above to complete your payment securely via Paystack."
+                    
+                    self.client.send_text(customer_phone, customer_message)
+                    
+                    # If PDF URL is accessible, send it too
+                    if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+                        self.client.send_document(
+                            customer_phone,
+                            invoice.pdf_url,
+                            f"Invoice_{invoice.invoice_id}.pdf",
+                            f"Invoice {invoice.invoice_id} - ₦{invoice.amount:,.2f}"
+                        )
+                    
+                    logger.info("Sent invoice %s to customer at %s", invoice.invoice_id, customer_phone)
+                else:
+                    logger.warning("No customer phone or payment URL for invoice %s", invoice.invoice_id)
+                    
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Failed to create invoice")
                 self.client.send_text(sender, f"Error: {exc}")
