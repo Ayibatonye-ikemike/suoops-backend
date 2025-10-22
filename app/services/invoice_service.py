@@ -203,6 +203,7 @@ class InvoiceService:
             raise ValueError("Unsupported status")
         invoice = (
             self.db.query(models.Invoice)
+            .options(selectinload(models.Invoice.customer))
             .filter(models.Invoice.invoice_id == invoice_id, models.Invoice.issuer_id == issuer_id)
             .one_or_none()
         )
@@ -215,6 +216,9 @@ class InvoiceService:
         self.db.commit()
         if status == "paid" and previous_status != "paid":
             metrics.invoice_paid()
+            # Send receipt to customer (manual payment confirmation)
+            logger.info("Invoice %s manually marked as paid, sending receipt", invoice_id)
+            self._send_receipt_to_customer(invoice)
         return self.get_invoice(issuer_id, invoice_id)
 
     def list_events(self, invoice_id: str) -> list[models.WebhookEvent]:
