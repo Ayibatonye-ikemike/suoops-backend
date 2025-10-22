@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import datetime as dt
 import logging
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 
 from app import metrics
@@ -28,7 +29,100 @@ class InvoiceService:
         self.payment_service = payment_service
 
     # ---------- Public API ----------
+    def check_invoice_quota(self, issuer_id: int) -> dict[str, object]:
+        """Check if user can create more invoices this month.
+        
+        Returns:
+            dict with:
+                - can_create: bool - whether user can create invoice
+                - plan: str - current subscription plan
+                - used: int - invoices used this month
+                - limit: int|None - invoice limit (None = unlimited)
+                - message: str - upgrade message if at limit
+        """
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
+        if not user:
+            raise ValueError("User not found")
+        
+        # Reset usage if new month started
+        self._reset_usage_if_needed(user)
+        
+        plan_limit = user.plan.invoice_limit
+        
+        # Unlimited plans (Enterprise)
+        if plan_limit is None:
+            return {
+                "can_create": True,
+                "plan": user.plan.value,
+                "used": user.invoices_this_month,
+                "limit": None,
+                "message": "Unlimited invoices on Enterprise plan",
+            }
+        
+        # Check if at limit
+        if user.invoices_this_month >= plan_limit:
+            upgrade_message = self._get_upgrade_message(user.plan)
+            return {
+                "can_create": False,
+                "plan": user.plan.value,
+                "used": user.invoices_this_month,
+                "limit": plan_limit,
+                "message": upgrade_message,
+            }
+        
+        # Can create, but warn if approaching limit
+        remaining = plan_limit - user.invoices_this_month
+        message = f"{remaining} invoices remaining this month"
+        if remaining <= 5:
+            upgrade_message = self._get_upgrade_message(user.plan)
+            message = f"⚠️ Only {remaining} invoices left! {upgrade_message}"
+        
+        return {
+            "can_create": True,
+            "plan": user.plan.value,
+            "used": user.invoices_this_month,
+            "limit": plan_limit,
+            "message": message,
+        }
+
+    def _reset_usage_if_needed(self, user: models.User) -> None:
+        """Reset monthly usage counter if we're in a new month."""
+        now = dt.datetime.now(dt.timezone.utc)
+        last_reset = user.usage_reset_at.replace(tzinfo=dt.timezone.utc)
+        
+        # Check if month changed
+        if now.year > last_reset.year or (now.year == last_reset.year and now.month > last_reset.month):
+            user.invoices_this_month = 0
+            user.usage_reset_at = now
+            self.db.commit()
+            logger.info("Reset invoice usage for user %s (new month)", user.id)
+
+    def _get_upgrade_message(self, current_plan: models.SubscriptionPlan) -> str:
+        """Get upgrade prompt based on current plan."""
+        messages = {
+            models.SubscriptionPlan.FREE: "Upgrade to Starter (₦2,500/month) for 100 invoices!",
+            models.SubscriptionPlan.STARTER: "Upgrade to Pro (₦7,500/month) for 1,000 invoices!",
+            models.SubscriptionPlan.PRO: "Upgrade to Business (₦15,000/month) for 3,000 invoices!",
+            models.SubscriptionPlan.BUSINESS: "Contact sales for Enterprise (unlimited invoices)!",
+            models.SubscriptionPlan.ENTERPRISE: "",  # Should never reach limit
+        }
+        return messages.get(current_plan, "Upgrade to increase your invoice limit!")
+
     def create_invoice(self, issuer_id: int, data: dict[str, object]) -> models.Invoice:
+        # Check quota before creating invoice
+        quota_check = self.check_invoice_quota(issuer_id)
+        if not quota_check["can_create"]:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "invoice_limit_reached",
+                    "message": quota_check["message"],
+                    "plan": quota_check["plan"],
+                    "used": quota_check["used"],
+                    "limit": quota_check["limit"],
+                }
+            )
+        
         customer = self._get_or_create_customer(
             data.get("customer_name"),
             data.get("customer_phone"),
@@ -68,8 +162,15 @@ class InvoiceService:
         # PDF
         pdf_url = self.pdf_service.generate_invoice_pdf(invoice, payment_url=pay_link)
         invoice.pdf_url = pdf_url
+        
+        # Increment usage counter
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).one()
+        user.invoices_this_month += 1
+        
         self.db.commit()
-        logger.info("Created invoice %s for issuer %s", invoice.invoice_id, issuer_id)
+        logger.info("Created invoice %s for issuer %s (usage: %s/%s)", 
+                   invoice.invoice_id, issuer_id, user.invoices_this_month, 
+                   user.plan.invoice_limit or "unlimited")
         metrics.invoice_created()
         return invoice
 
