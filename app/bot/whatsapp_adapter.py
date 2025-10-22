@@ -50,10 +50,16 @@ class WhatsAppHandler:
                     issuer_id=issuer_id,
                     data=data,
                 )
-                self.client.send_text(
-                    sender,
-                    f"Invoice {invoice.invoice_id} created. Status: {invoice.status}",
-                )
+                # Build response message with payment link
+                message = f"✅ Invoice {invoice.invoice_id} created!\n\n"
+                message += f"💰 Amount: ₦{invoice.amount:,.2f}\n"
+                message += f"📊 Status: {invoice.status}\n"
+                
+                if invoice.payment_url:
+                    message += f"\n💳 Pay now: {invoice.payment_url}\n"
+                    message += "\nShare this link with your customer to receive payment instantly! 🚀"
+                
+                self.client.send_text(sender, message)
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Failed to create invoice")
                 self.client.send_text(sender, f"Error: {exc}")
