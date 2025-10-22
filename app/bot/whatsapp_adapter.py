@@ -280,24 +280,35 @@ class WhatsAppHandler:
                 # Send confirmation to business owner
                 business_message = f"✅ Invoice {invoice.invoice_id} created!\n\n"
                 business_message += f"💰 Amount: ₦{invoice.amount:,.2f}\n"
-                business_message += f"� Customer: {invoice.customer.name if invoice.customer else 'N/A'}\n"
-                business_message += f"�📊 Status: {invoice.status}\n"
-                
-                if invoice.payment_url:
-                    business_message += f"\n� Payment link sent to customer!"
+                business_message += f"👤 Customer: {invoice.customer.name if invoice.customer else 'N/A'}\n"
+                business_message += f" Status: {invoice.status}\n"
+                business_message += f"\n📧 Invoice sent to customer!"
                 
                 self.client.send_text(sender, business_message)
                 
-                # Send invoice and payment link to CUSTOMER
+                # Send invoice with bank transfer details to CUSTOMER
                 customer_phone = data.get("customer_phone")
-                if customer_phone and invoice.payment_url:
-                    # Send payment link to customer
+                if customer_phone:
+                    # Get issuer's bank details
+                    from app.models import models
+                    issuer = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
+                    
+                    # Build customer message with bank transfer instructions
                     customer_message = f"Hello {invoice.customer.name if invoice.customer else 'there'}! 👋\n\n"
-                    customer_message += f"You have a new invoice from your business partner.\n\n"
+                    customer_message += f"You have a new invoice.\n\n"
                     customer_message += f"📄 Invoice: {invoice.invoice_id}\n"
                     customer_message += f"💰 Amount: ₦{invoice.amount:,.2f}\n\n"
-                    customer_message += f"💳 Pay now: {invoice.payment_url}\n\n"
-                    customer_message += f"Click the link above to complete your payment securely via Paystack."
+                    
+                    # Add bank transfer details if configured
+                    if issuer and issuer.bank_name and issuer.account_number:
+                        customer_message += f"💳 Payment Details (Bank Transfer):\n"
+                        customer_message += f"Bank: {issuer.bank_name}\n"
+                        customer_message += f"Account: {issuer.account_number}\n"
+                        if issuer.account_name:
+                            customer_message += f"Name: {issuer.account_name}\n"
+                        customer_message += f"\n📝 After payment, your receipt will be sent automatically."
+                    else:
+                        customer_message += f"💳 Please contact the business for payment details."
                     
                     self.client.send_text(customer_phone, customer_message)
                     
@@ -312,7 +323,7 @@ class WhatsAppHandler:
                     
                     logger.info("Sent invoice %s to customer at %s", invoice.invoice_id, customer_phone)
                 else:
-                    logger.warning("No customer phone or payment URL for invoice %s", invoice.invoice_id)
+                    logger.warning("No customer phone for invoice %s", invoice.invoice_id)
                     
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Failed to create invoice")

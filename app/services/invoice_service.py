@@ -3,18 +3,15 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from decimal import Decimal
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
-from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 
 from app import metrics
-from app.db.session import get_db
 from app.models import models
 from app.utils.id_generator import generate_id
 
 if TYPE_CHECKING:
-    from app.services.payment_service import PaymentService
     from app.services.pdf_service import PDFService
 
 logger = logging.getLogger(__name__)
@@ -23,10 +20,18 @@ logger = logging.getLogger(__name__)
 class InvoiceService:
     _allowed_statuses = {"pending", "paid", "failed"}
 
-    def __init__(self, db: Session, pdf_service: PDFService, payment_service: PaymentService):
+    def __init__(self, db: Session, pdf_service: PDFService):
+        """Initialize InvoiceService.
+        
+        Simple bank transfer model:
+        - No payment platform integration
+        - Invoices show business bank account details
+        - Customers pay via bank transfer
+        - Business manually marks as paid
+        - System sends receipt automatically
+        """
         self.db = db
         self.pdf_service = pdf_service
-        self.payment_service = payment_service
 
     # ---------- Public API ----------
     def check_invoice_quota(self, issuer_id: int) -> dict[str, object]:
@@ -112,15 +117,8 @@ class InvoiceService:
         # Check quota before creating invoice
         quota_check = self.check_invoice_quota(issuer_id)
         if not quota_check["can_create"]:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "invoice_limit_reached",
-                    "message": quota_check["message"],
-                    "plan": quota_check["plan"],
-                    "used": quota_check["used"],
-                    "limit": quota_check["limit"],
-                }
+            raise ValueError(
+                f"Invoice limit reached. {quota_check['message']}"
             )
         
         customer = self._get_or_create_customer(
@@ -155,16 +153,19 @@ class InvoiceService:
         self.db.commit()
         self.db.refresh(invoice)
 
-        # Payment link
-        pay_link = self.payment_service.create_payment_link(invoice.invoice_id, invoice.amount)
-        invoice.payment_url = pay_link
+        # Get issuer's bank details for the PDF
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).one()
+        bank_details = {
+            "bank_name": user.bank_name,
+            "account_number": user.account_number,
+            "account_name": user.account_name,
+        }
         
-        # PDF
-        pdf_url = self.pdf_service.generate_invoice_pdf(invoice, payment_url=pay_link)
+        # Generate PDF with bank transfer details
+        pdf_url = self.pdf_service.generate_invoice_pdf(invoice, bank_details=bank_details)
         invoice.pdf_url = pdf_url
         
         # Increment usage counter
-        user = self.db.query(models.User).filter(models.User.id == issuer_id).one()
         user.invoices_this_month += 1
         
         self.db.commit()
@@ -230,31 +231,6 @@ class InvoiceService:
             .all()
         )
 
-    def handle_payment_webhook(self, payload: dict) -> None:
-        ref = payload.get("reference")
-        status = payload.get("status")
-        if not ref:
-            return
-        inv = (
-            self.db.query(models.Invoice)
-            .options(selectinload(models.Invoice.customer))
-            .filter(models.Invoice.invoice_id == ref)
-            .one_or_none()
-        )
-        if not inv:
-            logger.warning("Webhook for unknown invoice ref=%s", ref)
-            return
-        if status == "success":
-            previous_status = inv.status
-            inv.status = "paid"
-            self.db.commit()
-            logger.info("Invoice %s marked paid", ref)
-            metrics.invoice_paid()
-            
-            # Send receipt to customer via WhatsApp
-            if previous_status != "paid" and inv.customer and inv.customer.phone:
-                self._send_receipt_to_customer(inv)
-
     def _send_receipt_to_customer(self, invoice: models.Invoice) -> None:
         """Send payment receipt to customer via WhatsApp."""
         try:
@@ -308,31 +284,20 @@ class InvoiceService:
 
 # Dependency factory
 def build_invoice_service(db: Session, user_id: int | None = None) -> InvoiceService:
-    """
-    Build InvoiceService with business's own Paystack credentials.
+    """Factory function to construct InvoiceService with dependencies.
+    
+    Simple bank transfer model - no payment platform integration needed.
     
     Args:
         db: Database session
-        user_id: Business owner's user ID (to fetch their Paystack keys)
+        user_id: Business owner's user ID (optional, not used in simple model)
     
     Returns:
-        InvoiceService configured with business's payment provider
+        InvoiceService configured with PDF generation
     """
-    from app.services.payment_service import PaymentService
     from app.services.pdf_service import PDFService
     from app.storage.s3_client import S3Client
 
     pdf = PDFService(S3Client())
-    
-    # Fetch business's Paystack credentials if user_id provided
-    paystack_key = None
-    if user_id:
-        user = db.query(models.User).filter(models.User.id == user_id).one_or_none()
-        if user and user.paystack_secret_key:
-            paystack_key = user.paystack_secret_key
-            logger.info("Using business's own Paystack key for user %s", user_id)
-        else:
-            logger.warning("No Paystack key configured for user %s, using platform default", user_id)
-    
-    payment = PaymentService(paystack_secret_key=paystack_key)
-    return InvoiceService(db, pdf, payment)
+    return InvoiceService(db, pdf)
+

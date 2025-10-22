@@ -70,8 +70,6 @@ class Invoice(Base):
         default=utcnow,
         server_default=func.now(),
     )
-    payment_ref: Mapped[str | None]
-    payment_url: Mapped[str | None]
     pdf_url: Mapped[str | None]
     customer: Mapped[Customer] = relationship("Customer", back_populates="invoices")  # type: ignore
     lines: Mapped[list[InvoiceLine]] = relationship(
@@ -150,28 +148,8 @@ class User(Base):
         default=utcnow,
         server_default=func.now(),
     )
-    # Business's own Paystack credentials (encrypted)
-    # Money goes directly to business's bank account, not SuoPay
-    paystack_secret_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    paystack_public_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Business bank account info (for display/reference only)
+    # Business bank account details (shown on invoices for customer payments)
     business_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     account_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
-
-
-class WebhookEvent(Base):
-    """Idempotency record for processed webhooks.
-
-    Unique constraint on (provider, external_id) prevents duplicate processing.
-    """
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    provider: Mapped[str] = mapped_column(String(40), index=True)
-    external_id: Mapped[str] = mapped_column(String(120))
-    signature: Mapped[str | None]
-    created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=utcnow,
-        server_default=func.now(),
-    )
+    account_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
