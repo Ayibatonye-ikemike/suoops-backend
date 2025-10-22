@@ -3,36 +3,46 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.db.session import get_db
 from app.models import schemas
-from app.services.invoice_service import InvoiceService, get_invoice_service
+from app.services.invoice_service import build_invoice_service, InvoiceService
 
 router = APIRouter()
 
 CurrentUserDep: TypeAlias = Annotated[int, Depends(get_current_user_id)]
-InvoiceServiceDep: TypeAlias = Annotated[InvoiceService, Depends(get_invoice_service)]
+DbDep: TypeAlias = Annotated[Session, Depends(get_db)]
 
 
-@router.post("/", response_model=schemas.InvoiceOut)
+def get_invoice_service_for_user(current_user_id: CurrentUserDep, db: DbDep) -> InvoiceService:
+    """Get InvoiceService configured with business's own Paystack credentials."""
+    return build_invoice_service(db, user_id=current_user_id)
+
+
+@router.post("/invoices", response_model=schemas.InvoiceResponse)
 def create_invoice(
-    payload: schemas.InvoiceCreate,
+    data: schemas.InvoiceCreate,
     current_user_id: CurrentUserDep,
-    svc: InvoiceServiceDep,
+    db: DbDep,
 ):
+    svc = get_invoice_service_for_user(current_user_id, db)
     try:
-        return svc.create_invoice(issuer_id=current_user_id, data=payload.model_dump())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return svc.create_invoice(issuer_id=current_user_id, data=data.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/", response_model=list[schemas.InvoiceOut])
-def list_invoices(current_user_id: CurrentUserDep, svc: InvoiceServiceDep):
+def list_invoices(current_user_id: CurrentUserDep, db: DbDep):
+    svc = get_invoice_service_for_user(current_user_id, db)
     return svc.list_invoices(current_user_id)
 
 
 @router.get("/{invoice_id}", response_model=schemas.InvoiceOutDetailed)
-def get_invoice(invoice_id: str, current_user_id: CurrentUserDep, svc: InvoiceServiceDep):
+def get_invoice(invoice_id: str, current_user_id: CurrentUserDep, db: DbDep):
+    svc = get_invoice_service_for_user(current_user_id, db)
     try:
         return svc.get_invoice(current_user_id, invoice_id)
     except ValueError as exc:
@@ -44,8 +54,9 @@ def update_invoice_status(
     invoice_id: str,
     payload: schemas.InvoiceStatusUpdate,
     current_user_id: CurrentUserDep,
-    svc: InvoiceServiceDep,
+    db: DbDep,
 ):
+    svc = get_invoice_service_for_user(current_user_id, db)
     try:
         return svc.update_status(current_user_id, invoice_id, payload.status)
     except ValueError as exc:
@@ -55,7 +66,8 @@ def update_invoice_status(
 
 
 @router.get("/{invoice_id}/events", response_model=list[schemas.WebhookEventOut])
-def list_invoice_events(invoice_id: str, current_user_id: CurrentUserDep, svc: InvoiceServiceDep):
+def list_invoice_events(invoice_id: str, current_user_id: CurrentUserDep, db: DbDep):
+    svc = get_invoice_service_for_user(current_user_id, db)
     try:
         svc.get_invoice(current_user_id, invoice_id)
     except ValueError as exc:
@@ -64,14 +76,19 @@ def list_invoice_events(invoice_id: str, current_user_id: CurrentUserDep, svc: I
 
 
 @router.post("/payments/webhook")
-def payment_webhook(event: dict, svc: InvoiceServiceDep):
+def payment_webhook(event: dict, db: DbDep):
+    # For webhooks, we don't have a current user
+    # In multi-tenant setup, we'll need to identify the business from the webhook data
+    # For now, use None to fall back to platform default
+    svc = build_invoice_service(db, user_id=None)
     svc.handle_payment_webhook(event)
     return {"ok": True}
 
 
 @router.get("/{invoice_id}/pdf")
-def download_invoice_pdf(invoice_id: str, current_user_id: CurrentUserDep, svc: InvoiceServiceDep):
+def download_invoice_pdf(invoice_id: str, current_user_id: CurrentUserDep, db: DbDep):
     """Download PDF for an invoice. Serves local files when S3 is not configured."""
+    svc = get_invoice_service_for_user(current_user_id, db)
     try:
         invoice = svc.get_invoice(current_user_id, invoice_id)
     except ValueError as exc:

@@ -105,10 +105,29 @@ class FlutterwaveProvider:
 
 
 class PaymentRouter:
-    def __init__(self, primary: str):
+    """
+    Routes payments to appropriate provider using business's own credentials.
+    
+    Important: Each business uses their own Paystack/Flutterwave account.
+    Money flows directly to business's bank account, not through SuoPay.
+    """
+    
+    def __init__(self, primary: str, paystack_secret_key: str | None = None, flutterwave_secret_key: str | None = None):
+        """
+        Initialize payment router.
+        
+        Args:
+            primary: Primary provider ('paystack' or 'flutterwave')
+            paystack_secret_key: Business's Paystack secret key (optional, uses platform default if None)
+            flutterwave_secret_key: Business's Flutterwave secret key (optional)
+        """
+        # Use business's keys if provided, otherwise fall back to platform keys (for testing)
+        paystack_key = paystack_secret_key or settings.PAYSTACK_SECRET
+        flutterwave_key = flutterwave_secret_key or settings.FLUTTERWAVE_SECRET
+        
         self.providers: dict[str, PaymentProvider] = {
-            "paystack": PaystackProvider(settings.PAYSTACK_SECRET),
-            "flutterwave": FlutterwaveProvider(settings.FLUTTERWAVE_SECRET),
+            "paystack": PaystackProvider(paystack_key),
+            "flutterwave": FlutterwaveProvider(flutterwave_key),
         }
         self.primary = primary if primary in self.providers else "paystack"
 
