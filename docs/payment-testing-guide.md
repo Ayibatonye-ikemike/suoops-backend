@@ -1,5 +1,30 @@
 # Payment Link Testing Guide
 
+## 🎉 NEW: Payment URL in API Response (Oct 22, 2025)
+
+**The `payment_url` field is now returned in all invoice API responses!**
+
+Example response when creating an invoice:
+```json
+{
+  "invoice_id": "INV-1761133019802-91A9D4",
+  "amount": "25000",
+  "status": "pending",
+  "pdf_url": "file:///app/storage/suopay-storage/invoices/INV-1761133019802-91A9D4.pdf",
+  "payment_url": "https://checkout.paystack.com/tispk8kdwhnaqw1",
+  "created_at": "2025-10-22T11:36:59.803891Z",
+  "due_date": null
+}
+```
+
+### What Changed:
+- ✅ Added `payment_url` column to database
+- ✅ Payment URL is now stored when invoice is created
+- ✅ Payment URL is returned in API responses (POST /invoices and GET /invoices)
+- ✅ Frontend can now display "Pay Now" button directly from API response
+
+---
+
 ## ✅ Payment Link Generation - VERIFIED WORKING!
 
 Your Paystack payment links are automatically generated when invoices are created!
