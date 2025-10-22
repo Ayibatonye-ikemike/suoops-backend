@@ -1,7 +1,7 @@
 """add subscription and bank details
 
 Revision ID: 0006_bank_and_subscriptions
-Revises: 0005_add_payment_url
+Revises: 0005_payment_url
 Create Date: 2025-10-22
 
 Combines subscription plan tracking and bank account details.
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '0006_bank_and_subscriptions'
-down_revision = '0005_add_payment_url'
+down_revision = '0005_payment_url'
 branch_labels = None
 depends_on = None
 
