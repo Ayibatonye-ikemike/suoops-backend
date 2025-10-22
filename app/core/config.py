@@ -19,6 +19,7 @@ class BaseAppSettings(BaseSettings):
     S3_BUCKET: str = "whatsinvoice"
     S3_PRESIGN_TTL: int = 3600
     WHATSAPP_API_KEY: str | None = None
+    WHATSAPP_VERIFY_TOKEN: str = "suopay_verify_2025"
     PAYSTACK_SECRET: str | None = None
     FLUTTERWAVE_SECRET: str | None = None
     JWT_SECRET: str = "change_me"
