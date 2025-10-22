@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,14 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
     WHATSAPP_VERIFY_TOKEN: str = "suopay_verify_2025"
+    
+    @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")
+    @classmethod
+    def coerce_phone_number_id_to_str(cls, v):
+        """Convert phone number ID to string if it's an integer."""
+        if v is None:
+            return v
+        return str(v)
     PAYSTACK_SECRET: str | None = None
     FLUTTERWAVE_SECRET: str | None = None
     JWT_SECRET: str = "change_me"
