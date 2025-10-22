@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import httpx
 import requests
 
 from app.bot.nlp_service import NLPService
@@ -13,12 +14,17 @@ logger = logging.getLogger(__name__)
 
 
 class WhatsAppClient:
-    """WhatsApp Cloud API client for sending messages and documents."""
+    """
+    WhatsApp Cloud API client for sending messages and downloading media.
+    
+    Single Responsibility: All WhatsApp API interactions.
+    """
 
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.phone_number_id = getattr(settings, "WHATSAPP_PHONE_NUMBER_ID", None)
         self.base_url = f"https://graph.facebook.com/v21.0/{self.phone_number_id}/messages"
+        self.media_url = "https://graph.facebook.com/v21.0"
 
     def send_text(self, to: str, body: str) -> None:
         """Send text message to WhatsApp number."""
@@ -80,20 +86,147 @@ class WhatsAppClient:
         except Exception as e:
             logger.error("[WHATSAPP DOC] Failed to send to %s: %s", to, e)
 
+    async def get_media_url(self, media_id: str) -> str:
+        """
+        Get downloadable URL for WhatsApp media.
+        
+        Args:
+            media_id: Media ID from webhook
+            
+        Returns:
+            Direct download URL for the media file
+        """
+        if not self.api_key:
+            raise ValueError("WhatsApp not configured")
+        
+        url = f"{self.media_url}/{media_id}"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            return data["url"]
+
+    async def download_media(self, media_url: str) -> bytes:
+        """
+        Download media file from WhatsApp CDN.
+        
+        Args:
+            media_url: URL from get_media_url()
+            
+        Returns:
+            Raw file bytes
+        """
+        if not self.api_key:
+            raise ValueError("WhatsApp not configured")
+        
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(media_url, headers=headers)
+            response.raise_for_status()
+            logger.info("[WHATSAPP] Downloaded %d bytes", len(response.content))
+            return response.content
+
 
 class WhatsAppHandler:
+    """
+    Handle incoming WhatsApp messages (text and voice).
+    
+    Single Responsibility: Orchestrate message processing.
+    """
+    
     def __init__(self, client: WhatsAppClient, nlp: NLPService, invoice_service: InvoiceService):
         self.client = client
         self.nlp = nlp
         self.invoice_service = invoice_service
+        self._speech_service = None  # Lazy load to avoid circular import
 
-    def handle_incoming(self, payload: dict[str, Any]):
-        # Expect simplified payload {"from": "+234...", "text": "Invoice Tolu 25000 due tomorrow"}
+    @property
+    def speech_service(self):
+        """Lazy load speech service to avoid import issues."""
+        if self._speech_service is None:
+            from app.services.speech_service import SpeechService
+            self._speech_service = SpeechService()
+        return self._speech_service
+
+    async def handle_incoming(self, payload: dict[str, Any]):
+        """
+        Route incoming message to appropriate handler.
+        
+        Supports both text and audio messages.
+        """
         sender = payload.get("from")
-        text = payload.get("text", "").strip()
-        if not text:
-            return
-        parse = self.nlp.parse_text(text)
+        msg_type = payload.get("type", "text")
+        
+        if msg_type == "text":
+            text = payload.get("text", "").strip()
+            if text:
+                await self._handle_text_message(sender, text, payload)
+        
+        elif msg_type == "audio":
+            media_id = payload.get("audio_id")
+            if media_id:
+                await self._handle_audio_message(sender, media_id, payload)
+        
+        else:
+            self.client.send_text(
+                sender,
+                "Sorry, I only support text messages and voice notes.",
+            )
+
+    async def _handle_text_message(self, sender: str, text: str, payload: dict[str, Any]):
+        """Process text message (DRY: shared by text and transcribed audio)."""
+        parse = self.nlp.parse_text(text, is_speech=False)
+        await self._process_invoice_intent(sender, parse, payload)
+
+    async def _handle_audio_message(self, sender: str, media_id: str, payload: dict[str, Any]):
+        """Process voice note message."""
+        try:
+            # Notify user we're processing
+            self.client.send_text(sender, "🎙️ Processing your voice message...")
+            
+            # Download audio from WhatsApp
+            media_url = await self.client.get_media_url(media_id)
+            audio_bytes = await self.client.download_media(media_url)
+            
+            # Transcribe to text
+            transcript = await self.speech_service.transcribe_audio(audio_bytes)
+            
+            if not transcript or len(transcript.split()) < 3:
+                self.client.send_text(
+                    sender,
+                    "⚠️ Your voice message was too short or unclear.\n\n"
+                    "Please try again and speak clearly:\n"
+                    "\"Invoice [Customer Name] [Amount] for [Description]\"",
+                )
+                return
+            
+            # Show what we understood
+            self.client.send_text(
+                sender,
+                f"📝 I heard: \"{transcript}\"\n\nProcessing...",
+            )
+            
+            # Parse as speech (with cleaning)
+            parse = self.nlp.parse_text(transcript, is_speech=True)
+            await self._process_invoice_intent(sender, parse, payload)
+            
+        except Exception as e:
+            logger.exception("[VOICE] Failed to process audio")
+            self.client.send_text(
+                sender,
+                f"❌ Sorry, I couldn't process that voice message: {e}\n\n"
+                "Please try again or send a text message.",
+            )
+
+    async def _process_invoice_intent(self, sender: str, parse, payload: dict[str, Any]):
+        """
+        Process invoice creation intent (DRY: reused by text and voice).
+        
+        SRP: Single method for invoice creation logic.
+        """
         if parse.intent == "create_invoice":
             data = parse.entities
             issuer_id = self._resolve_issuer_id(payload)
@@ -153,7 +286,9 @@ class WhatsAppHandler:
         else:
             self.client.send_text(
                 sender,
-                "Sorry, I didn't understand. Try: Invoice Joy 12000 for wigs due tomorrow",
+                "Sorry, I didn't understand. Try:\n"
+                "• Text: \"Invoice Joy 12000 for wigs due tomorrow\"\n"
+                "• Voice: Send a voice note with invoice details",
             )
 
     @staticmethod
