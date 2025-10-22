@@ -61,8 +61,10 @@ class InvoiceService:
         self.db.commit()
         self.db.refresh(invoice)
 
-        # Payment link (stub)
+        # Payment link
         pay_link = self.payment_service.create_payment_link(invoice.invoice_id, invoice.amount)
+        invoice.payment_url = pay_link
+        
         # PDF
         pdf_url = self.pdf_service.generate_invoice_pdf(invoice, payment_url=pay_link)
         invoice.pdf_url = pdf_url

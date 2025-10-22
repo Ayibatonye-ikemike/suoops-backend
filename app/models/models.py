@@ -37,6 +37,7 @@ class Invoice(Base):
         server_default=func.now(),
     )
     payment_ref: Mapped[str | None]
+    payment_url: Mapped[str | None]
     pdf_url: Mapped[str | None]
     customer: Mapped[Customer] = relationship("Customer", back_populates="invoices")  # type: ignore
     lines: Mapped[list[InvoiceLine]] = relationship(

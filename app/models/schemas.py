@@ -36,6 +36,7 @@ class InvoiceOut(BaseModel):
     amount: Decimal
     status: str
     pdf_url: str | None
+    payment_url: str | None
     created_at: dt.datetime | None = None
     due_date: dt.datetime | None = None
 
