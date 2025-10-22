@@ -6,29 +6,105 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 24px; }
     h1 { margin-bottom: 4px; }
+    .header { margin-bottom: 20px; }
+    .payment-box { 
+      background: #f8f9fa; 
+      border: 2px solid #007bff; 
+      border-radius: 8px; 
+      padding: 16px; 
+      margin: 20px 0; 
+    }
+    .payment-box h3 { 
+      margin: 0 0 12px 0; 
+      color: #007bff; 
+    }
+    .payment-details { 
+      font-size: 16px; 
+      line-height: 1.8; 
+    }
+    .payment-details strong { 
+      display: inline-block; 
+      width: 140px; 
+    }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
     th { background: #f4f4f4; text-align: left; }
-    .total { text-align: right; font-weight: bold; }
+    .total { 
+      text-align: right; 
+      font-weight: bold; 
+      font-size: 18px; 
+      margin-top: 12px; 
+    }
+    .footer { 
+      margin-top: 30px; 
+      font-size: 12px; 
+      color: #666; 
+    }
   </style>
 </head>
 <body>
-  <h1>Invoice {{ invoice.invoice_id }}</h1>
-  <p>Customer: {{ invoice.customer.name }}</p>
-  <p>Status: {{ invoice.status }}</p>
+  <div class="header">
+    <h1>Invoice {{ invoice.invoice_id }}</h1>
+    <p><strong>Customer:</strong> {{ invoice.customer.name }}</p>
+    {% if invoice.customer.phone %}
+    <p><strong>Phone:</strong> {{ invoice.customer.phone }}</p>
+    {% endif %}
+    <p><strong>Date:</strong> {{ invoice.created_at.strftime('%B %d, %Y') }}</p>
+    <p><strong>Status:</strong> {{ invoice.status.upper() }}</p>
+  </div>
+  
+  {% if bank_details and (bank_details.bank_name or bank_details.account_number) %}
+  <div class="payment-box">
+    <h3>💳 Payment Instructions</h3>
+    <div class="payment-details">
+      <p>Please make payment via bank transfer to:</p>
+      {% if bank_details.bank_name %}
+      <p><strong>Bank Name:</strong> {{ bank_details.bank_name }}</p>
+      {% endif %}
+      {% if bank_details.account_number %}
+      <p><strong>Account Number:</strong> {{ bank_details.account_number }}</p>
+      {% endif %}
+      {% if bank_details.account_name %}
+      <p><strong>Account Name:</strong> {{ bank_details.account_name }}</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+  
+  <h3>Items</h3>
   <table>
-    <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Subtotal</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th style="text-align: center;">Qty</th>
+        <th style="text-align: right;">Unit Price</th>
+        <th style="text-align: right;">Subtotal</th>
+      </tr>
+    </thead>
     <tbody>
     {% for line in invoice.lines %}
       <tr>
         <td>{{ line.description }}</td>
-        <td>{{ line.quantity }}</td>
-        <td>{{ line.unit_price }}</td>
-        <td>{{ (line.unit_price * line.quantity) }}</td>
+        <td style="text-align: center;">{{ line.quantity }}</td>
+        <td style="text-align: right;">₦{{ "{:,.2f}".format(line.unit_price) }}</td>
+        <td style="text-align: right;">₦{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  <p class="total">Total: {{ invoice.amount }}</p>
+  
+  {% if invoice.discount_amount %}
+  <p class="total">Subtotal: ₦{{ "{:,.2f}".format(invoice.amount + invoice.discount_amount) }}</p>
+  <p class="total" style="color: green;">Discount: -₦{{ "{:,.2f}".format(invoice.discount_amount) }}</p>
+  {% endif %}
+  
+  <p class="total" style="font-size: 20px; color: #007bff;">
+    Total: ₦{{ "{:,.2f}".format(invoice.amount) }}
+  </p>
+  
+  <div class="footer">
+    <p>Thank you for your business!</p>
+    <p>After making payment, please notify us and your receipt will be sent automatically.</p>
+  </div>
 </body>
 </html>
