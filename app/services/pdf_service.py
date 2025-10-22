@@ -27,11 +27,19 @@ class PDFService:
             autoescape=select_autoescape(["html", "xml"]),
         )
 
-    def generate_invoice_pdf(self, invoice: Invoice, payment_url: str | None = None) -> str:
-        """Generate PDF using HTML->PDF if enabled, else fallback to ReportLab."""
+    def generate_invoice_pdf(self, invoice: Invoice, bank_details: dict | None = None) -> str:
+        """Generate PDF with bank transfer payment instructions.
+        
+        Args:
+            invoice: Invoice model instance
+            bank_details: Dict with bank_name, account_number, account_name
+            
+        Returns:
+            URL or path to generated PDF
+        """
         if settings.HTML_PDF_ENABLED and _WEASY_AVAILABLE:
             try:
-                html_str = self._render_invoice_html(invoice, payment_url)
+                html_str = self._render_invoice_html(invoice, bank_details)
                 pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
                 key = f"invoices/{invoice.invoice_id}.pdf"
                 url = self.s3.upload_bytes(pdf_bytes, key)
@@ -46,12 +54,35 @@ class PDFService:
         c.drawString(40, 800, f"Invoice {invoice.invoice_id}")
         c.setFont("Helvetica", 12)
         c.drawString(40, 780, f"Customer: {invoice.customer.name}")
-        c.drawString(40, 760, f"Amount: {invoice.amount}")
-        if payment_url:
-            c.drawString(40, 740, f"Pay: {payment_url}")
-        y = 700
+        c.drawString(40, 760, f"Amount: ₦{invoice.amount:,.2f}")
+        
+        # Add bank transfer details
+        if bank_details:
+            y = 720
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(40, y, "Payment Details (Bank Transfer):")
+            c.setFont("Helvetica", 10)
+            y -= 20
+            if bank_details.get("bank_name"):
+                c.drawString(50, y, f"Bank: {bank_details['bank_name']}")
+                y -= 15
+            if bank_details.get("account_number"):
+                c.drawString(50, y, f"Account Number: {bank_details['account_number']}")
+                y -= 15
+            if bank_details.get("account_name"):
+                c.drawString(50, y, f"Account Name: {bank_details['account_name']}")
+                y -= 20
+        else:
+            y = 720
+            
+        # Invoice lines
+        c.setFont("Helvetica-Bold", 12)
+        y -= 10
+        c.drawString(40, y, "Items:")
+        c.setFont("Helvetica", 10)
+        y -= 20
         for line in invoice.lines:
-            c.drawString(50, y, f"- {line.description} x{line.quantity} @ {line.unit_price}")
+            c.drawString(50, y, f"- {line.description} x{line.quantity} @ ₦{line.unit_price:,.2f}")
             y -= 20
         c.showPage()
         c.save()
@@ -61,6 +92,7 @@ class PDFService:
         logger.info("Uploaded fallback PDF for %s", invoice.invoice_id)
         return url
 
-    def _render_invoice_html(self, invoice: Invoice, payment_url: str | None) -> str:
+    def _render_invoice_html(self, invoice: Invoice, bank_details: dict | None) -> str:
+        """Render invoice HTML template with bank transfer details."""
         template = self.jinja.get_template("invoice.html")
-        return template.render(invoice=invoice, payment_url=payment_url)
+        return template.render(invoice=invoice, bank_details=bank_details)
