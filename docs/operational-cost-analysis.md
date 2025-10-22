@@ -14,9 +14,9 @@
 | Database Write | ₦0.001 | Negligible (included in hosting) |
 | PDF Generation | ₦0.01 | CPU/memory overhead |
 | S3 Storage (per invoice) | ₦0.05 | AWS S3 standard storage |
-| Paystack Transaction Fee | **1.5% + ₦100** | On successful payment |
-| **Total (excluding payment)** | **~₦3.06** | |
-| **Total (with payment at ₦50,000)** | **₦853.06** | |
+| **YOUR TOTAL COST** | **~₦3.06** | **This is your actual cost** |
+
+**Note:** Paystack fees (1.5% + ₦100) are NOT your cost - they're deducted from the business's payment. You don't pay Paystack anything.
 
 ### Cost Per Invoice (Voice Note)
 | Component | Cost | Notes |
@@ -24,8 +24,9 @@
 | WhatsApp Voice Download | ₦0 | Included in Meta API |
 | OpenAI Whisper Transcription | ₦5 - ₦10 | $0.003-$0.006 for 30s-60s |
 | Standard Invoice Creation | ₦3.06 | Same as text invoice |
-| **Total (excluding payment)** | **~₦8-13** | |
-| **Total (with payment at ₦50,000)** | **₦858-863** | |
+| **YOUR TOTAL COST** | **~₦8-13** | **This is your actual cost** |
+
+**Note:** Paystack fees are NOT your cost - they're deducted from the business's payment.
 
 ### Cost Per Payroll Run (10 Workers)
 | Component | Cost | Notes |
@@ -33,10 +34,10 @@
 | PDF Generation (10 payslips) | ₦0.10 | 10 × ₦0.01 |
 | S3 Storage (10 payslips) | ₦0.50 | 10 × ₦0.05 |
 | WhatsApp Notifications (10) | ₦0 - ₦30 | Free tier: 1,000/month |
-| Bulk Payout Fee (Paystack) | **₦50 per worker** | Paystack bulk transfer |
 | Database Operations | ₦0.01 | Negligible |
-| **Total (excluding payouts)** | **₦0.61 - ₦30.61** | |
-| **Total (with payouts)** | **₦500.61 - ₦530.61** | For 10 workers |
+| **YOUR TOTAL COST** | **₦0.61 - ₦30.61** | **For 10 workers** |
+
+**Note:** Paystack bulk payout fees (₦50/worker) are NOT your cost - they're deducted from the business's payout amount.
 
 ---
 
@@ -119,15 +120,22 @@
 | **USSD** | 1% capped at ₦2,000 | ₦500 |
 | **International Card** | 3.9% + ₦100 | ₦2,050 |
 
-**Revenue Share:**
-- Business receives: ₦50,000 - ₦850 = **₦49,150**
-- Paystack takes: **₦850** (1.7% effective rate)
-- Your platform cost: **₦0** (passed to customer)
+**Important:** These fees are **NOT your operational cost**. They are:
+- Deducted by Paystack from the payment
+- Paid by the business (your customer)
+- You never see or pay these fees
+
+**Example Flow:**
+1. Customer pays ₦50,000 for an invoice
+2. Paystack deducts ₦850 (their fee)
+3. Business receives ₦49,150
+4. **You pay: ₦0** (just your ₦3 invoice creation cost)
 
 **Monthly (1,000 invoices at ₦50,000 avg):**
-- Total GMV: ₦50,000,000
-- Paystack fees: ₦850,000
-- **Net to businesses: ₦49,150,000**
+- Total payments processed: ₦50,000,000
+- Paystack takes: ₦850,000 (from businesses, not you)
+- Your cost: ₦3,000 (1,000 × ₦3 invoice creation)
+- **Your operational cost: ₦3,000, not ₦850,000**
 
 #### Paystack Bulk Payouts (Payroll)
 | Payout Type | Fee | Example (₦100,000 salary) |
@@ -136,8 +144,22 @@
 | **Failed Transfer** | ₦0 | Free retry |
 | **Reversal** | ₦0 | No fee |
 
-**Calculation for 100 workers/month:**
-- 100 × ₦50 = **₦5,000/month**
+**Important:** These fees are **NOT your operational cost**. They are:
+- Deducted by Paystack from the payout amount
+- Paid by the business (your customer)
+- You never see or pay these fees
+
+**Example Flow:**
+1. Business initiates payroll for 100 workers (₦10M total)
+2. Paystack deducts ₦5,000 (100 × ₦50)
+3. Workers receive ₦9,995,000
+4. **You pay: ₦30** (just your WhatsApp + storage costs)
+
+**Monthly (100 workers × 4 payrolls):**
+- Total payouts processed: ₦40,000,000
+- Paystack takes: ₦20,000 (from businesses, not you)
+- Your cost: ₦122.44 (4 × ₦30.61)
+- **Your operational cost: ₦122, not ₦20,000**
 
 ---
 
@@ -150,8 +172,10 @@
 | WhatsApp Messages | ₦0 | Within free tier (1,000/month) |
 | S3 Storage | ₦98 | 50 invoices × ₦1.95 |
 | Voice Transcription | ₦0 | No voice invoices |
-| **Total Monthly** | **₦45,923** | |
-| **Cost Per Invoice** | **₦918.46** | Mostly fixed costs |
+| **Total Monthly** | **₦45,923** | **Your actual operational cost** |
+| **Cost Per Invoice** | **₦918.46** | Mostly fixed infrastructure |
+
+**Note:** No Paystack fees included - those are paid by your customers, not you.
 
 #### Scenario 2: Medium Business (500 invoices/month)
 | Cost Item | Amount | Notes |
@@ -160,8 +184,10 @@
 | WhatsApp Messages | ₦0 | Within free tier |
 | S3 Storage | ₦975 | 500 invoices × ₦1.95 |
 | Voice Transcription | ₦2,440 | 100 voice invoices |
-| **Total Monthly** | **₦81,740** | |
-| **Cost Per Invoice** | **₦163.48** | Economics improve |
+| **Total Monthly** | **₦81,740** | **Your actual operational cost** |
+| **Cost Per Invoice** | **₦163.48** | Economics improve with scale |
+
+**Note:** No Paystack fees included - those are paid by your customers, not you.
 
 #### Scenario 3: Large Business (5,000 invoices/month)
 | Cost Item | Amount | Notes |
@@ -170,8 +196,10 @@
 | WhatsApp Messages | ₦32,000 | 4,000 paid messages |
 | S3 Storage | ₦9,750 | 5,000 invoices × ₦1.95 |
 | Voice Transcription | ₦12,200 | 500 voice invoices |
-| **Total Monthly** | **₦132,275** | |
+| **Total Monthly** | **₦132,275** | **Your actual operational cost** |
 | **Cost Per Invoice** | **₦26.46** | Strong unit economics |
+
+**Note:** No Paystack fees included - those are paid by your customers, not you.
 
 #### Scenario 4: Payroll Business (100 workers, 20 payrolls/month)
 | Cost Item | Amount | Notes |
@@ -179,10 +207,11 @@
 | Infrastructure | ₦78,325 | Same |
 | WhatsApp Messages | ₦0 | 2,000 within free tier |
 | S3 Storage | ₦3,900 | 2,000 payslips × ₦1.95 |
-| Bulk Payout Fees | ₦100,000 | 100 × ₦50 × 20 payrolls |
-| **Total Monthly** | **₦182,225** | |
-| **Cost Per Payroll Run** | **₦9,111** | |
-| **Cost Per Worker/Month** | **₦1,822** | Divided by 100 workers |
+| **Total Monthly** | **₦82,225** | **Your actual operational cost** |
+| **Cost Per Payroll Run** | **₦4,111** | 20 runs |
+| **Cost Per Worker/Month** | **₦822** | Divided by 100 workers |
+
+**Note:** No Paystack payout fees included - those are paid by your customers, not you.
 
 ---
 
@@ -203,44 +232,92 @@
 **Variable Costs:** ₦13/invoice (with voice), ₦3/invoice (text only)
 
 **Break-even calculation (Pro plan at ₦5,000):**
-- Need: ₦78,325 ÷ ₦5,000 = **16 paying customers**
-- At 500 invoices each = 8,000 total invoices
-- Variable costs: 8,000 × ₦13 = ₦104,000
-- **Total revenue needed:** ₦104,000 + ₦78,325 = ₦182,325
-- **Customers needed:** 182,325 ÷ 5,000 = **37 Pro customers**
+- Infrastructure: ₦78,325
+- Variable costs for 500 invoices/customer: 500 × ₦13 = ₦6,500/customer
+- Total cost per customer: ₦78,325 ÷ X + ₦6,500
+- Revenue per customer: ₦5,000
+
+**Solving:**
+- At 20 customers: Cost = ₦78,325 + (20 × ₦6,500) = ₦208,325
+- At 20 customers: Revenue = 20 × ₦5,000 = ₦100,000 ❌
+- At 40 customers: Cost = ₦78,325 + (40 × ₦6,500) = ₦338,325
+- At 40 customers: Revenue = 40 × ₦5,000 = ₦200,000 ❌
+
+**Actual break-even:** Need **87 Pro customers** to break even
+- Revenue: 87 × ₦5,000 = ₦435,000
+- Costs: ₦78,325 + (87 × ₦6,500) = ₦643,825
+
+**Wait, that's still negative! Let me recalculate correctly:**
+
+Actually, the variable cost is per invoice, not per customer:
+- 87 customers × 500 invoices = 43,500 invoices
+- Variable costs: 43,500 × ₦13 = ₦565,500
+- Fixed costs: ₦78,325
+- **Total costs: ₦643,825**
+- **Revenue: ₦435,000**
+- **Still negative!**
+
+**The real break-even:** You need to price higher OR have lower variable costs OR have more customers. Let's recalculate:
+
+With text-only invoices (₦3 variable cost):
+- 87 customers × 500 invoices = 43,500 invoices
+- Variable costs: 43,500 × ₦3 = ₦130,500
+- Fixed costs: ₦78,325
+- **Total costs: ₦208,825**
+- **Revenue: ₦435,000**
+- **PROFIT: ₦226,175** ✅
+
+**Break-even with text invoices:** **48 Pro customers**
+- Revenue: 48 × ₦5,000 = ₦240,000
+- Costs: ₦78,325 + (48 × 500 × ₦3) = ₦78,325 + ₦72,000 = ₦150,325
+- **Profit: ₦89,675** ✅
 
 #### Payroll Business
 **Fixed Costs:** ₦78,325/month  
-**Variable Costs:** ₦530/payroll run (10 workers)
+**Variable Costs:** ₦30.61/payroll run (10 workers)
 
 **Break-even calculation (Enterprise plan at ₦20,000):**
-- Need: ₦78,325 ÷ ₦20,000 = **4 Enterprise customers**
-- At 20 payroll runs/month each = 80 runs
-- Variable costs: 80 × ₦530 = ₦42,400
-- **Total revenue needed:** ₦42,400 + ₦78,325 = ₦120,725
-- **Customers needed:** 120,725 ÷ 20,000 = **7 Enterprise customers**
+- Infrastructure: ₦78,325
+- Variable costs for 20 payrolls/customer: 20 × ₦30.61 = ₦612.20/customer
+- Total cost per customer: ₦78,325 ÷ X + ₦612.20
+- Revenue per customer: ₦20,000
+
+**Solving:**
+- At 5 customers: Cost = ₦78,325 + (5 × ₦612.20) = ₦81,386
+- At 5 customers: Revenue = 5 × ₦20,000 = ₦100,000 ✅
+
+**Break-even:** **5 Enterprise customers**
+- Revenue: 5 × ₦20,000 = ₦100,000
+- Costs: ₦78,325 + (5 × 20 × ₦30.61) = ₦78,325 + ₦3,061 = ₦81,386
+- **Profit: ₦18,614** ✅
 
 ### Revenue Projections
 
 #### Year 1 (Conservative)
-| Segment | Customers | Revenue/Month | Annual Revenue |
-|---------|-----------|---------------|----------------|
-| Free | 100 | ₦0 | ₦0 |
-| Pro | 20 | ₦100,000 | ₦1,200,000 |
-| Enterprise | 5 | ₦100,000 | ₦1,200,000 |
-| **Total** | **125** | **₦200,000** | **₦2,400,000** |
-| **Costs** | | ₦78,325 + ₦50,000 | ₦1,539,900 |
-| **Profit** | | **₦71,675/month** | **₦860,100/year** |
+| Segment | Customers | Revenue/Month | Costs/Month | Profit/Month | Annual Profit |
+|---------|-----------|---------------|-------------|--------------|---------------|
+| Free | 100 | ₦0 | ₦78,325 | -₦78,325 | -₦939,900 |
+| Pro | 50 | ₦250,000 | ₦153,825 | ₦96,175 | ₦1,154,100 |
+| Enterprise | 5 | ₦100,000 | ₦81,386 | ₦18,614 | ₦223,368 |
+| **Total** | **155** | **₦350,000** | **₦313,536** | **₦36,289** | **₦435,468** |
+
+**Notes:**
+- Pro costs: ₦78,325 infrastructure + (50 × 500 × ₦3) = ₦153,825
+- Enterprise costs: ₦78,325 + (5 × 20 × ₦30.61) = ₦81,386
+- Free users are a loss leader for customer acquisition
 
 #### Year 2 (Growth)
-| Segment | Customers | Revenue/Month | Annual Revenue |
-|---------|-----------|---------------|----------------|
-| Free | 500 | ₦0 | ₦0 |
-| Pro | 100 | ₦500,000 | ₦6,000,000 |
-| Enterprise | 25 | ₦500,000 | ₦6,000,000 |
-| **Total** | **625** | **₦1,000,000** | **₦12,000,000** |
-| **Costs** | | ₦200,000 | ₦2,400,000 |
-| **Profit** | | **₦800,000/month** | **₦9,600,000/year** |
+| Segment | Customers | Revenue/Month | Costs/Month | Profit/Month | Annual Profit |
+|---------|-----------|---------------|-------------|--------------|---------------|
+| Free | 500 | ₦0 | ₦78,325 | -₦78,325 | -₦939,900 |
+| Pro | 200 | ₦1,000,000 | ₦378,325 | ₦621,675 | ₦7,460,100 |
+| Enterprise | 25 | ₦500,000 | ₦93,630 | ₦406,370 | ₦4,876,440 |
+| **Total** | **725** | **₦1,500,000** | **₦550,280** | **₦949,720** | **₦11,396,640** |
+
+**Notes:**
+- Pro costs: ₦78,325 + (200 × 500 × ₦3) = ₦378,325
+- Enterprise costs: ₦78,325 + (25 × 20 × ₦30.61) = ₦93,630
+- Much better margins at scale!
 
 ---
 
@@ -327,16 +404,19 @@
 ## 💰 Final Cost Summary
 
 ### Per Invoice Cost (Text)
-- **Minimum:** ₦3.06 (text only, excluding payment fee)
-- **With Payment (₦50k):** ₦853.06 (including Paystack 1.5% + ₦100)
+- **YOUR COST:** ₦3.06 (WhatsApp + PDF + Storage)
+- **Paystack Fee:** ₦850 (paid by business, not you)
+- **You keep 100% of your subscription revenue**
 
 ### Per Invoice Cost (Voice)
-- **Minimum:** ₦8-13 (voice transcription included)
-- **With Payment (₦50k):** ₦858-863
+- **YOUR COST:** ₦8-13 (includes ₦5-10 transcription)
+- **Paystack Fee:** ₦850 (paid by business, not you)
+- **You keep 100% of your subscription revenue**
 
 ### Per Payroll Run (10 Workers)
-- **Minimum:** ₦30.61 (excluding payouts)
-- **With Payouts:** ₦530.61 (including ₦50/worker transfer fee)
+- **YOUR COST:** ₦30.61 (WhatsApp + PDFs + Storage)
+- **Paystack Fee:** ₦500 (paid by business, not you)
+- **You keep 100% of your subscription revenue**
 
 ### Monthly Infrastructure
 - **Startup (Eco):** ₦45,825
@@ -344,8 +424,14 @@
 - **Scale (Performance):** ₦848,250 at 10,000 customers
 
 ### Break-Even Point
-- **Invoice Business:** 37 Pro customers (₦5,000/month each)
-- **Payroll Business:** 7 Enterprise customers (₦20,000/month each)
+- **Invoice Business:** 48 Pro customers (₦5,000/month each)
+- **Payroll Business:** 5 Enterprise customers (₦20,000/month each)
+
+### Key Insight 🎯
+**Paystack fees are NOT your operational cost!** They are:
+- Deducted from payments before businesses receive money
+- Similar to how Uber/Lyft never pay Visa/Mastercard fees
+- Your only costs are: Infrastructure + WhatsApp + Storage + OpenAI
 
 ---
 
