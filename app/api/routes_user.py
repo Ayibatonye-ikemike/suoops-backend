@@ -1,12 +1,14 @@
 """User profile and settings management endpoints."""
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.core.logger import logger
 from app.db.session import get_db
 from app.models import models, schemas
+from app.storage.s3_client import s3_client
 
 router = APIRouter()
 
@@ -143,3 +145,100 @@ def delete_bank_details(
     db.commit()
     
     return schemas.MessageOut(detail="Bank details cleared successfully")
+
+
+@router.post("/me/logo", response_model=schemas.MessageOut)
+async def upload_logo(
+    file: UploadFile = File(...),
+    current_user_id: Annotated[int, Depends(get_current_user_id)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """
+    Upload business logo for invoices.
+    
+    **Accepted formats:** PNG, JPG, JPEG, SVG
+    **Max size:** 5MB
+    **Recommended:** Square logo, minimum 200x200px for best quality
+    
+    The logo will appear on all invoices and receipts.
+    """
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=400,
+            detail="File must be an image (PNG, JPG, JPEG, or SVG)"
+        )
+    
+    allowed_types = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported image type. Allowed: PNG, JPG, JPEG, SVG"
+        )
+    
+    # Read file content
+    content = await file.read()
+    
+    # Validate file size (5MB max)
+    max_size = 5 * 1024 * 1024  # 5MB
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=400,
+            detail="File size exceeds 5MB limit"
+        )
+    
+    # Get user
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        # Generate unique filename
+        file_extension = file.filename.split(".")[-1] if file.filename else "png"
+        object_key = f"logos/user_{current_user_id}.{file_extension}"
+        
+        # Upload to S3
+        logo_url = await s3_client.upload_file(
+            content,
+            object_key,
+            content_type=file.content_type
+        )
+        
+        # Update user logo_url
+        user.logo_url = logo_url
+        db.commit()
+        
+        logger.info(f"Logo uploaded for user {current_user_id}: {logo_url}")
+        return schemas.MessageOut(detail="Logo uploaded successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to upload logo for user {current_user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload logo. Please try again."
+        )
+
+
+@router.delete("/me/logo", response_model=schemas.MessageOut)
+def delete_logo(
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Remove business logo.
+    
+    ⚠️ Invoices will no longer show your logo after removal.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.logo_url:
+        raise HTTPException(status_code=404, detail="No logo configured")
+    
+    # Clear logo URL (we don't delete from S3 to preserve history)
+    user.logo_url = None
+    db.commit()
+    
+    return schemas.MessageOut(detail="Logo removed successfully")
+
