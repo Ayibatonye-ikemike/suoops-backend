@@ -9,7 +9,6 @@ from app.bot.nlp_service import NLPService
 from app.bot.whatsapp_adapter import WhatsAppClient, WhatsAppHandler
 from app.core.config import settings
 from app.db.session import session_scope
-from app.services.invoice_service import build_invoice_service
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -23,13 +22,16 @@ logger = logging.getLogger(__name__)
     retry_kwargs={"max_retries": 5},
 )
 def process_whatsapp_inbound(self: Task, payload: dict[str, Any]) -> None:
-    # Celery task executes outside request cycle; build service graph on demand.
+    """
+    Process inbound WhatsApp message.
+    
+    Handler will create invoice service on-demand with the correct user's Paystack credentials.
+    """
     with session_scope() as db:
-        invoice_service = build_invoice_service(db)
         handler = WhatsAppHandler(
             client=WhatsAppClient(settings.WHATSAPP_API_KEY),
             nlp=NLPService(),
-            invoice_service=invoice_service,
+            db=db,
         )
         handler.handle_incoming(payload)
 

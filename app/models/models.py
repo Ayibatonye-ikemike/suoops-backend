@@ -150,6 +150,14 @@ class User(Base):
         default=utcnow,
         server_default=func.now(),
     )
+    # Business's own Paystack credentials (encrypted)
+    # Money goes directly to business's bank account, not SuoPay
+    paystack_secret_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    paystack_public_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Business bank account info (for display/reference only)
+    business_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    account_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class WebhookEvent(Base):

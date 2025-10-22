@@ -5,10 +5,11 @@ from typing import Any
 
 import httpx
 import requests
+from sqlalchemy.orm import Session
 
 from app.bot.nlp_service import NLPService
 from app.core.config import settings
-from app.services.invoice_service import InvoiceService
+from app.services.invoice_service import build_invoice_service
 
 logger = logging.getLogger(__name__)
 
@@ -135,12 +136,13 @@ class WhatsAppHandler:
     Handle incoming WhatsApp messages (text and voice).
     
     Single Responsibility: Orchestrate message processing.
+    Uses database session to create invoice service on-demand with correct user credentials.
     """
     
-    def __init__(self, client: WhatsAppClient, nlp: NLPService, invoice_service: InvoiceService):
+    def __init__(self, client: WhatsAppClient, nlp: NLPService, db: Session):
         self.client = client
         self.nlp = nlp
-        self.invoice_service = invoice_service
+        self.db = db
         self._speech_service = None  # Lazy load to avoid circular import
 
     @property
@@ -238,9 +240,12 @@ class WhatsAppHandler:
                 )
                 return
             
+            # Build invoice service with business's own Paystack credentials
+            invoice_service = build_invoice_service(self.db, user_id=issuer_id)
+            
             # Check invoice quota before creating
             try:
-                quota_check = self.invoice_service.check_invoice_quota(issuer_id)
+                quota_check = invoice_service.check_invoice_quota(issuer_id)
                 
                 # Send warning if approaching limit
                 if quota_check["can_create"] and quota_check["limit"]:
@@ -267,7 +272,7 @@ class WhatsAppHandler:
                 # Continue anyway to avoid blocking legitimate requests
             
             try:
-                invoice = self.invoice_service.create_invoice(
+                invoice = invoice_service.create_invoice(
                     issuer_id=issuer_id,
                     data=data,
                 )

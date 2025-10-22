@@ -306,16 +306,33 @@ class InvoiceService:
         return c
 
 
-# Dependency factory (simple placeholder)
-def build_invoice_service(db: Session) -> InvoiceService:
+# Dependency factory
+def build_invoice_service(db: Session, user_id: int | None = None) -> InvoiceService:
+    """
+    Build InvoiceService with business's own Paystack credentials.
+    
+    Args:
+        db: Database session
+        user_id: Business owner's user ID (to fetch their Paystack keys)
+    
+    Returns:
+        InvoiceService configured with business's payment provider
+    """
     from app.services.payment_service import PaymentService
     from app.services.pdf_service import PDFService
     from app.storage.s3_client import S3Client
 
     pdf = PDFService(S3Client())
-    payment = PaymentService()
+    
+    # Fetch business's Paystack credentials if user_id provided
+    paystack_key = None
+    if user_id:
+        user = db.query(models.User).filter(models.User.id == user_id).one_or_none()
+        if user and user.paystack_secret_key:
+            paystack_key = user.paystack_secret_key
+            logger.info("Using business's own Paystack key for user %s", user_id)
+        else:
+            logger.warning("No Paystack key configured for user %s, using platform default", user_id)
+    
+    payment = PaymentService(paystack_secret_key=paystack_key)
     return InvoiceService(db, pdf, payment)
-
-
-def get_invoice_service(db: Annotated[Session, Depends(get_db)]) -> InvoiceService:
-    return build_invoice_service(db)
