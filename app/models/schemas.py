@@ -122,6 +122,9 @@ class UserOut(BaseModel):
     id: int
     phone: str
     name: str
+    plan: str  # FREE, STARTER, PRO, BUSINESS, ENTERPRISE
+    invoices_this_month: int
+    logo_url: str | None = None
 
 
 class TokenOut(BaseModel):

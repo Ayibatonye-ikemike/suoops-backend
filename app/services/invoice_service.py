@@ -161,8 +161,12 @@ class InvoiceService:
             "account_name": user.account_name,
         }
         
-        # Generate PDF with bank transfer details
-        pdf_url = self.pdf_service.generate_invoice_pdf(invoice, bank_details=bank_details)
+        # Generate PDF with bank transfer details and logo
+        pdf_url = self.pdf_service.generate_invoice_pdf(
+            invoice, 
+            bank_details=bank_details,
+            logo_url=user.logo_url
+        )
         invoice.pdf_url = pdf_url
         
         # Increment usage counter

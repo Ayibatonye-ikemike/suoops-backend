@@ -27,19 +27,20 @@ class PDFService:
             autoescape=select_autoescape(["html", "xml"]),
         )
 
-    def generate_invoice_pdf(self, invoice: Invoice, bank_details: dict | None = None) -> str:
-        """Generate PDF with bank transfer payment instructions.
+    def generate_invoice_pdf(self, invoice: Invoice, bank_details: dict | None = None, logo_url: str | None = None) -> str:
+        """Generate PDF with bank transfer payment instructions and business logo.
         
         Args:
             invoice: Invoice model instance
             bank_details: Dict with bank_name, account_number, account_name
+            logo_url: URL to business logo image
             
         Returns:
             URL or path to generated PDF
         """
         if settings.HTML_PDF_ENABLED and _WEASY_AVAILABLE:
             try:
-                html_str = self._render_invoice_html(invoice, bank_details)
+                html_str = self._render_invoice_html(invoice, bank_details, logo_url)
                 pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
                 key = f"invoices/{invoice.invoice_id}.pdf"
                 url = self.s3.upload_bytes(pdf_bytes, key)
@@ -92,7 +93,7 @@ class PDFService:
         logger.info("Uploaded fallback PDF for %s", invoice.invoice_id)
         return url
 
-    def _render_invoice_html(self, invoice: Invoice, bank_details: dict | None) -> str:
-        """Render invoice HTML template with bank transfer details."""
+    def _render_invoice_html(self, invoice: Invoice, bank_details: dict | None, logo_url: str | None = None) -> str:
+        """Render invoice HTML template with bank transfer details and business logo."""
         template = self.jinja.get_template("invoice.html")
-        return template.render(invoice=invoice, bank_details=bank_details)
+        return template.render(invoice=invoice, bank_details=bank_details, logo_url=logo_url)

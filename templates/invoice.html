@@ -6,7 +6,14 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 24px; }
     h1 { margin-bottom: 4px; }
-    .header { margin-bottom: 20px; }
+    .header { margin-bottom: 20px; position: relative; }
+    .logo { 
+      position: absolute; 
+      top: 0; 
+      right: 0; 
+      max-width: 150px; 
+      max-height: 80px; 
+    }
     .payment-box { 
       background: #f8f9fa; 
       border: 2px solid #007bff; 
@@ -44,6 +51,9 @@
 </head>
 <body>
   <div class="header">
+    {% if logo_url %}
+    <img src="{{ logo_url }}" alt="Business Logo" class="logo" />
+    {% endif %}
     <h1>Invoice {{ invoice.invoice_id }}</h1>
     <p><strong>Customer:</strong> {{ invoice.customer.name }}</p>
     {% if invoice.customer.phone %}
