@@ -36,14 +36,14 @@ def upgrade():
     """
     # Add subscription plan enum type
     subscription_plan = postgresql.ENUM(
-        'free', 'starter', 'pro', 'business', 'enterprise',
+        'FREE', 'STARTER', 'PRO', 'BUSINESS', 'ENTERPRISE',
         name='subscriptionplan',
         create_type=True
     )
     subscription_plan.create(op.get_bind(), checkfirst=True)
     
     # Add subscription tracking columns
-    op.add_column('user', sa.Column('plan', subscription_plan, server_default='free', nullable=False))
+    op.add_column('user', sa.Column('plan', subscription_plan, server_default='FREE', nullable=False))
     op.add_column('user', sa.Column('invoices_this_month', sa.Integer(), server_default='0', nullable=False))
     op.add_column('user', sa.Column('usage_reset_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
     
@@ -89,5 +89,5 @@ def downgrade():
     op.drop_column('user', 'plan')
     
     # Drop enum type
-    subscription_plan = postgresql.ENUM('free', 'starter', 'pro', 'business', 'enterprise', name='subscriptionplan')
+    subscription_plan = postgresql.ENUM('FREE', 'STARTER', 'PRO', 'BUSINESS', 'ENTERPRISE', name='subscriptionplan')
     subscription_plan.drop(op.get_bind(), checkfirst=True)
