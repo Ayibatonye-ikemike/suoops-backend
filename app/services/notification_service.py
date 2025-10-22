@@ -20,6 +20,54 @@ logger = logging.getLogger(__name__)
 class NotificationService:
     """Service for sending invoice notifications via email and WhatsApp."""
     
+    def _get_smtp_config(self) -> dict[str, str | int] | None:
+        """Get SMTP configuration based on EMAIL_PROVIDER setting.
+        
+        Returns:
+            dict with host, port, user, password or None if not configured
+        """
+        provider = getattr(settings, "EMAIL_PROVIDER", "gmail").lower()
+        
+        if provider == "ses":
+            # Amazon SES configuration
+            host = getattr(settings, "SES_SMTP_HOST", None)
+            port = getattr(settings, "SES_SMTP_PORT", 587)
+            user = getattr(settings, "SES_SMTP_USER", None)
+            password = getattr(settings, "SES_SMTP_PASSWORD", None)
+            
+            if not all([host, user, password]):
+                logger.warning("Amazon SES not configured. Set SES_SMTP_USER and SES_SMTP_PASSWORD")
+                return None
+                
+            logger.info("Using Amazon SES for email: %s", host)
+            return {
+                "host": host,
+                "port": port,
+                "user": user,
+                "password": password,
+                "provider": "Amazon SES"
+            }
+        
+        else:  # Default to Gmail
+            # Gmail SMTP configuration
+            host = getattr(settings, "SMTP_HOST", None)
+            port = getattr(settings, "SMTP_PORT", 587)
+            user = getattr(settings, "SMTP_USER", None)
+            password = getattr(settings, "SMTP_PASSWORD", None)
+            
+            if not all([host, user, password]):
+                logger.warning("Gmail SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD")
+                return None
+                
+            logger.info("Using Gmail SMTP for email: %s", host)
+            return {
+                "host": host,
+                "port": port,
+                "user": user,
+                "password": password,
+                "provider": "Gmail"
+            }
+    
     def send_invoice_created(self, to: str, invoice_id: str):
         logger.info("Notify %s invoice %s created", to, invoice_id)
     
@@ -42,16 +90,22 @@ class NotificationService:
             bool: True if email sent successfully, False otherwise
         """
         try:
-            # Check if SMTP is configured
-            smtp_host = getattr(settings, "SMTP_HOST", None)
-            smtp_port = getattr(settings, "SMTP_PORT", None)
-            smtp_user = getattr(settings, "SMTP_USER", None)
-            smtp_password = getattr(settings, "SMTP_PASSWORD", None)
+            # Get SMTP configuration based on provider
+            smtp_config = self._get_smtp_config()
+            if not smtp_config:
+                logger.warning("No email provider configured")
+                return False
+            
+            smtp_host = smtp_config["host"]
+            smtp_port = smtp_config["port"]
+            smtp_user = smtp_config["user"]
+            smtp_password = smtp_config["password"]
+            provider_name = smtp_config["provider"]
+            
+            # Get FROM email (use FROM_EMAIL if set, otherwise use SMTP_USER)
             from_email = getattr(settings, "FROM_EMAIL", smtp_user)
             
-            if not all([smtp_host, smtp_port, smtp_user, smtp_password]):
-                logger.warning("SMTP not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD")
-                return False
+            logger.info("Sending email via %s to %s", provider_name, recipient_email)
             
             # Create email message
             msg = MIMEMultipart()
