@@ -87,9 +87,9 @@ echo ""
 # Wait a bit for Celery to process
 sleep 3
 
-# Check logs
+# Check logs (avoid --tail to prevent hanging script)
 echo "Recent logs:"
-heroku logs --tail --num 50 --source app | grep -E "whatsapp|invoice|celery" | tail -15
+heroku logs --num 150 --source app | grep -E "whatsapp|invoice|celery" | tail -15
 
 echo ""
 echo "=============================================="
