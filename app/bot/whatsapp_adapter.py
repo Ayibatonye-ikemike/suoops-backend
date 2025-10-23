@@ -437,7 +437,13 @@ class WhatsAppHandler:
         )
 
         if user:
-            logger.info("Resolved WhatsApp %s → User ID %s (%s)", sender_phone, user.id, user.email)
+            user_identifier = getattr(user, "email", None) or user.phone
+            logger.info(
+                "Resolved WhatsApp %s → User ID %s (%s)",
+                sender_phone,
+                user.id,
+                user_identifier,
+            )
             return user.id
 
         logger.warning("No user found for WhatsApp number: %s", sender_phone)
