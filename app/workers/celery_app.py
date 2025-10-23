@@ -7,20 +7,23 @@ from celery import Celery
 from app.core.config import settings
 
 
-def _ensure_ssl_required(redis_url: str) -> str:
-    """Add ssl_cert_reqs=required to Redis URLs while preserving other params."""
-    parsed = urlparse(redis_url)
+def _add_query_param(url: str, key: str, value: str | None) -> str:
+    """Return URL with query parameter updated while preserving existing params."""
+    parsed = urlparse(url)
     query = parse_qs(parsed.query, keep_blank_values=True)
-    query["ssl_cert_reqs"] = ["required"]
+    if value is None:
+        query.pop(key, None)
+    else:
+        query[key] = [value]
     new_query = urlencode(query, doseq=True)
     return urlunparse(parsed._replace(query=new_query))
 
 
 def _get_redis_url_with_ssl() -> str:
-    """Get Redis URL with SSL parameters for hosted Redis (e.g. Heroku)."""
+    """Get Redis URL with configurable SSL parameters for hosted Redis."""
     redis_url = settings.REDIS_URL
     if redis_url and redis_url.startswith("rediss://"):
-        return _ensure_ssl_required(redis_url)
+        return _add_query_param(redis_url, "ssl_cert_reqs", settings.REDIS_SSL_CERT_REQS)
     return redis_url
 
 
