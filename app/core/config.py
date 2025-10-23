@@ -105,7 +105,8 @@ class ProdSettings(BaseAppSettings):
     CORS_ALLOW_ORIGINS: list[str] = [
         "https://suopay.io",
         "https://www.suopay.io",
-        "https://suopay.vercel.app"  # Add your Vercel domain here
+        "https://suopay.vercel.app",
+        "https://suopay-frontend-3j117jciw-ikemike.vercel.app",
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
     LOG_FORMAT: str = "json"
