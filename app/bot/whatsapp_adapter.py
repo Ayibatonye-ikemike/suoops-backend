@@ -231,12 +231,25 @@ class WhatsAppHandler:
         """
         if parse.intent == "create_invoice":
             data = parse.entities
-            issuer_id = self._resolve_issuer_id(payload)
-            if issuer_id is None:
-                logger.warning("Unable to resolve issuer for WhatsApp payload: %s", payload)
+            
+            # Fix 3: Validate customer phone before processing
+            customer_phone = data.get("customer_phone")
+            if not customer_phone:
                 self.client.send_text(
                     sender,
-                    "Unable to identify your account. Please log in first.",
+                    "⚠️ Please include the customer's phone number in your message.\n\n"
+                    "Example: Invoice Jane +2348087654321 50000 for logo design"
+                )
+                return
+            
+            # Identify business by sender's WhatsApp phone number
+            issuer_id = self._resolve_issuer_id(sender)
+            if issuer_id is None:
+                logger.warning("Unable to resolve issuer for WhatsApp sender: %s", sender)
+                self.client.send_text(
+                    sender,
+                    "❌ Unable to identify your business account.\n\n"
+                    "Please ensure your WhatsApp number is registered in your profile at suopay.io/dashboard/settings",
                 )
                 return
             
@@ -344,21 +357,44 @@ class WhatsAppHandler:
                 "• Voice: Send a voice note with invoice details",
             )
 
-    @staticmethod
-    def _resolve_issuer_id(payload: dict[str, Any]) -> int | None:
-        candidate_keys = ("issuer_id", "user_id", "account_id")
-        metadata = payload.get("metadata") or {}
-        for key in candidate_keys:
-            value = payload.get(key)
-            if value is not None:
-                coerced = WhatsAppHandler._coerce_int(value)
-                if coerced is not None:
-                    return coerced
-            meta_value = metadata.get(key)
-            if meta_value is not None:
-                coerced_meta = WhatsAppHandler._coerce_int(meta_value)
-                if coerced_meta is not None:
-                    return coerced_meta
+    def _resolve_issuer_id(self, sender_phone: str) -> int | None:
+        """
+        Resolve business owner User ID from WhatsApp phone number.
+        
+        Args:
+            sender_phone: WhatsApp number (e.g., "+2348012345678")
+        
+        Returns:
+            User ID of the business owner, or None if not found
+        """
+        from app.models import models
+        
+        # Clean phone number (remove spaces, normalize format)
+        clean_phone = sender_phone.replace(" ", "").replace("+", "")
+        
+        # Try exact match first
+        user = (
+            self.db.query(models.User)
+            .filter(models.User.phone == sender_phone)
+            .first()
+        )
+        
+        if user:
+            logger.info(f"Resolved WhatsApp {sender_phone} → User ID {user.id} ({user.email})")
+            return user.id
+        
+        # Try without + prefix
+        user = (
+            self.db.query(models.User)
+            .filter(models.User.phone == clean_phone)
+            .first()
+        )
+        
+        if user:
+            logger.info(f"Resolved WhatsApp {sender_phone} → User ID {user.id} ({user.email})")
+            return user.id
+        
+        logger.warning(f"No user found for WhatsApp number: {sender_phone}")
         return None
 
     @staticmethod
@@ -367,3 +403,4 @@ class WhatsAppHandler:
             return int(value)
         except (TypeError, ValueError):
             return None
+
