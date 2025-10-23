@@ -15,17 +15,19 @@ Definition of Done:
 Stretch:
 - Basic Prometheus stub endpoint
 
-## Sprint 2 – Payroll & Observability Foundations
+## Sprint 2 – Observability & Banking Foundations
 Goals:
-- Payroll issuer derivation (DONE now for routes/services)
 - Metrics backend integration (Prometheus + Grafana dashboard v1)
 - WhatsApp ingestion queue scaffold (Redis)
-- Flutterwave sandbox integration (charge + webhook)
+- Paystack sandbox hardening (full lifecycle tests)
+- Bank details + manual confirmation endpoints production-ready
 Deliverables:
 - Dashboard panels: latency, error_rate, payment_success_ratio
-- Dual provider payment test (simulated)
+- Paystack subscription + invoice test matrix
+- Settings UI for bank profile & plan overview
 Definition of Done:
 - Queue buffers messages; no data loss in burst test (simulated 200 msg)
+- Invoice manual confirmation flow verified end-to-end in staging
 Stretch:
 - Tracing prototype (OpenTelemetry)
 

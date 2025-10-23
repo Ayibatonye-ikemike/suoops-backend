@@ -51,7 +51,6 @@ class BaseAppSettings(BaseSettings):
             return v
         return str(v)
     PAYSTACK_SECRET: str | None = None
-    FLUTTERWAVE_SECRET: str | None = None
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SSL_CERT_REQS: str | None = "required"
@@ -78,7 +77,6 @@ class BaseAppSettings(BaseSettings):
             "DATABASE_URL",
             "WHATSAPP_API_KEY",
             "PAYSTACK_SECRET",
-            "FLUTTERWAVE_SECRET",
             "JWT_SECRET",
         )
         if self.ENV.lower() == "prod":
@@ -93,7 +91,6 @@ class DevSettings(BaseAppSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./storage/dev.db"
     WHATSAPP_API_KEY: str = "dev-whatsapp-key"
     PAYSTACK_SECRET: str = "dev-paystack-secret"
-    FLUTTERWAVE_SECRET: str = "dev-flutterwave-secret"
 
 
 class TestSettings(BaseAppSettings):
@@ -101,7 +98,6 @@ class TestSettings(BaseAppSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./storage/test.db"
     WHATSAPP_API_KEY: str = "test-whatsapp-key"
     PAYSTACK_SECRET: str = "test-paystack-secret"
-    FLUTTERWAVE_SECRET: str = "test-flutterwave-secret"
 
 
 class ProdSettings(BaseAppSettings):

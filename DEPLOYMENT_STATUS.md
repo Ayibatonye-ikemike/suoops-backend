@@ -45,10 +45,8 @@
 5. `docs/voice-bot-implementation.md`
 6. `docs/voice-bot-quickstart.md`
 7. `docs/voice-bot-summary.md`
-8. `docs/subscription-implementation-plan.md`
-9. `docs/branding-vs-payroll-comparison.md`
-10. `docs/recommended-next-steps.md`
-11. `VOICE_BOT_IMPLEMENTATION.md`
+8. `docs/recommended-next-steps.md`
+9. `VOICE_BOT_IMPLEMENTATION.md`
 
 ### Dependencies
 12. `pyproject.toml` - Added `httpx` for async HTTP

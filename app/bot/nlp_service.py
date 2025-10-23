@@ -49,6 +49,21 @@ class NLPService:
         r"\bten thousand\b": "10000",
     }
 
+    DIGIT_WORDS = {
+        "zero": "0",
+        "oh": "0",
+        "o": "0",
+        "one": "1",
+        "two": "2",
+        "three": "3",
+        "four": "4",
+        "five": "5",
+        "six": "6",
+        "seven": "7",
+        "eight": "8",
+        "nine": "9",
+    }
+
     def parse_text(self, text: str, is_speech: bool = False) -> ParseResult:
         """
         Parse text command into structured data.
@@ -87,6 +102,23 @@ class NLPService:
         
         # Normalize whitespace
         text = re.sub(r"\s+", " ", text).strip()
+
+        # Convert sequences of digit words (e.g. "zero eight") into numeric strings
+        tokens = []
+        digit_buffer: list[str] = []
+        for raw_token in text.split():
+            token_lower = raw_token.lower()
+            if token_lower in self.DIGIT_WORDS:
+                digit_buffer.append(self.DIGIT_WORDS[token_lower])
+                continue
+            if digit_buffer:
+                tokens.append("".join(digit_buffer))
+                digit_buffer = []
+            tokens.append(raw_token)
+        if digit_buffer:
+            tokens.append("".join(digit_buffer))
+
+        text = " ".join(tokens)
         
         return text
     
@@ -123,12 +155,21 @@ class NLPService:
         tokens = text.split()
         name = tokens[1] if len(tokens) > 1 else "Customer"
         
-        # Extract amount
-        amount_match = self.AMOUNT_PATTERN.search(text)
-        amount_raw = amount_match.group(1).replace(",", "") if amount_match else "0"
-        
-        # Extract phone number
+        # Extract phone number first so we can avoid treating it as amount
         phone = self._extract_phone(text)
+
+        # Extract amount, preferring values that are not the phone digits
+        amount_raw = "0"
+        phone_digits = None
+        if phone:
+            phone_digits = phone.replace("+", "")
+
+        for match in self.AMOUNT_PATTERN.finditer(text):
+            candidate = match.group(1).replace(",", "")
+            if phone_digits and (candidate == phone_digits or candidate == phone_digits.lstrip("234")):
+                continue
+            amount_raw = candidate
+            break
         
         # Extract due date
         due = None

@@ -4,7 +4,7 @@ Tests for voice note transcription and speech processing.
 Validates SRP: Each service has focused tests.
 """
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from app.services.speech_service import SpeechService
 from app.bot.nlp_service import NLPService
@@ -108,21 +108,39 @@ class TestWhatsAppVoiceIntegration:
         mock_client.download_media = AsyncMock(return_value=b"audio")
         
         nlp = NLPService()
-        invoice_service = Mock()
-        
-        handler = WhatsAppHandler(mock_client, nlp, invoice_service)
-        
-        # Mock speech service to return very short transcript
-        with patch.object(handler, "speech_service") as mock_speech:
-            mock_speech.transcribe_audio = AsyncMock(return_value="hi")
-            
-            await handler._handle_audio_message("+1234567890", "media123", {})
-            
-            # Should send error message about short transcript
-            assert mock_client.send_text.call_count >= 2
-            error_call = [call for call in mock_client.send_text.call_args_list 
-                         if "too short" in str(call)]
-            assert len(error_call) > 0
+        mock_db = Mock()
+
+        handler = WhatsAppHandler(mock_client, nlp, mock_db)
+
+        voice_payload = {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "messages": [
+                                    {
+                                        "from": "+1234567890",
+                                        "type": "audio",
+                                        "audio": {"id": "media123"},
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+
+        speech_service = Mock()
+        speech_service.transcribe_audio = AsyncMock(return_value="hi")
+        handler._speech_service = speech_service
+
+        await handler.handle_incoming(voice_payload)
+
+        assert mock_client.send_text.call_count >= 2
+        error_call = [call for call in mock_client.send_text.call_args_list if "too short" in str(call)]
+        assert error_call
 
 
 if __name__ == "__main__":

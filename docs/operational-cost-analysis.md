@@ -28,17 +28,6 @@
 
 **Note:** Paystack fees are NOT your cost - they're deducted from the business's payment.
 
-### Cost Per Payroll Run (10 Workers)
-| Component | Cost | Notes |
-|-----------|------|-------|
-| PDF Generation (10 payslips) | ₦0.10 | 10 × ₦0.01 |
-| S3 Storage (10 payslips) | ₦0.50 | 10 × ₦0.05 |
-| WhatsApp Notifications (10) | ₦0 - ₦30 | Free tier: 1,000/month |
-| Database Operations | ₦0.01 | Negligible |
-| **YOUR TOTAL COST** | **₦0.61 - ₦30.61** | **For 10 workers** |
-
-**Note:** Paystack bulk payout fees (₦50/worker) are NOT your cost - they're deducted from the business's payout amount.
-
 ---
 
 ## 📊 Detailed Cost Breakdown
@@ -137,32 +126,6 @@
 - Your cost: ₦3,000 (1,000 × ₦3 invoice creation)
 - **Your operational cost: ₦3,000, not ₦850,000**
 
-#### Paystack Bulk Payouts (Payroll)
-| Payout Type | Fee | Example (₦100,000 salary) |
-|-------------|-----|---------------------------|
-| **Bank Transfer** | ₦50 per recipient | ₦50 |
-| **Failed Transfer** | ₦0 | Free retry |
-| **Reversal** | ₦0 | No fee |
-
-**Important:** These fees are **NOT your operational cost**. They are:
-- Deducted by Paystack from the payout amount
-- Paid by the business (your customer)
-- You never see or pay these fees
-
-**Example Flow:**
-1. Business initiates payroll for 100 workers (₦10M total)
-2. Paystack deducts ₦5,000 (100 × ₦50)
-3. Workers receive ₦9,995,000
-4. **You pay: ₦30** (just your WhatsApp + storage costs)
-
-**Monthly (100 workers × 4 payrolls):**
-- Total payouts processed: ₦40,000,000
-- Paystack takes: ₦20,000 (from businesses, not you)
-- Your cost: ₦122.44 (4 × ₦30.61)
-- **Your operational cost: ₦122, not ₦20,000**
-
----
-
 ### 3. Cost Per Use Case
 
 #### Scenario 1: Small Business (50 invoices/month)
@@ -201,20 +164,6 @@
 
 **Note:** No Paystack fees included - those are paid by your customers, not you.
 
-#### Scenario 4: Payroll Business (100 workers, 20 payrolls/month)
-| Cost Item | Amount | Notes |
-|-----------|--------|-------|
-| Infrastructure | ₦78,325 | Same |
-| WhatsApp Messages | ₦0 | 2,000 within free tier |
-| S3 Storage | ₦3,900 | 2,000 payslips × ₦1.95 |
-| **Total Monthly** | **₦82,225** | **Your actual operational cost** |
-| **Cost Per Payroll Run** | **₦4,111** | 20 runs |
-| **Cost Per Worker/Month** | **₦822** | Divided by 100 workers |
-
-**Note:** No Paystack payout fees included - those are paid by your customers, not you.
-
----
-
 ## 💡 Profitability Analysis
 
 ### Subscription Pricing (Planned)
@@ -223,7 +172,6 @@
 |------|-------|-----------|-----------------|
 | **Free** | ₦0/month | 10 invoices | Loss: ₦46,000/user (subsidized) |
 | **Pro** | ₦5,000/month | Unlimited invoices | Profitable at 200+ invoices |
-| **Enterprise** | ₦20,000/month | Unlimited + Payroll | Profitable at 50+ payroll runs |
 
 ### Break-Even Analysis
 
@@ -271,25 +219,6 @@ With text-only invoices (₦3 variable cost):
 - Revenue: 48 × ₦5,000 = ₦240,000
 - Costs: ₦78,325 + (48 × 500 × ₦3) = ₦78,325 + ₦72,000 = ₦150,325
 - **Profit: ₦89,675** ✅
-
-#### Payroll Business
-**Fixed Costs:** ₦78,325/month  
-**Variable Costs:** ₦30.61/payroll run (10 workers)
-
-**Break-even calculation (Enterprise plan at ₦20,000):**
-- Infrastructure: ₦78,325
-- Variable costs for 20 payrolls/customer: 20 × ₦30.61 = ₦612.20/customer
-- Total cost per customer: ₦78,325 ÷ X + ₦612.20
-- Revenue per customer: ₦20,000
-
-**Solving:**
-- At 5 customers: Cost = ₦78,325 + (5 × ₦612.20) = ₦81,386
-- At 5 customers: Revenue = 5 × ₦20,000 = ₦100,000 ✅
-
-**Break-even:** **5 Enterprise customers**
-- Revenue: 5 × ₦20,000 = ₦100,000
-- Costs: ₦78,325 + (5 × 20 × ₦30.61) = ₦78,325 + ₦3,061 = ₦81,386
-- **Profit: ₦18,614** ✅
 
 ### Revenue Projections
 
@@ -344,16 +273,7 @@ With text-only invoices (₦3 variable cost):
 ### 4. Payment Processing
 - **Encourage bank transfers** over cards (₦50 vs ₦850 fee)
 - **Negotiate volume discounts** with Paystack (possible at 10,000+ tx/month)
-- **Add Flutterwave** as alternative (lower fees in some cases)
 - **Pass fees to customers** optionally (transparency++)
-
-### 5. Payroll Cost Reduction
-- **Batch payouts weekly** instead of daily (fewer API calls)
-- **Use Paystack Bulk Transfer API** (₦50 vs ₦100 for individual)
-- **Implement retry logic** for failed transfers (avoid double fees)
-- **Consider direct bank integration** for large enterprises
-
----
 
 ## 📈 Scaling Considerations
 
@@ -413,11 +333,6 @@ With text-only invoices (₦3 variable cost):
 - **Paystack Fee:** ₦850 (paid by business, not you)
 - **You keep 100% of your subscription revenue**
 
-### Per Payroll Run (10 Workers)
-- **YOUR COST:** ₦30.61 (WhatsApp + PDFs + Storage)
-- **Paystack Fee:** ₦500 (paid by business, not you)
-- **You keep 100% of your subscription revenue**
-
 ### Monthly Infrastructure
 - **Startup (Eco):** ₦45,825
 - **Production (Basic):** ₦78,325
@@ -425,7 +340,6 @@ With text-only invoices (₦3 variable cost):
 
 ### Break-Even Point
 - **Invoice Business:** 48 Pro customers (₦5,000/month each)
-- **Payroll Business:** 5 Enterprise customers (₦20,000/month each)
 
 ### Key Insight 🎯
 **Paystack fees are NOT your operational cost!** They are:

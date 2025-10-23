@@ -1,7 +1,7 @@
 # Architecture Evolution Plan
 
 ## Phase 0 (Now) – Structured Monolith
-- FastAPI app with clear domain service classes (Invoices, Payroll, Payments, WhatsApp, NLP, PDF, Auth)
+- FastAPI app with clear domain service classes (Invoices, Manual Payment Confirmation, Payments, WhatsApp, NLP, PDF, Auth)
 - Single Postgres DB, Alembic migrations
 - Payment provider abstraction + metrics façade in-process
 - Strength: Minimal latency, low cognitive overhead
@@ -16,7 +16,7 @@ Goals: Observability, resilience, correctness.
 
 ## Phase 2 – Async & Workflows
 Trigger: P95 latency >1s OR >3 blocking external calls per request.
-- Introduce background worker (Celery or RQ) for PDF generation, payment reconciliation, large payroll runs
+- Introduce background worker (Celery or RQ) for PDF generation, payment reconciliation, bank transfer confirmations
 - Event outbox table + dispatcher for domain events (invoice.created, payment.failed)
 - Retry & DLQ policies (exponential backoff)
 

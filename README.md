@@ -1,9 +1,9 @@
 # WhatsInvoice MVP
 
-WhatsApp-first invoicing & payroll platform for micro and informal businesses.
+WhatsApp-first invoicing platform for micro and informal businesses.
 
 ## Stack
-FastAPI, SQLAlchemy, PostgreSQL, Redis (tasks), Celery, ReportLab (PDF), Paystack/Flutterwave (abstraction), S3-compatible storage.
+FastAPI, SQLAlchemy, PostgreSQL, Redis (tasks), Celery, ReportLab (PDF), Paystack (payment abstraction), S3-compatible storage.
 
 ## Quick Start
 ```bash
@@ -32,7 +32,7 @@ app/
   core/           # config & logging
   db/             # base + session
   models/         # SQLAlchemy models & Pydantic schemas
-  services/       # domain services (invoice, payroll, payment, pdf, ocr, notify)
+  services/       # domain services (invoice, payment, pdf, ocr, notify)
   storage/        # S3 client abstraction
   utils/          # helpers (ids, currency, validators)
   workers/        # background tasks definitions

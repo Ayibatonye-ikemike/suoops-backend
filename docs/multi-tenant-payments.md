@@ -1,383 +1,95 @@
-# Multi-Tenant Payment Architecture
+# Manual Payment Architecture
 
 ## Overview
 
-SuoPay has been refactored from a single-tenant payment platform to a **multi-tenant SaaS platform**. Each business now uses their own Paystack account, with money flowing directly to their bank account - not through SuoPay.
+SuoPay now positions invoices as **bank-transfer workflows** instead of routing payments through Paystack. Each business keeps its own settlement account on file, customers pay them directly, and operators mark invoices as paid after confirming the transfer. Paystack remains in place **only for SuoPay subscription billing** (plan upgrades), so there is no payment gateway dependency in the invoice lifecycle.
 
-### Why This Architecture?
+### Why This Approach?
+- **Regulatory clarity:** SuoPay never touches customer funds.
+- **Operational control:** Businesses decide when funds are confirmed and can handle partial payments or reversals offline.
+- **Lower complexity:** No need to manage multi-tenant Paystack keys, payment links, or per-business webhooks for invoices.
+- **Native experience:** PDF invoices, WhatsApp confirmations, and receipts highlight the merchant’s own bank details.
 
-1. **Regulatory Compliance**: SuoPay is NOT a fintech - we don't hold customer funds
-2. **Business Model**: Revenue from subscriptions (₦2,500-50,000/month), not payment processing
-3. **Transparency**: Each business maintains their direct relationship with Paystack
-4. **Simplicity**: Paystack fees (1.5% + ₦100) paid by businesses from their transactions
+## Implementation Highlights
 
-## Payment Flow
+1. **Database Fields** (Migration 0006)
+   - `business_name`, `bank_name`, `account_number`, `account_name` captured on each user.
+   - Optional Paystack keys are retained for future expansion but are not required for invoice payments.
+
+2. **Invoice Service**
+   - Generates invoice IDs and PDFs that surface the merchant’s bank instructions.
+   - Tracks monthly invoice quotas per subscription plan and resets automatically each month.
+   - Marks invoices as paid/failed manually; `invoice_service.update_status` sends WhatsApp receipts when configured.
+
+3. **API Routes**
+   - `POST /invoices` → creates invoices with line items, generates PDFs, increments usage counters.
+   - `PATCH /invoices/{id}` → updates status (`pending`, `paid`, `failed`) based on manual confirmation.
+   - No `/invoices/{id}/events` or `/invoices/payments/webhook` endpoints—statuses are controlled entirely by the business.
+
+4. **WhatsApp Automation**
+   - WhatsApp bot confirms invoice creation with customer-friendly copy and bank details.
+   - When an invoice is marked as paid, SuoPay sends WhatsApp receipts (and optionally PDFs).
+
+5. **Subscription Billing (Paystack)**
+   - `/subscriptions/initialize` and `/subscriptions/verify` use Paystack for SuoPay’s own subscription revenue.
+   - `/webhooks/paystack` now processes only `charge.success` events to upgrade plans; invoice-related webhooks were removed.
+
+## Manual Payment Flow
 
 ```
-Customer → Business's Paystack Account → Business's Bank Account
-                                       (NOT through SuoPay)
+Customer → Receives invoice/WhatsApp prompt with bank details
+Customer → Transfers funds directly to merchant bank account
+Merchant → Confirms funds → PATCH /invoices/{id} status=paid
+SuoPay → Sends receipt (WhatsApp + PDF if available)
 ```
 
-## Implementation Status
+## Pending & Nice-to-Have Tasks
 
-### ✅ Completed
+1. **Bank Details Management UI (MEDIUM)**
+   - Dashboard settings page to capture `business_name`, `bank_name`, `account_number`, `account_name`.
+   - Validation reminders (e.g. 10-digit account number) and guidance on what customers will see.
 
-1. **Database Schema** (Migration 0006)
-   - `paystack_secret_key` - Business's Paystack secret key
-   - `paystack_public_key` - Business's Paystack public key  
-   - `business_name` - Business name for reference
-   - `bank_name` - Settlement bank name
-   - `account_number` - Settlement account number
+2. **Confirmation Aids (LOW)**
+   - Add optional fields for reference numbers or payment notes when marking an invoice as paid.
+   - Allow operators to upload proof-of-payment snapshots for internal auditing.
 
-2. **Service Layer Refactoring**
-   - `PaymentService.__init__(paystack_secret_key)` - Accepts business credentials
-   - `PaymentRouter.__init__(paystack_secret_key, flutterwave_secret_key)` - Multi-tenant routing
-   - `build_invoice_service(db, user_id)` - Fetches user's Paystack key from database
-   - Falls back to platform credentials if business hasn't configured
-
-3. **API Routes Updated**
-   - `POST /invoices` - Uses current user's Paystack account
-   - `GET /invoices` - Scoped to user's account
-   - `PATCH /invoices/{id}` - Uses user's credentials for payment link regeneration
-   - All routes now pass `current_user_id` to service factory
-
-4. **WhatsApp Bot Integration**
-   - Handler receives database session (not pre-built service)
-   - Extracts `issuer_id` from incoming message
-   - Builds invoice service on-demand with user's credentials
-   - Each business's WhatsApp invoices use their own Paystack account
-
-5. **Webhook Handling**
-   - Updated to use `build_invoice_service(db, user_id=None)` temporarily
-   - Falls back to platform credentials for now
-   - See "Pending Work" below for multi-tenant webhook routing
-
-### 🔴 Pending Work
-
-#### 1. Paystack Credentials Management API (HIGH PRIORITY)
-
-Businesses need a way to configure their Paystack credentials. Create these endpoints:
-
-```python
-# app/api/routes_paystack.py
-
-@router.post("/users/me/paystack")
-def set_paystack_credentials(
-    credentials: PaystackCredentials,
-    current_user_id: CurrentUserDep,
-    db: DbDep,
-):
-    """
-    Set business's Paystack credentials.
-    
-    Required fields:
-    - paystack_secret_key: sk_live_... or sk_test_...
-    - paystack_public_key: pk_live_... or pk_test_...
-    
-    Optional fields:
-    - business_name: For display/reference
-    - bank_name: Settlement bank
-    - account_number: Settlement account
-    """
-    # TODO: Encrypt secret key before storing
-    # TODO: Validate keys by making test API call to Paystack
-    # TODO: Update user record in database
-    pass
-
-
-@router.get("/users/me/paystack")
-def get_paystack_credentials(
-    current_user_id: CurrentUserDep,
-    db: DbDep,
-):
-    """
-    Get configured Paystack credentials (secret key redacted).
-    
-    Returns:
-    - paystack_public_key: Full public key
-    - paystack_secret_key: "sk_***...***" (redacted)
-    - business_name, bank_name, account_number
-    - configured: true/false
-    """
-    pass
-
-
-@router.delete("/users/me/paystack")
-def remove_paystack_credentials(
-    current_user_id: CurrentUserDep,
-    db: DbDep,
-):
-    """
-    Remove Paystack credentials.
-    
-    After removal, invoices will use platform default credentials.
-    """
-    pass
-```
-
-**Why This Matters:**
-- Without this API, businesses can't configure their accounts
-- Currently all businesses use platform default (SuoPay's Paystack)
-- This is THE critical missing piece for multi-tenancy
-
-**Security Considerations:**
-- Encrypt `paystack_secret_key` at rest using Fernet or similar
-- Never return full secret key in API responses
-- Log credential changes for audit trail
-- Validate keys by making test Paystack API call
-
-#### 2. Multi-Tenant Webhook Routing (MEDIUM PRIORITY)
-
-Current webhook handlers use `user_id=None`, falling back to platform credentials. We need to identify which business each webhook belongs to:
-
-```python
-# app/api/routes_webhooks.py
-
-@router.post("/paystack")
-async def paystack_webhook(request: Request, db: SessionDep):
-    """
-    Strategy 1: Extract user_id from payment reference
-    
-    If invoice references follow pattern: INV_{user_id}_{timestamp}
-    We can parse user_id from the reference.
-    """
-    event = await request.json()
-    reference = event.get("data", {}).get("reference")
-    
-    # Parse: INV_123_1704067200 → user_id = 123
-    user_id = extract_user_id_from_reference(reference)
-    
-    # Use business's credentials to process webhook
-    svc = build_invoice_service(db, user_id=user_id)
-    svc.handle_payment_webhook(event)
-```
-
-**Alternative Strategy 2: Webhook URL Per Business**
-
-```python
-# Route: POST /webhooks/paystack/{user_id}
-
-@router.post("/paystack/{user_id}")
-async def paystack_webhook(user_id: int, request: Request, db: SessionDep):
-    """
-    Each business gets unique webhook URL from Paystack dashboard:
-    - Business 123: https://api.suopay.io/webhooks/paystack/123
-    - Business 456: https://api.suopay.io/webhooks/paystack/456
-    """
-    svc = build_invoice_service(db, user_id=user_id)
-    svc.handle_payment_webhook(await request.json())
-```
-
-**Why This Matters:**
-- Webhook signature verification uses business's Paystack secret key
-- Payment confirmations must be processed with correct business context
-- Currently all webhooks use platform credentials (wrong)
-
-**Recommendation:**
-Use Strategy 1 (reference parsing) - simpler for businesses to configure.
-
-#### 3. Frontend Paystack Configuration UI (MEDIUM PRIORITY)
-
-Create a settings page where businesses can:
-1. Enter their Paystack API keys
-2. View current configuration status
-3. Test connection to Paystack
-4. View settlement account details
-
-**Location:** `frontend/app/(dashboard)/settings/paystack/page.tsx`
-
-**Features:**
-- Input fields for secret key, public key
-- "Test Connection" button to validate keys
-- Status indicator: ✅ Configured / ⚠️ Not Configured
-- Help text: "Get your keys from Paystack Dashboard → Settings → API Keys"
-- Link to Paystack signup/login
-
-#### 4. Migration Deployment (HIGH PRIORITY)
-
-Run migration 0006 on production:
-
-```bash
-# Local testing first
-alembic upgrade head
-
-# Then on Heroku
-git push heroku main
-heroku run alembic upgrade head -a suopay-backend
-```
-
-**Why This Matters:**
-Without this migration, the `User` model has fields that don't exist in database - app will crash.
-
-#### 5. Documentation Updates (LOW PRIORITY)
-
-Update `docs/payment-and-bank-setup.md` to reflect multi-tenant architecture:
-- How to get Paystack account
-- Where to find API keys
-- How to configure in SuoPay dashboard
-- Settlement timeline expectations
-- Webhook configuration (if using Strategy 2)
+3. **Reconciliation Ideas (FUTURE)**
+   - Optional integrations with bank statement providers (Mono, Okra, Stitch) for semi-automatic matching.
+   - Optional Paystack invoice mode (opt-in) if a business explicitly wants gateway collection in addition to bank transfers.
 
 ## Testing Checklist
 
-### Local Testing
+### Automated Tests
+- `pytest tests/test_smoke.py::test_create_list_invoice_auth_flow` – verifies creation, listing, and quota checks.
+- `pytest tests/test_smoke.py::test_invoice_detail_status_flow` – ensures manual status updates return 200 and reject invalid statuses.
+- `pytest tests/test_smoke.py -k invoice_decimal_precision` – confirms decimal serialization still strips trailing zeros (regression coverage for finance calculations).
 
-1. **Run Migration 0006**
-   ```bash
-   alembic upgrade head
-   ```
-
-2. **Test Without Credentials** (Falls back to platform default)
-   ```bash
-   curl -X POST http://localhost:8000/invoices \
-     -H "Authorization: Bearer $TOKEN" \
-     -d '{"amount": 5000, "customer_email": "test@example.com"}'
-   ```
-
-3. **Configure Business Credentials**
-   ```sql
-   UPDATE users 
-   SET paystack_secret_key = 'sk_test_your_key',
-       paystack_public_key = 'pk_test_your_key'
-   WHERE id = 1;
-   ```
-
-4. **Test With Business Credentials**
-   ```bash
-   # Same curl as above - should now use business's Paystack account
-   # Check logs for: "Using business's own Paystack key for user 1"
-   ```
-
-5. **Test WhatsApp Invoice Creation**
-   ```bash
-   # Send WhatsApp message: "Invoice John Doe 50000 for website design"
-   # Check logs for user_id extraction and service building
-   ```
-
-### Production Testing
-
-1. **Deploy to Heroku**
-   ```bash
-   git push heroku main
-   heroku run alembic upgrade head -a suopay-backend
-   ```
-
-2. **Configure Test Business**
-   - Create test user account
-   - Add Paystack test keys via API (once endpoint exists)
-   - Create invoice via API
-   - Verify payment link uses business's Paystack account
-
-3. **Test Webhook Flow**
-   - Make test payment
-   - Check webhook received and processed correctly
-   - Verify invoice status updated
-   - Confirm WhatsApp receipt sent
-
-## Rollback Plan
-
-If multi-tenant approach causes issues:
-
-```bash
-# Revert migration 0006
-alembic downgrade -1
-
-# Revert code changes
-git revert 7794983f
-```
-
-Then deploy and restart:
-```bash
-git push heroku main
-heroku restart -a suopay-backend
-```
-
-## Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         SuoPay Platform                      │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────┐       ┌──────────────┐                    │
-│  │  Business A  │       │  Business B  │                    │
-│  ├──────────────┤       ├──────────────┤                    │
-│  │ Paystack Key │       │ Paystack Key │                    │
-│  │ sk_live_AAA  │       │ sk_live_BBB  │                    │
-│  └──────┬───────┘       └──────┬───────┘                    │
-│         │                      │                             │
-│         ▼                      ▼                             │
-│  ┌─────────────────────────────────────────┐                │
-│  │     InvoiceService (per request)        │                │
-│  │  • Fetches user's Paystack key          │                │
-│  │  • Creates payment link with user's key │                │
-│  └─────────────────────────────────────────┘                │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
-                         │
-                         │ Payment Link
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       Customer                                │
-│                                                               │
-│  Pays via: Business A's Paystack → Business A's Bank Account │
-│       OR:  Business B's Paystack → Business B's Bank Account │
-│                                                               │
-│           (Money NEVER goes through SuoPay)                  │
-└─────────────────────────────────────────────────────────────┘
-```
+### Manual QA
+1. Create an invoice via API or WhatsApp and confirm the PDF displays bank details.
+2. Mark the invoice as `paid` via API; check logs/WhatsApp receipt delivery.
+3. Attempt to mark the same invoice again—status should remain stable (idempotent manual update).
+4. Update bank details and re-generate an invoice to confirm new details appear.
 
 ## FAQ
 
-### Q: What happens if a business doesn't configure Paystack?
-**A:** Their invoices use SuoPay's platform Paystack account as fallback. Money would go to SuoPay's account, which we DON'T want long-term. This is why credential configuration is high priority.
+**Q: Do merchants still need Paystack keys?**  
+No. Paystack is now used exclusively for SuoPay subscription billing (plan upgrades). Merchants only need to provide their settlement bank information.
 
-### Q: Can businesses use Paystack test keys?
-**A:** Yes! Test keys (sk_test_...) work for development and testing. Payments won't be real.
+**Q: Can I still send Paystack payment links to customers?**  
+Not by default. You can manually generate a Paystack link outside SuoPay, but the in-app experience now assumes bank transfers. Future work may add an optional toggle per business.
 
-### Q: What about Flutterwave?
-**A:** Same architecture - `flutterwave_secret_key` field can be added to User model. Currently only Paystack is fully implemented.
+**Q: How are receipts delivered?**  
+When an operator marks an invoice as paid, SuoPay sends a WhatsApp receipt and reuses the existing PDF URL when available.
 
-### Q: How do we handle webhook signature verification?
-**A:** Each webhook is verified using the business's Paystack secret key (extracted from payment reference or webhook URL).
+**Q: What happens if an invoice was marked paid by mistake?**  
+You can switch the status back to `pending` or `failed` via the API. Consider logging internal notes to track reversals.
 
-### Q: What if two businesses use the same Paystack account?
-**A:** Technically possible but not recommended. Each business should have their own Paystack account for proper accounting and settlement.
+**Q: Does this affect subscription upgrades for SuoPay itself?**  
+No. Paystack remains fully integrated for recurring revenue via `/subscriptions/*` routes and the `/webhooks/paystack` endpoint.
 
-### Q: Do we still need platform Paystack credentials?
-**A:** Yes, as fallback for:
-- Businesses without configured credentials
-- Internal testing
-- Demo accounts
+## Next Steps Summary
+- Build the bank-details settings UI to let merchants self-manage payout instructions.
+- Add optional proof-of-payment notes when updating invoice status.
+- Explore optional automated reconciliation partners once the manual flow is stable.
 
-## Next Steps
-
-**Priority Order:**
-1. ✅ Complete service layer refactoring (DONE)
-2. ✅ Update API routes (DONE)
-3. ✅ Update WhatsApp bot (DONE)
-4. 🔴 **Create Paystack credentials management API** (NEXT)
-5. 🔴 **Deploy migration 0006 to production** (NEXT)
-6. 🟡 Implement multi-tenant webhook routing
-7. 🟡 Build frontend settings UI
-8. 🟢 Update documentation
-
-**Estimated Time to Full Multi-Tenancy:**
-- Credentials API: 2 hours
-- Webhook routing: 2 hours  
-- Frontend UI: 3 hours
-- Testing & deployment: 2 hours
-**Total: ~9 hours**
-
-## Conclusion
-
-The multi-tenant architecture is **60% complete**:
-- ✅ Database schema ready
-- ✅ Service layer refactored
-- ✅ API routes updated
-- ✅ WhatsApp integration updated
-- 🔴 Credentials management API missing (critical)
-- 🔴 Webhook routing incomplete
-- 🔴 Frontend UI missing
-
-**The app will continue working with platform credentials as fallback**, but businesses can't yet configure their own Paystack accounts until we build the credentials management API.
+**Status:** Manual bank-transfer flow is production-ready; Paystack invoice routing has been intentionally deprecated.

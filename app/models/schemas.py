@@ -4,7 +4,22 @@ import datetime as dt
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
+
+def _format_amount(value: Decimal | None) -> str | None:
+    """Format Decimal values without trailing zeros for API responses."""
+    if value is None:
+        return None
+
+    normalized = value.normalize()
+    if normalized == normalized.to_integral():
+        normalized = normalized.quantize(Decimal("1"))
+
+    text = format(normalized, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
 
 
 class InvoiceLineIn(BaseModel):
@@ -60,50 +75,25 @@ class InvoiceOutDetailed(InvoiceOut):
 
 
 class InvoiceStatusUpdate(BaseModel):
-    status: Literal["pending", "paid", "failed"]
+    status: Literal["pending", "awaiting_confirmation", "paid", "failed"]
 
 
-class WebhookEventOut(BaseModel):
+class InvoicePublicOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    provider: str
-    external_id: str
-    created_at: dt.datetime
+    invoice_id: str
+    amount: Decimal
+    status: str
+    due_date: dt.datetime | None = None
+    customer_name: str | None = None
+    business_name: str | None = None
+    bank_name: str | None = None
+    account_number: str | None = None
+    account_name: str | None = None
 
-
-class WorkerCreate(BaseModel):
-    name: str
-    daily_rate: Decimal
-
-
-class WorkerOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    daily_rate: Decimal
-
-
-class PayrollRunCreate(BaseModel):
-    period_label: str
-    # simplistic: list of worker_id -> days
-    days: dict[int, int] = Field(default_factory=dict)
-
-
-class PayrollRecordOut(BaseModel):
-    worker_id: int
-    gross_pay: Decimal
-    net_pay: Decimal
-
-
-class PayrollRunOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    period_label: str
-    total_gross: Decimal
-    records: list[PayrollRecordOut]
-
+    @field_serializer("amount")
+    def _serialize_amount(self, value: Decimal) -> str:
+        return _format_amount(value) or "0"
 
 # ----------------- Auth -----------------
 

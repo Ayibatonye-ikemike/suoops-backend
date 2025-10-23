@@ -19,7 +19,6 @@ services:
       S3_PRESIGN_TTL: 3600
       WHATSAPP_API_KEY: dev-whatsapp-key
       PAYSTACK_SECRET: dev-paystack-secret
-      FLUTTERWAVE_SECRET: dev-flutterwave-secret
       JWT_SECRET: change_me
       LOG_FORMAT: json
       LOG_LEVEL: INFO
@@ -53,7 +52,6 @@ services:
       S3_PRESIGN_TTL: 3600
       WHATSAPP_API_KEY: dev-whatsapp-key
       PAYSTACK_SECRET: dev-paystack-secret
-      FLUTTERWAVE_SECRET: dev-flutterwave-secret
       JWT_SECRET: change_me
       LOG_FORMAT: json
       LOG_LEVEL: INFO

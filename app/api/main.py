@@ -10,8 +10,8 @@ from app.api.rate_limit import limiter
 from app.api.routes_auth import router as auth_router
 from app.api.routes_health import router as health_router
 from app.api.routes_invoice import router as invoice_router
+from app.api.routes_invoice_public import router as invoice_public_router
 from app.api.routes_metrics import router as metrics_router
-from app.api.routes_payroll import router as payroll_router
 from app.api.routes_subscription import router as subscription_router
 from app.api.routes_user import router as user_router
 from app.api.routes_webhooks import router as webhook_router
@@ -55,8 +55,8 @@ def create_app() -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(auth_router, prefix="/auth", tags=["auth"])
     app.include_router(webhook_router, prefix="/webhooks", tags=["webhooks"])
+    app.include_router(invoice_public_router, prefix="/public/invoices", tags=["invoices-public"])
     app.include_router(invoice_router, prefix="/invoices", tags=["invoices"])
-    app.include_router(payroll_router, prefix="/payroll", tags=["payroll"])
     app.include_router(subscription_router, prefix="/subscriptions", tags=["subscriptions"])
     app.include_router(user_router, prefix="/users", tags=["users"])
     app.include_router(metrics_router, tags=["metrics"])

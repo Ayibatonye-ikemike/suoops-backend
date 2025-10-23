@@ -12,9 +12,8 @@ Metrics are grouped by lifecycle stage. Instrument via a thin metrics module (e.
 ## Engagement
 | Metric | Definition | Target | Notes |
 |--------|------------|--------|-------|
-| Weekly Active Merchants (WAM) | Users with ≥1 invoice or payroll action in a week | ≥60% of cumulative | Stickiness |
+| Weekly Active Merchants (WAM) | Users with ≥1 invoice action in a week | ≥60% of cumulative | Stickiness |
 | Invoices per Active Merchant | Total invoices / WAM | 5 baseline → 8 | Expansion metric |
-| Payroll Adoption Ratio | Merchants running ≥1 payroll / total merchants | 15% pilot | Cross-module adoption |
 
 ## Conversion & Financial
 | Metric | Definition | Target | Notes |
@@ -83,5 +82,4 @@ Metrics are grouped by lifecycle stage. Instrument via a thin metrics module (e.
 
 ## Future Metrics (Phase 2+)
 - Credit Score Eligibility (derived) – invoices paid velocity & average payment size.
-- Worker Payout On-Time Rate – payroll run vs expected pay date.
 - Loan Default Predictor Input Coverage – proportion of required financial signals present.

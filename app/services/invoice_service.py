@@ -18,18 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 class InvoiceService:
-    _allowed_statuses = {"pending", "paid", "failed"}
+    _allowed_statuses = {"pending", "awaiting_confirmation", "paid", "failed"}
 
     def __init__(self, db: Session, pdf_service: PDFService):
-        """Initialize InvoiceService.
-        
-        Simple bank transfer model:
-        - No payment platform integration
-        - Invoices show business bank account details
-        - Customers pay via bank transfer
-        - Business manually marks as paid
-        - System sends receipt automatically
-        """
+        """Core invoice workflow built around manual bank-transfer confirmations."""
         self.db = db
         self.pdf_service = pdf_service
 
@@ -227,14 +219,61 @@ class InvoiceService:
             self._send_receipt_to_customer(invoice)
         return self.get_invoice(issuer_id, invoice_id)
 
-    def list_events(self, invoice_id: str) -> list[models.WebhookEvent]:
-        return (
-            self.db.query(models.WebhookEvent)
-            .filter(models.WebhookEvent.external_id == invoice_id)
-            .order_by(models.WebhookEvent.created_at.desc())
-            .limit(20)
-            .all()
+    def confirm_transfer(self, invoice_id: str) -> models.Invoice:
+        """Mark an invoice as awaiting business confirmation after the customer reports payment."""
+
+        invoice = (
+            self.db.query(models.Invoice)
+            .options(
+                selectinload(models.Invoice.customer),
+            )
+            .filter(models.Invoice.invoice_id == invoice_id)
+            .one_or_none()
         )
+
+        if not invoice:
+            raise ValueError("Invoice not found")
+
+        if invoice.status == "paid":
+            return invoice
+
+        if invoice.status != "awaiting_confirmation":
+            previous_status = invoice.status
+            invoice.status = "awaiting_confirmation"
+            self.db.commit()
+            logger.info(
+                "Invoice %s status transitioned %s → awaiting_confirmation after customer confirmation",
+                invoice_id,
+                previous_status,
+            )
+            self._notify_business_of_customer_confirmation(invoice)
+
+        return invoice
+
+    def get_public_invoice(self, invoice_id: str) -> tuple[models.Invoice, models.User]:
+        invoice = (
+            self.db.query(models.Invoice)
+            .options(
+                selectinload(models.Invoice.customer),
+                selectinload(models.Invoice.lines),
+            )
+            .filter(models.Invoice.invoice_id == invoice_id)
+            .one_or_none()
+        )
+
+        if not invoice:
+            raise ValueError("Invoice not found")
+
+        issuer = (
+            self.db.query(models.User)
+            .filter(models.User.id == invoice.issuer_id)
+            .one_or_none()
+        )
+
+        if not issuer:
+            raise ValueError("Invoice issuer not found")
+
+        return invoice, issuer
 
     def _send_receipt_to_customer(self, invoice: models.Invoice) -> None:
         """Send payment receipt to customer via WhatsApp."""
@@ -272,6 +311,50 @@ class InvoiceService:
                        invoice.invoice_id, invoice.customer.phone)
         except Exception as e:
             logger.error("Failed to send receipt to customer: %s", e)
+
+    def _notify_business_of_customer_confirmation(self, invoice: models.Invoice) -> None:
+        """Notify the business owner that the customer marked the invoice as transferred."""
+
+        from app.core.config import settings
+
+        try:
+            user = self.db.query(models.User).filter(models.User.id == invoice.issuer_id).one_or_none()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.error("Failed to load issuer for invoice %s: %s", invoice.invoice_id, exc)
+            return
+
+        if not user:
+            logger.warning("Cannot notify business for invoice %s: issuer missing", invoice.invoice_id)
+            return
+
+        whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
+        whatsapp_phone = getattr(user, "phone", None)
+
+        if whatsapp_key and whatsapp_phone:
+            try:
+                from app.bot.whatsapp_adapter import WhatsAppClient
+
+                client = WhatsAppClient(whatsapp_key)
+                message = (
+                    "🔔 Customer reported a transfer.\n\n"
+                    f"Invoice: {invoice.invoice_id}\n"
+                    f"Amount: ₦{invoice.amount:,.2f}\n\n"
+                    "Please confirm the funds and mark the invoice as paid to send their receipt."
+                )
+                client.send_text(whatsapp_phone, message)
+                logger.info(
+                    "Sent awaiting confirmation notification for invoice %s to business %s",
+                    invoice.invoice_id,
+                    whatsapp_phone,
+                )
+                return
+            except Exception as exc:  # pragma: no cover - best effort
+                logger.error("Failed to send WhatsApp notification for invoice %s: %s", invoice.invoice_id, exc)
+
+        logger.info(
+            "Invoice %s awaiting confirmation; business notification skipped (WhatsApp not configured)",
+            invoice.invoice_id,
+        )
 
     # ---------- Internal helpers ----------
     def _get_or_create_customer(

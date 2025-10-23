@@ -33,6 +33,21 @@
       display: inline-block; 
       width: 140px; 
     }
+    .confirm-box {
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 8px;
+      background: #e7f5ff;
+      border: 1px solid #90caf9;
+    }
+    .confirm-box a {
+      color: #0b4f9f;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .confirm-box a:hover {
+      text-decoration: underline;
+    }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
     th { background: #f4f4f4; text-align: left; }
@@ -78,6 +93,11 @@
       <p><strong>Account Name:</strong> {{ bank_details.account_name }}</p>
       {% endif %}
     </div>
+    {% if customer_portal_url %}
+    <div class="confirm-box">
+      <p style="margin: 0;">Done with the transfer? Tap <a href="{{ customer_portal_url }}" target="_blank" rel="noopener">I've sent the transfer</a> so the business can confirm and send your receipt.</p>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
   
@@ -114,7 +134,12 @@
   
   <div class="footer">
     <p>Thank you for your business!</p>
+    {% if customer_portal_url %}
+  <p>Keep this link handy: <a href="{{ customer_portal_url }}" target="_blank" rel="noopener">{{ customer_portal_url }}</a></p>
+  <p>Tap "I've sent the transfer" there once you pay so we can confirm quickly.</p>
+    {% else %}
     <p>After making payment, please notify us and your receipt will be sent automatically.</p>
+    {% endif %}
   </div>
 </body>
 </html>

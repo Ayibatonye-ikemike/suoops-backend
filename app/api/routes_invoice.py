@@ -17,7 +17,7 @@ DbDep: TypeAlias = Annotated[Session, Depends(get_db)]
 
 
 def get_invoice_service_for_user(current_user_id: CurrentUserDep, db: DbDep) -> InvoiceService:
-    """Get InvoiceService configured with business's own Paystack credentials."""
+    """Get InvoiceService for the requesting business."""
     return build_invoice_service(db, user_id=current_user_id)
 
 
@@ -80,26 +80,6 @@ def update_invoice_status(
         detail = str(exc)
         status_code = 404 if detail == "Invoice not found" else 400
         raise HTTPException(status_code=status_code, detail=detail) from exc
-
-
-@router.get("/{invoice_id}/events", response_model=list[schemas.WebhookEventOut])
-def list_invoice_events(invoice_id: str, current_user_id: CurrentUserDep, db: DbDep):
-    svc = get_invoice_service_for_user(current_user_id, db)
-    try:
-        svc.get_invoice(current_user_id, invoice_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return svc.list_events(invoice_id)
-
-
-@router.post("/payments/webhook")
-def payment_webhook(event: dict, db: DbDep):
-    # For webhooks, we don't have a current user
-    # In multi-tenant setup, we'll need to identify the business from the webhook data
-    # For now, use None to fall back to platform default
-    svc = build_invoice_service(db, user_id=None)
-    svc.handle_payment_webhook(event)
-    return {"ok": True}
 
 
 @router.get("/{invoice_id}/pdf")

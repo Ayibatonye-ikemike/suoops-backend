@@ -1,204 +1,167 @@
 # Payment & Bank Account Setup Guide 💳
 
-**Last Updated:** October 22, 2025  
-**For:** SuoPay Business Users
+**Last Updated:** October 24, 2025  
+**Audience:** SuoPay merchants configuring manual bank-transfer invoices
 
 ---
 
 ## Overview
 
-This guide covers two important features:
-1. **How Paystack sends money to your business bank account**
-2. **How to manually mark invoices as paid** (for direct bank transfers)
+SuoPay invoices now default to **direct bank transfers**. Every invoice and WhatsApp notification highlights your bank instructions so customers can pay you without leaving the SuoPay experience. This guide covers:
+1. Capturing or updating the bank account details that appear on invoices
+2. Best practices for sharing those instructions with customers
+3. How to confirm payments manually inside SuoPay once funds arrive
+4. Where Paystack is still used (hint: only for paying SuoPay subscription fees)
 
 ---
 
-## Part 1: Paystack Bank Account Setup 🏦
+## Part 1: Configure the Bank Details Shown on Invoices 🏦
 
-### How It Works
+### What Merchants Need on File
+- `business_name` – how you want to appear on invoices and receipts
+- `bank_name` – e.g. Access Bank, GTBank, Zenith
+- `account_name` – account holder name the bank expects
+- `account_number` – 10-digit NUBAN for NGN accounts
 
-When a customer pays via the payment link on your invoice:
-1. Customer clicks payment link (e.g., `https://paystack.com/pay/inv-xxx`)
-2. Customer pays via card/bank transfer on Paystack
-3. **Paystack deducts their fee** (1.5% + ₦100 for local cards)
-4. **Paystack automatically settles the rest to YOUR business bank account**
-5. Your invoice is marked as "paid" automatically
-6. Customer receives payment receipt via WhatsApp
+These fields live on your SuoPay user profile. Without them, invoices are still generated, but the payment instruction block will be blank.
 
-**Important:** You DON'T pay Paystack fees - they're deducted from the payment amount before settling to you.
+### Update via API (until the dashboard UI ships)
 
----
+Use either `PATCH` or `POST` on `PATCH /me/bank-details` with an authenticated request. Example using curl:
 
-### Setting Up Your Business Bank Account
-
-#### Step 1: Complete Paystack Business Registration
-
-1. **Go to Paystack Dashboard**
-   - Visit: https://dashboard.paystack.com/
-
-2. **Complete Business Verification** (Required for settlements)
-   - Navigate to: **Settings → Business Profile**
-   - Upload required documents:
-     - ✅ Business Registration Certificate (CAC)
-     - ✅ Valid Government ID
-     - ✅ Proof of Address
-     - ✅ Bank Verification Number (BVN) - Director
-
-3. **Business Verification Status**
-   - **Before verification:** Can accept payments, but NO settlements
-   - **After verification:** Automatic settlements to your bank account
-   - **Verification time:** 1-3 business days
-
-#### Step 2: Add Your Settlement Bank Account
-
-1. **Go to Settlement Settings**
-   - Dashboard → **Settings → Settlement**
-
-2. **Add Bank Account**
-   - Click **"Add Bank Account"**
-   - Enter details:
-     - Bank Name (e.g., GTBank, Access Bank, First Bank)
-     - Account Number (10 digits)
-     - Account Name (must match business registration)
-
-3. **Verify Account**
-   - Paystack will make a test deposit (₦10)
-   - Confirm the amount in your dashboard
-   - Account becomes active for settlements
-
-#### Step 3: Configure Settlement Schedule
-
-Choose how often Paystack sends money to your account:
-
-**Option 1: Automatic Daily Settlement** (Recommended)
-- **Schedule:** Every business day at 3 PM
-- **Minimum:** ₦1,000 balance
-- **Best for:** Businesses with regular transactions
-
-**Option 2: Automatic Weekly Settlement**
-- **Schedule:** Every Friday at 3 PM
-- **Minimum:** ₦5,000 balance
-- **Best for:** Businesses with fewer transactions
-
-**Option 3: Manual Settlement**
-- **Schedule:** Request manually in dashboard
-- **Minimum:** ₦10,000 balance
-- **Best for:** Businesses that want control
-
-**To Configure:**
-1. Dashboard → Settings → Settlement
-2. Choose **Settlement Schedule**
-3. Save changes
-
----
-
-### Understanding Paystack Fees
-
-#### Fee Structure (Local Cards - Nigeria):
-- **Rate:** 1.5% + ₦100 capped at ₦2,000
-- **Examples:**
-  - ₦10,000 payment → Fee: ₦250 → You receive: ₦9,750
-  - ₦50,000 payment → Fee: ₦850 → You receive: ₦49,150
-  - ₦200,000 payment → Fee: ₦2,000 (capped) → You receive: ₦198,000
-
-#### Fee Structure (Bank Transfers):
-- **Rate:** ₦50 flat fee
-- **Examples:**
-  - ₦10,000 payment → Fee: ₦50 → You receive: ₦9,950
-  - ₦50,000 payment → Fee: ₦50 → You receive: ₦49,950
-  - ₦200,000 payment → Fee: ₦50 → You receive: ₦199,950
-
-**Tip:** Encourage customers to use bank transfer for larger amounts to save on fees!
-
----
-
-### How Settlement Works - Example Flow
-
-**Scenario:** Customer pays ₦50,000 invoice via Paystack
-
-```
-Monday, 10:00 AM
-├─ Customer clicks payment link
-├─ Customer pays ₦50,000 via GTBank Transfer
-└─ Payment successful
-
-Monday, 10:01 AM (Instant)
-├─ Paystack deducts ₦50 fee
-├─ Your Paystack balance: +₦49,950
-├─ Invoice marked as PAID in SuoPay
-└─ Customer receives WhatsApp receipt
-
-Tuesday, 3:00 PM (Next business day)
-├─ Paystack automatic settlement runs
-├─ ₦49,950 transferred to your bank account
-├─ Bank alert: "Credit Alert - ₦49,950"
-└─ Settlement email from Paystack
+```bash
+curl -X PATCH "https://api.suopay.io/me/bank-details" \
+   -H "Authorization: Bearer <ACCESS_TOKEN>" \
+   -H "Content-Type: application/json" \
+   -d '{
+            "business_name": "Lagos Design Studio",
+            "bank_name": "GTBank",
+            "account_name": "Lagos Design Studio LTD",
+            "account_number": "0123456789"
+         }'
 ```
 
-**Timeline:**
-- Payment to Paid status: **Instant** (< 5 seconds)
-- Paystack balance to Bank account: **T+1** (next business day at 3 PM)
+**Validation reminders:**
+- Account numbers must be exactly 10 digits (NUBAN format)
+- You can update one field at a time; only send the keys you want to change
+- Deleting details (`DELETE /me/bank-details`) removes them from future invoices until you set them again
+
+### Viewing the Stored Details
+
+Call `GET /me/bank-details` to confirm what the system will render:
+
+```bash
+curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
+   https://api.suopay.io/me/bank-details
+```
+
+Response shape:
+
+```json
+{
+   "business_name": "Lagos Design Studio",
+   "bank_name": "GTBank",
+   "account_name": "Lagos Design Studio LTD",
+   "account_number": "0123456789",
+   "is_configured": true
+}
+```
+
+Once `is_configured` is `true`, invoice PDFs and WhatsApp messages display the payment block automatically.
+
+### How the Details Appear to Customers
+
+PDF invoices include a prominent “Payment Instructions” card as soon as any bank field is present. WhatsApp notifications also mirror the bank name + account number so customers know exactly where to transfer funds.
+
+Tip: upload your business logo (`POST /me/logo`) so the invoice PDF looks polished when you share it.
 
 ---
 
-### Checking Your Settlements
+## Part 2: Share Payment Instructions Confidently 📄
 
-#### In Paystack Dashboard:
-1. Go to: **Transactions → Settlements**
-2. View:
-   - Pending settlements (money in Paystack balance)
-   - Completed settlements (money sent to bank)
-   - Settlement history with dates
-
-#### In Your Bank Account:
-- Settlement reference format: `PAYSTACK-STLMT-XXXXXXXX`
-- Email notification from Paystack with breakdown
-- Matches your Paystack settlement report
+1. **Confirm the bank details before issuing invoices.** Run `GET /me/bank-details` or send yourself a sample invoice to verify formatting.
+2. **Communicate timelines.** Add a note to invoices (or the WhatsApp follow-up) that payments must be confirmed before services are delivered.
+3. **Encourage a payment reference.** Ask payers to include the invoice ID in the transfer narration so reconciliation is easier (`INV-1234` works great).
+4. **Keep proof-of-payment handy.** Until the dashboard adds attachments, store screenshots or alerts in your own drive for audit trails.
 
 ---
 
-### Common Issues & Solutions
+## Part 3: Manually Confirm Customer Payments ✅
 
-#### ❌ Issue: "Settlements are pending"
-**Reason:** Business not verified  
-**Solution:**
-1. Complete business verification (Step 1 above)
-2. Upload CAC, ID, BVN documents
-3. Wait 1-3 business days for approval
+When the customer shares proof or your bank alert lands, update the invoice status yourself.
 
-#### ❌ Issue: "Wrong bank account receives money"
-**Reason:** Multiple bank accounts configured  
-**Solution:**
-1. Dashboard → Settings → Settlement
-2. Remove old bank accounts
-3. Set correct account as primary
+### Step-by-step
 
-#### ❌ Issue: "Settlement delayed beyond T+1"
-**Reason:** Bank holidays, or balance below minimum  
-**Solution:**
-- Check Paystack balance (need ₦1,000 minimum)
-- Verify it's not a weekend/public holiday
-- Contact Paystack support if > 2 business days
+1. **Verify the transfer.** Check your bank statement, mobile alert, or POS dashboard. Confirm the amount matches the invoice total.
+2. **Mark the invoice as paid.**
 
-#### ❌ Issue: "Received less than expected"
-**Reason:** Paystack fees deducted  
-**Solution:**
-- Review transaction details in dashboard
-- Fee breakdown shown per transaction
-- This is normal - fees are always deducted
+```bash
+curl -X PATCH "https://api.suopay.io/invoices/INV-1234" \
+   -H "Authorization: Bearer <ACCESS_TOKEN>" \
+   -H "Content-Type: application/json" \
+   -d '{"status": "paid"}'
+```
+
+3. **Notify the customer.** SuoPay automatically sends the WhatsApp receipt and attaches the PDF again if available.
+4. **Handle mistakes.** If funds bounce or you toggled the wrong invoice, send `status": "pending"` or `"failed"` to reverse the update.
+
+### Optional: Capture Internal Notes
+
+Many teams store a lightweight ledger outside SuoPay with fields such as:
+- Payment reference (transfer narration or bank sequence number)
+- Verifier name and timestamp
+- Extra comments (e.g. “partial payment ₦50k, balance due Friday”)
+
+Future product work may bring these note fields directly into the dashboard.
 
 ---
 
-## Part 2: Manual Payment Confirmation 💼
+## Part 4: Where Paystack Fits Now (Subscriptions Only) 🔄
 
-### Use Case: Customer Pays Directly to Your Bank
+SuoPay still uses Paystack **only** for charging your business when you upgrade plans or buy add-ons. This flow lives under `/subscriptions/*` and the Paystack webhook listens exclusively for `charge.success` events tied to SuoPay billing.
 
-Sometimes customers prefer to:
-- Transfer directly to your business bank account
-- Pay via cash
-- Use alternative payment methods
+Nothing about Paystack is required for your customer invoices:
+- No payment links are generated in the invoice lifecycle
+- No invoice webhooks from Paystack are processed
+- Settlements go directly from your customer to your bank
 
-**Problem:** Invoice stays "pending" because Paystack webhook never fires
+If you personally prefer Paystack payment links for certain clients, you can create them outside SuoPay. Just remember to mark the invoice as `paid` manually once you confirm the funds.
+
+---
+
+## Part 5: Troubleshooting & FAQs 🔍
+
+### Customers say they did a transfer, but you can’t find it
+- Double-check your bank app for delayed alerts
+- Ask for the transfer reference and match against your statement
+- If still missing, set the invoice to `pending` and follow up; do not mark `paid` until cash is confirmed
+
+### Bank details missing from the PDF
+- Run `GET /me/bank-details` and ensure `is_configured` is `true`
+- Make sure each field was sent in the update request (empty strings are ignored)
+- Recreate the invoice after updating details—the PDF captures the snapshot at generation time
+
+### Switching bank accounts
+- Send a `PATCH /me/bank-details` request with the new bank name + number
+- Existing invoices keep the old instructions (they’re embedded in the PDF); issue a new invoice or notify customers of the change
+
+### Need to erase details temporarily
+- Call `DELETE /me/bank-details`
+- Remember to reapply the fields before creating fresh invoices; otherwise the payment block is hidden
+
+### Do merchants owe Paystack fees for invoices now?
+- No. Because SuoPay no longer routes invoice payments through Paystack, there are no gateway deductions. Customers pay you directly and your bank statement is the source of truth.
+
+---
+
+## Quick Checklist Before Going Live ✅
+- [ ] Bank details configured and verified via API
+- [ ] Sample invoice generated to confirm formatting
+- [ ] Internal process documented for verifying transfers (who checks alerts, how often)
+- [ ] Team trained on using `PATCH /invoices/{id}` to update status
+- [ ] Optional: Logo uploaded for branded PDFs
+
+With these pieces in place, you can confidently issue invoices that guide customers to pay your business account, while keeping SuoPay focused on automation, documentation, and customer communications.
 
 **Solution:** Manually mark invoice as "paid" from your dashboard
 

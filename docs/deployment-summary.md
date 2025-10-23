@@ -57,7 +57,6 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 - ✅ HMAC-SHA512 signature verification
 - ✅ Idempotency checking implemented
 - ✅ Payment link generation ready
-- ⚠️  Flutterwave configured (not tested yet)
 
 ### 6. WhatsApp Bot
 - ✅ Webhook verification (GET) working
@@ -170,7 +169,6 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 ✅ WHATSAPP_ACCESS_TOKEN
 ✅ WHATSAPP_VERIFY_TOKEN # suopay_verify_2025
 ✅ FRONTEND_URL          # https://suopay.io
-⚠️  FLUTTERWAVE_SECRET   # Configured but not tested
 ```
 
 ### Vercel (Frontend)
@@ -197,7 +195,6 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 - `GET /webhooks/whatsapp` - ✅ Working (verification)
 - `POST /webhooks/whatsapp` - ✅ Working (messages)
 - `POST /webhooks/paystack` - ✅ Working (tested extensively)
-- `POST /webhooks/flutterwave` - ⚠️  Implemented but not tested
 
 ### Health
 - `GET /health` - ✅ Available
@@ -283,17 +280,13 @@ https://api.suopay.io/webhooks/paystack
    - Send invoice emails
    - Send payment confirmations
 
-6. **Flutterwave Integration** (postponed per request)
-   - Test webhook
-   - Test payment flow
-
 ### Low Priority
-7. **Monitoring & Alerts**
+6. **Monitoring & Alerts**
    - Set up error tracking (Sentry?)
    - Configure uptime monitoring
    - Set up log aggregation
 
-8. **Performance Optimization**
+7. **Performance Optimization**
    - Database query optimization
    - Add caching for common queries
    - CDN for frontend assets

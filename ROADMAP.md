@@ -18,13 +18,11 @@
 - [x] PDF generation (basic with ReportLab)
 - [x] Invoice webhook event tracking
 
-### Payroll Management
-- [x] Add workers with daily rates
-- [x] List all workers
-- [x] Create payroll runs with period labels
-- [x] Assign days worked per worker
-- [x] Automatic gross pay calculation
-- [x] Payroll record tracking
+### Banking & Manual Confirmation
+- [x] Bank profile storage (business name, account details)
+- [x] Manual payment confirmation flow for bank transfers
+- [x] Awaiting confirmation status handling
+- [x] Dashboard settings surfaces bank and plan information
 
 ### Infrastructure
 - [x] FastAPI backend with SQLAlchemy ORM
@@ -46,7 +44,7 @@
 **Priority: CRITICAL**
 - [ ] Test full invoice creation flow in browser
 - [ ] Test invoice status updates
-- [ ] Test payroll worker addition and run creation
+-- [ ] Test bank details update and manual confirmation flow
 - [ ] Fix any UI/UX issues discovered
 - [ ] Test registration and login flows thoroughly
 - [ ] Test session expiry and refresh
@@ -122,7 +120,7 @@
 
 #### 3.1 Payment Provider Setup
 **Priority: HIGH**
-- [ ] Choose provider (Paystack vs Flutterwave)
+- [ ] Finalize Paystack provider configuration
 - [ ] Register account and get API keys
 - [ ] Configure webhook URL
 - [ ] Test in sandbox mode
@@ -152,11 +150,11 @@
 
 ### Phase 4: Enhanced Features (3-4 weeks)
 
-#### 4.1 Payroll History
+#### 4.1 Payment Confirmation History
 **Priority: MEDIUM**
-- [ ] Create `/dashboard/payroll/history` page
-- [ ] List all past payroll runs
-- [ ] Show details per run (workers, days, amounts)
+- [ ] Create `/dashboard/payments/history` page
+- [ ] List all manual confirmations and webhook events
+- [ ] Show details per confirmation (invoice, actor, timestamp)
 - [ ] Calculate totals and summaries
 - [ ] Add filtering by date range
 - [ ] Export to CSV/Excel
@@ -175,9 +173,9 @@
 **Priority: MEDIUM**
 - [ ] Revenue trends chart (last 30/90 days)
 - [ ] Invoice statistics (pending/paid/failed counts)
-- [ ] Payroll expense trends
+- [ ] Manual confirmation vs webhook success rate
 - [ ] Top customers by revenue
-- [ ] Top workers by hours/pay
+- [ ] Payment timing distribution (avg days to pay)
 - [ ] Monthly/yearly summaries
 
 **New files:**
@@ -189,7 +187,6 @@
 - [ ] Set up email service (SendGrid/AWS SES)
 - [ ] Send invoice created notification
 - [ ] Send payment received notification
-- [ ] Send payroll completed notification
 - [ ] Add email preferences in settings
 - [ ] Email templates with branding
 
@@ -278,7 +275,7 @@
 - Average invoice value
 - Payment success rate
 - Customer retention rate
-- Payroll expenses
+- Manual confirmation volume
 
 ### Technical Metrics
 - API response times

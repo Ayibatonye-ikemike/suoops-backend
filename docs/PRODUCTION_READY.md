@@ -333,7 +333,7 @@ heroku config:set \
 
 ### Short-term (Next 2 Weeks)
 1. Switch Paystack to live mode
-2. Add more payment providers (Flutterwave)
+2. Evaluate additional payment providers (future)
 3. Implement analytics dashboard
 4. Add receipt generation
 5. Customer invoice history

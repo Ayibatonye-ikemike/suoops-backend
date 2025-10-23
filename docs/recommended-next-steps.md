@@ -135,21 +135,7 @@ John Doe,+2348098765432,120000,Website Development
 
 ---
 
-#### 3D. **Flutterwave Integration** (Payment Options)
-```python
-# Give customers choice:
-- Paystack (card payments)
-- Flutterwave (bank transfer, mobile money)
-- Auto-route based on customer preference
-```
-
-**Why valuable:** More payment options = higher conversion  
-**Time:** 1 week  
-**Complexity:** Medium (webhook already stubbed)
-
----
-
-#### 3E. **Analytics Dashboard** (Business Intelligence)
+#### 3D. **Analytics Dashboard** (Business Intelligence)
 ```python
 # Show business owners:
 - Total revenue this month
@@ -163,34 +149,6 @@ John Doe,+2348098765432,120000,Website Development
 **Why valuable:** Businesses need insights to make decisions  
 **Time:** 1-2 weeks  
 **Complexity:** Medium
-
----
-
-### Option 4: **Payroll System** 👷 (New Revenue Stream)
-**Goal:** Complete the second major feature from the roadmap
-
-**Why:** Adds significant value for businesses with employees.
-
-**Action Items:**
-1. **Basic payroll creation**
-   ```python
-   Business: "Payroll for January - John 150000, Mary 120000, David 100000"
-   # System generates payslips, calculates totals
-   ```
-
-2. **Bulk payment integration**
-   - Connect to Paystack bulk transfer API
-   - One-click to pay all employees
-   - Track payment status per employee
-
-3. **Tax calculations**
-   - PAYE (Nigerian tax)
-   - Pension contributions
-   - NHF deductions
-
-**Time:** 3-4 weeks  
-**Impact:** 🔥🔥 Medium - New market segment  
-**Complexity:** High
 
 ---
 
@@ -229,8 +187,7 @@ John Doe,+2348098765432,120000,Website Development
 | **Analytics Dashboard** | 🔥🔥 | 2 weeks | Medium | ⭐⭐⭐⭐ |
 | **Bulk Upload** | 🔥🔥 | 1 week | Medium | ⭐⭐⭐ |
 | **Monitoring/Tests** | 🔥🔥 | 3 weeks | Medium | ⭐⭐⭐ |
-| **Flutterwave** | 🔥 | 1 week | Medium | ⭐⭐⭐ |
-| **Payroll System** | 🔥🔥 | 4 weeks | High | ⭐⭐ |
+| **Manual Bank Confirmation** | 🔥🔥 | 1 week | Medium | ⭐⭐⭐⭐ |
 
 ---
 
@@ -363,7 +320,7 @@ celery_app.conf.beat_schedule = {
    - Building for long term → Perfect the product first
 
 4. **What excites you most?**
-   - Building features → Add payroll or analytics
+   - Building features → Add analytics or automation
    - Getting users → Launch and grow
    - Technical excellence → Add tests and monitoring
 

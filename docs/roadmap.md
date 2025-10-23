@@ -1,6 +1,6 @@
 # MVP Timeline Roadmap (Weeks 1–12)
 
-Principles: Each deliverable maps cleanly to one service or module (SRP), avoids duplicated logic (DRY), and keeps files < 400 LOC by layering domain services (`InvoiceService`, `PayrollService`, etc.).
+Principles: Each deliverable maps cleanly to one service or module (SRP), avoids duplicated logic (DRY), and keeps files < 400 LOC by layering domain services (`InvoiceService`, `PaymentService`, etc.).
 
 ## Week 1 – Foundations & Skeleton
 Deliverables:
@@ -45,13 +45,13 @@ Deliverables:
 Exit Gate:
 - Create invoice with Bearer token, list shows it with correct issuer filtering.
 
-## Week 6 – Payroll Domain Seed
+## Week 6 – Bank Details & Confirmation Flow
 Deliverables:
-- `Worker`, `PayrollRun`, `PayrollRecord` models integrated.
-- `PayrollService.create_payroll_run` computing gross/net.
-- Payslip PDF primitive (reuse PDF service variant method or separate template).
+- Bank details storage with issuer-scoped CRUD endpoints.
+- Manual payment confirmation flow (bank transfer reference capture, awaiting_confirmation status).
+- Settings UI section for business banking profile + plan overview.
 Exit Gate:
-- Run creation returns total matching sum of worker daily_rate * days.
+- Invoice marked `awaiting_confirmation` transitions to `paid` once confirmation endpoint is called.
 
 ## Week 7 – Reminders & Overdue Logic
 Deliverables:
@@ -99,16 +99,15 @@ Exit Gate:
 - Pilot checklist signed off (auth, payments, data retention, logging).
 
 ## Post-MVP (Phase 2 & 3 Preview)
-- Attendance capture (WhatsApp or USSD) feeding `PayrollRun`.
-- Bulk payouts (batch API) with reconciliation process.
+- Branded invoice themes and scheduled reminders.
+- Bulk payment reconciliation dashboard.
 - Microloan scoring service subscribing to invoice paid events.
 
 ## OOP / SRP Mapping Reference
 | Concern | Class / Module | Rationale |
 |---------|----------------|-----------|
 | Invoice business rules | `InvoiceService` | Isolates domain logic from transport/webhooks |
-| Payroll computation | `PayrollService` | Clear boundary for wage calc & later deductions |
-| Payments integration | `PaymentService` | Swappable providers (Paystack, Flutterwave) |
+| Payments integration | `PaymentService` | Paystack provider abstraction |
 | Parsing user text | `NLPService` | Keeps rule patterns isolated & testable |
 | WhatsApp transport | `WhatsAppHandler` / `WhatsAppClient` | Avoids coupling to invoice logic |
 | PDF rendering | `PDFService` | Single responsibility: HTML/PDF + upload |

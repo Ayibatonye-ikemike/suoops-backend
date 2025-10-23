@@ -65,7 +65,7 @@ SuoPay has been simplified from a payment platform integration to a **pure bank 
 - ❌ `PaymentService` dependency from `InvoiceService`
 - ❌ `handle_payment_webhook()` method
 - ❌ Payment link generation logic
-- ❌ Paystack/Flutterwave webhook endpoints
+- ❌ Paystack webhook endpoint
 
 **Updated Files:**
 
@@ -92,7 +92,6 @@ SuoPay has been simplified from a payment platform integration to a **pure bank 
 
 5. **app/api/routes_webhooks.py**
    - Removed: `/webhooks/paystack` endpoint
-   - Removed: `/webhooks/flutterwave` endpoint
    - Kept: `/webhooks/whatsapp` for message handling
 
 6. **templates/invoice.html**

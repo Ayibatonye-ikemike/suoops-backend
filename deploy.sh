@@ -72,7 +72,6 @@ deploy_backend() {
     echo -e "${YELLOW}⚠️  Please set the following environment variables manually:${NC}"
     echo "heroku config:set WHATSAPP_API_KEY=your_whatsapp_token -a $HEROKU_APP_NAME"
     echo "heroku config:set PAYSTACK_SECRET=your_paystack_secret -a $HEROKU_APP_NAME"
-    echo "heroku config:set FLUTTERWAVE_SECRET=your_flutterwave_secret -a $HEROKU_APP_NAME"
     echo "heroku config:set S3_ACCESS_KEY=your_s3_access_key -a $HEROKU_APP_NAME"
     echo "heroku config:set S3_SECRET_KEY=your_s3_secret_key -a $HEROKU_APP_NAME"
     echo "heroku config:set S3_BUCKET=suopay-storage -a $HEROKU_APP_NAME"

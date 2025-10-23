@@ -6,7 +6,7 @@ Lean team design aligns to service boundaries—each role owns a vertical slice 
 | Role | Primary Ownership | Key Modules / Services | Est. FTE | Notes |
 |------|-------------------|------------------------|----------|-------|
 | Backend Engineer (Invoices) | Invoice + Payment flows | `InvoiceService`, `PaymentService`, `PDFService` | 1.0 | Also supports migrations |
-| Backend Engineer (Platform & Payroll) | Payroll + Webhooks + Background jobs | `PayrollService`, `WhatsAppHandler`, `tasks`, metrics | 1.0 | Cross-trains on payments |
+| Backend Engineer (Platform & Integrations) | Manual bank confirmations + Webhooks + Background jobs | `PaymentService`, `NotificationService`, `WhatsAppHandler`, `tasks`, metrics | 1.0 | Cross-trains on payments |
 | Frontend / Dashboard Engineer | Minimal dashboard + auth UI + metrics view | (Future) React/PWA (not yet scaffolded) | 0.5–1.0 | Can be part-time until Week 5 |
 | Product Manager / Analyst | Backlog trim, KPI monitoring, pilot feedback | `docs/` upkeep, metrics definitions | 0.5 | Ensures scope discipline |
 | DevOps / SRE (Fractional) | CI/CD, infra, observability, security hardening | Docker, deployment scripts, metrics stack | 0.3–0.5 | Scales later |
@@ -35,7 +35,7 @@ Lean team design aligns to service boundaries—each role owns a vertical slice 
 | Role | Conservative Points/Week | Focus |
 |------|--------------------------|-------|
 | Backend (Invoices) | 20 | Domain logic + integrations |
-| Backend (Platform) | 18 | Webhooks, payroll, jobs |
+| Backend (Platform) | 18 | Webhooks, bank confirmations, jobs |
 | Frontend | 12 | UI, auth flows |
 | QA | 10 | Test automation & perf scripts |
 

@@ -24,11 +24,10 @@ class PaymentService:
             paystack_secret_key: Business's own Paystack secret key.
                                 If None, uses platform default (for testing/fallback only).
         """
-        primary_provider = getattr(settings, "PRIMARY_PAYMENT_PROVIDER", "paystack")
-        self.router = PaymentRouter(
-            primary=primary_provider,
-            paystack_secret_key=paystack_secret_key
-        )
+        secret = paystack_secret_key or settings.PAYSTACK_SECRET
+        if not secret:
+            raise ValueError("Paystack secret key is required")
+        self.router = PaymentRouter(secret)
 
     def create_payment_link(self, reference: str, amount: Decimal) -> str:
         return self.router.create_payment_link(reference, amount)
@@ -37,7 +36,6 @@ class PaymentService:
         self,
         raw_body: bytes,
         signature: str | None,
-        provider: str | None = None,
     ) -> bool:
-        return self.router.verify_webhook(raw_body, signature, provider)
+        return self.router.verify_webhook(raw_body, signature)
 
