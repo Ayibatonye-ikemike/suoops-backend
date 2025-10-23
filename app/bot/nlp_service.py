@@ -22,6 +22,10 @@ class NLPService:
     
     AMOUNT_PATTERN = re.compile(r"(?:₦|ngn)?\s?([0-9]{3,}(?:,[0-9]{3})*|[0-9]+)(?:\.[0-9]{1,2})?")
     
+    # Nigerian phone number patterns
+    # Matches: +2348012345678, 2348012345678, 08012345678, 8012345678
+    PHONE_PATTERN = re.compile(r"(\+?234[7-9]\d{9}|\+?[7-9]\d{9}|0[7-9]\d{9})")
+    
     # Filler words to remove from speech transcripts
     FILLER_WORDS = ["uhh", "umm", "like", "you know", "so", "basically", "actually"]
     
@@ -85,19 +89,55 @@ class NLPService:
         text = re.sub(r"\s+", " ", text).strip()
         
         return text
-
+    
+    def _extract_phone(self, text: str) -> str | None:
+        """
+        Extract Nigerian phone number from text.
+        
+        Returns normalized phone number with +234 prefix or None if not found.
+        
+        Examples:
+            "+2348012345678" → "+2348012345678"
+            "2348012345678"  → "+2348012345678"
+            "08012345678"    → "+2348012345678"
+            "8012345678"     → "+2348012345678"
+        """
+        match = self.PHONE_PATTERN.search(text)
+        if not match:
+            return None
+        
+        phone = match.group(1)
+        
+        # Normalize to international format
+        if phone.startswith('+234'):
+            return phone
+        elif phone.startswith('234'):
+            return '+' + phone
+        elif phone.startswith('0'):
+            return '+234' + phone[1:]  # Remove leading 0
+        else:
+            return '+234' + phone  # Add country code
+    
     def _extract_invoice(self, text: str) -> dict[str, object]:
         # naive parse: Invoice <name> <amount>
         tokens = text.split()
         name = tokens[1] if len(tokens) > 1 else "Customer"
+        
+        # Extract amount
         amount_match = self.AMOUNT_PATTERN.search(text)
         amount_raw = amount_match.group(1).replace(",", "") if amount_match else "0"
+        
+        # Extract phone number
+        phone = self._extract_phone(text)
+        
+        # Extract due date
         due = None
         if "tomorrow" in text:
             due = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=1)
+        
         return {
             "customer_name": name.capitalize(),
             "amount": Decimal(amount_raw),
             "due_date": due,
-            "customer_phone": None,
+            "customer_phone": phone,
         }
