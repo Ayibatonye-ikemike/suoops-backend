@@ -1,6 +1,8 @@
 #!/bin/bash
 # Test WhatsApp webhook with mock payload
 
+set -euo pipefail
+
 echo "🧪 Testing WhatsApp Webhook - Three-Way Flow"
 echo "=============================================="
 echo ""
@@ -11,8 +13,76 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Heroku app URL
-BASE_URL="https://suopay-backend-a204d4816960.herokuapp.com"
+# Defaults (can be overridden via flags or env vars)
+BASE_URL="${BASE_URL:-https://suopay-backend-a204d4816960.herokuapp.com}"
+BUSINESS_PHONE="${BUSINESS_PHONE:-2348012345678}"
+CUSTOMER_PHONE="${CUSTOMER_PHONE:-2348087654321}"
+CUSTOMER_NAME="${CUSTOMER_NAME:-Jane Doe}"
+AMOUNT_NAIRA="${AMOUNT_NAIRA:-50000}"
+HEROKU_APP="${HEROKU_APP:-suopay-backend-a204d4816960}"
+SLEEP_SECONDS="${SLEEP_SECONDS:-5}"
+
+usage() {
+    cat <<USAGE
+Usage: $0 [options]
+
+Options:
+  --business-phone <number>   Business WhatsApp phone (default: ${BUSINESS_PHONE})
+  --customer-phone <number>   Customer WhatsApp phone (default: ${CUSTOMER_PHONE})
+  --customer-name <name>      Customer name (default: ${CUSTOMER_NAME})
+  --amount <naira>            Invoice amount in naira (default: ${AMOUNT_NAIRA})
+  --base-url <url>            Backend base URL (default: ${BASE_URL})
+  --heroku-app <app>          Heroku app name for logs (default: ${HEROKU_APP})
+  --sleep <seconds>           Wait time before fetching logs (default: ${SLEEP_SECONDS})
+  --help                      Show this help message
+
+Environment overrides:
+  BASE_URL, BUSINESS_PHONE, CUSTOMER_PHONE, CUSTOMER_NAME, AMOUNT_NAIRA,
+  HEROKU_APP, SLEEP_SECONDS
+
+Example:
+  BUSINESS_PHONE=2347065730703 CUSTOMER_PHONE=2348020000000 \
+    $0 --customer-name "Jane Smith" --amount 75000
+USAGE
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --business-phone)
+            BUSINESS_PHONE="$2"; shift 2 ;;
+        --customer-phone)
+            CUSTOMER_PHONE="$2"; shift 2 ;;
+        --customer-name)
+            CUSTOMER_NAME="$2"; shift 2 ;;
+        --amount)
+            AMOUNT_NAIRA="$2"; shift 2 ;;
+        --base-url)
+            BASE_URL="$2"; shift 2 ;;
+        --heroku-app)
+            HEROKU_APP="$2"; shift 2 ;;
+        --sleep)
+            SLEEP_SECONDS="$2"; shift 2 ;;
+        --help|-h)
+            usage
+            exit 0 ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage
+            exit 1 ;;
+    esac
+done
+
+echo "Configuration"
+echo "-------------"
+echo "Backend URL      : $BASE_URL"
+echo "Business phone   : +$BUSINESS_PHONE"
+echo "Customer phone   : +$CUSTOMER_PHONE"
+echo "Customer name    : $CUSTOMER_NAME"
+echo "Amount (naira)   : ₦$AMOUNT_NAIRA"
+echo "Heroku app       : $HEROKU_APP"
+echo "Log wait (sec)   : $SLEEP_SECONDS"
+echo ""
 
 echo "Step 1: Test Webhook Verification (GET request)"
 echo "------------------------------------------------"
@@ -30,12 +100,14 @@ fi
 echo ""
 echo "Step 2: Send Mock Text Message (POST request)"
 echo "----------------------------------------------"
-echo -e "${YELLOW}Simulating: Business +2348012345678 sends message${NC}"
-echo "Message: 'Invoice Jane Doe +2348087654321 50000 for logo design'"
+echo -e "${YELLOW}Simulating: Business +$BUSINESS_PHONE sends invoice command${NC}"
+MESSAGE_BODY="Invoice ${CUSTOMER_NAME} +${CUSTOMER_PHONE} ${AMOUNT_NAIRA} for logo design and branding"
+echo "Message: '$MESSAGE_BODY'"
 echo ""
 
 # Mock WhatsApp text message payload
-TEXT_PAYLOAD='{
+TEXT_PAYLOAD=$(cat <<JSON
+{
   "object": "whatsapp_business_account",
   "entry": [{
     "id": "713163545130337",
@@ -47,15 +119,15 @@ TEXT_PAYLOAD='{
           "phone_number_id": "817255254808254"
         },
         "contacts": [{
-          "profile": {"name": "Mike Business"},
-          "wa_id": "2348012345678"
+          "profile": {"name": "Test Business"},
+          "wa_id": "$BUSINESS_PHONE"
         }],
         "messages": [{
-          "from": "2348012345678",
+          "from": "$BUSINESS_PHONE",
           "id": "wamid.HBgNMjM0ODAxMjM0NTY3OBUCABIYIDNBMzQwNzE5RjQxNEE0",
           "timestamp": "1698432000",
           "text": {
-            "body": "Invoice Jane Doe +2348087654321 50000 for logo design and branding"
+            "body": "$MESSAGE_BODY"
           },
           "type": "text"
         }]
@@ -63,7 +135,9 @@ TEXT_PAYLOAD='{
       "field": "messages"
     }]
   }]
-}'
+}
+JSON
+)
 
 TEXT_RESPONSE=$(curl -s -X POST "$BASE_URL/webhooks/whatsapp" \
   -H "Content-Type: application/json" \
@@ -81,15 +155,14 @@ fi
 echo ""
 echo "Step 3: Check Celery Worker Logs"
 echo "---------------------------------"
-echo -e "${YELLOW}Checking if Celery worker processed the message...${NC}"
-echo ""
+echo -e "${YELLOW}Waiting ${SLEEP_SECONDS}s for Celery processing...${NC}"
+sleep "$SLEEP_SECONDS"
 
-# Wait a bit for Celery to process
-sleep 3
-
-# Check logs
-echo "Recent logs:"
-heroku logs --tail --num 50 --source app | grep -E "whatsapp|invoice|celery" | tail -15
+LOG_FILTER="whatsapp|invoice|celery|Generated invoice"
+echo "Recent logs (filtered by: $LOG_FILTER):"
+if ! heroku logs --app "$HEROKU_APP" --num 200 --source app 2>/dev/null | grep -E "$LOG_FILTER" | tail -20; then
+    echo -e "${RED}⚠️  Unable to fetch Heroku logs. Ensure the Heroku CLI is authenticated and app name is correct.${NC}"
+fi
 
 echo ""
 echo "=============================================="
@@ -99,11 +172,10 @@ echo "What should have happened:"
 echo "1. ✅ Webhook verified with Meta"
 echo "2. ✅ Message received and queued for Celery"
 echo "3. 🔄 Celery worker processes message:"
-echo "   • Identifies business by phone (+2348012345678)"
-echo "   • Extracts customer phone (+2348087654321)"
-echo "   • Creates invoice for ₦50,000"
+echo "   • Identifies business by phone (+$BUSINESS_PHONE)"
+echo "   • Extracts customer phone (+$CUSTOMER_PHONE)"
+echo "   • Creates invoice for ₦$AMOUNT_NAIRA"
 echo "   • Sends confirmation to business"
 echo "   • Sends invoice to customer"
 echo ""
-echo "Next: Check logs above to confirm Celery processing"
-echo "     heroku logs --tail | grep whatsapp"
+echo "Tip: Adjust defaults by passing flags or setting env vars (see --help)."
