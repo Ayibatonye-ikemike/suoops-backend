@@ -10,6 +10,7 @@ Before deploying, make sure you have:
 2. **Vercel CLI** installed: `npm i -g vercel`
 3. **Git** repository set up
 4. Domain `suopay.io` configured
+5. `.python-version` present in the repo root (currently `3.12`) so Heroku picks the latest secure Python patch automatically.
 
 ## Quick Deployment
 
@@ -56,6 +57,8 @@ This script will guide you through deploying both the backend and frontend.
    ```bash
    git push heroku main
    ```
+
+   > Heroku now reads the Python version from `.python-version`. Keep that file at the repo root and avoid reintroducing `runtime.txt` or additional lockfiles (for example `poetry.lock`) so the buildpack only sees `requirements.txt`.
 
 ### Frontend to Vercel
 
