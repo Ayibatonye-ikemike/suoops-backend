@@ -2,7 +2,7 @@
 
 ## High Priority (Start Now)
 1. Implement Prometheus metrics exporter & wire existing facade.
-2. Productionize Flutterwave provider (auth headers, signature verification, webhook handler parity).
+2. Document Paystack incident response (signature rotation, webhook replay procedures).
 3. Add idempotency persistence table (webhook_events) with unique(event_id, source_provider).
 4. Introduce Redis and refactor WhatsApp handler to enqueue processing jobs.
 5. Add receipt generation endpoint (re-using PDF pipeline; template + test).

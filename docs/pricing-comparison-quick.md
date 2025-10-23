@@ -29,7 +29,6 @@
 │ Bujeti Starter   │ ₦5,000     │ ₦2,500     │ 50% cheaper │
 │ Bujeti Pro       │ ₦15,000    │ ₦15,000    │ More features│
 │ SeamlessHR       │ ₦50,000+   │ ₦50,000    │ More features│
-│ Paystack Payroll │ ₦5,000     │ Included   │ Unified!    │
 └──────────────────┴────────────┴────────────┴─────────────┘
 ```
 
@@ -37,7 +36,7 @@
 
 ✅ **WhatsApp Voice Bot** - Say "Invoice Jane fifty thousand naira" - DONE!  
 ✅ **Nigerian-First** - Naira, local banks, Paystack integration  
-✅ **Unified Invoice + Payroll** - One platform, not 3 subscriptions  
+✅ **Manual Bank Confirmation Flow** - Close the loop on offline payments  
 ✅ **No Per-Transaction Fees** - Flat monthly price, unlimited invoices  
 ✅ **AI-Powered** - NLP understands Nigerian English naturally  
 
@@ -48,7 +47,6 @@
 ### Our Costs:
 - **Fixed Infrastructure:** ₦78,325/month
 - **Variable (per invoice):** ₦3.06 (text) or ₦7.94 (voice)
-- **Variable (per payroll):** ₦30.61 (10 workers)
 
 ### Break-Even Customers:
 - **21 Pro customers** = ₦157,500/month revenue

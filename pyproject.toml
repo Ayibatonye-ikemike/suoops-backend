@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "whatsinvoice"
 version = "0.1.0"
-description = "WhatsApp-first micro business invoicing & payroll platform (MVP)"
+description = "WhatsApp-first micro business invoicing platform (MVP)"
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 packages = [ { include = "app" } ]

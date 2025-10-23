@@ -1,11 +1,11 @@
 # Webhook Configuration Guide
 
-## Paystack Webhook Setup
+## Paystack Webhook Setup (Subscription Payments)
 
 ### Current Status
 - ✅ Backend deployed and running
-- ⏳ Custom domain SSL provisioning (api.suopay.io)
-- ✅ Webhook endpoint ready
+- ✅ Webhook endpoint ready for subscription upgrades
+   - Invoices are handled via manual bank transfer, so no invoice webhooks are required.
 
 ### Webhook URL
 
@@ -33,28 +33,13 @@ https://api.suopay.io/webhooks/paystack
    - Click "Save"
 
 3. **Select Events to Listen For**
-   - ✅ `charge.success` - Payment completed successfully
-   - ✅ `charge.failed` - Payment failed
-   - ✅ `transfer.success` - Payout completed
-   - ✅ `transfer.failed` - Payout failed
-   - ✅ `refund.processed` - Refund completed
-   - ✅ `invoice.payment_failed` - Invoice payment failed
-   - ✅ `invoice.update` - Invoice updated
+   - ✅ `charge.success` – Required to upgrade plans automatically after a successful subscription payment
+   - (Optional) `charge.failed` – Useful if you want visibility into failed subscription attempts
+   - No invoice-related events are needed because customer invoices are settled manually.
 
-4. **Copy the Webhook Secret**
-   - After saving, Paystack will generate a webhook secret
-   - Copy this secret (starts with `whsec_...` or similar)
-
-5. **Add Secret to Heroku**
-   ```bash
-   heroku config:set PAYSTACK_WEBHOOK_SECRET=<your_webhook_secret> --app suopay-backend
-   ```
-
-6. **Update Local Environment**
-   - Add to `.env` file:
-   ```
-   PAYSTACK_WEBHOOK_SECRET=<your_webhook_secret>
-   ```
+4. **No Extra Secret Needed**
+   - Signature verification uses the same `PAYSTACK_SECRET` you already configured for initializing payments.
+   - No additional Heroku config vars are required.
 
 ### Testing the Webhook
 
@@ -71,9 +56,7 @@ heroku logs --tail --app suopay-backend
 
 ### Webhook Verification
 
-The webhook endpoint automatically verifies requests using:
-- Paystack signature in the `x-paystack-signature` header
-- Your `PAYSTACK_WEBHOOK_SECRET`
+The webhook endpoint automatically verifies requests using the `x-paystack-signature` header hashed with `PAYSTACK_SECRET`.
 
 ### Security
 
@@ -116,17 +99,4 @@ https://api.suopay.io/webhooks/whatsapp
 
 ---
 
-## Other Payment Providers
-
-### Flutterwave (When Ready)
-
-**Webhook URL:**
-```
-https://api.suopay.io/webhooks/flutterwave
-```
-
-Follow similar steps in Flutterwave dashboard.
-
----
-
-**Last Updated:** October 19, 2025
+**Last Updated:** October 23, 2025

@@ -19,7 +19,7 @@ This document captures the baseline configuration and operational runbooks requi
 - **Transport security**: Terminate TLS at your ingress/load-balancer; enforce HTTPS by setting `APP_ENV=prod` (auto enables redirect + security headers).
 - **Authentication**: Access/refresh tokens with explicit validation; enforce password complexity in `AuthService`.
 - **Rate limiting**: SlowAPI-backed limits on auth endpoints prevent brute-force attacks; configure Redis storage in production.
-- **Webhook integrity**: Paystack and Flutterwave signatures validated explicitly per provider; webhook idempotency persisted in `webhookevent` table.
+- **Webhook integrity**: Paystack signatures validated with shared secret; webhook idempotency persisted in `webhookevent` table.
 - **Secrets hygiene**: Provide mandatory secrets in production via environment or secret manager; config validation will refuse missing values.
 
 ## Operations

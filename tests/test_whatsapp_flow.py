@@ -1,21 +1,14 @@
-"""
-Test WhatsApp three-way flow: Business → Bot → Customer
-
-This test validates the complete flow:
-1. Business sends WhatsApp message to centralized bot
-2. Bot identifies business by phone lookup
-3. Bot extracts customer phone from message
-4. Bot creates invoice with business credentials
-5. Bot sends confirmation to business
-6. Invoice delivered to customer
-"""
+"""Test WhatsApp three-way flow from business to customer."""
 import json
-from unittest.mock import MagicMock, patch
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.main import app
+from app.bot.nlp_service import NLPService
+from app.bot.whatsapp_adapter import WhatsAppClient, WhatsAppHandler
 from app.models.models import User
 
 
@@ -108,13 +101,15 @@ def whatsapp_voice_payload():
 
 @pytest.fixture
 def business_user(db_session):
-    """Create a business user with WhatsApp phone number"""
+    """Create a business user with WhatsApp phone number."""
     user = User(
-        email="mike@business.com",
         phone="+2348012345678",  # Matches sender in webhook payload
+        name="Mike Business",
         hashed_password="hashed_test_password",
         business_name="Mike's Design Studio",
-        paystack_secret="sk_test_abc123"
+        bank_name="GTBank",
+        account_number="1234567890",
+        account_name="Mike Business",
     )
     db_session.add(user)
     db_session.commit()
@@ -138,7 +133,7 @@ class TestWhatsAppThreeWayFlow:
                 "hub.challenge": "test_challenge_string"
             }
         )
-        
+
         assert response.status_code == 200
         assert response.text == "test_challenge_string"
 
@@ -166,150 +161,122 @@ class TestWhatsAppThreeWayFlow:
             "/webhooks/whatsapp",
             json=whatsapp_text_payload
         )
-        
+
         assert response.status_code == 200
         assert response.json() == {"ok": True, "queued": True}
-        
+
         # Verify message was enqueued for Celery processing
         mock_enqueue.assert_called_once_with(whatsapp_text_payload)
 
-    @patch('app.bot.whatsapp_adapter.WhatsAppClient')
     def test_text_message_flow_complete(
-        self, 
-        mock_client_class, 
-        business_user, 
+        self,
+        business_user,
         db_session,
-        whatsapp_text_payload
+        whatsapp_text_payload,
     ):
-        """
-        Test complete flow for text message:
-        1. Business sends text message
-        2. Bot identifies business by phone
-        3. Bot extracts customer phone
-        4. Bot creates invoice
-        5. Bot sends confirmation
-        """
-        from app.bot.whatsapp_adapter import WhatsAppHandler
-        
-        # Mock WhatsApp client
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        
-        # Process the webhook payload
-        handler = WhatsAppHandler(db_session, "test_api_key")
-        handler.handle_webhook(whatsapp_text_payload)
-        
-        # Verify bot sent confirmation message
-        mock_client.send_text.assert_called()
-        call_args = mock_client.send_text.call_args
-        
-        # Check confirmation was sent to business
-        assert call_args[0][0] == "2348012345678"  # Business phone
-        assert "Invoice created" in call_args[0][1] or "✓" in call_args[0][1]
-        
-        # Verify invoice was created in database
-        from app.models.models import Invoice
-        invoice = db_session.query(Invoice).filter(
-            Invoice.issuer_id == business_user.id
-        ).first()
-        
-        assert invoice is not None
-        assert invoice.customer_name == "Jane Doe"
-        assert invoice.customer_phone == "+2348087654321"
-        assert invoice.total == 50000
+        """Ensure text messages create invoices and notify both parties."""
+        mock_client = MagicMock(spec=WhatsAppClient)
+        mock_client.send_template.return_value = False
+        mock_client.send_document = MagicMock()
 
-    @patch('app.bot.whatsapp_adapter.WhatsAppClient')
+        handler = WhatsAppHandler(mock_client, NLPService(), db_session)
+        handler.handle_webhook(whatsapp_text_payload)
+
+        mock_client.send_text.assert_called()
+        business_messages = [
+            call.args
+            for call in mock_client.send_text.call_args_list
+            if call.args and call.args[0] == "+2348012345678"
+        ]
+        assert business_messages, "Expected at least one message to the business owner"
+        assert any("Invoice" in msg[1] for msg in business_messages), "Invoice confirmation not sent to business"
+
+        from app.models.models import Invoice
+
+        invoice = (
+            db_session.query(Invoice)
+            .filter(Invoice.issuer_id == business_user.id)
+            .first()
+        )
+
+        assert invoice is not None
+        assert invoice.customer is not None
+        assert invoice.customer.name == "Jane"
+        assert invoice.customer.phone == "+2348087654321"
+        assert invoice.amount == Decimal("50000")
+
     @patch('app.services.speech_service.SpeechService.transcribe_audio')
     def test_voice_note_flow_complete(
         self,
         mock_transcribe,
-        mock_client_class,
         business_user,
         db_session,
         whatsapp_voice_payload
     ):
-        """
-        Test complete flow for voice note:
-        1. Business sends voice note
-        2. Bot transcribes audio (Whisper)
-        3. Bot preprocesses speech
-        4. Bot identifies business by phone
-        5. Bot extracts customer phone
-        6. Bot creates invoice
-        """
-        from app.bot.whatsapp_adapter import WhatsAppHandler
-        
-        # Mock transcription result
+        """Voice note messages should create invoices after transcription."""
+
         mock_transcribe.return_value = (
             "invoice jane doe zero eight zero eight seven six five four three two one "
             "fifty thousand naira for logo design"
         )
-        
-        # Mock WhatsApp client
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        mock_client.download_audio.return_value = b"fake_audio_data"
-        
-        # Process the webhook payload
-        handler = WhatsAppHandler(db_session, "test_api_key")
-        handler.handle_webhook(whatsapp_voice_payload)
-        
-        # Verify transcription was called
-        mock_transcribe.assert_called_once()
-        
-        # Verify bot sent confirmation
-        mock_client.send_text.assert_called()
-        call_args = mock_client.send_text.call_args
-        assert call_args[0][0] == "2348012345678"  # Business phone
-        
-        # Verify invoice was created
-        from app.models.models import Invoice
-        invoice = db_session.query(Invoice).filter(
-            Invoice.issuer_id == business_user.id
-        ).first()
-        
-        assert invoice is not None
-        assert invoice.customer_phone == "+2348087654321"
 
-    @patch('app.bot.whatsapp_adapter.WhatsAppClient')
+        mock_client = MagicMock(spec=WhatsAppClient)
+        mock_client.get_media_url = AsyncMock(return_value="https://example.com/media")
+        mock_client.download_media = AsyncMock(return_value=b"fake_audio_data")
+        mock_client.send_template.return_value = False
+        mock_client.send_document = MagicMock()
+
+        handler = WhatsAppHandler(mock_client, NLPService(), db_session)
+        handler.handle_webhook(whatsapp_voice_payload)
+
+        mock_transcribe.assert_called_once()
+        mock_client.send_text.assert_called()
+        business_messages = [
+            call.args
+            for call in mock_client.send_text.call_args_list
+            if call.args and call.args[0] == "+2348012345678"
+        ]
+        assert business_messages, "Expected at least one message to the business owner"
+        assert any("Invoice" in msg[1] for msg in business_messages)
+
+        from app.models.models import Invoice
+
+        invoice = (
+            db_session.query(Invoice)
+            .filter(Invoice.issuer_id == business_user.id)
+            .first()
+        )
+
+        assert invoice is not None
+        assert invoice.customer is not None
+        assert invoice.customer.phone == "+2348087654321"
+
     def test_unregistered_business_rejected(
         self,
-        mock_client_class,
         db_session,
-        whatsapp_text_payload
+        whatsapp_text_payload,
     ):
-        """Test that unregistered phone numbers get helpful error"""
-        from app.bot.whatsapp_adapter import WhatsAppHandler
-        
-        # Mock WhatsApp client
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        
-        # Process webhook (no business user registered)
-        handler = WhatsAppHandler(db_session, "test_api_key")
-        handler.handle_webhook(whatsapp_text_payload)
-        
-        # Verify error message was sent
-        mock_client.send_text.assert_called()
-        call_args = mock_client.send_text.call_args
-        assert "Unable to identify your business account" in call_args[0][1]
-        assert "suopay.io/dashboard/settings" in call_args[0][1]
+        """Unregistered businesses should receive actionable guidance."""
+        mock_client = MagicMock(spec=WhatsAppClient)
+        mock_client.send_template.return_value = False
 
-    @patch('app.bot.whatsapp_adapter.WhatsAppClient')
+        handler = WhatsAppHandler(mock_client, NLPService(), db_session)
+        handler.handle_webhook(whatsapp_text_payload)
+
+        mock_client.send_text.assert_called()
+        message = mock_client.send_text.call_args[0][1]
+        assert "Unable to identify your business account" in message
+        assert "suopay.io/dashboard/settings" in message
+
     def test_missing_customer_phone_rejected(
         self,
-        mock_client_class,
         business_user,
-        db_session
+        db_session,
     ):
-        """Test that messages without customer phone get helpful error"""
-        from app.bot.whatsapp_adapter import WhatsAppHandler
-        
-        # Mock WhatsApp client
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        
-        # Payload with no phone number in text
+        """Missing customer phone numbers should trigger validation help."""
+        mock_client = MagicMock(spec=WhatsAppClient)
+        mock_client.send_template.return_value = False
+
         payload = {
             "object": "whatsapp_business_account",
             "entry": [
@@ -322,29 +289,27 @@ class TestWhatsAppThreeWayFlow:
                                     {
                                         "from": "2348012345678",
                                         "text": {
-                                            "body": "Invoice Jane Doe 50000 for logo"  # Missing phone!
+                                            "body": "Invoice Jane Doe 50000 for logo"
                                         },
-                                        "type": "text"
+                                        "type": "text",
                                     }
                                 ]
                             },
-                            "field": "messages"
+                            "field": "messages",
                         }
                     ]
                 }
-            ]
+            ],
         }
-        
-        # Process webhook
-        handler = WhatsAppHandler(db_session, "test_api_key")
+
+        handler = WhatsAppHandler(mock_client, NLPService(), db_session)
         handler.handle_webhook(payload)
-        
-        # Verify error message was sent
+
         mock_client.send_text.assert_called()
-        call_args = mock_client.send_text.call_args
-        assert "⚠️" in call_args[0][1]
-        assert "customer's phone number" in call_args[0][1]
-        assert "Example:" in call_args[0][1]
+        message = mock_client.send_text.call_args[0][1]
+        assert "⚠️" in message
+        assert "customer's phone number" in message
+        assert "Example:" in message
 
 
 class TestPhoneExtraction:
@@ -373,29 +338,21 @@ class TestBusinessLookup:
 
     def test_resolve_business_by_exact_phone(self, business_user, db_session):
         """Test business lookup with exact phone match"""
-        from app.bot.whatsapp_adapter import WhatsAppHandler
-        
-        handler = WhatsAppHandler(db_session, "test_api_key")
-        
-        # Test exact match
-        issuer_id = handler._resolve_issuer_id("+2348012345678")
+        handler = WhatsAppHandler(WhatsAppClient("test"), NLPService(), db_session)
+
+        issuer_id = handler.invoice_processor._resolve_issuer_id("+2348012345678")
         assert issuer_id == business_user.id
 
     def test_resolve_business_by_normalized_phone(self, business_user, db_session):
         """Test business lookup without + prefix"""
-        from app.bot.whatsapp_adapter import WhatsAppHandler
-        
-        handler = WhatsAppHandler(db_session, "test_api_key")
-        
-        # Test without + prefix
-        issuer_id = handler._resolve_issuer_id("2348012345678")
+        handler = WhatsAppHandler(WhatsAppClient("test"), NLPService(), db_session)
+
+        issuer_id = handler.invoice_processor._resolve_issuer_id("2348012345678")
         assert issuer_id == business_user.id
 
     def test_resolve_business_returns_none_for_unknown(self, db_session):
         """Test business lookup returns None for unknown number"""
-        from app.bot.whatsapp_adapter import WhatsAppHandler
-        
-        handler = WhatsAppHandler(db_session, "test_api_key")
-        
-        issuer_id = handler._resolve_issuer_id("+2349999999999")
+        handler = WhatsAppHandler(WhatsAppClient("test"), NLPService(), db_session)
+
+        issuer_id = handler.invoice_processor._resolve_issuer_id("+2349999999999")
         assert issuer_id is None

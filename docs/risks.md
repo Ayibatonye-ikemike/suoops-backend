@@ -2,7 +2,7 @@
 
 | Category | Risk | Likelihood (L/M/H) | Impact (L/M/H) | Exposure | Mitigation / Preventative Controls | Trigger / Leading Indicator | Owner | Status |
 |----------|------|--------------------|----------------|----------|------------------------------------|-----------------------------|-------|--------|
-| Technical | Single payment provider outage (Paystack) | M | H | H | Abstract provider layer (DONE), add Flutterwave prod integration, fallback retry queue | Elevated 5xx from provider, webhook delays >5m | Eng (Payments) | Open |
+| Technical | Single payment provider outage (Paystack) | M | H | H | Abstract provider layer (DONE), document manual failover, fallback retry queue | Elevated 5xx from provider, webhook delays >5m | Eng (Payments) | Open |
 | Technical | PDF generation dependency (WeasyPrint) build failures in prod container | M | M | M | Feature flag (DONE), fallback to ReportLab (DONE), pre-build layer, health check at startup | Startup log error, latency spike >2s PDF | Eng (Platform) | Monitoring |
 | Security | JWT secret leakage / weak secret | L | H | M | Rotatable secret via env, enforce min length >32 chars, secret rotation runbook | Git history scan finds secret, static scan alert | Eng (Security) | Open |
 | Security | Webhook replay attacks | M | H | H | HMAC verification (Paystack), store signature + event id for idempotency (PARTIAL), enforce timestamp skew window | Duplicate event accepted, mismatch counts | Eng (Backend) | Mitigating |
@@ -16,19 +16,19 @@
 | Product/Market | Low adoption due to manual onboarding friction | M | H | H | Guided WA onboarding flow, minimal required fields, referral incentives | Drop-off >40% before first invoice | Product | Open |
 | Third-Party | WhatsApp Business API policy/approval delays | M | M | M | Sandbox simulation layer (stub), parallel application process | Approval pending >30 days | Ops | Monitoring |
 | Third-Party | Provider pricing change increases cost per invoice | M | M | M | Cost dashboard, negotiation thresholds, multi-provider arbitrage | Cost/invoice +25% MoM | Finance | Planned |
-| Legal | Misclassification of workers via informal payroll | L | H | M | Disclaimer + guidance doc, optional tax compliance module (future) | User support tickets on compliance | Legal | Planned |
+| Legal | Business disputes over manual payment confirmation | M | M | M | Provide clear audit trail & customer-facing receipts | Escalated support requests | Legal | Planned |
 | UX | Confusing error responses in chat flow | M | M | M | Unified error adapter to user-friendly prompts, test scripts | High support FAQ creation | UX | Planned |
 | Business Continuity | Backup / restore gaps | M | H | H | Nightly logical dumps, RPO/RTO doc, restore drill quarterly | Failed restore test | DevOps | Planned |
 
 ## Top 5 Immediate Focus
 1. Observability gap (metrics backend) – gating future performance confidence.
 2. Webhook replay/idempotency robustness – financial accuracy risk.
-3. Multi provider payments for resilience (Flutterwave production path).
+3. Paystack incident playbook & redundancy plan.
 4. WhatsApp ingestion scalability (queue) prior to marketing push.
 5. PDF generation resilience & latency (warm pool / caching).
 
 ## Mitigation Roadmap (Next 3 Sprints)
-- Sprint 1: Prometheus integration, idempotency table, Flutterwave live sandbox tests.
+- Sprint 1: Prometheus integration, idempotency table, Paystack failover drill.
 - Sprint 2: Redis queue for WhatsApp events, PDF warm-up job.
 - Sprint 3: Cost dashboard (internal), encryption planning spike, N+1 profiling.
 

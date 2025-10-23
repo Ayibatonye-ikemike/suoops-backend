@@ -48,7 +48,6 @@ LATER:
 MUST:
 - Paystack create link + webhook verify.
 SHOULD:
-- Flutterwave provider fallback with provider selection strategy.
 - Reconciliation job to poll unmatched pending invoices.
 LATER:
 - Bulk payout (Phase 2) integration.
@@ -56,7 +55,7 @@ LATER:
 
 ## Epic: PDF Generation
 MUST:
-- ReportLab or HTML->PDF baseline invoice & payslip.
+- ReportLab or HTML->PDF baseline invoice.
 SHOULD:
 - Themed Jinja template (branding placeholders: logo, color primary).
 - QR embed linking to verification endpoint.
@@ -73,17 +72,6 @@ SHOULD:
 LATER:
 - Email fallback + SMS fallback.
 - Notification preference center per user.
-
-## Epic: Payroll
-MUST:
-- Worker CRUD & payroll run calculation.
-- Payslip PDF generation.
-SHOULD:
-- Simple deductions field (flat amount per worker).
-- NET vs GROSS breakdown in schema.
-LATER:
-- Attendance ingestion (daily ack) feeding payroll.
-- Bulk payouts to workers.
 
 ## Epic: OCR / Photo to Invoice
 SHOULD:
@@ -109,7 +97,7 @@ SHOULD:
 - JWT refresh token endpoint.
 - Basic PII scrubbing (logs exclude phone numbers beyond last 4 digits).
 LATER:
-- Encrypted at-rest fields (worker names) using KMS.
+- Encrypted at-rest fields (customer names) using KMS.
 
 ## Backlog Table Snapshot
 | Epic | MUST (High Priority) | SHOULD (Medium) | LATER (Deferred) |
@@ -118,10 +106,9 @@ LATER:
 | WhatsApp | Webhook, parse | Edit/Help | Voice / Templates |
 | NLP | Basic extract | Multi-line, dates | ML intent |
 | Invoicing | Create, PDF, status | Manual paid, discounts | Partial payments |
-| Payments | Paystack | Flutterwave, reconcile | Bulk payout |
+| Payments | Paystack | Reconcile pending invoices | Bulk payout |
 | PDF | Base invoice | Branding, QR | Template marketplace |
 | Notifications | Event log | WhatsApp queue, overdue | Email/SMS prefs |
-| Payroll | Run calc | Deductions | Attendance, payouts |
 | OCR | (none) | Total+vendor | Line items, multi-lang |
 | Observability | Structured logs | Metrics, rate limit | Tracing |
 | Security | Secrets mgmt | Refresh tokens, PII mask | Field encryption |

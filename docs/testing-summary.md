@@ -218,7 +218,6 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
 - ✅ WHATSAPP_ACCESS_TOKEN
 - ✅ JWT_SECRET
 - ✅ FRONTEND_URL
-- ⚠️  FLUTTERWAVE_SECRET (configured but not tested yet)
 
 ### Vercel Environment Variables
 - ✅ NEXT_PUBLIC_API_BASE_URL
@@ -270,17 +269,12 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
    - Verify email templates
 
 ### Low Priority
-7. **Flutterwave Integration**
-   - Configure Flutterwave webhook
-   - Test payment flow
-   - Verify webhook signature validation
-
-8. **Performance Testing**
+7. **Performance Testing**
    - Load test API endpoints
    - Monitor response times
    - Check database query performance
 
-9. **Security Audit**
+8. **Security Audit**
    - Review CORS configuration
    - Test rate limiting effectiveness
    - Verify JWT expiration handling

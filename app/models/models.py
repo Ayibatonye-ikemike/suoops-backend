@@ -4,7 +4,7 @@ import datetime as dt
 import enum
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -89,41 +89,6 @@ class InvoiceLine(Base):
     invoice: Mapped[Invoice] = relationship("Invoice", back_populates="lines")  # type: ignore
 
 
-class Worker(Base):
-    id: Mapped[int] = mapped_column(primary_key=True)
-    issuer_id: Mapped[int]
-    name: Mapped[str]
-    daily_rate: Mapped[Decimal] = mapped_column(Numeric(scale=2))
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-
-class PayrollRun(Base):
-    id: Mapped[int] = mapped_column(primary_key=True)
-    issuer_id: Mapped[int]
-    period_label: Mapped[str]
-    created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=utcnow,
-        server_default=func.now(),
-    )
-    total_gross: Mapped[Decimal] = mapped_column(Numeric(scale=2), default=Decimal("0"))
-    records: Mapped[list[PayrollRecord]] = relationship(
-        "PayrollRecord",
-        back_populates="run",
-        cascade="all, delete-orphan",
-    )  # type: ignore
-
-
-class PayrollRecord(Base):
-    id: Mapped[int] = mapped_column(primary_key=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("payrollrun.id"))  # type: ignore
-    worker_id: Mapped[int]
-    days_worked: Mapped[int] = mapped_column(Integer, default=0)
-    gross_pay: Mapped[Decimal] = mapped_column(Numeric(scale=2))
-    net_pay: Mapped[Decimal] = mapped_column(Numeric(scale=2))
-    run: Mapped[PayrollRun] = relationship("PayrollRun", back_populates="records")  # type: ignore
-
-
 class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
@@ -156,3 +121,19 @@ class User(Base):
     account_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+
+class WebhookEvent(Base):
+    __table_args__ = (
+        UniqueConstraint("provider", "external_id", name="uq_webhookevent_provider_external_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    external_id: Mapped[str] = mapped_column(String(120))
+    signature: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )

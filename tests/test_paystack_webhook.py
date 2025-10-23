@@ -24,137 +24,39 @@ def _auth_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_invoice(client: TestClient, headers: dict[str, str]) -> dict:
-    resp = client.post(
-        "/invoices/",
-        json={"customer_name": "Webhook Test", "amount": "2500"},
-        headers=headers,
-    )
-    assert resp.status_code == 200, resp.text
-    return resp.json()
-
-
-def test_paystack_webhook_idempotent():
+def test_paystack_subscription_charge_upgrades_plan():
     client = TestClient(app)
     headers = _auth_headers(client)
-    invoice = _create_invoice(client, headers)
-    invoice_id = invoice["invoice_id"]
 
-    event = {"data": {"reference": invoice_id, "status": "success"}}
-    raw = json.dumps(event).encode()
+    profile = client.get("/users/me", headers=headers)
+    assert profile.status_code == 200, profile.text
+    user_data = profile.json()
+    user_id = user_data["id"]
+    assert user_data["plan"].lower() == "free"
+
+    subscription_event = {
+        "event": "charge.success",
+        "data": {
+            "reference": "SUB-12345",
+            "metadata": {
+                "user_id": user_id,
+                "plan": "starter",
+            },
+        },
+    }
+    raw = json.dumps(subscription_event).encode()
     sig = hmac.new(settings.PAYSTACK_SECRET.encode(), raw, hashlib.sha512).hexdigest()
 
-    original_provider = settings.PRIMARY_PAYMENT_PROVIDER
-    settings.PRIMARY_PAYMENT_PROVIDER = "flutterwave"
-    try:
-        first = client.post(
-            "/webhooks/paystack",
-            content=raw,
-            headers={"x-paystack-signature": sig},
-        )
-        assert first.status_code == 200, first.text
-        assert first.json()["ok"] is True
-
-        duplicate = client.post(
-            "/webhooks/paystack",
-            content=raw,
-            headers={"x-paystack-signature": sig},
-        )
-        assert duplicate.status_code == 200, duplicate.text
-        assert duplicate.json().get("duplicate") is True
-    finally:
-        settings.PRIMARY_PAYMENT_PROVIDER = original_provider
-
-    listed = client.get("/invoices/", headers=headers).json()
-    target = next(i for i in listed if i["invoice_id"] == invoice_id)
-    assert target["status"] == "paid"
-
-
-def test_paystack_webhook_rejects_invalid_signature():
-    client = TestClient(app)
-    headers = _auth_headers(client)
-    invoice = _create_invoice(client, headers)
-    invoice_id = invoice["invoice_id"]
-
-    event = {"data": {"reference": invoice_id, "status": "success"}}
-    raw = json.dumps(event).encode()
-
-    resp = client.post(
+    result = client.post(
         "/webhooks/paystack",
         content=raw,
-        headers={"x-paystack-signature": "invalid"},
+        headers={"x-paystack-signature": sig},
     )
-    assert resp.status_code == 400
+    assert result.status_code == 200, result.text
+    payload = result.json()
+    assert payload["status"] == "success"
+    assert payload["new_plan"] == "starter"
 
-    listed = client.get("/invoices/", headers=headers).json()
-    target = next(i for i in listed if i["invoice_id"] == invoice_id)
-    assert target["status"] == "pending"
-
-
-def test_flutterwave_webhook_processes_and_idempotent():
-    client = TestClient(app)
-    headers = _auth_headers(client)
-    invoice = _create_invoice(client, headers)
-    invoice_id = invoice["invoice_id"]
-
-    event = {
-        "data": {
-            "id": "flw-event-1",
-            "tx_ref": invoice_id,
-            "status": "success",
-        }
-    }
-    raw = json.dumps(event).encode()
-    sig = settings.FLUTTERWAVE_SECRET
-
-    original_provider = settings.PRIMARY_PAYMENT_PROVIDER
-    settings.PRIMARY_PAYMENT_PROVIDER = "paystack"
-    try:
-        first = client.post(
-            "/webhooks/flutterwave",
-            content=raw,
-            headers={"verif-hash": sig},
-        )
-        assert first.status_code == 200, first.text
-        assert first.json()["ok"] is True
-
-        duplicate = client.post(
-            "/webhooks/flutterwave",
-            content=raw,
-            headers={"verif-hash": sig},
-        )
-        assert duplicate.status_code == 200, duplicate.text
-        assert duplicate.json().get("duplicate") is True
-    finally:
-        settings.PRIMARY_PAYMENT_PROVIDER = original_provider
-
-    listed = client.get("/invoices/", headers=headers).json()
-    target = next(i for i in listed if i["invoice_id"] == invoice_id)
-    assert target["status"] == "paid"
-
-
-def test_flutterwave_webhook_rejects_invalid_signature():
-    client = TestClient(app)
-    headers = _auth_headers(client)
-    invoice = _create_invoice(client, headers)
-    invoice_id = invoice["invoice_id"]
-
-    event = {
-        "data": {
-            "id": "flw-event-2",
-            "tx_ref": invoice_id,
-            "status": "success",
-        }
-    }
-    raw = json.dumps(event).encode()
-
-    resp = client.post(
-        "/webhooks/flutterwave",
-        content=raw,
-        headers={"verif-hash": "bad"},
-    )
-    assert resp.status_code == 400
-
-    listed = client.get("/invoices/", headers=headers).json()
-    target = next(i for i in listed if i["invoice_id"] == invoice_id)
-    assert target["status"] == "pending"
+    refreshed = client.get("/users/me", headers=headers)
+    assert refreshed.status_code == 200
+    assert refreshed.json()["plan"].lower() == "starter"

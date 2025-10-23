@@ -243,3 +243,23 @@ def delete_logo(
     
     return schemas.MessageOut(detail="Logo removed successfully")
 
+
+@router.get("/me", response_model=schemas.UserOut)
+def get_profile(
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Return current user's core profile and subscription details."""
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return schemas.UserOut(
+        id=user.id,
+        phone=user.phone,
+        name=user.name,
+        plan=user.plan.value,
+        invoices_this_month=user.invoices_this_month,
+        logo_url=user.logo_url,
+    )
+

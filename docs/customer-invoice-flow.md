@@ -291,9 +291,9 @@ Total time: 1-2 days, multiple back-and-forth
 
 ### SuoPay Flow (Automated)
 ```
-Business sends WhatsApp → Customer gets invoice + link
-→ Customer pays → Both get confirmation
-Total time: 2-5 minutes, zero back-and-forth
+Business sends WhatsApp → Customer gets invoice + bank details
+→ Customer transfers directly to business → Operator marks as paid → Receipt auto-sent
+Total time: minutes instead of days, minimal back-and-forth
 ```
 
 **Time saved:** ~95%  
@@ -308,7 +308,7 @@ Total time: 2-5 minutes, zero back-and-forth
 ### For Business Owners
 1. Register at https://suopay.io/register
 2. Connect your WhatsApp business number
-3. Configure Paystack integration
+3. Add your business bank details in settings
 4. Start sending invoices via WhatsApp!
 
 ### For Developers
@@ -319,6 +319,6 @@ Total time: 2-5 minutes, zero back-and-forth
 
 ---
 
-**Built with:** FastAPI, Next.js, PostgreSQL, Redis, Celery, WhatsApp Cloud API, Paystack  
+**Built with:** FastAPI, Next.js, PostgreSQL, Redis, Celery, WhatsApp Cloud API (Paystack powers SuoPay subscription billing)
 **Deployed on:** Heroku (Backend) + Vercel (Frontend)  
 **Domain:** https://suopay.io + https://api.suopay.io

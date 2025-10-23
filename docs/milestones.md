@@ -30,17 +30,18 @@ Quality Gates:
 - Webhook idempotency test passes (2 identical payloads → single status change).
 - P95 create_invoice endpoint latency < 600ms local for 50 parallel requests.
 
-## M3 – Dashboard Read + Payroll Seed (Weeks 5–6)
+## M3 – Dashboard Read + Banking Setup (Weeks 5–6)
 Scope:
 - Replace `issuer_id` parameter with derived user id (auth context) for invoice creation.
-- List & filter invoices endpoint.
-- Introduce Worker & PayrollRun; compute gross & net (net==gross placeholder).
-- Payslip PDF basic generation.
+- List & filter invoices endpoint for authenticated issuers.
+- Bank details storage and retrieval endpoints (business name, bank name, account info).
+- Manual payment confirmation flow that moves invoices from `awaiting_confirmation` to `paid`.
 Exit Criteria:
 - Invoice creation denies request without Authorization header.
-- Payroll run returns accurate total_gross for at least 3 workers test case.
+- Authenticated user can update bank profile and see it reflected in settings dashboard.
+- Manual confirmation endpoint marks awaiting invoice as paid and logs audit trail.
 Quality Gates:
-- Added tests: permission (unauthorized 401), payroll computation rounding.
+- Added tests: permission (unauthorized 401), bank details validation, manual confirmation happy path.
 - Coverage threshold > 40% (initial target) across services.
 
 ## M4 – Operational Hardening (Weeks 7–8)
