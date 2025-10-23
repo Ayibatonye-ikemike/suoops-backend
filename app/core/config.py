@@ -52,6 +52,7 @@ class BaseAppSettings(BaseSettings):
     FLUTTERWAVE_SECRET: str | None = None
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_SSL_CERT_REQS: str | None = "none"
     HTML_PDF_ENABLED: bool = False
     PRIMARY_PAYMENT_PROVIDER: str = "paystack"
     FRONTEND_URL: str = "https://suopay.io"

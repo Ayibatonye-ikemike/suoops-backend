@@ -187,7 +187,7 @@ class WhatsAppHandler:
             )
 
     def _extract_message(self, webhook_payload: dict[str, Any]) -> dict[str, Any] | None:
-        """Extract the first message record from WhatsApp webhook structure."""
+        """Extract the first WhatsApp message from webhook payload."""
         try:
             entry = webhook_payload.get("entry", [])[0]
             change = entry.get("changes", [])[0]
@@ -204,10 +204,7 @@ class WhatsAppHandler:
             msg_type = message.get("type", "text")
             normalized_sender = sender if sender.startswith("+") else f"+{sender}"
 
-            extracted: dict[str, Any] = {
-                "from": normalized_sender,
-                "type": msg_type,
-            }
+            extracted: dict[str, Any] = {"from": normalized_sender, "type": msg_type}
 
             if msg_type == "text":
                 extracted["text"] = message.get("text", {}).get("body", "")

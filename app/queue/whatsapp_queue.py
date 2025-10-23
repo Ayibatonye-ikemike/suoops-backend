@@ -37,11 +37,7 @@ def enqueue_message(payload: dict[str, Any]) -> None:
         return
     except Exception:  # noqa: BLE001
         logger.exception("Celery dispatch failed; falling back to local processing path")
-        try:
-            process_whatsapp_inbound.apply(args=[payload])
-            return
-        except Exception:  # noqa: BLE001
-            logger.exception("Inline Celery task execution failed; persisting payload")
+        logger.warning("Persisting WhatsApp payload for later processing")
 
     data = json.dumps(payload)
     if _ENABLED and _redis is not None:
