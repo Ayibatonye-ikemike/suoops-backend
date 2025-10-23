@@ -1,5 +1,6 @@
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+import certifi
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -22,6 +23,8 @@ if settings.ENV.lower() == "prod":
     redis_url = settings.REDIS_URL
     if redis_url and redis_url.startswith("rediss://"):
         storage_uri = _add_query_param(redis_url, "ssl_cert_reqs", settings.REDIS_SSL_CERT_REQS)
+        ca_path = settings.REDIS_SSL_CA_CERTS or certifi.where()
+        storage_uri = _add_query_param(storage_uri, "ssl_ca_certs", ca_path)
     else:
         storage_uri = redis_url or "memory://"
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import ssl
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+import certifi
 from celery import Celery
 
 from app.core.config import settings
@@ -23,12 +26,38 @@ def _get_redis_url_with_ssl() -> str:
     """Get Redis URL with configurable SSL parameters for hosted Redis."""
     redis_url = settings.REDIS_URL
     if redis_url and redis_url.startswith("rediss://"):
-        return _add_query_param(redis_url, "ssl_cert_reqs", settings.REDIS_SSL_CERT_REQS)
+        url_with_reqs = _add_query_param(redis_url, "ssl_cert_reqs", settings.REDIS_SSL_CERT_REQS)
+        ca_path = settings.REDIS_SSL_CA_CERTS or certifi.where()
+        return _add_query_param(url_with_reqs, "ssl_ca_certs", ca_path)
     return redis_url
+
+
+def _map_cert_reqs(value: str | None) -> int:
+    mapping = {
+        "none": ssl.CERT_NONE,
+        "optional": ssl.CERT_OPTIONAL,
+        "required": ssl.CERT_REQUIRED,
+    }
+    if value is None:
+        return ssl.CERT_NONE
+    return mapping.get(value.lower(), ssl.CERT_REQUIRED)
+
+
+def _get_redis_ssl_options() -> dict[str, Any] | None:
+    redis_url = settings.REDIS_URL
+    if not redis_url or not redis_url.startswith("rediss://"):
+        return None
+
+    ssl_options: dict[str, Any] = {
+        "ssl_cert_reqs": _map_cert_reqs(settings.REDIS_SSL_CERT_REQS),
+        "ssl_ca_certs": settings.REDIS_SSL_CA_CERTS or certifi.where(),
+    }
+    return ssl_options
 
 
 def _create_celery() -> Celery:
     redis_url = _get_redis_url_with_ssl()
+    ssl_options = _get_redis_ssl_options()
     celery = Celery(
         "whatsinvoice",
         broker=redis_url,
@@ -44,6 +73,11 @@ def _create_celery() -> Celery:
         enable_utc=True,
         task_always_eager=settings.ENV.lower() in {"test"},
     )
+    if ssl_options:
+        celery.conf.update(
+            broker_use_ssl=ssl_options,
+            redis_backend_use_ssl=ssl_options,
+        )
     return celery
 
 

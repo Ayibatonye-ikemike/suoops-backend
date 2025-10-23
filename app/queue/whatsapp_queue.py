@@ -8,8 +8,10 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import redis
+import certifi
 
 from app.core.config import settings
 from app.workers.tasks import process_whatsapp_inbound
@@ -18,8 +20,28 @@ logger = logging.getLogger(__name__)
 
 _fallback_buffer: list[dict[str, Any]] = []
 
+def _add_query_param(url: str, key: str, value: str | None) -> str:
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    if value is None:
+        query.pop(key, None)
+    else:
+        query[key] = [value]
+    new_query = urlencode(query, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+def _prepare_redis_url(url: str) -> str:
+    if url and url.startswith("rediss://"):
+        url = _add_query_param(url, "ssl_cert_reqs", settings.REDIS_SSL_CERT_REQS)
+        ca_path = settings.REDIS_SSL_CA_CERTS or certifi.where()
+        url = _add_query_param(url, "ssl_ca_certs", ca_path)
+    return url
+
+
 try:  # pragma: no cover - connection attempt
-    _redis = redis.Redis.from_url(settings.REDIS_URL, socket_timeout=0.5)
+    redis_url = _prepare_redis_url(settings.REDIS_URL)
+    _redis = redis.Redis.from_url(redis_url, socket_timeout=0.5)
     _redis.ping()
     _ENABLED = True
 except Exception:  # noqa: BLE001

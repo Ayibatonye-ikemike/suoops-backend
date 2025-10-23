@@ -40,6 +40,8 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
     WHATSAPP_VERIFY_TOKEN: str = "suopay_verify_2025"
+    WHATSAPP_TEMPLATE_INVOICE: str | None = None
+    WHATSAPP_TEMPLATE_LANGUAGE: str = "en_US"
     
     @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")
     @classmethod
@@ -52,7 +54,8 @@ class BaseAppSettings(BaseSettings):
     FLUTTERWAVE_SECRET: str | None = None
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
-    REDIS_SSL_CERT_REQS: str | None = "none"
+    REDIS_SSL_CERT_REQS: str | None = "required"
+    REDIS_SSL_CA_CERTS: str | None = None
     HTML_PDF_ENABLED: bool = False
     PRIMARY_PAYMENT_PROVIDER: str = "paystack"
     FRONTEND_URL: str = "https://suopay.io"
