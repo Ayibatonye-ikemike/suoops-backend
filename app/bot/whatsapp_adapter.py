@@ -87,6 +87,48 @@ class WhatsAppClient:
         except Exception as e:
             logger.error("[WHATSAPP DOC] Failed to send to %s: %s", to, e)
 
+    def send_template(
+        self,
+        to: str,
+        template_name: str,
+        language: str,
+        components: list[dict[str, Any]] | None = None,
+    ) -> bool:
+        """Send pre-approved WhatsApp template message."""
+        if not self.phone_number_id or not self.api_key:
+            logger.warning("[WHATSAPP TEMPLATE] Not configured, would send to %s: %s", to, template_name)
+            return False
+
+        payload: dict[str, Any] = {
+            "messaging_product": "whatsapp",
+            "to": to.replace("+", ""),
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language},
+            },
+        }
+
+        if components:
+            payload["template"]["components"] = components
+
+        try:
+            response = requests.post(
+                self.base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=10,
+            )
+            response.raise_for_status()
+            logger.info("[WHATSAPP TEMPLATE] ✓ Sent to %s with %s", to, template_name)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[WHATSAPP TEMPLATE] Failed to send to %s: %s", to, exc)
+            return False
+
     async def get_media_url(self, media_id: str) -> str:
         """
         Get downloadable URL for WhatsApp media.
@@ -348,24 +390,54 @@ class WhatsAppHandler:
                     from app.models import models
                     issuer = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
                     
-                    # Build customer message with bank transfer instructions
-                    customer_message = f"Hello {invoice.customer.name if invoice.customer else 'there'}! 👋\n\n"
-                    customer_message += f"You have a new invoice.\n\n"
-                    customer_message += f"📄 Invoice: {invoice.invoice_id}\n"
-                    customer_message += f"💰 Amount: ₦{invoice.amount:,.2f}\n\n"
-                    
-                    # Add bank transfer details if configured
+                    # Build summary for template/body parameters
+                    customer_name = invoice.customer.name if invoice.customer else "valued customer"
+                    amount_text = f"₦{invoice.amount:,.2f}"
+                    payment_hint = "Please contact the business for payment details."
                     if issuer and issuer.bank_name and issuer.account_number:
-                        customer_message += f"💳 Payment Details (Bank Transfer):\n"
-                        customer_message += f"Bank: {issuer.bank_name}\n"
-                        customer_message += f"Account: {issuer.account_number}\n"
+                        payment_hint = f"{issuer.bank_name} {issuer.account_number}"
                         if issuer.account_name:
-                            customer_message += f"Name: {issuer.account_name}\n"
-                        customer_message += f"\n📝 After payment, your receipt will be sent automatically."
-                    else:
-                        customer_message += f"💳 Please contact the business for payment details."
-                    
-                    self.client.send_text(customer_phone, customer_message)
+                            payment_hint += f" ({issuer.account_name})"
+
+                    template_sent = False
+                    template_name = settings.WHATSAPP_TEMPLATE_INVOICE
+                    if template_name:
+                        components = [
+                            {
+                                "type": "body",
+                                "parameters": [
+                                    {"type": "text", "text": customer_name},
+                                    {"type": "text", "text": invoice.invoice_id},
+                                    {"type": "text", "text": amount_text},
+                                    {"type": "text", "text": payment_hint},
+                                ],
+                            }
+                        ]
+
+                        template_sent = self.client.send_template(
+                            customer_phone,
+                            template_name=template_name,
+                            language=settings.WHATSAPP_TEMPLATE_LANGUAGE,
+                            components=components,
+                        )
+
+                    if not template_sent:
+                        # Fallback to session text message if template is unavailable/failed
+                        customer_message = f"Hello {customer_name}! 👋\n\n"
+                        customer_message += "You have a new invoice.\n\n"
+                        customer_message += f"📄 Invoice: {invoice.invoice_id}\n"
+                        customer_message += f"💰 Amount: {amount_text}\n\n"
+                        if issuer and issuer.bank_name and issuer.account_number:
+                            customer_message += "💳 Payment Details (Bank Transfer):\n"
+                            customer_message += f"Bank: {issuer.bank_name}\n"
+                            customer_message += f"Account: {issuer.account_number}\n"
+                            if issuer.account_name:
+                                customer_message += f"Name: {issuer.account_name}\n"
+                            customer_message += "\n📝 After payment, your receipt will be sent automatically."
+                        else:
+                            customer_message += "💳 Please contact the business for payment details."
+
+                        self.client.send_text(customer_phone, customer_message)
                     
                     # If PDF URL is accessible, send it too
                     if invoice.pdf_url and invoice.pdf_url.startswith("http"):
