@@ -159,6 +159,14 @@ class WhatsAppHandler:
         
         Supports both text and audio messages.
         """
+        original_payload = payload
+        if isinstance(payload, dict) and "entry" in payload:
+            payload = self._extract_message(payload)
+            if not payload:
+                logger.warning("Unsupported WhatsApp payload: %s", original_payload)
+                return
+            payload.setdefault("raw", original_payload)
+
         sender = payload.get("from")
         msg_type = payload.get("type", "text")
         
@@ -177,6 +185,43 @@ class WhatsAppHandler:
                 sender,
                 "Sorry, I only support text messages and voice notes.",
             )
+
+    def _extract_message(self, webhook_payload: dict[str, Any]) -> dict[str, Any] | None:
+        """Extract the first message record from WhatsApp webhook structure."""
+        try:
+            entry = webhook_payload.get("entry", [])[0]
+            change = entry.get("changes", [])[0]
+            value = change.get("value", {})
+            messages = value.get("messages", [])
+            if not messages:
+                return None
+
+            message = messages[0]
+            sender = message.get("from")
+            if not sender:
+                return None
+
+            msg_type = message.get("type", "text")
+            normalized_sender = sender if sender.startswith("+") else f"+{sender}"
+
+            extracted: dict[str, Any] = {
+                "from": normalized_sender,
+                "type": msg_type,
+            }
+
+            if msg_type == "text":
+                extracted["text"] = message.get("text", {}).get("body", "")
+            elif msg_type == "audio":
+                extracted["audio_id"] = message.get("audio", {}).get("id")
+
+            contacts = value.get("contacts", [])
+            if contacts:
+                extracted["contact"] = contacts[0]
+
+            return extracted
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to parse WhatsApp webhook payload: %s", exc)
+            return None
 
     async def _handle_text_message(self, sender: str, text: str, payload: dict[str, Any]):
         """Process text message (DRY: shared by text and transcribed audio)."""
@@ -357,7 +402,7 @@ class WhatsAppHandler:
                 "• Voice: Send a voice note with invoice details",
             )
 
-    def _resolve_issuer_id(self, sender_phone: str) -> int | None:
+    def _resolve_issuer_id(self, sender_phone: str | None) -> int | None:
         """
         Resolve business owner User ID from WhatsApp phone number.
         
@@ -368,33 +413,37 @@ class WhatsAppHandler:
             User ID of the business owner, or None if not found
         """
         from app.models import models
-        
-        # Clean phone number (remove spaces, normalize format)
-        clean_phone = sender_phone.replace(" ", "").replace("+", "")
-        
-        # Try exact match first
+
+        if not sender_phone:
+            return None
+
+        clean_digits = "".join(ch for ch in sender_phone if ch.isdigit())
+        candidates: set[str] = set()
+
+        candidates.add(sender_phone)
+        if sender_phone.startswith("+"):
+            candidates.add(sender_phone[1:])
+
+        if clean_digits:
+            candidates.add(clean_digits)
+            if clean_digits.startswith("234"):
+                candidates.add(f"+{clean_digits}")
+
+        candidates = {c for c in candidates if c}
+        if not candidates:
+            return None
+
         user = (
             self.db.query(models.User)
-            .filter(models.User.phone == sender_phone)
+            .filter(models.User.phone.in_(list(candidates)))
             .first()
         )
-        
+
         if user:
-            logger.info(f"Resolved WhatsApp {sender_phone} → User ID {user.id} ({user.email})")
+            logger.info("Resolved WhatsApp %s → User ID %s (%s)", sender_phone, user.id, user.email)
             return user.id
-        
-        # Try without + prefix
-        user = (
-            self.db.query(models.User)
-            .filter(models.User.phone == clean_phone)
-            .first()
-        )
-        
-        if user:
-            logger.info(f"Resolved WhatsApp {sender_phone} → User ID {user.id} ({user.email})")
-            return user.id
-        
-        logger.warning(f"No user found for WhatsApp number: {sender_phone}")
+
+        logger.warning("No user found for WhatsApp number: %s", sender_phone)
         return None
 
     @staticmethod

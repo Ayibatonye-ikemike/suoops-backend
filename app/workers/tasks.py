@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import asyncio
+
 from celery import Task
 
 from app.bot.nlp_service import NLPService
@@ -33,7 +35,7 @@ def process_whatsapp_inbound(self: Task, payload: dict[str, Any]) -> None:
             nlp=NLPService(),
             db=db,
         )
-        handler.handle_incoming(payload)
+        asyncio.run(handler.handle_incoming(payload))
 
 
 @celery_app.task(name="maintenance.send_overdue_reminders")
