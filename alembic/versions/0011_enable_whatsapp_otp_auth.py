@@ -1,7 +1,7 @@
 """Switch authentication to WhatsApp OTP
 
-Revision ID: 0005_enable_whatsapp_otp_auth
-Revises: 0004_tz_aware
+Revision ID: 0011_enable_whatsapp_otp_auth
+Revises: 0010_remove_payroll
 Create Date: 2025-10-28 12:00:00.000000
 """
 
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "0005_enable_whatsapp_otp_auth"
-down_revision = "0004_tz_aware"
+revision = "0011_enable_whatsapp_otp_auth"
+down_revision = "0010_remove_payroll"
 branch_labels = None
 depends_on = None
 
