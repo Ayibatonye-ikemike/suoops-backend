@@ -46,7 +46,7 @@
 
 **What Customer Receives**:
 ```
-From: Mike's Business <noreply@suopay.io>
+From: Mike's Business <noreply@suoops.com>
 To: jane@example.com
 Subject: Invoice from Mike's Business
 
@@ -70,7 +70,7 @@ Payment Options:
    Name: Mike's Business
 
 2. Pay Online:
-   https://suopay.io/pay/INV-123456
+   https://suoops.com/pay/INV-123456
 
 Your invoice is attached as PDF.
 
@@ -94,7 +94,7 @@ Attachment: Invoice_INV-123456.pdf (125 KB)
 Every invoice automatically gets a payment page:
 
 ```
-https://suopay.io/pay/INV-1761167126307-ED7F62
+https://suoops.com/pay/INV-1761167126307-ED7F62
 ```
 
 **What Customer Sees**:

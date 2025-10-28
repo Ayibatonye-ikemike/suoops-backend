@@ -1,4 +1,4 @@
-# DNS Records for Amazon SES - suopay.io
+# DNS Records for Amazon SES - suoops.com
 
 ## 📋 Complete List of DNS Records to Add
 
@@ -13,7 +13,7 @@ These authenticate your emails and prove you own the domain.
 ### Record 1:
 ```
 Type: CNAME
-Name: iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io
+Name: iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com
 Value: iu5cwz57dsyf2d4owslq3dg3dvw6verk.dkim.amazonses.com
 TTL: Automatic (or 3600)
 ```
@@ -21,7 +21,7 @@ TTL: Automatic (or 3600)
 ### Record 2:
 ```
 Type: CNAME
-Name: flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey.suopay.io
+Name: flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey.suoops.com
 Value: flhynideglr2zsjvynjv3j4w2i5hjzcl.dkim.amazonses.com
 TTL: Automatic (or 3600)
 ```
@@ -29,7 +29,7 @@ TTL: Automatic (or 3600)
 ### Record 3:
 ```
 Type: CNAME
-Name: 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey.suopay.io
+Name: 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey.suoops.com
 Value: 6dc424alpsfgha7hbqoomnfdfsnzbdfx.dkim.amazonses.com
 TTL: Automatic (or 3600)
 ```
@@ -43,7 +43,7 @@ These handle email bounces and improve deliverability.
 ### Record 4 (MX Record):
 ```
 Type: MX
-Name: mail.suopay.io
+Name: mail.suoops.com
 Value: 10 feedback-smtp.eu-north-1.amazonses.com
 Priority: 10
 TTL: Automatic (or 3600)
@@ -52,7 +52,7 @@ TTL: Automatic (or 3600)
 ### Record 5 (TXT Record - SPF):
 ```
 Type: TXT
-Name: mail.suopay.io
+Name: mail.suoops.com
 Value: "v=spf1 include:amazonses.com ~all"
 TTL: Automatic (or 3600)
 ```
@@ -68,7 +68,7 @@ This tells email servers how to handle authentication failures.
 ### Record 6:
 ```
 Type: TXT
-Name: _dmarc.suopay.io
+Name: _dmarc.suoops.com
 Value: "v=DMARC1; p=none;"
 TTL: Automatic (or 3600)
 ```
@@ -82,26 +82,26 @@ TTL: Automatic (or 3600)
 ### For Namecheap:
 
 1. **Login to Namecheap:** https://www.namecheap.com/myaccount/login/
-2. **Domain List** → Click **Manage** next to `suopay.io`
+2. **Domain List** → Click **Manage** next to `suoops.com`
 3. **Advanced DNS** tab
 4. Click **Add New Record**
 
 **For CNAME Records:**
 - Type: `CNAME Record`
-- Host: `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey` (remove `.suopay.io`)
+- Host: `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey` (remove `.suoops.com`)
 - Value: `iu5cwz57dsyf2d4owslq3dg3dvw6verk.dkim.amazonses.com`
 - TTL: `Automatic`
 
 **For MX Record:**
 - Type: `MX Record`
-- Host: `mail` (remove `.suopay.io`)
+- Host: `mail` (remove `.suoops.com`)
 - Value: `feedback-smtp.eu-north-1.amazonses.com`
 - Priority: `10`
 - TTL: `Automatic`
 
 **For TXT Records:**
 - Type: `TXT Record`
-- Host: `mail` or `_dmarc` (remove `.suopay.io`)
+- Host: `mail` or `_dmarc` (remove `.suoops.com`)
 - Value: `"v=spf1 include:amazonses.com ~all"` (keep quotes!)
 - TTL: `Automatic`
 
@@ -110,7 +110,7 @@ TTL: Automatic (or 3600)
 ### For GoDaddy:
 
 1. **Login to GoDaddy:** https://account.godaddy.com/
-2. **My Products** → **DNS** next to `suopay.io`
+2. **My Products** → **DNS** next to `suoops.com`
 3. Click **Add** button
 
 **For CNAME Records:**
@@ -137,7 +137,7 @@ TTL: Automatic (or 3600)
 ### For Cloudflare:
 
 1. **Login to Cloudflare:** https://dash.cloudflare.com/
-2. Select `suopay.io` domain
+2. Select `suoops.com` domain
 3. **DNS** tab → **Add record**
 
 **For CNAME Records:**
@@ -167,15 +167,15 @@ TTL: Automatic (or 3600)
 ### 1. **Remove Domain Suffix**
 When adding records, most DNS providers require you to **remove the domain suffix**:
 
-❌ **Wrong:** `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io`
+❌ **Wrong:** `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com`
 ✅ **Correct:** `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey`
 
 Or:
 
-❌ **Wrong:** `mail.suopay.io`
+❌ **Wrong:** `mail.suoops.com`
 ✅ **Correct:** `mail`
 
-**Exception:** Some providers want the full name including `.suopay.io` - check their interface!
+**Exception:** Some providers want the full name including `.suoops.com` - check their interface!
 
 ### 2. **Keep Quotes for TXT Records**
 - SPF: `"v=spf1 include:amazonses.com ~all"`
@@ -220,16 +220,16 @@ After adding all records:
 
 ```bash
 # Check DKIM records
-dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io CNAME
-dig flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey.suopay.io CNAME
-dig 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey.suopay.io CNAME
+dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com CNAME
+dig flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey.suoops.com CNAME
+dig 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey.suoops.com CNAME
 
 # Check MX record
-dig mail.suopay.io MX
+dig mail.suoops.com MX
 
 # Check TXT records
-dig mail.suopay.io TXT
-dig _dmarc.suopay.io TXT
+dig mail.suoops.com TXT
+dig _dmarc.suoops.com TXT
 ```
 
 **Expected output:**
@@ -248,7 +248,7 @@ dig _dmarc.suopay.io TXT
 
 1. Go to AWS SES Console: https://console.aws.amazon.com/ses/
 2. Click **Identities** (left sidebar)
-3. Click **suopay.io**
+3. Click **suoops.com**
 4. Check **Status:**
    - 🟡 **Pending verification** - DNS not propagated yet (wait)
    - 🟢 **Verified** - All good! Ready to send emails
@@ -268,7 +268,7 @@ dig _dmarc.suopay.io TXT
 ### Issue: Records not verifying after 24 hours
 
 **Check:**
-1. Did you remove `.suopay.io` from the Name field?
+1. Did you remove `.suoops.com` from the Name field?
 2. Are quotes included in TXT record values?
 3. Is the MX priority set to `10`?
 4. Run `dig` commands to verify records are live
@@ -276,10 +276,10 @@ dig _dmarc.suopay.io TXT
 **Fix:**
 ```bash
 # Check if DNS is propagated
-dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io CNAME
+dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com CNAME
 
 # Should show:
-# iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io. 3600 IN CNAME iu5cwz57dsyf2d4owslq3dg3dvw6verk.dkim.amazonses.com.
+# iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com. 3600 IN CNAME iu5cwz57dsyf2d4owslq3dg3dvw6verk.dkim.amazonses.com.
 ```
 
 ### Issue: MX record not accepting value format

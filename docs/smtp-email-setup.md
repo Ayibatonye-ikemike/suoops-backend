@@ -56,7 +56,7 @@ SMTP_HOST=smtp.sendgrid.net
 SMTP_PORT=587
 SMTP_USER=apikey
 SMTP_PASSWORD=SG.your_actual_api_key_here
-FROM_EMAIL=invoices@suopay.io
+FROM_EMAIL=invoices@suoops.com
 ```
 
 **Note:** For SendGrid, the `SMTP_USER` is literally the string `"apikey"`, and `SMTP_PASSWORD` is your API key.
@@ -69,8 +69,8 @@ heroku config:set \
   SMTP_PORT=587 \
   SMTP_USER=apikey \
   SMTP_PASSWORD=SG.your_actual_api_key_here \
-  FROM_EMAIL=invoices@suopay.io \
-  --app suopay-backend
+  FROM_EMAIL=invoices@suoops.com \
+  --app suoops-backend
 ```
 
 #### Local Development (.env)
@@ -82,7 +82,7 @@ SMTP_HOST=smtp.sendgrid.net
 SMTP_PORT=587
 SMTP_USER=apikey
 SMTP_PASSWORD=SG.your_actual_api_key_here
-FROM_EMAIL=invoices@suopay.io
+FROM_EMAIL=invoices@suoops.com
 ```
 
 ---
@@ -157,7 +157,7 @@ FROM_EMAIL=youremail@outlook.com
 
 ```bash
 # Create invoice with customer email
-curl -X POST https://api.suopay.io/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -177,7 +177,7 @@ curl -X POST https://api.suopay.io/invoices \
 
 ```bash
 # Monitor logs for email sending
-heroku logs --tail --app suopay-backend | grep -i "email\|smtp"
+heroku logs --tail --app suoops-backend | grep -i "email\|smtp"
 ```
 
 ### 3. Expected Log Output
@@ -229,7 +229,7 @@ Powered by SuoPay
 ### Issue: "SMTP not configured" warning
 **Solution:** 
 - Verify all 4 env vars are set: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`
-- Check Heroku config: `heroku config --app suopay-backend | grep SMTP`
+- Check Heroku config: `heroku config --app suoops-backend | grep SMTP`
 
 ### Issue: "Authentication failed"
 **Solution:**

@@ -6,10 +6,10 @@
 
 | Service | Status | Details |
 |---------|--------|---------|
-| **Backend API** | ✅ Live | Heroku v47 - https://api.suopay.io |
+| **Backend API** | ✅ Live | Heroku v47 - https://api.suoops.com |
 | **AWS S3** | ✅ Configured | suopay-s3-bucket (eu-north-1) with CORS |
 | **Gmail SMTP** | ✅ Configured | ayibatonyeikemike9@gmail.com (500 emails/day) |
-| **Paystack** | ✅ Configured | Test mode webhook at api.suopay.io/webhooks/paystack |
+| **Paystack** | ✅ Configured | Test mode webhook at api.suoops.com/webhooks/paystack |
 | **WhatsApp API** | ✅ Configured | Business API with voice note support |
 | **OpenAI Whisper** | ✅ Configured | Voice transcription for invoices |
 | **PostgreSQL** | ✅ Running | Heroku Postgres database |
@@ -68,12 +68,12 @@
 ./test-production.sh
 
 # Or manual curl:
-curl -X POST https://api.suopay.io/auth/login \
+curl -X POST https://api.suoops.com/auth/login \
   -H "Content-Type: application/json" \
   -d '{"phone":"+2348012345678","password":"yourpassword"}'
 
 # Get access token, then:
-curl -X POST https://api.suopay.io/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -122,7 +122,7 @@ curl -X POST https://api.suopay.io/invoices \
 
 **Expected Result:**
 - ✅ Payment successful
-- ✅ Webhook received at api.suopay.io/webhooks/paystack
+- ✅ Webhook received at api.suoops.com/webhooks/paystack
 - ✅ Plan upgraded: FREE → STARTER
 - ✅ Invoice limit updated: 5 → 100
 - ✅ Success message displays old/new plan
@@ -161,19 +161,19 @@ curl -X POST https://api.suopay.io/invoices \
 ### Check Heroku Logs
 ```bash
 # All logs
-heroku logs --tail --app suopay-backend
+heroku logs --tail --app suoops-backend
 
 # Email-specific
-heroku logs --tail --app suopay-backend | grep -i "email\|smtp"
+heroku logs --tail --app suoops-backend | grep -i "email\|smtp"
 
 # S3 uploads
-heroku logs --tail --app suopay-backend | grep -i "s3\|upload"
+heroku logs --tail --app suoops-backend | grep -i "s3\|upload"
 
 # Paystack webhook
-heroku logs --tail --app suopay-backend | grep -i "paystack\|webhook"
+heroku logs --tail --app suoops-backend | grep -i "paystack\|webhook"
 
 # WhatsApp
-heroku logs --tail --app suopay-backend | grep -i "whatsapp"
+heroku logs --tail --app suoops-backend | grep -i "whatsapp"
 ```
 
 ### Check S3 Usage
@@ -209,7 +209,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=ayibatonyeikemike9@gmail.com
 SMTP_PASSWORD=lzavczmdupyqslyc
-FROM_EMAIL=noreply@suopay.io
+FROM_EMAIL=noreply@suoops.com
 
 # Payment
 PAYSTACK_SECRET=sk_test_03916a2d0d76730c407943d18958790cd69d8b45
@@ -229,7 +229,7 @@ REDIS_URL=redis://...
 ```
 
 ### Security Best Practices Applied
-- ✅ HTTPS-only API (api.suopay.io)
+- ✅ HTTPS-only API (api.suoops.com)
 - ✅ JWT authentication with refresh tokens
 - ✅ HMAC webhook signature verification (Paystack)
 - ✅ Environment variables for secrets (not in code)
@@ -277,7 +277,7 @@ REDIS_URL=redis://...
 ### Database Migration
 ```bash
 # Run on Heroku
-heroku run bash --app suopay-backend
+heroku run bash --app suoops-backend
 python -m alembic upgrade head
 ```
 
@@ -286,15 +286,15 @@ python -m alembic upgrade head
 # Get live keys from Paystack dashboard
 heroku config:set \
   PAYSTACK_SECRET=sk_live_YOUR_LIVE_SECRET \
-  --app suopay-backend
+  --app suoops-backend
 ```
 
 ### Update Production Settings
 ```bash
 heroku config:set \
   ENV=prod \
-  FRONTEND_URL=https://suopay.io \
-  --app suopay-backend
+  FRONTEND_URL=https://suoops.com \
+  --app suoops-backend
 ```
 
 ---
@@ -314,9 +314,9 @@ heroku config:set \
 - `docs/production-readiness.md` - Production checklist
 
 ### Quick Links
-- **API Docs:** https://api.suopay.io/docs
-- **Dashboard:** https://suopay.io/dashboard
-- **Heroku Dashboard:** https://dashboard.heroku.com/apps/suopay-backend
+- **API Docs:** https://api.suoops.com/docs
+- **Dashboard:** https://suoops.com/dashboard
+- **Heroku Dashboard:** https://dashboard.heroku.com/apps/suoops-backend
 - **AWS Console:** https://console.aws.amazon.com/
 - **Paystack Dashboard:** https://dashboard.paystack.com/
 
@@ -359,7 +359,7 @@ heroku config:set \
 
 **Fix:**
 ```bash
-heroku logs --tail --app suopay-backend | grep -i "smtp\|email"
+heroku logs --tail --app suoops-backend | grep -i "smtp\|email"
 ```
 
 ### S3 upload failing
@@ -371,19 +371,19 @@ heroku logs --tail --app suopay-backend | grep -i "smtp\|email"
 
 **Fix:**
 ```bash
-heroku logs --tail --app suopay-backend | grep -i "s3\|upload"
+heroku logs --tail --app suoops-backend | grep -i "s3\|upload"
 ```
 
 ### Paystack webhook not working
 **Check:**
-1. Webhook URL: https://api.suopay.io/webhooks/paystack
+1. Webhook URL: https://api.suoops.com/webhooks/paystack
 2. PAYSTACK_SECRET matches dashboard
 3. Test webhook in Paystack dashboard
 4. Check Heroku logs
 
 **Fix:**
 ```bash
-heroku logs --tail --app suopay-backend | grep -i "paystack\|webhook"
+heroku logs --tail --app suoops-backend | grep -i "paystack\|webhook"
 ```
 
 ---

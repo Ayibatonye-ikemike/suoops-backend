@@ -293,7 +293,7 @@ celery_app.conf.beat_schedule = {
 ### This Week (15-20 hours):
 - Implement **payment reminders** (high ROI, easy win)
 - Set up basic **error monitoring** (Sentry is free tier)
-- Create **simple landing page** on suopay.io
+- Create **simple landing page** on suoops.com
 - **Record demo video** showing the flow
 
 ### Next 2 Weeks:

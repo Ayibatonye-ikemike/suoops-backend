@@ -12,7 +12,7 @@ Send text or voice messages to the Suopay WhatsApp Bot to instantly create and s
 
 ### Step 1: Register Your WhatsApp Number
 
-1. Go to [suopay.io/dashboard/settings](https://suopay.io/dashboard/settings)
+1. Go to [suoops.com/dashboard/settings](https://suoops.com/dashboard/settings)
 2. In the **WhatsApp Connection** section, enter your business WhatsApp number
 3. Format: `+2348012345678` (must include country code)
 4. Click "Save"
@@ -148,7 +148,7 @@ The bot knows it's you by matching your WhatsApp phone number to your Suopay acc
 **Problem:** Your WhatsApp number isn't registered in Suopay.
 
 **Solution:**
-1. Go to [suopay.io/dashboard/settings](https://suopay.io/dashboard/settings)
+1. Go to [suoops.com/dashboard/settings](https://suoops.com/dashboard/settings)
 2. Add your WhatsApp phone number
 3. Use the same number to send messages
 
@@ -299,12 +299,12 @@ BOT:     ✅ Invoice created!
 ## 📞 Support
 
 ### Need Help?
-- **Email:** support@suopay.io
-- **Dashboard:** [suopay.io/dashboard](https://suopay.io/dashboard)
-- **Documentation:** [suopay.io/docs](https://suopay.io/docs)
+- **Email:** support@suoops.com
+- **Dashboard:** [suoops.com/dashboard](https://suoops.com/dashboard)
+- **Documentation:** [suoops.com/docs](https://suoops.com/docs)
 
 ### Found a Bug?
-Report it to support@suopay.io with:
+Report it to support@suoops.com with:
 1. Your WhatsApp number
 2. The message you sent
 3. Error message received
@@ -314,7 +314,7 @@ Report it to support@suopay.io with:
 
 ## ✅ Checklist: Get Started Today
 
-- [ ] Register your business at [suopay.io/register](https://suopay.io/register)
+- [ ] Register your business at [suoops.com/register](https://suoops.com/register)
 - [ ] Add your WhatsApp phone number in settings
 - [ ] Connect your Paystack account
 - [ ] Send your first test invoice

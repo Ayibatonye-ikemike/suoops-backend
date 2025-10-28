@@ -13,7 +13,7 @@ The SuoPay API has been successfully migrated from the Heroku default domain to 
 
 | Type | Old URL | New URL | Status |
 |------|---------|---------|--------|
-| **API Base** | `https://suopay-backend-a204d4816960.herokuapp.com` | `https://api.suopay.io` | ✅ Active |
+| **API Base** | `https://suoops-backend.herokuapp.com` | `https://api.suoops.com` | ✅ Active |
 | **Health Check** | `/health` | `/healthz` | ✅ Active |
 | **SSL Certificate** | Let's Encrypt (Heroku managed) | Let's Encrypt (Heroku managed) | ✅ Valid until Jan 17, 2026 |
 
@@ -36,12 +36,12 @@ ALIAS   @       f4d979145d44049e.vercel-dns-017.com            60
 
 ### DNS Resolution
 ```bash
-$ nslookup api.suopay.io 8.8.8.8
+$ nslookup api.suoops.com 8.8.8.8
 Server:         8.8.8.8
 Address:        8.8.8.8#53
 
 Non-authoritative answer:
-api.suopay.io   canonical name = integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+api.suoops.com   canonical name = integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
 Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
 Address: 35.71.179.82
 Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
@@ -58,7 +58,7 @@ Address: 13.248.244.96
 
 ### Certificate Details
 ```
-Common Name:    api.suopay.io
+Common Name:    api.suoops.com
 Issuer:         Let's Encrypt (R12)
 Valid From:     October 19, 2025 11:58 UTC
 Valid Until:    January 17, 2026 11:58 UTC
@@ -68,10 +68,10 @@ Status:         ✅ Verified by root authority
 
 ### Verification
 ```bash
-$ heroku certs:auto -a suopay-backend
-=== Automatic Certificate Management is enabled on suopay-backend
+$ heroku certs:auto -a suoops-backend
+=== Automatic Certificate Management is enabled on suoops-backend
 Certificate details:
-Common Name(s): api.suopay.io
+Common Name(s): api.suoops.com
 Expires At:     2026-01-17 11:58 UTC
 SSL certificate is verified by a root authority.
 ```
@@ -89,14 +89,14 @@ All documentation files updated to use new domain:
 
 #### Updated Files:
 1. **`docs/webhook-setup.md`**
-   - Paystack webhook URL updated to `https://api.suopay.io/webhooks/paystack`
+   - Paystack webhook URL updated to `https://api.suoops.com/webhooks/paystack`
 
 2. **`docs/testing-summary.md`**
    - All curl commands updated:
-     - `/auth/register` → `https://api.suopay.io/auth/register`
-     - `/auth/login` → `https://api.suopay.io/auth/login`
-     - `/invoices` → `https://api.suopay.io/invoices`
-     - `/webhooks/whatsapp` → `https://api.suopay.io/webhooks/whatsapp`
+     - `/auth/register` → `https://api.suoops.com/auth/register`
+     - `/auth/login` → `https://api.suoops.com/auth/login`
+     - `/invoices` → `https://api.suoops.com/invoices`
+     - `/webhooks/whatsapp` → `https://api.suoops.com/webhooks/whatsapp`
 
 3. **`docs/payment-testing-guide.md`**
    - Test script URLs updated
@@ -104,11 +104,11 @@ All documentation files updated to use new domain:
    - Event webhook URLs updated
 
 4. **`DEPLOYMENT_STATUS.md`**
-   - Health check endpoint updated to `https://api.suopay.io/healthz`
+   - Health check endpoint updated to `https://api.suoops.com/healthz`
 
 5. **`frontend/vercel.json`**
    - Environment variable fixed: `NEXT_PUBLIC_API_URL` → `NEXT_PUBLIC_API_BASE_URL`
-   - Value set to: `https://api.suopay.io`
+   - Value set to: `https://api.suoops.com`
 
 ### 3. Git Commits
 ```bash
@@ -125,21 +125,21 @@ chore: Migrate all documentation from Heroku URL to custom domain
 ### 1. DNS Resolution Test
 ```bash
 # Test with Google DNS to bypass cache
-$ nslookup api.suopay.io 8.8.8.8
+$ nslookup api.suoops.com 8.8.8.8
 ✅ Resolves to: integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
 ✅ IP addresses: 35.71.179.82, 99.83.220.108, 75.2.60.68, 13.248.244.96
 ```
 
 ### 2. API Health Check
 ```bash
-$ curl https://api.suopay.io/healthz
+$ curl https://api.suoops.com/healthz
 {"status":"ok"}
 ✅ API responding correctly
 ```
 
 ### 3. SSL Certificate Verification
 ```bash
-$ curl -vI https://api.suopay.io/healthz 2>&1 | grep "subject\|issuer\|expire"
+$ curl -vI https://api.suoops.com/healthz 2>&1 | grep "subject\|issuer\|expire"
 ✅ Valid Let's Encrypt certificate
 ✅ Trusted by root authority
 ✅ Expires January 17, 2026
@@ -148,7 +148,7 @@ $ curl -vI https://api.suopay.io/healthz 2>&1 | grep "subject\|issuer\|expire"
 ### 4. Frontend Configuration
 ```bash
 $ grep "NEXT_PUBLIC_API" frontend/vercel.json
-"NEXT_PUBLIC_API_BASE_URL": "https://api.suopay.io"
+"NEXT_PUBLIC_API_BASE_URL": "https://api.suoops.com"
 ✅ Frontend configured with correct API URL
 ```
 
@@ -163,8 +163,8 @@ $ grep "NEXT_PUBLIC_API" frontend/vercel.json
 
 ### Current Status
 ```bash
-$ heroku releases -a suopay-backend | head -5
-=== suopay-backend Releases - Current: v34
+$ heroku releases -a suoops-backend | head -5
+=== suoops-backend Releases - Current: v34
 v34  Deploy abcaf623  Oct 22, 2025
 v33  Deploy d02f03c1  Oct 22, 2025
 v32  Deploy 719c9a46  Oct 22, 2025
@@ -177,13 +177,13 @@ v32  Deploy 719c9a46  Oct 22, 2025
 ### Response Times
 ```bash
 # Health endpoint
-$ time curl -s https://api.suopay.io/healthz
+$ time curl -s https://api.suoops.com/healthz
 {"status":"ok"}
 ✅ Average: ~200ms
 ```
 
 ### Uptime Monitoring
-- **Heroku App:** suopay-backend
+- **Heroku App:** suoops-backend
 - **Region:** US East (iad1)
 - **Dyno Type:** web (1x), worker (1x)
 - **SSL:** Automatic renewal enabled
@@ -197,7 +197,7 @@ If issues occur, you can temporarily revert to the Heroku domain:
 ### 1. Update Frontend Environment Variable
 ```bash
 # In Vercel dashboard
-NEXT_PUBLIC_API_BASE_URL=https://suopay-backend-a204d4816960.herokuapp.com
+NEXT_PUBLIC_API_BASE_URL=https://suoops-backend.herokuapp.com
 ```
 
 ### 2. Update Webhook URLs
@@ -213,8 +213,8 @@ NEXT_PUBLIC_API_BASE_URL=https://suopay-backend-a204d4816960.herokuapp.com
 
 ### 1. Paystack Webhook ⚠️
 **Action Required:** Update webhook URL in Paystack dashboard
-- **Old:** `https://suopay-backend-a204d4816960.herokuapp.com/webhooks/paystack`
-- **New:** `https://api.suopay.io/webhooks/paystack`
+- **Old:** `https://suoops-backend.herokuapp.com/webhooks/paystack`
+- **New:** `https://api.suoops.com/webhooks/paystack`
 
 **Steps:**
 1. Login to Paystack dashboard
@@ -224,8 +224,8 @@ NEXT_PUBLIC_API_BASE_URL=https://suopay-backend-a204d4816960.herokuapp.com
 
 ### 2. WhatsApp Cloud API ⚠️
 **Action Required:** Update callback URL in Meta Business Manager
-- **Old:** `https://suopay-backend-a204d4816960.herokuapp.com/webhooks/whatsapp`
-- **New:** `https://api.suopay.io/webhooks/whatsapp`
+- **Old:** `https://suoops-backend.herokuapp.com/webhooks/whatsapp`
+- **New:** `https://api.suoops.com/webhooks/whatsapp`
 
 **Steps:**
 1. Login to Meta Business Manager
@@ -273,35 +273,35 @@ If DNS is not resolving:
 ```bash
 # 1. Verify DNS records in Vercel
 # 2. Check propagation
-dig api.suopay.io @8.8.8.8
+dig api.suoops.com @8.8.8.8
 
 # 3. Clear local DNS cache (macOS)
 sudo dscacheutil -flushcache
 sudo killall -HUP mDNSResponder
 
 # 4. Test with manual resolution
-curl --resolve api.suopay.io:443:35.71.179.82 https://api.suopay.io/healthz
+curl --resolve api.suoops.com:443:35.71.179.82 https://api.suoops.com/healthz
 ```
 
 ### SSL Certificate Issues
 ```bash
 # Check certificate status
-heroku certs:auto -a suopay-backend
+heroku certs:auto -a suoops-backend
 
 # Force certificate refresh (if needed)
-heroku certs:auto:refresh -a suopay-backend
+heroku certs:auto:refresh -a suoops-backend
 ```
 
 ### API Connection Issues
 ```bash
 # 1. Check app status
-heroku ps -a suopay-backend
+heroku ps -a suoops-backend
 
 # 2. View logs
-heroku logs --tail -a suopay-backend
+heroku logs --tail -a suoops-backend
 
 # 3. Test health endpoint
-curl -v https://api.suopay.io/healthz
+curl -v https://api.suoops.com/healthz
 ```
 
 ---
@@ -319,7 +319,7 @@ curl -v https://api.suopay.io/healthz
 ## ✨ Benefits of Custom Domain
 
 1. **Professional Branding**
-   - `api.suopay.io` vs `suopay-backend-a204d4816960.herokuapp.com`
+   - `api.suoops.com` vs `suoops-backend.herokuapp.com`
    - Easier to remember and share
 
 2. **Portability**
@@ -331,15 +331,15 @@ curl -v https://api.suopay.io/healthz
    - Auto-renewal handled by Heroku
 
 4. **Consistency**
-   - Frontend: `suopay.io`
-   - API: `api.suopay.io`
+   - Frontend: `suoops.com`
+   - API: `api.suoops.com`
    - Clean subdomain structure
 
 ---
 
 ## 🎉 Migration Complete!
 
-Your SuoPay API is now accessible at **`https://api.suopay.io`** with a valid SSL certificate and proper DNS configuration.
+Your SuoPay API is now accessible at **`https://api.suoops.com`** with a valid SSL certificate and proper DNS configuration.
 
 **Last Updated:** October 22, 2025  
 **Deployed Version:** v34  

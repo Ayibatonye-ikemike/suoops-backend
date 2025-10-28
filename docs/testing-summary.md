@@ -10,7 +10,7 @@ This document summarizes the testing performed on SuoPay's production deployment
 ## 🌐 Deployment Status
 
 ### Backend
-- **URL**: https://api.suopay.io
+- **URL**: https://api.suoops.com
 - **Platform**: Heroku
 - **Status**: ✅ Live and operational
 - **Database**: PostgreSQL (essential-0)
@@ -18,7 +18,7 @@ This document summarizes the testing performed on SuoPay's production deployment
 - **Workers**: Celery with Redis broker
 
 ### Frontend
-- **URL**: https://suopay.io
+- **URL**: https://suoops.com
 - **Platform**: Vercel
 - **Status**: ✅ Live and operational
 - **Environment**: Production with API_BASE_URL configured
@@ -32,7 +32,7 @@ This document summarizes the testing performed on SuoPay's production deployment
 
 **Test**:
 ```bash
-curl -X POST https://api.suopay.io/auth/register \
+curl -X POST https://api.suoops.com/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "phone": "+2347012345678",
@@ -55,7 +55,7 @@ curl -X POST https://api.suopay.io/auth/register \
 
 **Test**:
 ```bash
-curl -X POST https://api.suopay.io/auth/login \
+curl -X POST https://api.suoops.com/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "phone": "+2347012345678",
@@ -87,7 +87,7 @@ curl -X POST https://api.suopay.io/auth/login \
 
 **Test**:
 ```bash
-curl -X POST https://api.suopay.io/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
@@ -122,7 +122,7 @@ curl -X POST https://api.suopay.io/invoices \
 3. ✅ **Invalid Signature**: Properly rejected with 400 status
 
 **Configuration**:
-- Webhook URL: https://api.suopay.io/webhooks/paystack
+- Webhook URL: https://api.suoops.com/webhooks/paystack
 - Secret: Configured in Heroku (PAYSTACK_SECRET)
 - Verification: HMAC-SHA512
 
@@ -135,7 +135,7 @@ curl -X POST https://api.suopay.io/invoices \
 
 **Test**:
 ```bash
-curl "https://api.suopay.io/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suopay_verify_2025&hub.challenge=test_challenge_123"
+curl "https://api.suoops.com/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suoops_verify_2025&hub.challenge=test_challenge_123"
 ```
 
 **Result**: ✅ SUCCESS
@@ -153,7 +153,7 @@ test_challenge_123
 
 **Test**:
 ```bash
-curl -X POST https://api.suopay.io/webhooks/whatsapp \
+curl -X POST https://api.suoops.com/webhooks/whatsapp \
   -H "Content-Type: application/json" \
   -d '{
     "from": "+2347012345678",
@@ -200,7 +200,7 @@ if redis_url and redis_url.startswith("rediss://"):
 **Fix**: Added `NEXT_PUBLIC_API_BASE_URL` environment variable in Vercel
 ```bash
 vercel env add NEXT_PUBLIC_API_BASE_URL production
-# Value: https://api.suopay.io
+# Value: https://api.suoops.com
 ```
 
 **Deployment**: Triggered new production build to pick up env var
@@ -223,8 +223,8 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
 - ✅ NEXT_PUBLIC_API_BASE_URL
 
 ### DNS Configuration
-- ✅ suopay.io → Vercel (76.76.21.21)
-- ✅ api.suopay.io → Heroku
+- ✅ suoops.com → Vercel (76.76.21.21)
+- ✅ api.suoops.com → Heroku
 - ✅ SSL certificates active (expires Jan 17, 2026)
 - ✅ Nameservers: ns1.vercel-dns.com, ns2.vercel-dns.com
 
@@ -240,8 +240,8 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
    - Verify webhook updates invoice status
 
 2. **Configure WhatsApp in Meta Business Manager**
-   - Add webhook URL: `https://api.suopay.io/webhooks/whatsapp`
-   - Set verify token: `suopay_verify_2025`
+   - Add webhook URL: `https://api.suoops.com/webhooks/whatsapp`
+   - Set verify token: `suoops_verify_2025`
    - Subscribe to `messages` event
    - Test with real WhatsApp messages
 
@@ -285,22 +285,22 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
 
 ### View Backend Logs
 ```bash
-heroku logs --tail --app suopay-backend
+heroku logs --tail --app suoops-backend
 ```
 
 ### View Redis Status
 ```bash
-heroku redis:info --app suopay-backend
+heroku redis:info --app suoops-backend
 ```
 
 ### View Database Status
 ```bash
-heroku pg:info --app suopay-backend
+heroku pg:info --app suoops-backend
 ```
 
 ### View Worker Status
 ```bash
-heroku ps --app suopay-backend
+heroku ps --app suoops-backend
 ```
 
 ---

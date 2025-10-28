@@ -23,18 +23,18 @@ Upgrade when:
 
 ### Check Current Provider
 ```bash
-heroku config:get EMAIL_PROVIDER --app suopay-backend
+heroku config:get EMAIL_PROVIDER --app suoops-backend
 # Output: gmail
 ```
 
 ### Use Gmail (Current - 500/day)
 ```bash
-heroku config:set EMAIL_PROVIDER=gmail --app suopay-backend
+heroku config:set EMAIL_PROVIDER=gmail --app suoops-backend
 ```
 
 ### Use Amazon SES (After setup - Unlimited)
 ```bash
-heroku config:set EMAIL_PROVIDER=ses --app suopay-backend
+heroku config:set EMAIL_PROVIDER=ses --app suoops-backend
 ```
 
 **That's it!** No code changes needed. Just change one environment variable.
@@ -62,21 +62,21 @@ heroku config:set EMAIL_PROVIDER=ses --app suopay-backend
 ⏱️ Takes **15 minutes - 48 hours** for DNS propagation
 
 1. SES Console → Identities → Create identity → Domain
-2. Enter: `suopay.io`
+2. Enter: `suoops.com`
 3. AWS shows you 3 DKIM records
 4. Add them to your DNS (Namecheap/GoDaddy/Cloudflare):
 
 ```
 Type: CNAME
-Name: abcd1234._domainkey.suopay.io
+Name: abcd1234._domainkey.suoops.com
 Value: abcd1234.dkim.amazonses.com
 
 Type: CNAME  
-Name: efgh5678._domainkey.suopay.io
+Name: efgh5678._domainkey.suoops.com
 Value: efgh5678.dkim.amazonses.com
 
 Type: CNAME
-Name: ijkl9012._domainkey.suopay.io
+Name: ijkl9012._domainkey.suoops.com
 Value: ijkl9012.dkim.amazonses.com
 ```
 
@@ -96,19 +96,19 @@ Value: ijkl9012.dkim.amazonses.com
 heroku config:set \
   SES_SMTP_USER=AKIAIOSFODNN7EXAMPLE \
   SES_SMTP_PASSWORD=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY \
-  --app suopay-backend
+  --app suoops-backend
 
 # Switch to SES
-heroku config:set EMAIL_PROVIDER=ses --app suopay-backend
+heroku config:set EMAIL_PROVIDER=ses --app suoops-backend
 
 # Optional: Use your domain for FROM address
-heroku config:set FROM_EMAIL=invoices@suopay.io --app suopay-backend
+heroku config:set FROM_EMAIL=invoices@suoops.com --app suoops-backend
 ```
 
 ### Step 5: Test It! 
 ```bash
 # Create invoice with email
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
+curl -X POST https://suoops-backend.herokuapp.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -119,7 +119,7 @@ curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
   }'
 
 # Check logs
-heroku logs --tail --app suopay-backend | grep -i "email\|ses"
+heroku logs --tail --app suoops-backend | grep -i "email\|ses"
 ```
 
 **Expected log output:**
@@ -164,13 +164,13 @@ Sent invoice email to test@example.com for invoice INV-...
 ### Check Email Usage
 ```bash
 # See all email logs
-heroku logs --tail --app suopay-backend | grep -i "email"
+heroku logs --tail --app suoops-backend | grep -i "email"
 
 # Count emails sent today (approximate)
-heroku logs --app suopay-backend | grep "Sent invoice email" | wc -l
+heroku logs --app suoops-backend | grep "Sent invoice email" | wc -l
 
 # Check which provider is active
-heroku config:get EMAIL_PROVIDER --app suopay-backend
+heroku config:get EMAIL_PROVIDER --app suoops-backend
 ```
 
 ### Monitor SES (After switching)
@@ -189,10 +189,10 @@ aws sesv2 get-account --region eu-north-1
 ### Gmail Not Sending
 ```bash
 # Check credentials configured
-heroku config --app suopay-backend | grep SMTP
+heroku config --app suoops-backend | grep SMTP
 
 # Check logs for errors
-heroku logs --tail --app suopay-backend | grep -i "smtp\|email.*error"
+heroku logs --tail --app suoops-backend | grep -i "smtp\|email.*error"
 
 # Verify App Password is correct
 # Go to: https://myaccount.google.com/apppasswords
@@ -201,14 +201,14 @@ heroku logs --tail --app suopay-backend | grep -i "smtp\|email.*error"
 ### SES Not Sending (After switching)
 ```bash
 # Check SES credentials
-heroku config --app suopay-backend | grep SES
+heroku config --app suoops-backend | grep SES
 
 # Check production access approved
 aws sesv2 get-account --region eu-north-1 | grep ProductionAccessEnabled
 # Should show: true
 
 # Check domain verified
-aws sesv2 get-email-identity --email-identity suopay.io --region eu-north-1
+aws sesv2 get-email-identity --email-identity suoops.com --region eu-north-1
 # Should show: VerificationStatus: SUCCESS
 ```
 
@@ -254,7 +254,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=ayibatonyeikemike9@gmail.com
 SMTP_PASSWORD=lzavczmdupyqslyc
-FROM_EMAIL=noreply@suopay.io
+FROM_EMAIL=noreply@suoops.com
 
 # Future SES Setup (add when ready)
 SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com
@@ -279,22 +279,22 @@ SES_REGION=eu-north-1
 
 ```bash
 # Check current provider
-heroku config:get EMAIL_PROVIDER --app suopay-backend
+heroku config:get EMAIL_PROVIDER --app suoops-backend
 
 # Switch to Gmail
-heroku config:set EMAIL_PROVIDER=gmail --app suopay-backend
+heroku config:set EMAIL_PROVIDER=gmail --app suoops-backend
 
 # Switch to SES (after setup)
-heroku config:set EMAIL_PROVIDER=ses --app suopay-backend
+heroku config:set EMAIL_PROVIDER=ses --app suoops-backend
 
 # View email logs
-heroku logs --tail --app suopay-backend | grep -i "email"
+heroku logs --tail --app suoops-backend | grep -i "email"
 
 # Test email sending
 ./test-production.sh
 
 # Check all email-related config
-heroku config --app suopay-backend | grep -E "EMAIL|SMTP|SES|FROM"
+heroku config --app suoops-backend | grep -E "EMAIL|SMTP|SES|FROM"
 ```
 
 ---

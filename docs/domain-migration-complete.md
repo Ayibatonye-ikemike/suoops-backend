@@ -13,10 +13,10 @@ The Suopay API has been successfully migrated from the Heroku-provided domain to
 
 | Service | Old URL | New URL | Status |
 |---------|---------|---------|--------|
-| **API Base** | `https://suopay-backend-a204d4816960.herokuapp.com` | `https://api.suopay.io` | ✅ Active |
-| **Health Check** | `https://suopay-backend-a204d4816960.herokuapp.com/healthz` | `https://api.suopay.io/healthz` | ✅ Active |
-| **Webhooks (Paystack)** | `https://suopay-backend-a204d4816960.herokuapp.com/webhooks/paystack` | `https://api.suopay.io/webhooks/paystack` | ✅ Active |
-| **Webhooks (WhatsApp)** | `https://suopay-backend-a204d4816960.herokuapp.com/webhooks/whatsapp` | `https://api.suopay.io/webhooks/whatsapp` | ✅ Active |
+| **API Base** | `https://suoops-backend.herokuapp.com` | `https://api.suoops.com` | ✅ Active |
+| **Health Check** | `https://suoops-backend.herokuapp.com/healthz` | `https://api.suoops.com/healthz` | ✅ Active |
+| **Webhooks (Paystack)** | `https://suoops-backend.herokuapp.com/webhooks/paystack` | `https://api.suoops.com/webhooks/paystack` | ✅ Active |
+| **Webhooks (WhatsApp)** | `https://suoops-backend.herokuapp.com/webhooks/whatsapp` | `https://api.suoops.com/webhooks/whatsapp` | ✅ Active |
 
 ---
 
@@ -30,12 +30,12 @@ The Suopay API has been successfully migrated from the Heroku-provided domain to
 
 **DNS Records:**
 ```
-api.suopay.io.  60  IN  CNAME  integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
+api.suoops.com.  60  IN  CNAME  integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
 ```
 
 **Resolution:**
 ```bash
-$ dig api.suopay.io +short
+$ dig api.suoops.com +short
 integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
 35.71.179.82
 99.83.220.108
@@ -53,14 +53,14 @@ integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
 **Status:** ✅ Verified by root authority
 
 ```bash
-$ heroku certs:auto -a suopay-backend
-=== Automatic Certificate Management is enabled on suopay-backend
+$ heroku certs:auto -a suoops-backend
+=== Automatic Certificate Management is enabled on suoops-backend
 
 Certificate details:
-Common Name(s): api.suopay.io
+Common Name(s): api.suoops.com
 Expires At:     2026-01-17 11:58 UTC
 Issuer:         /CN=R12/O=Let's Encrypt/C=US
-Subject:        /CN=api.suopay.io
+Subject:        /CN=api.suoops.com
 SSL certificate is verified by a root authority.
 ```
 
@@ -75,7 +75,7 @@ SSL certificate is verified by a root authority.
 ```json
 {
   "env": {
-    "NEXT_PUBLIC_API_BASE_URL": "https://api.suopay.io"
+    "NEXT_PUBLIC_API_BASE_URL": "https://api.suoops.com"
   }
 }
 ```
@@ -106,12 +106,12 @@ All documentation files have been updated to reference the new domain:
 ### 1. DNS Resolution
 
 ```bash
-$ nslookup api.suopay.io 8.8.8.8
+$ nslookup api.suoops.com 8.8.8.8
 Server:         8.8.8.8
 Address:        8.8.8.8#53
 
 Non-authoritative answer:
-api.suopay.io   canonical name = integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
+api.suoops.com   canonical name = integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
 Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
 Address: 13.248.244.96
 Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
@@ -125,7 +125,7 @@ Address: 99.83.220.108
 ### 2. SSL/TLS Test
 
 ```bash
-$ curl -I https://api.suopay.io/healthz
+$ curl -I https://api.suoops.com/healthz
 HTTP/2 200
 content-type: application/json
 # ... SSL handshake successful
@@ -134,7 +134,7 @@ content-type: application/json
 ### 3. API Health Check
 
 ```bash
-$ curl https://api.suopay.io/healthz
+$ curl https://api.suoops.com/healthz
 {"status":"ok"}
 ```
 
@@ -142,12 +142,12 @@ $ curl https://api.suopay.io/healthz
 
 ```bash
 # Login
-$ curl -X POST https://api.suopay.io/auth/login \
+$ curl -X POST https://api.suoops.com/auth/login \
   -H "Content-Type: application/json" \
   -d '{"phone": "+2347012345678", "password": "TestPassword123"}'
 
 # Create Invoice
-$ curl -X POST https://api.suopay.io/invoices \
+$ curl -X POST https://api.suoops.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -184,14 +184,14 @@ $ curl -X POST https://api.suopay.io/invoices \
 ### Recommended (To Do)
 - [ ] Update Paystack webhook URL in dashboard
   - Login to https://dashboard.paystack.com/#/settings/webhooks
-  - Update webhook URL to: `https://api.suopay.io/webhooks/paystack`
+  - Update webhook URL to: `https://api.suoops.com/webhooks/paystack`
 
 - [ ] Update WhatsApp webhook URL in Meta Business Suite
-  - Update webhook URL to: `https://api.suopay.io/webhooks/whatsapp`
+  - Update webhook URL to: `https://api.suoops.com/webhooks/whatsapp`
 
 - [ ] Monitor SSL certificate renewal
   - Heroku will auto-renew on Dec 17, 2025
-  - Check status: `heroku certs:auto -a suopay-backend`
+  - Check status: `heroku certs:auto -a suoops-backend`
 
 - [ ] Update any external integrations
   - Check if any third-party services reference the old URL
@@ -203,7 +203,7 @@ $ curl -X POST https://api.suopay.io/invoices \
   - Could redirect old URL to new for SEO/consistency
 
 - [ ] Add monitoring for custom domain
-  - Set up uptime monitoring for `api.suopay.io`
+  - Set up uptime monitoring for `api.suoops.com`
   - Alert if DNS or SSL issues occur
 
 ---
@@ -214,26 +214,26 @@ $ curl -X POST https://api.suopay.io/invoices \
 
 1. **Check DNS Resolution**
    ```bash
-   dig api.suopay.io @8.8.8.8
+   dig api.suoops.com @8.8.8.8
    ```
    Should return Heroku IPs (35.71.179.82, etc.)
 
 2. **Check SSL Certificate**
    ```bash
-   heroku certs:auto -a suopay-backend
+   heroku certs:auto -a suoops-backend
    ```
    Should show valid certificate
 
 3. **Check Heroku Domain**
    ```bash
-   heroku domains -a suopay-backend
+   heroku domains -a suoops-backend
    ```
-   Should list `api.suopay.io` with CNAME target
+   Should list `api.suoops.com` with CNAME target
 
 4. **Fallback to Heroku URL**
    If custom domain fails, the old Heroku URL still works:
    ```
-   https://suopay-backend-a204d4816960.herokuapp.com
+   https://suoops-backend.herokuapp.com
    ```
 
 ### DNS Cache Issues
@@ -263,20 +263,20 @@ ipconfig /flushdns
 **Commands for Monitoring:**
 ```bash
 # Check app status
-heroku ps -a suopay-backend
+heroku ps -a suoops-backend
 
 # Check SSL certificate
-heroku certs:auto -a suopay-backend
+heroku certs:auto -a suoops-backend
 
 # Check DNS configuration
-heroku domains -a suopay-backend
+heroku domains -a suoops-backend
 
 # View logs
-heroku logs --tail -a suopay-backend
+heroku logs --tail -a suoops-backend
 ```
 
 ---
 
 **Migration completed successfully! 🎉**
 
-The API is now accessible at `https://api.suopay.io` with full SSL/TLS encryption.
+The API is now accessible at `https://api.suoops.com` with full SSL/TLS encryption.

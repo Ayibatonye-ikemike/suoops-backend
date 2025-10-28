@@ -15,7 +15,7 @@ This guide will help you set up Amazon SES (Simple Email Service) for sending un
 ## Prerequisites
 
 - ✅ AWS Account (you already have one for S3)
-- ✅ Domain name (suopay.io)
+- ✅ Domain name (suoops.com)
 - ✅ Access to DNS settings (Namecheap, GoDaddy, Cloudflare, etc.)
 
 ---
@@ -41,7 +41,7 @@ You need to request production access to send to any email address.
 
    **Use Case:**
    - **Mail type:** Transactional
-   - **Website URL:** https://suopay.io
+   - **Website URL:** https://suoops.com
    - **Use case description:**
    ```
    SuoPay is an invoice management SaaS platform for small businesses in Nigeria.
@@ -91,14 +91,14 @@ You need to request production access to send to any email address.
 
 ## Step 2: Verify Your Domain (Recommended)
 
-Verifying your domain (suopay.io) improves deliverability and allows you to send from any email address @suopay.io.
+Verifying your domain (suoops.com) improves deliverability and allows you to send from any email address @suoops.com.
 
 ### 2.1 Start Domain Verification
 
 1. Go to **SES Console → Identities**
 2. Click **"Create identity"**
 3. Select **"Domain"**
-4. Enter: `suopay.io`
+4. Enter: `suoops.com`
 5. Check **"Use a default DKIM signing key"**
 6. Click **"Create identity"**
 
@@ -111,17 +111,17 @@ AWS will show you 3 DKIM records and 1 SPF record. Add these to your DNS provide
 **DKIM Records (3 records):**
 ```
 Type: CNAME
-Name: abcd1234._domainkey.suopay.io
+Name: abcd1234._domainkey.suoops.com
 Value: abcd1234.dkim.amazonses.com
 TTL: Automatic
 
 Type: CNAME
-Name: efgh5678._domainkey.suopay.io
+Name: efgh5678._domainkey.suoops.com
 Value: efgh5678.dkim.amazonses.com
 TTL: Automatic
 
 Type: CNAME
-Name: ijkl9012._domainkey.suopay.io
+Name: ijkl9012._domainkey.suoops.com
 Value: ijkl9012.dkim.amazonses.com
 TTL: Automatic
 ```
@@ -131,12 +131,12 @@ TTL: Automatic
 **Mail FROM Domain (Optional but recommended):**
 ```
 Type: MX
-Name: mail.suopay.io
+Name: mail.suoops.com
 Value: 10 feedback-smtp.eu-north-1.amazonses.com
 TTL: Automatic
 
 Type: TXT
-Name: mail.suopay.io
+Name: mail.suoops.com
 Value: "v=spf1 include:amazonses.com ~all"
 TTL: Automatic
 ```
@@ -144,16 +144,16 @@ TTL: Automatic
 ### 2.3 Wait for Verification
 
 - DNS propagation takes **15 minutes to 48 hours**
-- Check status in SES Console → Identities → suopay.io
+- Check status in SES Console → Identities → suoops.com
 - Status will change from "Pending" to "Verified"
 
 **Check DNS propagation:**
 ```bash
 # Check DKIM records
-dig abcd1234._domainkey.suopay.io CNAME
+dig abcd1234._domainkey.suoops.com CNAME
 
 # Check MX record
-dig mail.suopay.io MX
+dig mail.suoops.com MX
 ```
 
 ---
@@ -188,7 +188,7 @@ dig mail.suopay.io MX
 # Set email provider to SES
 heroku config:set \
   EMAIL_PROVIDER=ses \
-  --app suopay-backend
+  --app suoops-backend
 
 # Set SES SMTP credentials
 heroku config:set \
@@ -197,17 +197,17 @@ heroku config:set \
   SES_SMTP_USER=AKIAIOSFODNN7EXAMPLE \
   SES_SMTP_PASSWORD=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY \
   SES_REGION=eu-north-1 \
-  --app suopay-backend
+  --app suoops-backend
 
 # Optional: Update FROM_EMAIL to use your domain
 heroku config:set \
-  FROM_EMAIL=invoices@suopay.io \
-  --app suopay-backend
+  FROM_EMAIL=invoices@suoops.com \
+  --app suoops-backend
 ```
 
 **Check configuration:**
 ```bash
-heroku config --app suopay-backend | grep -E "EMAIL|SES|SMTP"
+heroku config --app suoops-backend | grep -E "EMAIL|SES|SMTP"
 ```
 
 ---
@@ -227,7 +227,7 @@ While waiting for production access, you can test with verified email addresses:
 
 2. **Test sending:**
 ```bash
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
+curl -X POST https://suoops-backend.herokuapp.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -245,7 +245,7 @@ curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
 Once production access is approved, test with any email:
 
 ```bash
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
+curl -X POST https://suoops-backend.herokuapp.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -263,10 +263,10 @@ curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
 ### Check Heroku Logs
 ```bash
 # Watch email sending in real-time
-heroku logs --tail --app suopay-backend | grep -i "email\|ses"
+heroku logs --tail --app suoops-backend | grep -i "email\|ses"
 
 # Check for errors
-heroku logs --tail --app suopay-backend | grep -i "error.*email"
+heroku logs --tail --app suoops-backend | grep -i "error.*email"
 ```
 
 ### Check SES Console
@@ -355,14 +355,14 @@ aws ses get-send-quota --region eu-north-1
 2. **Set up SPF record:**
    ```
    Type: TXT
-   Name: suopay.io
+   Name: suoops.com
    Value: "v=spf1 include:amazonses.com ~all"
    ```
 3. **Add DMARC record:**
    ```
    Type: TXT
-   Name: _dmarc.suopay.io
-   Value: "v=DMARC1; p=quarantine; rua=mailto:dmarc@suopay.io"
+   Name: _dmarc.suoops.com
+   Value: "v=DMARC1; p=quarantine; rua=mailto:dmarc@suoops.com"
    ```
 4. **Warm up domain** (gradually increase volume)
 5. **Monitor bounce/complaint rates** (keep low)
@@ -387,8 +387,8 @@ except EmailNotValidError as e:
 - Verify region matches (eu-north-1)
 - Check Heroku config vars are set
 ```bash
-heroku config:get SES_SMTP_USER --app suopay-backend
-heroku config:get SES_SMTP_PASSWORD --app suopay-backend
+heroku config:get SES_SMTP_USER --app suoops-backend
+heroku config:get SES_SMTP_PASSWORD --app suoops-backend
 ```
 
 ---
@@ -399,17 +399,17 @@ Your code now supports both providers. Switch easily:
 
 ### Use Gmail (default, 500/day)
 ```bash
-heroku config:set EMAIL_PROVIDER=gmail --app suopay-backend
+heroku config:set EMAIL_PROVIDER=gmail --app suoops-backend
 ```
 
 ### Use Amazon SES (unlimited)
 ```bash
-heroku config:set EMAIL_PROVIDER=ses --app suopay-backend
+heroku config:set EMAIL_PROVIDER=ses --app suoops-backend
 ```
 
 ### Check current provider
 ```bash
-heroku config:get EMAIL_PROVIDER --app suopay-backend
+heroku config:get EMAIL_PROVIDER --app suoops-backend
 ```
 
 ---
@@ -422,7 +422,7 @@ Before going live with SES:
 - [ ] Domain verified (DKIM records added)
 - [ ] SMTP credentials created and saved
 - [ ] Heroku configured with SES credentials
-- [ ] FROM_EMAIL set to your domain (@suopay.io)
+- [ ] FROM_EMAIL set to your domain (@suoops.com)
 - [ ] Test emails sent successfully
 - [ ] Emails not going to spam
 - [ ] Monitoring set up (CloudWatch/logs)

@@ -10,7 +10,7 @@ Your platform uses **Model 1: Centralized Bot** - one WhatsApp number serves ALL
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  YOUR PLATFORM (suopay.io)                          │
+│  YOUR PLATFORM (suoops.com)                          │
 │                                                      │
 │  WhatsApp Business Number: +234 XXX XXX XXXX       │
 │  (One number for entire platform)                   │
@@ -113,7 +113,7 @@ async def handle_message(self, sender: str, body: str, payload: dict):
     if issuer_id is None:
         self.client.send_text(
             sender,
-            "👋 Welcome! To use this bot, please register at suopay.io first.\n\n"
+            "👋 Welcome! To use this bot, please register at suoops.com first.\n\n"
             "Then add this WhatsApp number to your profile."
         )
         return
@@ -128,7 +128,7 @@ async def handle_message(self, sender: str, body: str, payload: dict):
 ### For New Businesses:
 
 1. **Register on Web Platform**
-   - Go to `https://suopay.io/register`
+   - Go to `https://suoops.com/register`
    - Create account with email & password
    - Provide business details
 
@@ -226,7 +226,7 @@ To get the platform WhatsApp number working, you need:
 1. **Meta Business Account** (free)
 2. **WhatsApp Business App** (approved by Meta)
 3. **Phone Number** (can use your existing number)
-4. **Webhook URL**: `https://suopay-backend-a204d4816960.herokuapp.com/webhooks/whatsapp`
+4. **Webhook URL**: `https://suoops-backend.herokuapp.com/webhooks/whatsapp`
 
 **Time to setup**: 1-2 hours  
 **Cost**: Free (up to 1,000 conversations/month)

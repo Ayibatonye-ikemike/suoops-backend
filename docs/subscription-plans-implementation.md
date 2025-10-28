@@ -244,20 +244,20 @@ psql -d suopay_local -c "\d+ user"
 git push heroku main
 
 # Run migration in production
-heroku run alembic upgrade head -a suopay-backend
+heroku run alembic upgrade head -a suoops-backend
 
 # Verify migration
-heroku pg:psql -a suopay-backend
+heroku pg:psql -a suoops-backend
 \d+ user
 ```
 
 ### 3. Verify Production
 ```bash
 # Check logs
-heroku logs --tail -a suopay-backend
+heroku logs --tail -a suoops-backend
 
 # Test with existing user
-curl -X POST https://api.suopay.io/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"customer_name":"Test","amount":1000}'
 
@@ -444,7 +444,7 @@ HAVING COUNT(i.id) >= (
 **1. Database Rollback:**
 ```bash
 # Downgrade migration
-heroku run alembic downgrade -1 -a suopay-backend
+heroku run alembic downgrade -1 -a suoops-backend
 
 # Or manual SQL
 ALTER TABLE "user" DROP COLUMN plan;
