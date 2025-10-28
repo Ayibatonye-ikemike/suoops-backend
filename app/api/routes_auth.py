@@ -9,7 +9,7 @@ from app.api.rate_limit import limiter
 from app.core.config import settings
 from app.core.security import TokenExpiredError, TokenValidationError, decode_token
 from app.models import schemas
-from app.services.auth_service import AuthService, get_auth_service
+from app.services.auth_service import AuthService, TokenBundle, get_auth_service
 
 router = APIRouter()
 
@@ -20,13 +20,26 @@ AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 REGISTER_RATE_LIMIT = "5/minute" if settings.ENV.lower() == "prod" else "50/minute"
 
 
-@router.post("/register", response_model=schemas.UserOut)
+@router.post("/signup/request", response_model=schemas.MessageOut)
 @limiter.limit(REGISTER_RATE_LIMIT)
-def register(request: Request, payload: schemas.UserCreate, svc: AuthServiceDep):
+def request_signup(request: Request, payload: schemas.SignupStart, svc: AuthServiceDep):
     try:
-        return svc.register(payload)
+        svc.start_signup(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return schemas.MessageOut(detail="OTP sent to WhatsApp")
+
+
+def _bundle_to_response(bundle: TokenBundle, include_refresh_cookie: bool = True) -> JSONResponse:
+    token_out = schemas.TokenOut(
+        access_token=bundle.access_token,
+        access_expires_at=bundle.access_expires_at,
+        refresh_token=bundle.refresh_token,
+    )
+    response = JSONResponse(content=jsonable_encoder(token_out))
+    if include_refresh_cookie:
+        _set_refresh_cookie(response, bundle.refresh_token)
+    return response
 
 
 REFRESH_COOKIE_NAME = "whatsinvoice.refresh"
@@ -55,20 +68,44 @@ def _clear_refresh_cookie(response: JSONResponse) -> None:
     response.delete_cookie(REFRESH_COOKIE_NAME, path="/")
 
 
-@router.post("/login", response_model=schemas.TokenOut)
+@router.post("/signup/verify", response_model=schemas.TokenOut)
 @limiter.limit("10/minute")
-def login(request: Request, payload: schemas.UserLogin, svc: AuthServiceDep):
+def verify_signup(request: Request, payload: schemas.SignupVerify, svc: AuthServiceDep):
     try:
-        bundle = svc.login(payload)
-        token_out = schemas.TokenOut(
-            access_token=bundle.access_token,
-            access_expires_at=bundle.access_expires_at,
-        )
-        response = JSONResponse(content=jsonable_encoder(token_out))
-        _set_refresh_cookie(response, bundle.refresh_token)
-        return response
+        bundle = svc.complete_signup(payload)
+        return _bundle_to_response(bundle)
     except ValueError as exc:
-        raise HTTPException(status_code=401, detail="Invalid credentials") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/login/request", response_model=schemas.MessageOut)
+@limiter.limit("10/minute")
+def request_login(request: Request, payload: schemas.OTPPhoneRequest, svc: AuthServiceDep):
+    try:
+        svc.request_login(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return schemas.MessageOut(detail="OTP sent to WhatsApp")
+
+
+@router.post("/login/verify", response_model=schemas.TokenOut)
+@limiter.limit("10/minute")
+def verify_login(request: Request, payload: schemas.LoginVerify, svc: AuthServiceDep):
+    try:
+        bundle = svc.verify_login(payload)
+        return _bundle_to_response(bundle)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@router.post("/otp/resend", response_model=schemas.MessageOut)
+@limiter.limit("10/minute")
+def resend_otp(request: Request, payload: schemas.OTPResend, svc: AuthServiceDep):
+    try:
+        svc.resend_otp(schemas.OTPPhoneRequest(phone=payload.phone), payload.purpose)
+    except ValueError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    return schemas.MessageOut(detail="OTP resent successfully")
 
 
 @router.post("/refresh", response_model=schemas.TokenOut)
@@ -81,13 +118,7 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
         raise HTTPException(status_code=401, detail="Missing refresh token")
     try:
         bundle = svc.refresh(refresh_value)
-        token_out = schemas.TokenOut(
-            access_token=bundle.access_token,
-            access_expires_at=bundle.access_expires_at,
-        )
-        response = JSONResponse(content=jsonable_encoder(token_out))
-        _set_refresh_cookie(response, bundle.refresh_token)
-        return response
+        return _bundle_to_response(bundle)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 

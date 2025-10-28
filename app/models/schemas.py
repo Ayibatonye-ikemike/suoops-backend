@@ -97,15 +97,29 @@ class InvoicePublicOut(BaseModel):
 
 # ----------------- Auth -----------------
 
-class UserCreate(BaseModel):
+class OTPPhoneRequest(BaseModel):
+    phone: str
+
+
+class SignupStart(BaseModel):
     phone: str
     name: str
-    password: str
+    business_name: str | None = None
 
 
-class UserLogin(BaseModel):
+class SignupVerify(BaseModel):
     phone: str
-    password: str
+    otp: str = Field(..., min_length=6, max_length=6)
+
+
+class LoginVerify(BaseModel):
+    phone: str
+    otp: str = Field(..., min_length=6, max_length=6)
+
+
+class OTPResend(BaseModel):
+    phone: str
+    purpose: Literal["signup", "login"]
 
 
 class UserOut(BaseModel):
@@ -117,6 +131,8 @@ class UserOut(BaseModel):
     plan: str  # FREE, STARTER, PRO, BUSINESS, ENTERPRISE
     invoices_this_month: int
     logo_url: str | None = None
+    business_name: str | None = None
+    phone_verified: bool = True
 
 
 class TokenOut(BaseModel):

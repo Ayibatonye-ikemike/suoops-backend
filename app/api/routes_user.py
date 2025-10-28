@@ -261,5 +261,7 @@ def get_profile(
         plan=user.plan.value,
         invoices_this_month=user.invoices_this_month,
         logo_url=user.logo_url,
+        business_name=user.business_name,
+        phone_verified=user.phone_verified,
     )
 

@@ -126,7 +126,8 @@ _ENV_TO_SETTINGS: dict[str, type[BaseAppSettings]] = {
 
 @lru_cache
 def get_settings() -> BaseAppSettings:
-    env = os.getenv("APP_ENV", "dev").lower()
+    env_name = os.getenv("APP_ENV") or os.getenv("ENV") or "dev"
+    env = env_name.lower()
     settings_cls = _ENV_TO_SETTINGS.get(env, DevSettings)
     return settings_cls()
 

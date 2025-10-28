@@ -105,7 +105,7 @@ def business_user(db_session):
     user = User(
         phone="+2348012345678",  # Matches sender in webhook payload
         name="Mike Business",
-        hashed_password="hashed_test_password",
+    phone_verified=True,
         business_name="Mike's Design Studio",
         bank_name="GTBank",
         account_number="1234567890",
