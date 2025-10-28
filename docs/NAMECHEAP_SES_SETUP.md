@@ -1,7 +1,7 @@
 # Namecheap DNS Setup for Amazon SES - Step by Step
 
 ## 🎯 Goal
-Add 6 DNS records to your `suopay.io` domain in Namecheap for Amazon SES email verification.
+Add 6 DNS records to your `suoops.com` domain in Namecheap for Amazon SES email verification.
 
 ---
 
@@ -18,8 +18,8 @@ Add 6 DNS records to your `suopay.io` domain in Namecheap for Amazon SES email v
 ### **Step 2: Access Domain DNS Settings**
 
 1. Click **Domain List** in the left sidebar
-2. Find **suopay.io** in the list
-3. Click **MANAGE** button next to `suopay.io`
+2. Find **suoops.com** in the list
+3. Click **MANAGE** button next to `suoops.com`
 4. Click the **Advanced DNS** tab (at the top)
 
 You should see a page with "HOST RECORDS" section.
@@ -101,7 +101,7 @@ TTL: Automatic
 
 ---
 
-### **Step 5: Add SPF Record (TXT Record for mail.suopay.io)**
+### **Step 5: Add SPF Record (TXT Record for mail.suoops.com)**
 
 ```
 Type: TXT Record
@@ -165,7 +165,7 @@ After adding all records, your DNS should have:
 
 ### **In AWS SES Console:**
 1. Go to: https://console.aws.amazon.com/ses/
-2. Click **Identities** → **suopay.io**
+2. Click **Identities** → **suoops.com**
 3. **Status** changes from "Pending verification" → "Verified" ✅
 4. **DKIM status** changes from "Pending" → "Successful" ✅
 5. **Custom MAIL FROM** changes from "Pending" → "Successful" ✅
@@ -186,22 +186,22 @@ Run these commands in your terminal:
 
 ```bash
 # Check DKIM Record 1
-dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io CNAME
+dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com CNAME
 
 # Check DKIM Record 2
-dig flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey.suopay.io CNAME
+dig flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey.suoops.com CNAME
 
 # Check DKIM Record 3
-dig 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey.suopay.io CNAME
+dig 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey.suoops.com CNAME
 
 # Check MX Record
-dig mail.suopay.io MX
+dig mail.suoops.com MX
 
 # Check SPF Record
-dig mail.suopay.io TXT
+dig mail.suoops.com TXT
 
 # Check DMARC Record
-dig _dmarc.suopay.io TXT
+dig _dmarc.suoops.com TXT
 ```
 
 **Expected results:**
@@ -212,7 +212,7 @@ dig _dmarc.suopay.io TXT
 ### **Option 3: Use Online Tool**
 
 1. Go to: https://mxtoolbox.com/SuperTool.aspx
-2. Enter: `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io`
+2. Enter: `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com`
 3. Select **CNAME Lookup**
 4. Should show: `iu5cwz57dsyf2d4owslq3dg3dvw6verk.dkim.amazonses.com`
 
@@ -233,12 +233,12 @@ Repeat for other records.
 
 ### **Issue 2: Host field showing error "Invalid format"**
 
-**Cause:** Including `.suopay.io` in the Host field
+**Cause:** Including `.suoops.com` in the Host field
 **Fix:**
-- ❌ Wrong: `mail.suopay.io`
+- ❌ Wrong: `mail.suoops.com`
 - ✅ Correct: `mail`
 
-Namecheap automatically appends `.suopay.io`
+Namecheap automatically appends `.suoops.com`
 
 ### **Issue 3: TXT record value has extra quotes**
 
@@ -296,7 +296,7 @@ TXT         _dmarc                                             v=DMARC1; p=none;
 
 1. Go to AWS SES Console: https://console.aws.amazon.com/ses/
 2. Click **Identities** (left sidebar)
-3. Click **suopay.io**
+3. Click **suoops.com**
 4. Check these statuses:
 
 ```
@@ -332,14 +332,14 @@ heroku config:set \
   SES_SMTP_PORT=587 \
   SES_SMTP_USER=YOUR_SMTP_USERNAME \
   SES_SMTP_PASSWORD=YOUR_SMTP_PASSWORD \
-  FROM_EMAIL=noreply@suopay.io \
-  --app suopay-backend
+  FROM_EMAIL=noreply@suoops.com \
+  --app suoops-backend
 ```
 
 ### **3. Test Email Sending**
 
 ```bash
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
+curl -X POST https://suoops-backend.herokuapp.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -376,7 +376,7 @@ I'll help you fix it!
 
 **What you need to do:**
 1. Login to Namecheap
-2. Go to Domain List → Manage suopay.io → Advanced DNS
+2. Go to Domain List → Manage suoops.com → Advanced DNS
 3. Add 6 DNS records (3 CNAME, 1 MX, 2 TXT)
 4. Wait 15 mins - 48 hours for DNS propagation
 5. Check AWS SES Console for "Verified" status

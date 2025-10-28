@@ -10,7 +10,7 @@ Example response when creating an invoice:
   "invoice_id": "INV-1761133019802-91A9D4",
   "amount": "25000",
   "status": "pending",
-  "pdf_url": "file:///app/storage/suopay-storage/invoices/INV-1761133019802-91A9D4.pdf",
+  "pdf_url": "file:///app/storage/suoops-storage/invoices/INV-1761133019802-91A9D4.pdf",
   "payment_url": "https://checkout.paystack.com/tispk8kdwhnaqw1",
   "created_at": "2025-10-22T11:36:59.803891Z",
   "due_date": null
@@ -79,7 +79,7 @@ payload = {
     "reference": "INV-xxx",  # Your invoice ID
     "amount": 7500000,        # Amount in kobo (NGN x 100)
     "email": "customer@example.com",
-    "callback_url": "https://suopay.io/payments/confirm"
+    "callback_url": "https://suoops.com/payments/confirm"
 }
 response = requests.post(
     "https://api.paystack.co/transaction/initialize",
@@ -126,13 +126,13 @@ pdf_url = self.pdf_service.generate_invoice_pdf(
 
 ```bash
 # 1. Login
-TOKEN=$(curl -s -X POST https://api.suopay.io/auth/login \
+TOKEN=$(curl -s -X POST https://api.suoops.com/auth/login \
   -H "Content-Type: application/json" \
   -d '{"phone": "+2347012345678", "password": "TestPassword123"}' \
   | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
 
 # 2. Create invoice
-INVOICE=$(curl -s -X POST https://api.suopay.io/invoices \
+INVOICE=$(curl -s -X POST https://api.suoops.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -152,7 +152,7 @@ echo "Invoice ID: $INVOICE_ID"
 
 ```bash
 # Get your Paystack secret
-SECRET=$(heroku config:get PAYSTACK_SECRET --app suopay-backend)
+SECRET=$(heroku config:get PAYSTACK_SECRET --app suoops-backend)
 
 # Create payment link
 curl -X POST https://api.paystack.co/transaction/initialize \
@@ -162,7 +162,7 @@ curl -X POST https://api.paystack.co/transaction/initialize \
     "reference":"TEST-PAYMENT-001",
     "amount":1000000,
     "email":"test@example.com",
-    "callback_url":"https://suopay.io/payments/confirm"
+    "callback_url":"https://suoops.com/payments/confirm"
   }'
 ```
 
@@ -218,7 +218,7 @@ Expiry: 12/30
 ## 🔔 Webhook Flow After Payment
 
 1. **Customer completes payment** on Paystack checkout page
-2. **Paystack sends webhook** to `https://api.suopay.io/webhooks/paystack`
+2. **Paystack sends webhook** to `https://api.suoops.com/webhooks/paystack`
 3. **Webhook validates signature** (HMAC-SHA512)
 4. **Invoice status updated** to "paid" in database
 5. **Metrics recorded** (invoice_paid counter)
@@ -246,7 +246,7 @@ Expiry: 12/30
 
 ### Check Transaction Status
 ```bash
-SECRET=$(heroku config:get PAYSTACK_SECRET --app suopay-backend)
+SECRET=$(heroku config:get PAYSTACK_SECRET --app suoops-backend)
 curl -X GET "https://api.paystack.co/transaction/verify/INV-xxx" \
   -H "Authorization: Bearer $SECRET"
 ```
@@ -254,13 +254,13 @@ curl -X GET "https://api.paystack.co/transaction/verify/INV-xxx" \
 ### Check Invoice Status in Database
 ```bash
 TOKEN="your_jwt_token"
-curl -s https://api.suopay.io/invoices/INV-xxx \
+curl -s https://api.suoops.com/invoices/INV-xxx \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ### View Webhook Events
 ```bash
-curl -s https://api.suopay.io/invoices/INV-xxx/events \
+curl -s https://api.suoops.com/invoices/INV-xxx/events \
   -H "Authorization: Bearer $TOKEN"
 ```
 

@@ -219,7 +219,7 @@ heroku config:set \
   SES_ACCESS_KEY=your_key \
   SES_SECRET_KEY=your_secret \
   SES_REGION=eu-west-1 \
-  --app suopay-backend
+  --app suoops-backend
 
 # Keep Gmail as fallback
 # No need to remove SMTP_* vars yet
@@ -253,7 +253,7 @@ heroku config:set \
 3. Click "Request production access"
 4. Fill form:
    - **Use case:** Transactional emails for SaaS invoicing
-   - **Website:** https://suopay.io
+   - **Website:** https://suoops.com
    - **Description:** "Sending invoice notifications to customers"
    - **Expected volume:** 1,000-5,000 emails/month
    - **Bounce rate plan:** Email validation before sending
@@ -266,22 +266,22 @@ heroku config:set \
 
 # DKIM Record 1
 Type: CNAME
-Name: xxxxx._domainkey.suopay.io
+Name: xxxxx._domainkey.suoops.com
 Value: xxxxx.dkim.amazonses.com
 
 # DKIM Record 2  
 Type: CNAME
-Name: yyyyy._domainkey.suopay.io
+Name: yyyyy._domainkey.suoops.com
 Value: yyyyy.dkim.amazonses.com
 
 # DKIM Record 3
 Type: CNAME
-Name: zzzzz._domainkey.suopay.io
+Name: zzzzz._domainkey.suoops.com
 Value: zzzzz.dkim.amazonses.com
 
 # Mail FROM Domain
 Type: MX
-Name: mail.suopay.io
+Name: mail.suoops.com
 Value: 10 feedback-smtp.eu-north-1.amazonses.com
 ```
 
@@ -315,7 +315,7 @@ heroku config:set \
   SES_SMTP_PORT=587 \
   SES_SMTP_USER=your_smtp_username \
   SES_SMTP_PASSWORD=your_smtp_password \
-  --app suopay-backend
+  --app suoops-backend
 ```
 
 ### Step 6: Update NotificationService
@@ -456,7 +456,7 @@ A: Not initially. Consider when sending 100k+/month for better reputation contro
 
 1. **Monitor current usage:**
    ```bash
-   heroku logs --tail --app suopay-backend | grep -i "email sent"
+   heroku logs --tail --app suoops-backend | grep -i "email sent"
    ```
 
 2. **Track daily email count:**

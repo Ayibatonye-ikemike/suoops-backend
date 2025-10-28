@@ -5,7 +5,7 @@
 ### Test 1: Webhook Verification (Meta's GET Request)
 
 ```bash
-curl -X GET "https://suopay-backend-a204d4816960.herokuapp.com/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suopay_verify_2025&hub.challenge=test_123"
+curl -X GET "https://suoops-backend.herokuapp.com/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suoops_verify_2025&hub.challenge=test_123"
 ```
 
 **Expected Response:**
@@ -28,7 +28,7 @@ test_123
 **Run this command:**
 
 ```bash
-curl -X POST "https://suopay-backend-a204d4816960.herokuapp.com/webhooks/whatsapp" \
+curl -X POST "https://suoops-backend.herokuapp.com/webhooks/whatsapp" \
   -H "Content-Type: application/json" \
   -d '{
     "object": "whatsapp_business_account",
@@ -101,7 +101,7 @@ Unable to resolve issuer for WhatsApp sender: +2348012345678
 **Cause:** Business phone number not registered in database.
 
 **Solution:**
-1. Log into your account at suopay.io/dashboard
+1. Log into your account at suoops.com/dashboard
 2. Go to Settings
 3. Add your WhatsApp phone number: `+2348012345678`
 4. Save
@@ -207,7 +207,7 @@ Run through this checklist to verify everything works:
 | Phone Number ID | 817255254808254 | ✅ Configured |
 | Business Account ID | 713163545130337 | ✅ Configured |
 | API Key | EAALmWSVtcoUBP... | ✅ Configured |
-| Verify Token | suopay_verify_2025 | ✅ Set in code |
+| Verify Token | suoops_verify_2025 | ✅ Set in code |
 | Webhook URL | /webhooks/whatsapp | ✅ Deployed v51 |
 
 **Status: 🟢 FULLY CONNECTED**
@@ -221,7 +221,7 @@ Your bot is live and ready to receive messages from Meta's WhatsApp Business API
 Once tests pass:
 
 1. **Add Your WhatsApp Number**
-   - Go to suopay.io/dashboard/settings
+   - Go to suoops.com/dashboard/settings
    - Add your actual WhatsApp phone number
    - Save
 

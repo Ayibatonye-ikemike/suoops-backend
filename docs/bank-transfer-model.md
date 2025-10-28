@@ -278,7 +278,7 @@ alembic upgrade head
 
 # Then on Heroku
 git push heroku main
-heroku run alembic upgrade head -a suopay-backend
+heroku run alembic upgrade head -a suoops-backend
 ```
 
 ### 2. Update Existing Users

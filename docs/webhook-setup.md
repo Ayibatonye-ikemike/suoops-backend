@@ -11,14 +11,14 @@
 
 **Use this public-facing URL:**
 ```
-https://api.suopay.io/webhooks/paystack
+https://api.suoops.com/webhooks/paystack
 ```
 
 **Temporary URL (if custom domain not ready):**
 ```
 **Webhook URL:**
 ```
-https://api.suopay.io/webhooks/paystack
+https://api.suoops.com/webhooks/paystack
 ```
 ```
 
@@ -29,7 +29,7 @@ https://api.suopay.io/webhooks/paystack
 
 2. **Add Webhook URL**
    - Click "Add Webhook URL"
-   - Enter: `https://api.suopay.io/webhooks/paystack`
+   - Enter: `https://api.suoops.com/webhooks/paystack`
    - Click "Save"
 
 3. **Select Events to Listen For**
@@ -51,7 +51,7 @@ Once configured, you can test it from the Paystack dashboard:
 
 Check your application logs:
 ```bash
-heroku logs --tail --app suopay-backend
+heroku logs --tail --app suoops-backend
 ```
 
 ### Webhook Verification
@@ -67,9 +67,9 @@ The webhook endpoint automatically verifies requests using the `x-paystack-signa
 ### Troubleshooting
 
 **If webhook fails:**
-1. Check Heroku logs: `heroku logs --tail --app suopay-backend`
-2. Verify webhook secret is set: `heroku config:get PAYSTACK_WEBHOOK_SECRET --app suopay-backend`
-3. Test endpoint manually: `curl -X POST https://api.suopay.io/webhooks/paystack`
+1. Check Heroku logs: `heroku logs --tail --app suoops-backend`
+2. Verify webhook secret is set: `heroku config:get PAYSTACK_WEBHOOK_SECRET --app suoops-backend`
+3. Test endpoint manually: `curl -X POST https://api.suoops.com/webhooks/paystack`
 4. Check Paystack webhook logs in dashboard
 
 **Common Issues:**
@@ -92,7 +92,7 @@ When you're ready to set up WhatsApp webhooks:
 
 **Webhook URL:**
 ```
-https://api.suopay.io/webhooks/whatsapp
+https://api.suoops.com/webhooks/whatsapp
 ```
 
 **Verification Token:** Will be configured in Meta Business Suite

@@ -4,7 +4,7 @@
 
 Your WhatsApp webhook is ready and running at:
 ```
-https://api.suopay.io/webhooks/whatsapp
+https://api.suoops.com/webhooks/whatsapp
 ```
 
 ## Steps to Complete in Meta Business Manager
@@ -18,17 +18,17 @@ https://api.suopay.io/webhooks/whatsapp
 
 #### Webhook URL
 ```
-https://api.suopay.io/webhooks/whatsapp
+https://api.suoops.com/webhooks/whatsapp
 ```
 
 #### Verify Token
 ```
-suopay_verify_2025
+suoops_verify_2025
 ```
 
 #### Callback URL (if requested separately)
 ```
-https://api.suopay.io/webhooks/whatsapp
+https://api.suoops.com/webhooks/whatsapp
 ```
 
 ### 3. Subscribe to Webhook Fields
@@ -55,10 +55,10 @@ Expected behavior:
 Check logs to see message processing:
 ```bash
 # Web dyno logs
-heroku logs --tail --app suopay-backend --dyno web
+heroku logs --tail --app suoops-backend --dyno web
 
 # Worker dyno logs  
-heroku logs --tail --app suopay-backend --dyno worker
+heroku logs --tail --app suoops-backend --dyno worker
 ```
 
 ## ✅ Current Status
@@ -90,18 +90,18 @@ The NLP service will extract:
 ## Troubleshooting
 
 ### Webhook not receiving messages
-1. Verify webhook URL in Meta: `https://api.suopay.io/webhooks/whatsapp`
-2. Check verify token: `suopay_verify_2025`
+1. Verify webhook URL in Meta: `https://api.suoops.com/webhooks/whatsapp`
+2. Check verify token: `suoops_verify_2025`
 3. Ensure subscribed to `messages` event
 
 ### Messages not processing
-1. Check worker is running: `heroku ps --app suopay-backend`
-2. View worker logs: `heroku logs --tail --app suopay-backend --dyno worker`
+1. Check worker is running: `heroku ps --app suoops-backend`
+2. View worker logs: `heroku logs --tail --app suoops-backend --dyno worker`
 3. Verify Redis connection
 
 ### Need to restart worker
 ```bash
-heroku ps:restart worker --app suopay-backend
+heroku ps:restart worker --app suoops-backend
 ```
 
 ## Environment Variables (Already Set)
@@ -110,7 +110,7 @@ heroku ps:restart worker --app suopay-backend
 WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
 WHATSAPP_BUSINESS_ACCOUNT_ID=your_business_account_id  
 WHATSAPP_ACCESS_TOKEN=your_access_token
-WHATSAPP_VERIFY_TOKEN=suopay_verify_2025
+WHATSAPP_VERIFY_TOKEN=suoops_verify_2025
 ```
 
 ## Next Steps

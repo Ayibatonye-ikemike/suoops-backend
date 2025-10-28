@@ -185,7 +185,7 @@ WHERE invoice_id = 'INV-1761135842-ABC123';
 
 ### Production Setup (Heroku)
 ```bash
-# Backend: api.suopay.io
+# Backend: api.suoops.com
 ENV=prod
 DATABASE_URL=postgresql://...
 WHATSAPP_API_KEY=EAALmWSVt...
@@ -197,8 +197,8 @@ S3_BUCKET=whatsinvoice
 
 ### Frontend Setup (Vercel)
 ```bash
-# Frontend: suopay.io
-NEXT_PUBLIC_API_URL=https://api.suopay.io
+# Frontend: suoops.com
+NEXT_PUBLIC_API_URL=https://api.suoops.com
 ```
 
 ---
@@ -229,7 +229,7 @@ NEXT_PUBLIC_API_URL=https://api.suopay.io
 Invoice Jane Smith 75000 for Logo Design due tomorrow
 
 # Via API:
-curl -X POST https://api.suopay.io/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -247,7 +247,7 @@ curl -X POST https://api.suopay.io/invoices \
 ### Test Payment Webhook
 ```bash
 # Paystack will send to:
-POST https://api.suopay.io/webhooks/paystack
+POST https://api.suoops.com/webhooks/paystack
 
 # With payload:
 {
@@ -306,7 +306,7 @@ Total time: minutes instead of days, minimal back-and-forth
 ## Next Steps
 
 ### For Business Owners
-1. Register at https://suopay.io/register
+1. Register at https://suoops.com/register
 2. Connect your WhatsApp business number
 3. Add your business bank details in settings
 4. Start sending invoices via WhatsApp!
@@ -321,4 +321,4 @@ Total time: minutes instead of days, minimal back-and-forth
 
 **Built with:** FastAPI, Next.js, PostgreSQL, Redis, Celery, WhatsApp Cloud API (Paystack powers SuoPay subscription billing)
 **Deployed on:** Heroku (Backend) + Vercel (Frontend)  
-**Domain:** https://suopay.io + https://api.suopay.io
+**Domain:** https://suoops.com + https://api.suoops.com

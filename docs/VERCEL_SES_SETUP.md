@@ -1,7 +1,7 @@
 # Vercel DNS Setup for Amazon SES - Step by Step
 
 ## 🎯 Goal
-Add 6 DNS records to your `suopay.io` domain in Vercel for Amazon SES email verification.
+Add 6 DNS records to your `suoops.com` domain in Vercel for Amazon SES email verification.
 
 ---
 
@@ -19,11 +19,11 @@ Add 6 DNS records to your `suopay.io` domain in Vercel for Amazon SES email veri
 
 1. Click on your **profile/avatar** (bottom left)
 2. Click **Domains** from the dropdown menu
-3. Find **suopay.io** in the list
-4. Click **suopay.io** to manage it
+3. Find **suoops.com** in the list
+4. Click **suoops.com** to manage it
 5. Scroll down to the **DNS Records** section
 
-Or direct link: https://vercel.com/dashboard/domains/suopay.io
+Or direct link: https://vercel.com/dashboard/domains/suoops.com
 
 ---
 
@@ -43,7 +43,7 @@ TTL: Auto (Vercel default)
 1. Click **Add** button in DNS Records section
 2. **Type:** Select `CNAME` from dropdown
 3. **Name:** Enter `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey`
-   - ⚠️ **Important:** Just the subdomain, without `.suopay.io`
+   - ⚠️ **Important:** Just the subdomain, without `.suoops.com`
 4. **Value:** Enter `iu5cwz57dsyf2d4owslq3dg3dvw6verk.dkim.amazonses.com`
 5. Click **Save**
 
@@ -96,7 +96,7 @@ Priority: 10
 
 ---
 
-### **Step 5: Add SPF Record (TXT Record for mail.suopay.io)**
+### **Step 5: Add SPF Record (TXT Record for mail.suoops.com)**
 
 ```
 Type: TXT
@@ -157,7 +157,7 @@ After adding all records, your DNS Records section should have:
 
 ### **In AWS SES Console:**
 1. Go to: https://console.aws.amazon.com/ses/
-2. Click **Identities** → **suopay.io**
+2. Click **Identities** → **suoops.com**
 3. **Status** changes from "Pending verification" → "Verified" ✅
 4. **DKIM status** changes from "Pending" → "Successful" ✅
 5. **Custom MAIL FROM** changes from "Pending" → "Successful" ✅
@@ -176,22 +176,22 @@ Run these commands in your terminal:
 
 ```bash
 # Check DKIM Record 1
-dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io CNAME
+dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com CNAME
 
 # Check DKIM Record 2
-dig flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey.suopay.io CNAME
+dig flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey.suoops.com CNAME
 
 # Check DKIM Record 3
-dig 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey.suopay.io CNAME
+dig 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey.suoops.com CNAME
 
 # Check MX Record
-dig mail.suopay.io MX
+dig mail.suoops.com MX
 
 # Check SPF Record
-dig mail.suopay.io TXT
+dig mail.suoops.com TXT
 
 # Check DMARC Record
-dig _dmarc.suopay.io TXT
+dig _dmarc.suoops.com TXT
 ```
 
 **Expected results:**
@@ -202,7 +202,7 @@ dig _dmarc.suopay.io TXT
 ### **Option 3: Use Online Tool**
 
 1. Go to: https://mxtoolbox.com/SuperTool.aspx
-2. Enter: `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io`
+2. Enter: `iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com`
 3. Select **CNAME Lookup**
 4. Should show: `iu5cwz57dsyf2d4owslq3dg3dvw6verk.dkim.amazonses.com`
 
@@ -213,9 +213,9 @@ Repeat for other records.
 ## ⚠️ Vercel-Specific Notes
 
 ### **1. Domain Suffix**
-Vercel automatically appends `.suopay.io` to the Name field.
+Vercel automatically appends `.suoops.com` to the Name field.
 
-❌ **Don't enter:** `mail.suopay.io`
+❌ **Don't enter:** `mail.suoops.com`
 ✅ **Do enter:** `mail`
 
 ### **2. No Quotes for TXT Records**
@@ -290,7 +290,7 @@ Your frontend is on Vercel, so managing DNS there makes sense:
 
 1. Go to AWS SES Console: https://console.aws.amazon.com/ses/
 2. Click **Identities** (left sidebar)
-3. Click **suopay.io**
+3. Click **suoops.com**
 4. Check these statuses:
 
 ```
@@ -331,14 +331,14 @@ heroku config:set \
   SES_SMTP_PORT=587 \
   SES_SMTP_USER=YOUR_SMTP_USERNAME \
   SES_SMTP_PASSWORD=YOUR_SMTP_PASSWORD \
-  FROM_EMAIL=noreply@suopay.io \
-  --app suopay-backend
+  FROM_EMAIL=noreply@suoops.com \
+  --app suoops-backend
 ```
 
 ### **3. Test Email Sending**
 
 ```bash
-curl -X POST https://suopay-backend-a204d4816960.herokuapp.com/invoices \
+curl -X POST https://suoops-backend.herokuapp.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -358,7 +358,7 @@ Check your email inbox! 📧
 ### **Issue: Can't find "Add" button**
 
 **Solution:**
-1. Make sure you're on the domain details page: https://vercel.com/dashboard/domains/suopay.io
+1. Make sure you're on the domain details page: https://vercel.com/dashboard/domains/suoops.com
 2. Scroll down to **DNS Records** section
 3. The **Add** button should be on the right side of that section
 
@@ -384,7 +384,7 @@ Check your email inbox! 📧
 2. Check if records appear in Vercel dashboard
 3. Use `dig` command to check:
    ```bash
-   dig mail.suopay.io MX
+   dig mail.suoops.com MX
    ```
 4. If no results after 1 hour, try deleting and re-adding the record
 
@@ -406,7 +406,7 @@ Share a screenshot of your Vercel DNS Records section and I'll help!
 
 **What you need to do:**
 1. Login to Vercel: https://vercel.com/login
-2. Go to Domains → suopay.io → DNS Records section
+2. Go to Domains → suoops.com → DNS Records section
 3. Add 6 DNS records (3 CNAME, 1 MX, 2 TXT)
 4. Wait 5-30 minutes for DNS propagation ⚡
 5. Check AWS SES Console for "Verified" status
@@ -425,7 +425,7 @@ Share a screenshot of your Vercel DNS Records section and I'll help!
 
 ```
 Login: https://vercel.com/login
-Domain: https://vercel.com/dashboard/domains/suopay.io
+Domain: https://vercel.com/dashboard/domains/suoops.com
 
 Records to add:
 - 3 CNAME (DKIM): ._domainkey subdomains
@@ -433,13 +433,13 @@ Records to add:
 - 2 TXT: mail (SPF) and _dmarc (DMARC policy)
 
 No quotes on TXT values
-No .suopay.io suffix on Names
+No .suoops.com suffix on Names
 Wait 5-30 minutes for propagation
 ```
 
 ---
 
-**Ready to start?** Go to https://vercel.com/dashboard/domains/suopay.io and follow the steps above!
+**Ready to start?** Go to https://vercel.com/dashboard/domains/suoops.com and follow the steps above!
 
 Let me know when you've added the records, and I'll help you verify them! 🎉
 

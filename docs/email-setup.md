@@ -30,7 +30,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=abcdefghijklmnop  # App password from step 2
-FROM_EMAIL=noreply@suopay.io  # Optional: Custom sender name
+FROM_EMAIL=noreply@suoops.com  # Optional: Custom sender name
 ```
 
 ### Step 4: Configure Heroku
@@ -43,8 +43,8 @@ heroku config:set \
   SMTP_PORT=587 \
   SMTP_USER=your-email@gmail.com \
   SMTP_PASSWORD=your-app-password \
-  FROM_EMAIL=noreply@suopay.io \
-  --app suopay-backend
+  FROM_EMAIL=noreply@suoops.com \
+  --app suoops-backend
 ```
 
 ---
@@ -75,7 +75,7 @@ SMTP_HOST=smtp-relay.brevo.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-smtp-key-from-brevo
-FROM_EMAIL=noreply@suopay.io
+FROM_EMAIL=noreply@suoops.com
 ```
 
 ---
@@ -91,7 +91,7 @@ SMTP_HOST=smtp.zoho.com
 SMTP_PORT=587
 SMTP_USER=your-email@zohomail.com
 SMTP_PASSWORD=your-password
-FROM_EMAIL=noreply@suopay.io
+FROM_EMAIL=noreply@suoops.com
 ```
 
 ---
@@ -102,12 +102,12 @@ After configuring, test with this curl command:
 
 ```bash
 # Get your access token first
-curl -X POST https://api.suopay.io/auth/login \
+curl -X POST https://api.suoops.com/auth/login \
   -H "Content-Type: application/json" \
   -d '{"phone":"+2348012345678","password":"yourpassword"}'
 
 # Create invoice with email (replace TOKEN)
-curl -X POST https://api.suopay.io/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Authorization: Bearer TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -120,7 +120,7 @@ curl -X POST https://api.suopay.io/invoices \
 
 Check your email logs:
 ```bash
-heroku logs --tail --app suopay-backend | grep -i email
+heroku logs --tail --app suoops-backend | grep -i email
 ```
 
 ---

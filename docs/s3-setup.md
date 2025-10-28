@@ -42,9 +42,9 @@ To allow the frontend to access uploaded files (PDFs and logos), you need to con
             "HEAD"
         ],
         "AllowedOrigins": [
-            "https://suopay.io",
-            "https://www.suopay.io",
-            "https://api.suopay.io",
+            "https://suoops.com",
+            "https://www.suoops.com",
+            "https://api.suoops.com",
             "http://localhost:3000"
         ],
         "ExposeHeaders": [
@@ -144,12 +144,12 @@ After configuring CORS and deploying, test with:
 ### 1. Test Logo Upload
 ```bash
 # Login and get access token
-curl -X POST https://api.suopay.io/auth/login \
+curl -X POST https://api.suoops.com/auth/login \
   -H "Content-Type: application/json" \
   -d '{"phone":"+2348012345678","password":"yourpassword"}'
 
 # Upload logo (replace TOKEN with your access token)
-curl -X POST https://api.suopay.io/users/me/logo \
+curl -X POST https://api.suoops.com/users/me/logo \
   -H "Authorization: Bearer TOKEN" \
   -F "file=@/path/to/logo.png"
 ```
@@ -157,7 +157,7 @@ curl -X POST https://api.suopay.io/users/me/logo \
 ### 2. Test Invoice PDF Generation
 ```bash
 # Create invoice (will upload PDF to S3)
-curl -X POST https://api.suopay.io/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Authorization: Bearer TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

@@ -13,7 +13,7 @@ This guide will help you configure the WhatsApp webhook for SuoPay to receive an
 ### 1. Webhook URL
 Your WhatsApp webhook URL is:
 ```
-https://api.suopay.io/webhooks/whatsapp
+https://api.suoops.com/webhooks/whatsapp
 ```
 
 ### 2. Configure in Meta Business Manager
@@ -24,9 +24,9 @@ https://api.suopay.io/webhooks/whatsapp
 4. Under **Webhook**, click **Edit**
 5. Enter the webhook URL:
    ```
-   https://api.suopay.io/webhooks/whatsapp
+   https://api.suoops.com/webhooks/whatsapp
    ```
-6. Enter a verification token (can be any string, e.g., `suopay_verify_2025`)
+6. Enter a verification token (can be any string, e.g., `suoops_verify_2025`)
 7. Click **Verify and Save**
 
 ### 3. Subscribe to Webhook Events
@@ -40,7 +40,7 @@ Subscribe to the following events:
 Send a test payload to verify the webhook is working:
 
 ```bash
-curl -X POST https://api.suopay.io/webhooks/whatsapp \
+curl -X POST https://api.suoops.com/webhooks/whatsapp \
   -H "Content-Type: application/json" \
   -d '{
     "from": "+2347012345678",
@@ -76,7 +76,7 @@ Ensure these are set in Heroku:
 
 ```bash
 # Check current values
-heroku config --app suopay-backend
+heroku config --app suoops-backend
 
 # Required variables
 WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
@@ -110,7 +110,7 @@ async def verify_whatsapp_webhook(
     from app.core.config import settings
     
     # You'll need to add WHATSAPP_VERIFY_TOKEN to settings
-    verify_token = settings.WHATSAPP_VERIFY_TOKEN or "suopay_verify_2025"
+    verify_token = settings.WHATSAPP_VERIFY_TOKEN or "suoops_verify_2025"
     
     if hub_mode == "subscribe" and hub_verify_token == verify_token:
         return PlainTextResponse(hub_challenge)
@@ -130,11 +130,11 @@ async def verify_whatsapp_webhook(
 ### Webhook not receiving messages
 - Verify the webhook URL is correct in Meta Business Manager
 - Check that the webhook is subscribed to `messages` events
-- Check Heroku logs: `heroku logs --tail --app suopay-backend`
+- Check Heroku logs: `heroku logs --tail --app suoops-backend`
 
 ### Messages not being processed
-- Check Celery worker is running: `heroku ps --app suopay-backend`
-- Verify Redis is connected: `heroku redis:info --app suopay-backend`
+- Check Celery worker is running: `heroku ps --app suoops-backend`
+- Verify Redis is connected: `heroku redis:info --app suoops-backend`
 - Check worker logs for errors
 
 ### Cannot verify webhook

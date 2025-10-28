@@ -14,16 +14,16 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 - 💳 Payment integration with Paystack (webhook tested)
 - 📄 Automated invoice generation with PDF support
 - 🔐 Secure authentication with JWT tokens
-- 🌐 Professional frontend at suopay.io
-- 🚀 RESTful API at api.suopay.io
+- 🌐 Professional frontend at suoops.com
+- 🚀 RESTful API at api.suoops.com
 
 ---
 
 ## ✅ Completed Tasks
 
 ### 1. Infrastructure Deployment
-- ✅ Backend deployed to Heroku at `https://api.suopay.io`
-- ✅ Frontend deployed to Vercel at `https://suopay.io`
+- ✅ Backend deployed to Heroku at `https://api.suoops.com`
+- ✅ Frontend deployed to Vercel at `https://suoops.com`
 - ✅ PostgreSQL database (essential-0 plan)
 - ✅ Redis cache (mini plan) with SSL configured
 - ✅ Celery worker for async task processing
@@ -67,8 +67,8 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 - ✅ Ready for Meta Business Manager setup
 
 ### 7. Frontend
-- ✅ Deployed to suopay.io
-- ✅ API base URL configured (https://api.suopay.io)
+- ✅ Deployed to suoops.com
+- ✅ API base URL configured (https://api.suoops.com)
 - ✅ React Query setup for API calls
 - ✅ Authentication pages ready
 - ✅ Dashboard components in place
@@ -104,7 +104,7 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 ### Celery Worker Not Running
 **Problem**: Worker dyno was not scaled up
 
-**Solution**: `heroku ps:scale worker=1 --app suopay-backend`
+**Solution**: `heroku ps:scale worker=1 --app suoops-backend`
 
 ---
 
@@ -120,7 +120,7 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 | WhatsApp Verification | ✅ PASS | GET endpoint returns challenge |
 | WhatsApp Messages | ✅ PASS | POST endpoint queues messages |
 | Celery Processing | ✅ PASS | Worker processing tasks |
-| Frontend Deploy | ✅ PASS | Site accessible at suopay.io |
+| Frontend Deploy | ✅ PASS | Site accessible at suoops.com |
 | SSL Certificates | ✅ PASS | Valid until Jan 17, 2026 |
 
 **Overall Success Rate**: 10/10 (100%)
@@ -167,13 +167,13 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 ✅ WHATSAPP_PHONE_NUMBER_ID
 ✅ WHATSAPP_BUSINESS_ACCOUNT_ID
 ✅ WHATSAPP_ACCESS_TOKEN
-✅ WHATSAPP_VERIFY_TOKEN # suopay_verify_2025
-✅ FRONTEND_URL          # https://suopay.io
+✅ WHATSAPP_VERIFY_TOKEN # suoops_verify_2025
+✅ FRONTEND_URL          # https://suoops.com
 ```
 
 ### Vercel (Frontend)
 ```bash
-✅ NEXT_PUBLIC_API_BASE_URL  # https://api.suopay.io
+✅ NEXT_PUBLIC_API_BASE_URL  # https://api.suoops.com
 ```
 
 ---
@@ -214,8 +214,8 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 
 ### Setup Required
 1. Go to Meta for Developers
-2. Configure webhook URL: `https://api.suopay.io/webhooks/whatsapp`
-3. Set verify token: `suopay_verify_2025`
+2. Configure webhook URL: `https://api.suoops.com/webhooks/whatsapp`
+3. Set verify token: `suoops_verify_2025`
 4. Subscribe to `messages` event
 5. Test with real WhatsApp message
 
@@ -241,7 +241,7 @@ Create invoice for Mike 100000
 
 ### Webhook URL
 ```
-https://api.suopay.io/webhooks/paystack
+https://api.suoops.com/webhooks/paystack
 ```
 
 ### Test Results
@@ -311,19 +311,19 @@ https://api.suopay.io/webhooks/paystack
 git push heroku main
 
 # View logs
-heroku logs --tail --app suopay-backend
+heroku logs --tail --app suoops-backend
 
 # Check dyno status
-heroku ps --app suopay-backend
+heroku ps --app suoops-backend
 
 # Scale worker
-heroku ps:scale worker=1 --app suopay-backend
+heroku ps:scale worker=1 --app suoops-backend
 
 # Run migrations
-heroku run alembic upgrade head --app suopay-backend
+heroku run alembic upgrade head --app suoops-backend
 
 # Access console
-heroku run bash --app suopay-backend
+heroku run bash --app suoops-backend
 ```
 
 ### Frontend (Vercel)
@@ -332,7 +332,7 @@ heroku run bash --app suopay-backend
 vercel --prod
 
 # View logs
-vercel logs suopay-frontend
+vercel logs suoops-frontend
 
 # Add environment variable
 echo "value" | vercel env add VAR_NAME production
@@ -369,10 +369,10 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiaWF0IjoxNzYxMTI5MjMyLCJleHA
 
 ## 🔗 Important URLs
 
-- **Frontend**: https://suopay.io
-- **API**: https://api.suopay.io
-- **Heroku Dashboard**: https://dashboard.heroku.com/apps/suopay-backend
-- **Vercel Dashboard**: https://vercel.com/ikemike/suopay-frontend
+- **Frontend**: https://suoops.com
+- **API**: https://api.suoops.com
+- **Heroku Dashboard**: https://dashboard.heroku.com/apps/suoops-backend
+- **Vercel Dashboard**: https://vercel.com/ikemike/suoops-frontend
 - **Meta Business Manager**: https://developers.facebook.com/
 
 ---

@@ -66,7 +66,7 @@
 #### Domain & DNS
 | Resource | Plan | Cost | Notes |
 |----------|------|------|-------|
-| **Domain** | suopay.io | $12/year | GoDaddy/Namecheap |
+| **Domain** | suoops.com | $12/year | GoDaddy/Namecheap |
 | **DNS** | Vercel | $0/month | Free with Vercel nameservers |
 | **SSL Certificate** | Let's Encrypt | $0/month | Free via Heroku ACM |
 | **Total** | | **$1/month** | **₦1,625** |

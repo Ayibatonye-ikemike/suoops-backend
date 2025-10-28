@@ -30,7 +30,7 @@ These fields live on your SuoPay user profile. Without them, invoices are still 
 Use either `PATCH` or `POST` on `PATCH /me/bank-details` with an authenticated request. Example using curl:
 
 ```bash
-curl -X PATCH "https://api.suopay.io/me/bank-details" \
+curl -X PATCH "https://api.suoops.com/me/bank-details" \
    -H "Authorization: Bearer <ACCESS_TOKEN>" \
    -H "Content-Type: application/json" \
    -d '{
@@ -52,7 +52,7 @@ Call `GET /me/bank-details` to confirm what the system will render:
 
 ```bash
 curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
-   https://api.suopay.io/me/bank-details
+   https://api.suoops.com/me/bank-details
 ```
 
 Response shape:
@@ -96,7 +96,7 @@ When the customer shares proof or your bank alert lands, update the invoice stat
 2. **Mark the invoice as paid.**
 
 ```bash
-curl -X PATCH "https://api.suopay.io/invoices/INV-1234" \
+curl -X PATCH "https://api.suoops.com/invoices/INV-1234" \
    -H "Authorization: Bearer <ACCESS_TOKEN>" \
    -H "Content-Type: application/json" \
    -d '{"status": "paid"}'
@@ -190,7 +190,7 @@ With these pieces in place, you can confidently issue invoices that guide custom
 #### Via API (For Custom Integrations):
 
 ```bash
-curl -X PATCH https://api.suopay.io/invoices/{invoice_id} \
+curl -X PATCH https://api.suoops.com/invoices/{invoice_id} \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"status": "paid"}'
@@ -340,7 +340,7 @@ payment_link = f"https://paystack.com/pay/{invoice_id}"
 #### 2. Webhook Configuration
 Paystack sends payment confirmations to SuoPay:
 ```
-Webhook URL: https://api.suopay.io/webhooks/paystack
+Webhook URL: https://api.suoops.com/webhooks/paystack
 Events: charge.success, transfer.success
 ```
 
@@ -558,8 +558,8 @@ Accept payments in:
 
 ### SuoPay Support:
 - **WhatsApp:** +234 XXX XXX XXXX (your support number)
-- **Email:** support@suopay.io
-- **Dashboard:** https://suopay.io/help
+- **Email:** support@suoops.com
+- **Dashboard:** https://suoops.com/help
 
 ---
 
