@@ -27,36 +27,49 @@ def main():
         
         print('\nDeleting all data...')
         
-        # Delete in correct order (respecting foreign keys)
-        # 1. Delete invoice lines first
-        db.query(InvoiceLine).delete()
-        print('  ✓ Deleted all invoice lines')
-        
-        # 2. Delete invoices
-        db.query(Invoice).delete()
-        print('  ✓ Deleted all invoices')
-        
-        # 3. Delete webhook events if table exists
+        # Use TRUNCATE CASCADE for faster deletion and automatic foreign key handling
         try:
-            db.query(WebhookEvent).delete()
-            print('  ✓ Deleted all webhook events')
-        except Exception:
-            pass  # Table might not exist
-        
-        # 4. Delete users
-        db.query(User).delete()
-        print('  ✓ Deleted all users')
-        
-        # Reset auto-increment sequences (PostgreSQL)
-        try:
-            db.execute(text("ALTER SEQUENCE users_id_seq RESTART WITH 1"))
-            db.execute(text("ALTER SEQUENCE invoices_id_seq RESTART WITH 1"))
-            db.execute(text("ALTER SEQUENCE invoice_lines_id_seq RESTART WITH 1"))
+            # Truncate all tables in one go with CASCADE
+            db.execute(text("TRUNCATE TABLE invoice_lines, invoices, users, webhook_events RESTART IDENTITY CASCADE"))
+            db.commit()
+            print('  ✓ Deleted all data from all tables')
             print('  ✓ Reset ID sequences')
         except Exception as e:
-            print(f'  ⚠ Could not reset sequences: {e}')
-        
-        db.commit()
+            # Fallback to individual deletes if TRUNCATE fails
+            db.rollback()
+            print(f'  ⚠ TRUNCATE failed, using DELETE: {e}')
+            print('  Using individual DELETE statements...')
+            
+            # Delete in correct order (respecting foreign keys)
+            # 1. Delete invoice lines first
+            deleted = db.query(InvoiceLine).delete(synchronize_session=False)
+            print(f'  ✓ Deleted {deleted} invoice lines')
+            
+            # 2. Delete invoices
+            deleted = db.query(Invoice).delete(synchronize_session=False)
+            print(f'  ✓ Deleted {deleted} invoices')
+            
+            # 3. Delete webhook events if table exists
+            try:
+                deleted = db.query(WebhookEvent).delete(synchronize_session=False)
+                print(f'  ✓ Deleted {deleted} webhook events')
+            except Exception:
+                pass  # Table might not exist
+            
+            # 4. Delete users
+            deleted = db.query(User).delete(synchronize_session=False)
+            print(f'  ✓ Deleted {deleted} users')
+            
+            # Reset auto-increment sequences (PostgreSQL)
+            try:
+                db.execute(text("ALTER SEQUENCE users_id_seq RESTART WITH 1"))
+                db.execute(text("ALTER SEQUENCE invoices_id_seq RESTART WITH 1"))
+                db.execute(text("ALTER SEQUENCE invoice_lines_id_seq RESTART WITH 1"))
+                print('  ✓ Reset ID sequences')
+            except Exception as e:
+                print(f'  ⚠ Could not reset sequences: {e}')
+            
+            db.commit()
         
         print('\n' + '=' * 80)
         print('✓ DATABASE CLEARED SUCCESSFULLY')
