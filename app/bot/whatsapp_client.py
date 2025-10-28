@@ -44,6 +44,14 @@ class WhatsAppClient:
             )
             response.raise_for_status()
             logger.info("[WHATSAPP] ✓ Sent to %s: %s", to, body[:50])
+        except requests.HTTPError as exc:  # pragma: no cover - external service
+            detail = exc.response.text if exc.response is not None else "(no body)"
+            logger.error(
+                "[WHATSAPP] Failed to send to %s: %s | Response: %s",
+                to,
+                exc,
+                detail,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.error("[WHATSAPP] Failed to send to %s: %s", to, exc)
 
