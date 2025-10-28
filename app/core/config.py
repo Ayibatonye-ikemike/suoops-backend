@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class BaseAppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    APP_NAME: str = "SuoPay"
+    APP_NAME: str = "SuoOps"
     ENV: str = "dev"
     DATABASE_URL: str | None = None
     S3_ENDPOINT: str | None = None
@@ -39,7 +39,7 @@ class BaseAppSettings(BaseSettings):
     
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
-    WHATSAPP_VERIFY_TOKEN: str = "suopay_verify_2025"
+    WHATSAPP_VERIFY_TOKEN: str = "suoops_verify_2025"
     WHATSAPP_TEMPLATE_INVOICE: str | None = None
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en_US"
     
@@ -57,7 +57,7 @@ class BaseAppSettings(BaseSettings):
     REDIS_SSL_CA_CERTS: str | None = None
     HTML_PDF_ENABLED: bool = False
     PRIMARY_PAYMENT_PROVIDER: str = "paystack"
-    FRONTEND_URL: str = "https://suopay.io"
+    FRONTEND_URL: str = "https://suoops.com"
     CORS_ALLOW_ORIGINS: list[str] = ["*"]
     CORS_ALLOW_METHODS: list[str] = ["*"]
     CORS_ALLOW_HEADERS: list[str] = ["*"]
@@ -103,12 +103,10 @@ class TestSettings(BaseAppSettings):
 class ProdSettings(BaseAppSettings):
     ENV: str = "prod"
     CORS_ALLOW_ORIGINS: list[str] = [
-        "https://suopay.io",
-        "https://www.suopay.io",
-        "https://suopay.vercel.app",
-        "https://suopay-frontend-3j117jciw-ikemike.vercel.app",
-        "https://suopay-frontend-h3m08c1ca-ikemike.vercel.app",
-        "https://suopay-frontend-9h28j274q-ikemike.vercel.app",
+        "https://suoops.com",
+        "https://www.suoops.com",
+        "https://suoops-frontend.vercel.app",
+        "https://suoops-frontend-ikemike.vercel.app",
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
     LOG_FORMAT: str = "json"

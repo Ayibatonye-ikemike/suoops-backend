@@ -14,12 +14,12 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Defaults (can be overridden via flags or env vars)
-BASE_URL="${BASE_URL:-https://suopay-backend-a204d4816960.herokuapp.com}"
+BASE_URL="${BASE_URL:-https://suoops-backend.herokuapp.com}"
 BUSINESS_PHONE="${BUSINESS_PHONE:-2348012345678}"
 CUSTOMER_PHONE="${CUSTOMER_PHONE:-2348087654321}"
 CUSTOMER_NAME="${CUSTOMER_NAME:-Jane Doe}"
 AMOUNT_NAIRA="${AMOUNT_NAIRA:-50000}"
-HEROKU_APP="${HEROKU_APP:-suopay-backend-a204d4816960}"
+HEROKU_APP="${HEROKU_APP:-suoops-backend-a204d4816960}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-5}"
 
 usage() {
@@ -86,7 +86,7 @@ echo ""
 
 echo "Step 1: Test Webhook Verification (GET request)"
 echo "------------------------------------------------"
-VERIFICATION=$(curl -s -X GET "$BASE_URL/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suopay_verify_2025&hub.challenge=test_challenge_123")
+VERIFICATION=$(curl -s -X GET "$BASE_URL/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suoops_verify_2025&hub.challenge=test_challenge_123")
 
 if [ "$VERIFICATION" = "test_challenge_123" ]; then
     echo -e "${GREEN}✅ Webhook verification successful!${NC}"

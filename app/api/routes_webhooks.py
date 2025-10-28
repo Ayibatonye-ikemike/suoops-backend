@@ -24,7 +24,7 @@ async def verify_whatsapp_webhook(
     hub_challenge: str = Query(None, alias="hub.challenge"),
 ):
     """Webhook verification endpoint for WhatsApp Business API"""
-    verify_token = getattr(settings, "WHATSAPP_VERIFY_TOKEN", "suopay_verify_2025")
+    verify_token = getattr(settings, "WHATSAPP_VERIFY_TOKEN", "suoops_verify_2025")
     
     if hub_mode == "subscribe" and hub_verify_token == verify_token:
         return PlainTextResponse(hub_challenge)

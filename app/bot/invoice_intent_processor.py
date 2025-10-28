@@ -46,7 +46,7 @@ class InvoiceIntentProcessor:
                 sender,
                 "❌ Unable to identify your business account.\n\n"
                 "Please ensure your WhatsApp number is registered in your profile at "
-                "suopay.io/dashboard/settings",
+                "suoops.com/dashboard/settings",
             )
             return
 

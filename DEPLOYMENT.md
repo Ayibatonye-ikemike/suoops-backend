@@ -9,7 +9,7 @@ Before deploying, make sure you have:
 1. **Heroku CLI** installed: https://devcenter.heroku.com/articles/heroku-cli
 2. **Vercel CLI** installed: `npm i -g vercel`
 3. **Git** repository set up
-4. Domain `suopay.io` configured
+4. Domain `suoops.com` configured
 5. `.python-version` present in the repo root (currently `3.12`) so Heroku picks the latest secure Python patch automatically.
 
 ## Quick Deployment
@@ -33,25 +33,25 @@ This script will guide you through deploying both the backend and frontend.
 
 2. **Create a new Heroku app:**
    ```bash
-   heroku create suopay-backend --region us
+   heroku create suoops-backend --region us
    ```
 
 3. **Add required addons:**
    ```bash
-   heroku addons:create heroku-postgresql:mini -a suopay-backend
-   heroku addons:create heroku-redis:mini -a suopay-backend
+   heroku addons:create heroku-postgresql:mini -a suoops-backend
+   heroku addons:create heroku-redis:mini -a suoops-backend
    ```
 
 4. **Set environment variables:**
    ```bash
-   heroku config:set ENV=prod -a suopay-backend
-   heroku config:set APP_NAME=SuoPay -a suopay-backend
-   heroku config:set WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id -a suopay-backend
-   heroku config:set WHATSAPP_API_KEY=your_whatsapp_token -a suopay-backend
-   heroku config:set PAYSTACK_SECRET=your_paystack_secret -a suopay-backend
-   heroku config:set S3_ACCESS_KEY=your_s3_access_key -a suopay-backend
-   heroku config:set S3_SECRET_KEY=your_s3_secret_key -a suopay-backend
-   heroku config:set S3_BUCKET=suopay-storage -a suopay-backend
+   heroku config:set ENV=prod -a suoops-backend
+   heroku config:set APP_NAME=SuoPay -a suoops-backend
+   heroku config:set WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id -a suoops-backend
+   heroku config:set WHATSAPP_API_KEY=your_whatsapp_token -a suoops-backend
+   heroku config:set PAYSTACK_SECRET=your_paystack_secret -a suoops-backend
+   heroku config:set S3_ACCESS_KEY=your_s3_access_key -a suoops-backend
+   heroku config:set S3_SECRET_KEY=your_s3_secret_key -a suoops-backend
+   heroku config:set S3_BUCKET=suoops-storage -a suoops-backend
    ```
 
 5. **Deploy:**
@@ -63,7 +63,7 @@ This script will guide you through deploying both the backend and frontend.
 
 6. **Run database migrations:**
    ```bash
-   heroku run alembic upgrade head -a suopay-backend
+   heroku run alembic upgrade head -a suoops-backend
    ```
 
    The latest migration removes password fields from the `users` table and enables WhatsApp OTP login, so this step is required after every deploy that changes the data model.
@@ -90,18 +90,18 @@ This script will guide you through deploying both the backend and frontend.
 
 ## Domain Configuration
 
-### Setting up suopay.io
+### Setting up suoops.com
 
 1. **For the frontend (Vercel):**
    - Go to your Vercel dashboard
    - Navigate to your project settings
-   - Add custom domain: `suopay.io` and `www.suopay.io`
+   - Add custom domain: `suoops.com` and `www.suoops.com`
    - Follow Vercel's DNS configuration instructions
 
 2. **For the backend (Heroku):**
-   - Add a subdomain like `api.suopay.io`
+   - Add a subdomain like `api.suoops.com`
    - In Heroku dashboard, go to Settings > Domains
-   - Add custom domain: `api.suopay.io`
+   - Add custom domain: `api.suoops.com`
    - Configure DNS records as instructed
 
 ### DNS Configuration
@@ -137,7 +137,7 @@ CNAME   api     your-app.herokuapp.com         300
 - `S3_BUCKET`: Your S3 bucket name
 
 ### Frontend (Vercel)
-- `NEXT_PUBLIC_API_BASE_URL`: Your backend URL (e.g., `https://api.suopay.io`)
+- `NEXT_PUBLIC_API_BASE_URL`: Your backend URL (e.g., `https://api.suoops.com`)
 
 ## Troubleshooting
 
@@ -151,14 +151,14 @@ CNAME   api     your-app.herokuapp.com         300
 
 ### Logs
 
-- **Heroku logs**: `heroku logs --tail -a suopay-backend`
+- **Heroku logs**: `heroku logs --tail -a suoops-backend`
 - **Vercel logs**: Check Vercel dashboard or use `vercel logs`
 
 ## Scaling
 
 ### Heroku
 - Upgrade dyno types in Heroku dashboard
-- Scale worker processes: `heroku ps:scale worker=2 -a suopay-backend`
+- Scale worker processes: `heroku ps:scale worker=2 -a suoops-backend`
 
 ### Vercel
 - Vercel automatically scales based on usage

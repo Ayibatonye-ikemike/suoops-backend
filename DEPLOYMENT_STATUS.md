@@ -59,7 +59,7 @@
 
 ```bash
 # Check health
-curl https://api.suopay.io/healthz
+curl https://api.suoops.com/healthz
 
 ### 2. Verify OpenAI Key is Set
 ```bash
