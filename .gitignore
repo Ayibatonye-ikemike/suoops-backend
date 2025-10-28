@@ -27,5 +27,5 @@ frontend/.vercel/
 
 # Storage (local files)
 storage/whatsinvoice/
-storage/suopay-s3-bucket/
+storage/suoops-s3-bucket/
 .vercel

@@ -1,10 +1,15 @@
 {
-  "name": "suopay-backend",
+  "name": "suoops-backend",
   "description": "WhatsApp-first micro business invoicing platform",
-  "repository": "https://github.com/your-username/suopay.io",
+  "repository": "https://github.com/your-username/suoops.com",
   "logo": "",
-  "keywords": ["python", "fastapi", "whatsapp", "invoicing"],
-  "stack": "heroku-20",
+  "keywords": [
+    "python",
+    "fastapi",
+    "whatsapp",
+    "invoicing"
+  ],
+  "stack": "heroku-24",
   "buildpacks": [
     {
       "url": "heroku/python"
@@ -34,7 +39,7 @@
   "env": {
     "APP_NAME": {
       "description": "Application name",
-      "value": "SuoPay"
+      "value": "SuoOps"
     },
     "ENV": {
       "description": "Environment",
@@ -58,7 +63,7 @@
     },
     "S3_BUCKET": {
       "description": "S3 bucket name",
-      "value": "suopay-storage"
+      "value": "suoops-storage"
     },
     "PRIMARY_PAYMENT_PROVIDER": {
       "description": "Primary payment provider",

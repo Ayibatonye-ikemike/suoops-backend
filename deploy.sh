@@ -49,7 +49,7 @@ deploy_backend() {
     fi
     
     # Create Heroku app if it doesn't exist
-    read -p "Enter your Heroku app name for backend (e.g., suopay-backend): " HEROKU_APP_NAME
+    read -p "Enter your Heroku app name for backend (e.g., suoops-backend): " HEROKU_APP_NAME
     
     if ! heroku apps:info $HEROKU_APP_NAME &> /dev/null; then
         echo "Creating Heroku app: $HEROKU_APP_NAME"
@@ -74,7 +74,7 @@ deploy_backend() {
     echo "heroku config:set PAYSTACK_SECRET=your_paystack_secret -a $HEROKU_APP_NAME"
     echo "heroku config:set S3_ACCESS_KEY=your_s3_access_key -a $HEROKU_APP_NAME"
     echo "heroku config:set S3_SECRET_KEY=your_s3_secret_key -a $HEROKU_APP_NAME"
-    echo "heroku config:set S3_BUCKET=suopay-storage -a $HEROKU_APP_NAME"
+    echo "heroku config:set S3_BUCKET=suoops-storage -a $HEROKU_APP_NAME"
     
     # Deploy
     echo "Deploying to Heroku..."
@@ -136,7 +136,7 @@ main() {
     echo -e "${GREEN}🎉 Deployment completed!${NC}"
     echo ""
     echo "Next steps:"
-    echo "1. Set up your custom domain suopay.io in Vercel dashboard"
+    echo "1. Set up your custom domain suoops.com in Vercel dashboard"
     echo "2. Update CORS settings in backend with your frontend domain"
     echo "3. Configure your payment provider webhooks"
     echo "4. Set up monitoring and logging"

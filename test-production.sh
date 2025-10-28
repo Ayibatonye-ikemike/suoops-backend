@@ -10,10 +10,10 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-API_URL="https://api.suopay.io"
+API_URL="https://api.suoops.com"
 
 echo -e "${BLUE}Step 1: Test Health Endpoint${NC}"
-curl -s "$API_URL/health" | jq .
+curl -s "$API_URL/healthz" | jq .
 echo ""
 
 echo -e "${BLUE}Step 2: Login (Get Access Token)${NC}"

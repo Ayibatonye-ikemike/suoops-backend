@@ -82,7 +82,7 @@ async def initialize_subscription_payment(
                     "Content-Type": "application/json",
                 },
                 json={
-                    "email": f"{user.phone}@suopay.io",  # Paystack requires email
+                    "email": f"{user.phone}@suoops.com",  # Paystack requires email
                     "amount": amount_kobo,
                     "reference": reference,
                     "callback_url": f"{settings.FRONTEND_URL}/dashboard/subscription/success",

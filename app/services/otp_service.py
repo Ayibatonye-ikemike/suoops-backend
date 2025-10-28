@@ -219,7 +219,7 @@ class OTPService:
     def _format_message(self, otp: str, purpose: str) -> str:
         action = "complete your signup" if purpose == "signup" else "login securely"
         return (
-            "SuoPay Verification Code\n\n"
+            "SuoOps Verification Code\n\n"
             f"Your OTP is {otp}.\n\n"
             f"Enter this code to {action}.\n"
             "This code expires in 10 minutes.\n\n"

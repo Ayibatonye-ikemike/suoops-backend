@@ -130,7 +130,7 @@ Please find your invoice attached as a PDF.
 Thank you for your business!
 
 ---
-Powered by SuoPay
+Powered by SuoOps
 """
             msg.attach(MIMEText(body, 'plain'))
             

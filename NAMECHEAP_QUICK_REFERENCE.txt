@@ -2,7 +2,7 @@
 
 ## Login & Navigate
 1. https://www.namecheap.com/myaccount/login/
-2. Domain List → MANAGE suopay.io → Advanced DNS tab
+2. Domain List → MANAGE suoops.com → Advanced DNS tab
 
 ---
 
@@ -49,14 +49,14 @@ TTL: Automatic
 
 ## Important
 - Click ✓ (checkmark) after EACH record to save
-- Do NOT include .suopay.io in Host field
+- Do NOT include .suoops.com in Host field
 - Do NOT add quotes to TXT values
 - Wait 15 mins - 48 hours for DNS propagation
 
 ## Verify
-dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io CNAME
-dig mail.suopay.io MX
-dig mail.suopay.io TXT
-dig _dmarc.suopay.io TXT
+dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com CNAME
+dig mail.suoops.com MX
+dig mail.suoops.com TXT
+dig _dmarc.suoops.com TXT
 
 Full guide: docs/NAMECHEAP_SES_SETUP.md

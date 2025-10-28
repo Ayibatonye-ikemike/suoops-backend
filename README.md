@@ -1,6 +1,9 @@
-# WhatsInvoice MVP
+# SuoOps
 
 WhatsApp-first invoicing platform for micro and informal businesses.
+
+**Live at**: https://suoops.com  
+**API**: https://api.suoops.com
 
 ## Stack
 FastAPI, SQLAlchemy, PostgreSQL, Redis (tasks), Celery, ReportLab (PDF), Paystack (payment abstraction), S3-compatible storage.

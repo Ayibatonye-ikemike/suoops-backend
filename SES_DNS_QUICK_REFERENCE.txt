@@ -1,4 +1,4 @@
-# Quick DNS Setup for suopay.io - Amazon SES
+# Quick DNS Setup for suoops.com - Amazon SES
 
 ## 🎯 Add These 6 Records to Your Domain
 
@@ -37,7 +37,7 @@ Priority: 10
 
 ## ⚠️ Important
 
-- Remove `.suopay.io` from Name fields (most providers)
+- Remove `.suoops.com` from Name fields (most providers)
 - Keep quotes in TXT record values
 - Wait 15 mins - 48 hours for DNS propagation
 - Check AWS SES Console for verification status
@@ -48,10 +48,10 @@ Priority: 10
 
 ```bash
 # Verify DNS propagation
-dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suopay.io CNAME
-dig mail.suopay.io MX
-dig mail.suopay.io TXT
-dig _dmarc.suopay.io TXT
+dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com CNAME
+dig mail.suoops.com MX
+dig mail.suoops.com TXT
+dig _dmarc.suoops.com TXT
 ```
 
 Full guide: See `docs/SES_DNS_RECORDS.md`
