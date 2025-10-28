@@ -93,7 +93,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
-    hashed_password: Mapped[str]
+    phone_verified: Mapped[bool] = mapped_column(default=False, server_default="false")
+    last_login: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,
