@@ -107,6 +107,7 @@ class ProdSettings(BaseAppSettings):
         "https://www.suopay.io",
         "https://suopay.vercel.app",
         "https://suopay-frontend-3j117jciw-ikemike.vercel.app",
+        "https://suopay-frontend-h3m08c1ca-ikemike.vercel.app",
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
     LOG_FORMAT: str = "json"
