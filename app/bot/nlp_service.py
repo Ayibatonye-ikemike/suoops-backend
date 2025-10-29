@@ -26,6 +26,10 @@ class NLPService:
     # Matches: +2348012345678, 2348012345678, 08012345678, 8012345678
     PHONE_PATTERN = re.compile(r"(\+?234[7-9]\d{9}|\+?[7-9]\d{9}|0[7-9]\d{9})")
     
+    # Email pattern
+    # Matches: user@example.com, name.surname@company.co.uk
+    EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
+    
     # Filler words to remove from speech transcripts
     FILLER_WORDS = ["uhh", "umm", "like", "you know", "so", "basically", "actually"]
     
@@ -150,6 +154,19 @@ class NLPService:
         else:
             return '+234' + phone  # Add country code
     
+    def _extract_email(self, text: str) -> str | None:
+        """
+        Extract email address from text.
+        
+        Returns email address or None if not found.
+        
+        Examples:
+            "jane@example.com" → "jane@example.com"
+            "Send to john.doe@company.co.uk" → "john.doe@company.co.uk"
+        """
+        match = self.EMAIL_PATTERN.search(text)
+        return match.group(0).lower() if match else None
+    
     def _extract_invoice(self, text: str) -> dict[str, object]:
         # naive parse: Invoice <name> <amount>
         tokens = text.split()
@@ -157,6 +174,9 @@ class NLPService:
         
         # Extract phone number first so we can avoid treating it as amount
         phone = self._extract_phone(text)
+        
+        # Extract email address
+        email = self._extract_email(text)
 
         # Extract amount, preferring values that are not the phone digits
         amount_raw = "0"
@@ -181,4 +201,5 @@ class NLPService:
             "amount": Decimal(amount_raw),
             "due_date": due,
             "customer_phone": phone,
+            "customer_email": email,
         }
