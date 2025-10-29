@@ -33,40 +33,92 @@ class AuthService:
     # ----------------------------- Signup -----------------------------
 
     def start_signup(self, payload: schemas.SignupStart) -> None:
-        phone = self._normalize_phone(payload.phone)
-        existing = (
-            self.db.query(models.User)
-            .filter(models.User.phone == phone)
-            .one_or_none()
-        )
-        if existing:
-            raise ValueError("Phone number already registered")
+        """Start signup with phone OR email (temporary email support for pre-launch)."""
+        
+        # Validate that either phone or email is provided
+        if not payload.phone and not payload.email:
+            raise ValueError("Either phone or email is required")
+        
+        # For now, prioritize email if both are provided (pre-launch mode)
+        if payload.email:
+            identifier = payload.email.lower().strip()
+            # Check if email already registered
+            existing = (
+                self.db.query(models.User)
+                .filter(models.User.email == identifier)
+                .one_or_none()
+            )
+            if existing:
+                raise ValueError("Email already registered")
+        else:
+            identifier = self._normalize_phone(payload.phone)
+            # Check if phone already registered
+            existing = (
+                self.db.query(models.User)
+                .filter(models.User.phone == identifier)
+                .one_or_none()
+            )
+            if existing:
+                raise ValueError("Phone number already registered")
+        
         data = payload.model_dump()
-        data["phone"] = phone
-        self.otp.request_signup(phone, data)
+        if payload.email:
+            data["email"] = identifier
+        else:
+            data["phone"] = identifier
+            
+        self.otp.request_signup(identifier, data)
 
     def complete_signup(self, payload: schemas.SignupVerify) -> TokenBundle:
-        phone = self._normalize_phone(payload.phone)
-        stored_data = self.otp.complete_signup(phone, payload.otp)
+        """Complete signup with phone OR email OTP verification."""
+        
+        # Determine identifier (email or phone)
+        if payload.email:
+            identifier = payload.email.lower().strip()
+            lookup_field = "email"
+        elif payload.phone:
+            identifier = self._normalize_phone(payload.phone)
+            lookup_field = "phone"
+        else:
+            raise ValueError("Either phone or email is required")
+        
+        stored_data = self.otp.complete_signup(identifier, payload.otp)
 
         # Guard against race-condition: if user already created after OTP issuance
-        existing = (
-            self.db.query(models.User)
-            .filter(models.User.phone == phone)
-            .one_or_none()
-        )
+        if lookup_field == "email":
+            existing = (
+                self.db.query(models.User)
+                .filter(models.User.email == identifier)
+                .one_or_none()
+            )
+        else:
+            existing = (
+                self.db.query(models.User)
+                .filter(models.User.phone == identifier)
+                .one_or_none()
+            )
+            
         if existing:
             if not existing.phone_verified:
                 existing.phone_verified = True
                 self.db.commit()
             return self._issue_tokens(existing)
 
-        user = models.User(
-            phone=stored_data["phone"],
-            name=stored_data.get("name", stored_data["phone"]),
-            business_name=stored_data.get("business_name"),
-            phone_verified=True,
-        )
+        # Create new user with email or phone
+        user_data = {
+            "name": stored_data.get("name", identifier),
+            "business_name": stored_data.get("business_name"),
+            "phone_verified": True,
+        }
+        
+        if "email" in stored_data:
+            user_data["email"] = stored_data["email"]
+            # For email signups, use email as phone temporarily (or make phone nullable)
+            user_data["phone"] = stored_data["email"]  # Temporary
+        else:
+            user_data["phone"] = stored_data["phone"]
+            
+        user = models.User(**user_data)
         user.last_login = datetime.now(timezone.utc)
         self.db.add(user)
         self.db.commit()
@@ -76,25 +128,57 @@ class AuthService:
     # ----------------------------- Login -----------------------------
 
     def request_login(self, payload: schemas.OTPPhoneRequest) -> None:
-        phone = self._normalize_phone(payload.phone)
-        user = (
-            self.db.query(models.User)
-            .filter(models.User.phone == phone)
-            .one_or_none()
-        )
+        """Request login OTP via phone OR email."""
+        
+        # Support both phone and email for login
+        if hasattr(payload, 'email') and payload.email:
+            identifier = payload.email.lower().strip()
+            user = (
+                self.db.query(models.User)
+                .filter(models.User.email == identifier)
+                .one_or_none()
+            )
+        else:
+            identifier = self._normalize_phone(payload.phone)
+            user = (
+                self.db.query(models.User)
+                .filter(models.User.phone == identifier)
+                .one_or_none()
+            )
+            
         if not user:
-            raise ValueError("Phone number not registered")
-        self.otp.request_login(phone)
+            raise ValueError("User not registered")
+        self.otp.request_login(identifier)
 
     def verify_login(self, payload: schemas.LoginVerify) -> TokenBundle:
-        phone = self._normalize_phone(payload.phone)
-        if not self.otp.verify_otp(phone, payload.otp, "login"):
+        """Verify login OTP for phone OR email."""
+        
+        # Determine identifier (email or phone)
+        if payload.email:
+            identifier = payload.email.lower().strip()
+            lookup_field = "email"
+        elif payload.phone:
+            identifier = self._normalize_phone(payload.phone)
+            lookup_field = "phone"
+        else:
+            raise ValueError("Either phone or email is required")
+            
+        if not self.otp.verify_otp(identifier, payload.otp, "login"):
             raise ValueError("Invalid or expired OTP")
-        user = (
-            self.db.query(models.User)
-            .filter(models.User.phone == phone)
-            .one_or_none()
-        )
+            
+        if lookup_field == "email":
+            user = (
+                self.db.query(models.User)
+                .filter(models.User.email == identifier)
+                .one_or_none()
+            )
+        else:
+            user = (
+                self.db.query(models.User)
+                .filter(models.User.phone == identifier)
+                .one_or_none()
+            )
+            
         if not user:
             raise ValueError("User not found")
         user.last_login = datetime.now(timezone.utc)
@@ -115,12 +199,21 @@ class AuthService:
         expires_at = self._extract_expiry(access, TokenType.ACCESS)
         return TokenBundle(access, new_refresh, expires_at)
 
-    def resend_otp(self, payload: schemas.OTPPhoneRequest, purpose: str) -> None:
+    def resend_otp(self, payload: schemas.OTPResend) -> None:
+        """Resend OTP for phone OR email."""
+        purpose = payload.purpose
         if purpose not in {"signup", "login"}:
             raise ValueError("Invalid OTP purpose")
         try:
-            phone = self._normalize_phone(payload.phone)
-            self.otp.resend_otp(phone, purpose)
+            # Support both phone and email
+            if payload.email:
+                identifier = payload.email.lower().strip()
+            elif payload.phone:
+                identifier = self._normalize_phone(payload.phone)
+            else:
+                raise ValueError("Either phone or email is required")
+                
+            self.otp.resend_otp(identifier, purpose)
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
 

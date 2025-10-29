@@ -101,24 +101,37 @@ class OTPPhoneRequest(BaseModel):
     phone: str
 
 
+class OTPEmailRequest(BaseModel):
+    """Request OTP via email (temporary for pre-launch)."""
+    email: str
+
+
 class SignupStart(BaseModel):
-    phone: str
+    """Start signup with phone OR email."""
+    phone: str | None = None
+    email: str | None = None
     name: str
     business_name: str | None = None
 
 
 class SignupVerify(BaseModel):
-    phone: str
+    """Verify signup OTP with phone OR email."""
+    phone: str | None = None
+    email: str | None = None
     otp: str = Field(..., min_length=6, max_length=6)
 
 
 class LoginVerify(BaseModel):
-    phone: str
+    """Verify login OTP with phone OR email."""
+    phone: str | None = None
+    email: str | None = None
     otp: str = Field(..., min_length=6, max_length=6)
 
 
 class OTPResend(BaseModel):
-    phone: str
+    """Resend OTP for phone OR email."""
+    phone: str | None = None
+    email: str | None = None
     purpose: Literal["signup", "login"]
 
 
@@ -127,6 +140,7 @@ class UserOut(BaseModel):
 
     id: int
     phone: str
+    email: str | None = None
     name: str
     plan: str  # FREE, STARTER, PRO, BUSINESS, ENTERPRISE
     invoices_this_month: int
