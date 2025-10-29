@@ -13,16 +13,15 @@ async def test_email():
     print()
     
     ns = NotificationService()
-    result = await ns.send_invoice_email(
-        invoice_number="INV-TEST-001",
+    # Test with OTP email (simpler, doesn't need invoice model)
+    result = await ns.send_otp_email(
         to_email="info@suoops.com",
-        customer_name="Test Customer",
-        invoice_amount=50000,
-        currency="NGN"
+        otp_code="123456"
     )
     
     if result:
         print('✅ Email sent successfully!')
+        print('📧 Check info@suoops.com inbox for OTP email')
     else:
         print('❌ Email failed to send')
 
