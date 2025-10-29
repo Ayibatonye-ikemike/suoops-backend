@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models, schemas
+from app.services.otp_service import OTPService
 from app.storage.s3_client import s3_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+otp_service = OTPService()
 
 
 @router.get("/me/bank-details", response_model=schemas.BankDetailsOut)
@@ -257,11 +259,128 @@ def get_profile(
     return schemas.UserOut(
         id=user.id,
         phone=user.phone,
+        email=user.email,
         name=user.name,
         plan=user.plan.value,
         invoices_this_month=user.invoices_this_month,
         logo_url=user.logo_url,
-        business_name=user.business_name,
-        phone_verified=user.phone_verified,
     )
+
+
+@router.post("/phone/request", response_model=schemas.MessageOut)
+def request_phone_verification(
+    data: schemas.PhoneVerificationRequest,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Request OTP to verify phone number.
+    
+    Sends a 6-digit OTP code to the provided WhatsApp number.
+    The code expires after 10 minutes.
+    
+    **Note:** Phone number must be in E.164 format (e.g., +2348012345678)
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if phone is already taken by another user
+    existing = db.query(models.User).filter(
+        models.User.phone == data.phone,
+        models.User.id != current_user_id
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Phone number already registered to another account"
+        )
+    
+    # Send OTP via WhatsApp
+    try:
+        otp_service._send_otp(data.phone, "phone_verification")
+        return schemas.MessageOut(detail="OTP sent to WhatsApp")
+    except Exception as e:
+        logger.error(f"Failed to send phone OTP: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send OTP. Please try again."
+        )
+
+
+@router.post("/phone/verify", response_model=schemas.PhoneVerificationResponse)
+def verify_phone(
+    data: schemas.PhoneVerificationVerify,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Verify phone number with OTP code.
+    
+    After successful verification, the phone number will be added to your account
+    and you can use it for login and notifications.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Verify OTP
+    is_valid = otp_service._verify_otp(data.phone, data.otp)
+    
+    if not is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired OTP code"
+        )
+    
+    # Check again if phone is already taken (race condition protection)
+    existing = db.query(models.User).filter(
+        models.User.phone == data.phone,
+        models.User.id != current_user_id
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Phone number already registered to another account"
+        )
+    
+    # Update user phone
+    user.phone = data.phone
+    user.phone_verified = True
+    db.commit()
+    
+    logger.info(f"Phone verified for user {current_user_id}: {data.phone}")
+    
+    return schemas.PhoneVerificationResponse(
+        detail="Phone number verified successfully",
+        phone=data.phone
+    )
+
+
+@router.delete("/phone", response_model=schemas.MessageOut)
+def remove_phone(
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Remove phone number from account.
+    
+    ⚠️ Warning: You won't be able to login with this phone number after removal.
+    WhatsApp notifications will also be disabled.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.phone:
+        raise HTTPException(status_code=404, detail="No phone number configured")
+    
+    # Clear phone
+    user.phone = None
+    user.phone_verified = False
+    db.commit()
+    
+    return schemas.MessageOut(detail="Phone number removed successfully")
 

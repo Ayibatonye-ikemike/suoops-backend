@@ -139,14 +139,12 @@ class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    phone: str
+    phone: str | None = None
     email: str | None = None
     name: str
     plan: str  # FREE, STARTER, PRO, BUSINESS, ENTERPRISE
     invoices_this_month: int
     logo_url: str | None = None
-    business_name: str | None = None
-    phone_verified: bool = True
 
 
 class TokenOut(BaseModel):
@@ -183,3 +181,22 @@ class BankDetailsOut(BaseModel):
     account_number: str | None = None
     account_name: str | None = None
     is_configured: bool = Field(description="Whether bank details are fully configured")
+
+
+# ----------------- Phone Verification -----------------
+
+class PhoneVerificationRequest(BaseModel):
+    """Request to add/verify phone number."""
+    phone: str = Field(..., min_length=10, description="Phone number in E.164 format")
+
+
+class PhoneVerificationVerify(BaseModel):
+    """Verify phone number with OTP."""
+    phone: str = Field(..., min_length=10)
+    otp: str = Field(..., min_length=6, max_length=6)
+
+
+class PhoneVerificationResponse(BaseModel):
+    """Response after successful phone verification."""
+    detail: str
+    phone: str
