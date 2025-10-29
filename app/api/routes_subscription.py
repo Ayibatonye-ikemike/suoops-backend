@@ -61,6 +61,14 @@ async def initialize_subscription_payment(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    # Get user email (prefer actual email, fallback to phone-based email)
+    user_email = user.email or (f"{user.phone}@suoops.com" if user.phone else None)
+    if not user_email:
+        raise HTTPException(
+            status_code=400, 
+            detail="No email address found. Please add your email in settings."
+        )
+    
     # Check if already on this plan
     if user.plan.value.upper() == plan:
         raise HTTPException(status_code=400, detail=f"Already subscribed to {plan} plan")
@@ -82,24 +90,20 @@ async def initialize_subscription_payment(
                     "Content-Type": "application/json",
                 },
                 json={
-                    "email": f"{user.phone}@suoops.com",  # Paystack requires email
+                    "email": user_email,
                     "amount": amount_kobo,
                     "reference": reference,
                     "callback_url": f"{settings.FRONTEND_URL}/dashboard/subscription/success",
                     "metadata": {
                         "user_id": current_user_id,
                         "plan": plan,
+                        "email": user_email,
                         "phone": user.phone,
                         "custom_fields": [
                             {
                                 "display_name": "Plan",
                                 "variable_name": "plan",
                                 "value": plan,
-                            },
-                            {
-                                "display_name": "Phone",
-                                "variable_name": "phone",
-                                "value": user.phone,
                             },
                         ],
                     },
