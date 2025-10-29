@@ -17,7 +17,9 @@ def test_email():
         # Create simple test email
         msg = MIMEMultipart()
         msg['From'] = settings.FROM_EMAIL
-        msg['To'] = "info@suoops.com"
+        # Change this to YOUR email address to test
+        test_recipient = input("Enter your email address to test: ").strip()
+        msg['To'] = test_recipient
         msg['Subject'] = "✅ Brevo SMTP Test - SuoOps Email Working!"
         
         body = """

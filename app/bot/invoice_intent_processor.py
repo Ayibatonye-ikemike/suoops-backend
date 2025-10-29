@@ -82,6 +82,38 @@ class InvoiceIntentProcessor:
         )
         self.client.send_text(sender, limit_message)
         return False
+    
+    async def _send_invoice_email(self, invoice, recipient_email: str) -> bool:
+        """
+        Send invoice email with PDF attachment.
+        
+        Args:
+            invoice: Invoice model instance
+            recipient_email: Customer email address
+        
+        Returns:
+            bool: True if email sent successfully
+        """
+        try:
+            from app.services.notification_service import NotificationService
+            
+            notification_service = NotificationService()
+            email_sent = await notification_service.send_invoice_email(
+                invoice=invoice,
+                recipient_email=recipient_email,
+                pdf_url=invoice.pdf_url,
+                subject="New Invoice"
+            )
+            
+            if email_sent:
+                logger.info("Invoice email sent to %s for invoice %s", recipient_email, invoice.invoice_id)
+            else:
+                logger.warning("Failed to send invoice email to %s", recipient_email)
+            
+            return email_sent
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Error sending invoice email: %s", exc)
+            return False
 
     async def _create_invoice(
         self,
@@ -106,18 +138,28 @@ class InvoiceIntentProcessor:
                 self.client.send_text(sender, f"Error: {exc}")
             return
 
-        self._notify_business(sender, invoice)
+        # Send email if customer email provided
+        customer_email = data.get("customer_email")
+        if customer_email:
+            await self._send_invoice_email(invoice, customer_email)
+
+        self._notify_business(sender, invoice, customer_email)
         self._notify_customer(invoice, data, issuer_id)
 
-    def _notify_business(self, sender: str, invoice) -> None:
+    def _notify_business(self, sender: str, invoice, customer_email: str | None = None) -> None:
         customer_name = getattr(invoice.customer, "name", "N/A") if invoice.customer else "N/A"
         business_message = (
             f"✅ Invoice {invoice.invoice_id} created!\n\n"
             f"💰 Amount: ₦{invoice.amount:,.2f}\n"
             f"👤 Customer: {customer_name}\n"
-            f" Status: {invoice.status}\n\n"
-            "📧 Invoice sent to customer!"
+            f"📊 Status: {invoice.status}\n"
         )
+        
+        if customer_email:
+            business_message += f"📧 Email: {customer_email}\n\n✉️ Invoice email sent to customer!"
+        else:
+            business_message += "\n📧 WhatsApp invoice sent to customer!"
+        
         self.client.send_text(sender, business_message)
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> None:
