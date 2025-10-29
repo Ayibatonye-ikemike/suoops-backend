@@ -13,12 +13,12 @@ async def test_email():
     print()
     
     ns = NotificationService()
-    result = await ns.send_invoice_notification(
-        to_email='info@suoops.com',
-        customer_name='Test Customer',
-        invoice_number='INV-TEST-001',
-        amount=50000,
-        invoice_link='https://suoops.com'
+    result = await ns.send_invoice_email(
+        invoice_number="INV-TEST-001",
+        to_email="info@suoops.com",
+        customer_name="Test Customer",
+        invoice_amount=50000,
+        currency="NGN"
     )
     
     if result:
