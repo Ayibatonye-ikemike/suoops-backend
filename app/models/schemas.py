@@ -140,6 +140,7 @@ class UserOut(BaseModel):
 
     id: int
     phone: str | None = None
+    phone_verified: bool = False
     email: str | None = None
     name: str
     plan: str  # FREE, STARTER, PRO, BUSINESS, ENTERPRISE
