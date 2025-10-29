@@ -23,11 +23,18 @@ REGISTER_RATE_LIMIT = "5/minute" if settings.ENV.lower() == "prod" else "50/minu
 @router.post("/signup/request", response_model=schemas.MessageOut)
 @limiter.limit(REGISTER_RATE_LIMIT)
 def request_signup(request: Request, payload: schemas.SignupStart, svc: AuthServiceDep):
+    """Request signup OTP via phone OR email."""
     try:
         svc.start_signup(payload)
+        
+        # Determine delivery method for response message
+        if payload.email:
+            return schemas.MessageOut(detail="OTP sent to email")
+        else:
+            return schemas.MessageOut(detail="OTP sent to WhatsApp")
+            
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return schemas.MessageOut(detail="OTP sent to WhatsApp")
 
 
 def _bundle_to_response(bundle: TokenBundle, include_refresh_cookie: bool = True) -> JSONResponse:
@@ -80,12 +87,19 @@ def verify_signup(request: Request, payload: schemas.SignupVerify, svc: AuthServ
 
 @router.post("/login/request", response_model=schemas.MessageOut)
 @limiter.limit("10/minute")
-def request_login(request: Request, payload: schemas.OTPPhoneRequest, svc: AuthServiceDep):
+def request_login(request: Request, payload: schemas.OTPPhoneRequest | schemas.OTPEmailRequest, svc: AuthServiceDep):
+    """Request login OTP via phone OR email."""
     try:
         svc.request_login(payload)
+        
+        # Determine delivery method for response
+        if hasattr(payload, 'email'):
+            return schemas.MessageOut(detail="OTP sent to email")
+        else:
+            return schemas.MessageOut(detail="OTP sent to WhatsApp")
+            
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return schemas.MessageOut(detail="OTP sent to WhatsApp")
 
 
 @router.post("/login/verify", response_model=schemas.TokenOut)
@@ -101,11 +115,18 @@ def verify_login(request: Request, payload: schemas.LoginVerify, svc: AuthServic
 @router.post("/otp/resend", response_model=schemas.MessageOut)
 @limiter.limit("10/minute")
 def resend_otp(request: Request, payload: schemas.OTPResend, svc: AuthServiceDep):
+    """Resend OTP for phone OR email."""
     try:
-        svc.resend_otp(schemas.OTPPhoneRequest(phone=payload.phone), payload.purpose)
+        svc.resend_otp(payload)
+        
+        # Determine delivery method for response
+        if payload.email:
+            return schemas.MessageOut(detail="OTP resent to email")
+        else:
+            return schemas.MessageOut(detail="OTP resent to WhatsApp")
+            
     except ValueError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
-    return schemas.MessageOut(detail="OTP resent successfully")
 
 
 @router.post("/refresh", response_model=schemas.TokenOut)
