@@ -22,7 +22,7 @@ from app.db.session import get_db
 from app.models import schemas
 from app.services.ocr_service import OCRService
 from app.services.invoice_service import InvoiceService
-from app.api.routes_auth import get_current_user
+from app.api.routes_auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ocr", tags=["ocr"])
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/ocr", tags=["ocr"])
 async def parse_receipt_image(
     file: UploadFile = File(...),
     context: str = None,
-    current_user: schemas.UserOut = Depends(get_current_user)
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """
     Parse receipt/invoice image to extract data (Step 1).
@@ -93,7 +93,7 @@ async def parse_receipt_image(
         )
     
     logger.info(
-        f"OCR parse request: user={current_user.id}, "
+        f"OCR parse request: user={current_user_id}, "
         f"filename={file.filename}, size={len(contents)} bytes, "
         f"context={context}"
     )
@@ -125,7 +125,7 @@ async def create_invoice_from_image(
     file: UploadFile = File(...),
     customer_phone: str = None,
     context: str = None,
-    current_user: schemas.UserOut = Depends(get_current_user),
+    current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """
@@ -197,7 +197,7 @@ async def create_invoice_from_image(
         
         invoice = invoice_service.create_invoice(
             invoice_data=invoice_data,
-            issuer_id=current_user.id
+            issuer_id=current_user_id
         )
         
         logger.info(f"Invoice created from OCR: invoice_id={invoice.invoice_id}")
