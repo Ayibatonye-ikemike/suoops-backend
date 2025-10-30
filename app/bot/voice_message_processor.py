@@ -6,6 +6,7 @@ from typing import Any, Callable
 from app.bot.invoice_intent_processor import InvoiceIntentProcessor
 from app.bot.whatsapp_client import WhatsAppClient
 from app.bot.nlp_service import NLPService
+from app.models import models
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,37 @@ class VoiceMessageProcessor:
         self.invoice_processor = invoice_processor
         self._speech_service_factory = speech_service_factory
 
+    def _check_user_has_paid_plan(self, sender: str) -> bool:
+        """Check if user has paid plan for voice message feature."""
+        # Get user from WhatsApp phone number
+        user = (
+            self.invoice_processor.db.query(models.User)
+            .filter(models.User.whatsapp_phone == sender)
+            .first()
+        )
+        
+        if not user:
+            return False
+        
+        return user.plan != models.SubscriptionPlan.FREE
+
     async def process(self, sender: str, media_id: str, payload: dict[str, Any]) -> None:
         try:
+            # Check if user has paid plan (voice messages are premium feature)
+            if not self._check_user_has_paid_plan(sender):
+                self.client.send_text(
+                    sender,
+                    "🔒 Voice Invoice Feature\n\n"
+                    "Voice message invoices are only available on paid plans.\n\n"
+                    "✅ Upgrade your plan to unlock:\n"
+                    "• Voice note invoices\n"
+                    "• Photo invoices (OCR)\n"
+                    "• More monthly invoices\n"
+                    "• Priority support\n\n"
+                    "Visit suoops.com/dashboard/subscription to upgrade!"
+                )
+                return
+            
             self.client.send_text(sender, "🎙️ Processing your voice message...")
             media_url = await self.client.get_media_url(media_id)
             audio_bytes = await self.client.download_media(media_url)

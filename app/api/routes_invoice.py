@@ -9,6 +9,7 @@ from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import schemas
 from app.services.invoice_service import build_invoice_service, InvoiceService
+from app.utils.feature_gate import check_invoice_limit
 
 router = APIRouter()
 
@@ -27,6 +28,9 @@ async def create_invoice(
     current_user_id: CurrentUserDep,
     db: DbDep,
 ):
+    # Check invoice creation limit based on subscription plan
+    check_invoice_limit(db, current_user_id)
+    
     svc = get_invoice_service_for_user(current_user_id, db)
     try:
         invoice = svc.create_invoice(issuer_id=current_user_id, data=data.model_dump())

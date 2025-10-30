@@ -23,6 +23,7 @@ from app.models import schemas
 from app.services.ocr_service import OCRService
 from app.services.invoice_service import InvoiceService
 from app.api.routes_auth import get_current_user_id
+from app.utils.feature_gate import require_paid_plan, check_invoice_limit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ocr", tags=["ocr"])
@@ -34,10 +35,13 @@ async def parse_receipt_image(
     request: Request,
     file: UploadFile = File(...),
     context: str = None,
-    current_user_id: int = Depends(get_current_user_id)
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
 ):
     """
     Parse receipt/invoice image to extract data (Step 1).
+    
+    **🔒 PAID FEATURE - Requires paid subscription plan**
     
     **Upload image → Get structured data → Review → Confirm**
     
@@ -70,6 +74,9 @@ async def parse_receipt_image(
     Cost: ~₦20 per image (~$0.01)
     Speed: ~5-10 seconds
     """
+    # Check if user has paid plan (OCR is premium feature)
+    require_paid_plan(db, current_user_id, "Photo invoice OCR")
+    
     # Validate file type
     allowed_types = ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]
     if file.content_type not in allowed_types:
@@ -133,6 +140,8 @@ async def create_invoice_from_image(
     """
     Parse image AND create invoice in one step (convenience endpoint).
     
+    **🔒 PAID FEATURE - Requires paid subscription plan**
+    
     **Quick flow: Upload image → Invoice created automatically**
     
     Use this when you trust OCR accuracy and want speed.
@@ -159,6 +168,12 @@ async def create_invoice_from_image(
     
     Note: Review the created invoice - OCR may have errors!
     """
+    # Check if user has paid plan (OCR is premium feature)
+    require_paid_plan(db, current_user_id, "Photo invoice OCR")
+    
+    # Check invoice creation limit
+    check_invoice_limit(db, current_user_id)
+    
     # First parse the image
     ocr = OCRService()
     contents = await file.read()

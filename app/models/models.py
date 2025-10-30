@@ -46,6 +46,26 @@ class SubscriptionPlan(str, enum.Enum):
             SubscriptionPlan.ENTERPRISE: 50000,
         }
         return prices[self]
+    
+    @property
+    def has_premium_features(self) -> bool:
+        """Check if plan has access to premium features (OCR, voice, etc)."""
+        return self != SubscriptionPlan.FREE
+    
+    @property
+    def features(self) -> dict:
+        """Get feature access for this plan."""
+        is_paid = self != SubscriptionPlan.FREE
+        return {
+            "invoices_per_month": self.invoice_limit,
+            "photo_invoice_ocr": is_paid,
+            "voice_invoice": is_paid,
+            "whatsapp_bot": True,  # Available to all
+            "email_notifications": True,  # Available to all
+            "pdf_generation": True,  # Available to all
+            "custom_branding": is_paid,
+            "priority_support": is_paid,
+        }
 
 
 class Customer(Base):
