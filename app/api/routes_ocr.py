@@ -14,7 +14,7 @@ Design:
 """
 
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.rate_limit import limiter
@@ -31,6 +31,7 @@ router = APIRouter(prefix="/ocr", tags=["ocr"])
 @router.post("/parse", response_model=schemas.OCRParseOut)
 @limiter.limit("10/minute")  # Rate limit: 10 images per minute
 async def parse_receipt_image(
+    request: Request,
     file: UploadFile = File(...),
     context: str = None,
     current_user_id: int = Depends(get_current_user_id)
@@ -122,6 +123,7 @@ async def parse_receipt_image(
 @router.post("/create-invoice", response_model=schemas.InvoiceOut)
 @limiter.limit("10/minute")
 async def create_invoice_from_image(
+    request: Request,
     file: UploadFile = File(...),
     customer_phone: str = None,
     context: str = None,
