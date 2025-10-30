@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import logging
 from io import BytesIO
 
+import qrcode
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -44,6 +46,7 @@ class PDFService:
             URL or path to generated PDF
         """
         customer_portal_url = self._build_customer_portal_url(invoice.invoice_id)
+        qr_code_data = self._generate_qr_code(invoice.invoice_id)
 
         if settings.HTML_PDF_ENABLED and _WEASY_AVAILABLE:
             try:
@@ -52,6 +55,7 @@ class PDFService:
                     bank_details,
                     logo_url,
                     customer_portal_url,
+                    qr_code_data,
                 )
                 pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
                 key = f"invoices/{invoice.invoice_id}.pdf"
@@ -118,6 +122,7 @@ class PDFService:
         bank_details: dict | None,
         logo_url: str | None = None,
         customer_portal_url: str | None = None,
+        qr_code_data: str | None = None,
     ) -> str:
         """Render invoice HTML template with bank transfer details and business logo."""
         template = self.jinja.get_template("invoice.html")
@@ -126,8 +131,42 @@ class PDFService:
             bank_details=bank_details,
             logo_url=logo_url,
             customer_portal_url=customer_portal_url,
+            qr_code=qr_code_data,
         )
 
     def _build_customer_portal_url(self, invoice_id: str) -> str:
         base = settings.FRONTEND_URL.rstrip("/")
         return f"{base}/pay/{invoice_id}"
+
+    def _generate_qr_code(self, invoice_id: str) -> str:
+        """Generate QR code as base64 data URI for verification URL.
+        
+        Args:
+            invoice_id: Invoice ID to encode in QR code
+            
+        Returns:
+            Base64 encoded QR code image as data URI
+        """
+        # Generate verification URL
+        api_base = settings.BACKEND_URL.rstrip("/")
+        verify_url = f"{api_base}/invoices/{invoice_id}/verify"
+        
+        # Create QR code
+        qr = qrcode.QRCode(
+            version=1,  # Size of QR code (1-40, 1 is smallest)
+            error_correction=qrcode.constants.ERROR_CORRECT_M,  # ~15% error correction
+            box_size=10,  # Size of each box in pixels
+            border=2,  # Border size in boxes
+        )
+        qr.add_data(verify_url)
+        qr.make(fit=True)
+        
+        # Generate image
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Convert to base64 data URI
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        return f"data:image/png;base64,{img_base64}"

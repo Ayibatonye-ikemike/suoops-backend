@@ -111,3 +111,42 @@ def download_invoice_pdf(invoice_id: str, current_user_id: CurrentUserDep, db: D
     # If it's an HTTP URL (S3 presigned URL), redirect to it
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url=invoice.pdf_url)
+
+
+@router.get("/{invoice_id}/verify", response_model=schemas.InvoiceVerificationOut)
+def verify_invoice(invoice_id: str, db: DbDep):
+    """Public endpoint to verify invoice authenticity via QR code scan.
+    
+    This endpoint does NOT require authentication - it's meant to be scanned
+    by customers to verify the invoice is legitimate.
+    
+    Returns masked customer information for privacy while proving authenticity.
+    """
+    from app.models.models import Invoice
+    from datetime import datetime
+    
+    invoice = db.query(Invoice).filter(Invoice.invoice_id == invoice_id).first()
+    
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Mask customer name for privacy (show first letter + asterisks)
+    customer_name = invoice.customer.name
+    if len(customer_name) > 2:
+        masked_name = customer_name[0] + "*" * (len(customer_name) - 2) + customer_name[-1]
+    else:
+        masked_name = customer_name[0] + "*"
+    
+    # Get business name from issuer
+    business_name = invoice.issuer.name if invoice.issuer else "Business"
+    
+    return schemas.InvoiceVerificationOut(
+        invoice_id=invoice_id,
+        status=invoice.status,
+        amount=invoice.amount,
+        customer_name=masked_name,
+        business_name=business_name,
+        created_at=invoice.created_at,
+        verified_at=datetime.utcnow(),
+        authentic=True,
+    )

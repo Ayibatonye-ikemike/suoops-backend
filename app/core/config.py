@@ -58,6 +58,7 @@ class BaseAppSettings(BaseSettings):
     HTML_PDF_ENABLED: bool = False
     PRIMARY_PAYMENT_PROVIDER: str = "paystack"
     FRONTEND_URL: str = "https://suoops.com"
+    BACKEND_URL: str = "https://api.suoops.com"  # Used for QR code verification URLs
     CORS_ALLOW_ORIGINS: list[str] = ["*"]
     CORS_ALLOW_METHODS: list[str] = ["*"]
     CORS_ALLOW_HEADERS: list[str] = ["*"]
@@ -89,6 +90,7 @@ class BaseAppSettings(BaseSettings):
 class DevSettings(BaseAppSettings):
     ENV: str = "dev"
     DATABASE_URL: str = "sqlite+aiosqlite:///./storage/dev.db"
+    BACKEND_URL: str = "http://localhost:8000"
     WHATSAPP_API_KEY: str = "dev-whatsapp-key"
     PAYSTACK_SECRET: str = "dev-paystack-secret"
 

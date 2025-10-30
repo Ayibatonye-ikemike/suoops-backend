@@ -201,3 +201,21 @@ class PhoneVerificationResponse(BaseModel):
     """Response after successful phone verification."""
     detail: str
     phone: str
+
+
+# ----------------- Invoice Verification -----------------
+
+class InvoiceVerificationOut(BaseModel):
+    """Public invoice verification response (for QR code scanning)."""
+    invoice_id: str
+    status: str
+    amount: Decimal
+    customer_name: str  # Masked for privacy
+    business_name: str
+    created_at: dt.datetime
+    verified_at: dt.datetime
+    authentic: bool = True
+
+    @field_serializer("amount")
+    def _serialize_amount(self, value: Decimal) -> str:
+        return _format_amount(value) or "0"

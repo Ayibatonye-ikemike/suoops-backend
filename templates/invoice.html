@@ -62,6 +62,29 @@
       font-size: 12px; 
       color: #666; 
     }
+    .qr-section {
+      margin-top: 30px;
+      padding: 20px;
+      border: 2px dashed #007bff;
+      border-radius: 8px;
+      text-align: center;
+      background: #f8f9fa;
+    }
+    .qr-section h3 {
+      margin: 0 0 10px 0;
+      color: #007bff;
+      font-size: 16px;
+    }
+    .qr-section img {
+      width: 150px;
+      height: 150px;
+      margin: 10px 0;
+    }
+    .qr-section p {
+      margin: 5px 0;
+      font-size: 12px;
+      color: #666;
+    }
   </style>
 </head>
 <body>
@@ -131,6 +154,15 @@
   <p class="total" style="font-size: 20px; color: #007bff;">
     Total: ₦{{ "{:,.2f}".format(invoice.amount) }}
   </p>
+  
+  {% if qr_code %}
+  <div class="qr-section">
+    <h3>🔐 Verify Authenticity</h3>
+    <img src="{{ qr_code }}" alt="Scan to verify invoice" />
+    <p><strong>Scan QR code to verify this invoice is genuine</strong></p>
+    <p>Check payment status and confirm authenticity instantly</p>
+  </div>
+  {% endif %}
   
   <div class="footer">
     <p>Thank you for your business!</p>
