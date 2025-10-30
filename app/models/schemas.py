@@ -219,3 +219,51 @@ class InvoiceVerificationOut(BaseModel):
     @field_serializer("amount")
     def _serialize_amount(self, value: Decimal) -> str:
         return _format_amount(value) or "0"
+
+
+# ----------------- OCR -----------------
+
+class OCRItemOut(BaseModel):
+    """Single line item extracted from receipt image."""
+    description: str
+    quantity: int
+    unit_price: str
+
+
+class OCRParseOut(BaseModel):
+    """
+    Response from OCR parsing of receipt image.
+    
+    User should review this data before creating invoice.
+    """
+    success: bool
+    customer_name: str
+    business_name: str
+    amount: str
+    currency: str
+    items: list[OCRItemOut]
+    date: str | None = None
+    confidence: Literal["high", "medium", "low"]
+    raw_text: str
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "customer_name": "Jane Doe",
+                "business_name": "Beauty Palace",
+                "amount": "50000",
+                "currency": "NGN",
+                "items": [
+                    {
+                        "description": "Hair braiding",
+                        "quantity": 1,
+                        "unit_price": "50000"
+                    }
+                ],
+                "date": "2025-10-30",
+                "confidence": "high",
+                "raw_text": "BEAUTY PALACE\nCustomer: Jane Doe\nHair braiding: ₦50,000\nTotal: ₦50,000"
+            }
+        }
+    )
