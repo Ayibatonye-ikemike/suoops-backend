@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Level Agreement - SuoOps E-Invoicing Platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.8; color: #333; background: #f8f9fa; }
+        .container { max-width: 900px; margin: 0 auto; padding: 2rem; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 3rem; text-align: center; margin: -2rem -2rem 2rem -2rem; }
+        h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        h2 { color: #667eea; margin-top: 2.5rem; margin-bottom: 1rem; border-bottom: 2px solid #667eea; padding-bottom: 0.5rem; }
+        h3 { color: #764ba2; margin-top: 1.5rem; margin-bottom: 0.75rem; }
+        .highlight { background: #fff3cd; padding: 1rem; border-left: 4px solid #ffc107; margin: 1rem 0; }
+        .section { margin-bottom: 2rem; }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #dee2e6; }
+        th { background: #667eea; color: white; }
+        tr:nth-child(even) { background: #f8f9fa; }
+        .footer { text-align: center; padding: 2rem; color: #6c757d; border-top: 1px solid #dee2e6; margin-top: 3rem; font-size: 0.875rem; }
+        ul { margin-left: 2rem; margin-top: 0.5rem; }
+        li { margin-bottom: 0.5rem; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; background: #28a745; color: white; border-radius: 12px; font-size: 0.875rem; margin-left: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Service Level Agreement</h1>
+            <p style="font-size: 1.25rem; margin-top: 1rem;">SuoOps E-Invoicing & Tax Compliance Platform</p>
+            <p style="margin-top: 1rem; font-size: 0.95rem;">Effective Date: January 1, 2026</p>
+        </header>
+
+        <div class="highlight">
+            <p><strong>Agreement Overview:</strong> This Service Level Agreement ("SLA") outlines the terms and conditions between SuoOps ("Provider") and our customers ("Taxpayers") for the delivery of e-invoicing and tax compliance services, ensuring full compliance with Nigeria Revenue Service (NRS) 2026 regulations.</p>
+        </div>
+
+        <div class="section">
+            <h2>1. SERVICE AVAILABILITY</h2>
+            
+            <h3>1.1 Uptime Guarantee</h3>
+            <ul>
+                <li><strong>Monthly Uptime Commitment:</strong> 99.9%</li>
+                <li><strong>Maximum Permitted Downtime:</strong> 43.2 minutes per month</li>
+                <li><strong>Measurement Method:</strong> HTTP 200 responses from /health endpoint</li>
+                <li><strong>Monitoring Frequency:</strong> Every 60 seconds from multiple global locations</li>
+            </ul>
+
+            <h3>1.2 Planned Maintenance</h3>
+            <ul>
+                <li><strong>Maximum Duration:</strong> 4 hours per month</li>
+                <li><strong>Scheduling:</strong> Low-traffic periods (2:00 AM - 6:00 AM WAT)</li>
+                <li><strong>Advance Notice:</strong> 48 hours minimum via email and dashboard notification</li>
+                <li><strong>Emergency Maintenance:</strong> 2 hours notice for critical security updates</li>
+            </ul>
+
+            <h3>1.3 Service Credits for Downtime</h3>
+            <table>
+                <tr>
+                    <th>Monthly Uptime %</th>
+                    <th>Service Credit</th>
+                </tr>
+                <tr>
+                    <td>99.0% - 99.9%</td>
+                    <td>10% of monthly fee</td>
+                </tr>
+                <tr>
+                    <td>95.0% - 98.9%</td>
+                    <td>25% of monthly fee</td>
+                </tr>
+                <tr>
+                    <td>Below 95.0%</td>
+                    <td>50% of monthly fee</td>
+                </tr>
+            </table>
+
+            <h3>1.4 Exclusions from SLA Coverage</h3>
+            <ul>
+                <li>Third-party service failures (NRS API, AWS, OpenAI, etc.)</li>
+                <li>Customer infrastructure or internet connectivity issues</li>
+                <li>Force majeure events (natural disasters, war, government actions)</li>
+                <li>Customer-caused incidents (abuse, security breaches from customer side)</li>
+                <li>Scheduled maintenance with proper notice</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>2. PERFORMANCE STANDARDS</h2>
+
+            <h3>2.1 API Response Times (95th Percentile)</h3>
+            <table>
+                <tr>
+                    <th>Endpoint Category</th>
+                    <th>Target Response Time</th>
+                </tr>
+                <tr>
+                    <td>General API Endpoints</td>
+                    <td>&lt; 500ms</td>
+                </tr>
+                <tr>
+                    <td>Invoice Generation</td>
+                    <td>&lt; 2 seconds</td>
+                </tr>
+                <tr>
+                    <td>NRS Fiscalization & Transmission</td>
+                    <td>&lt; 5 seconds</td>
+                </tr>
+                <tr>
+                    <td>PDF Generation</td>
+                    <td>&lt; 3 seconds</td>
+                </tr>
+                <tr>
+                    <td>OCR Processing (Photo Invoices)</td>
+                    <td>&lt; 10 seconds</td>
+                </tr>
+                <tr>
+                    <td>Batch Processing</td>
+                    <td>1,000 invoices/minute</td>
+                </tr>
+            </table>
+
+            <h3>2.2 Fiscalization Success Rate</h3>
+            <ul>
+                <li><strong>Target Success Rate:</strong> 99.9% successful fiscalization</li>
+                <li><strong>Automatic Retry Policy:</strong> 3 attempts with exponential backoff (1s, 5s, 15s)</li>
+                <li><strong>Queue During NRS Downtime:</strong> Unlimited retention, auto-transmit when NRS recovers</li>
+                <li><strong>Manual Retry:</strong> Available via dashboard for failed transmissions</li>
+            </ul>
+
+            <h3>2.3 Data Synchronization</h3>
+            <ul>
+                <li><strong>Real-time NRS Sync:</strong> &lt; 10 seconds from fiscalization to NRS validation</li>
+                <li><strong>VAT Calculations:</strong> Real-time (no delay)</li>
+                <li><strong>Compliance Reports:</strong> &lt; 60 seconds generation time</li>
+                <li><strong>Database Replication:</strong> &lt; 5 seconds across backup regions</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>3. DATA SECURITY & PRIVACY</h2>
+
+            <h3>3.1 Encryption Standards</h3>
+            <ul>
+                <li><strong>Data in Transit:</strong> TLS 1.3 with 256-bit encryption</li>
+                <li><strong>Data at Rest:</strong> AES-256 encryption for all stored data</li>
+                <li><strong>Key Management:</strong> Hardware Security Modules (HSM) with automatic rotation</li>
+                <li><strong>API Authentication:</strong> OAuth 2.0 / JWT with 1-hour token expiration</li>
+            </ul>
+
+            <h3>3.2 Data Backup & Recovery</h3>
+            <ul>
+                <li><strong>Backup Frequency:</strong> Automated daily backups at 2:00 AM WAT</li>
+                <li><strong>Backup Retention:</strong> 30 days rolling + 7-year archive (NRS compliance)</li>
+                <li><strong>Recovery Point Objective (RPO):</strong> 1 hour (maximum data loss)</li>
+                <li><strong>Recovery Time Objective (RTO):</strong> 4 hours (service restoration)</li>
+                <li><strong>Backup Locations:</strong> Multi-region (US East primary, EU backup)</li>
+                <li><strong>Backup Testing:</strong> Monthly restoration drills</li>
+            </ul>
+
+            <h3>3.3 Audit Trails & Compliance</h3>
+            <ul>
+                <li><strong>Retention Period:</strong> 7 years (NRS requirement)</li>
+                <li><strong>Immutability:</strong> Cryptographically signed logs (tamper-proof)</li>
+                <li><strong>Logged Events:</strong> All API calls, user actions, fiscal transmissions, admin changes</li>
+                <li><strong>Access:</strong> Customers can export audit logs on-demand (CSV, JSON, XML)</li>
+            </ul>
+
+            <h3>3.4 NDPR Compliance (Nigeria Data Protection Regulation)</h3>
+            <ul>
+                <li>✓ Data Protection Officer appointed and registered</li>
+                <li>✓ Privacy policy published and accessible</li>
+                <li>✓ User consent management system</li>
+                <li>✓ Right to access, rectification, and erasure (after 7-year retention)</li>
+                <li>✓ Data breach notification within 72 hours</li>
+                <li>✓ Data processing agreements available</li>
+            </ul>
+
+            <h3>3.5 Data Residency</h3>
+            <ul>
+                <li><strong>Current:</strong> US East (primary), EU West (backup)</li>
+                <li><strong>Planned (Q2 2026):</strong> Nigeria data center for local residency</li>
+                <li><strong>Customer Data Export:</strong> Available on request within 48 hours</li>
+                <li><strong>Data Deletion:</strong> Complete removal within 90 days of account closure (after 7-year compliance period)</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>4. SUPPORT LEVELS</h2>
+
+            <h3>4.1 Critical Issues (P1)</h3>
+            <table>
+                <tr>
+                    <th>Criteria</th>
+                    <th>Details</th>
+                </tr>
+                <tr>
+                    <td><strong>Definition</strong></td>
+                    <td>System completely down, data loss, security breach, NRS transmission failure affecting all customers</td>
+                </tr>
+                <tr>
+                    <td><strong>Response Time</strong></td>
+                    <td>1 hour</td>
+                </tr>
+                <tr>
+                    <td><strong>Resolution Time</strong></td>
+                    <td>4 hours</td>
+                </tr>
+                <tr>
+                    <td><strong>Availability</strong></td>
+                    <td>24/7/365</td>
+                </tr>
+                <tr>
+                    <td><strong>Contact Channels</strong></td>
+                    <td>Phone, Email, WhatsApp (direct escalation)</td>
+                </tr>
+            </table>
+
+            <h3>4.2 High Priority (P2)</h3>
+            <table>
+                <tr>
+                    <th>Criteria</th>
+                    <th>Details</th>
+                </tr>
+                <tr>
+                    <td><strong>Definition</strong></td>
+                    <td>Major feature broken, individual NRS sync failure, VAT calculation errors</td>
+                </tr>
+                <tr>
+                    <td><strong>Response Time</strong></td>
+                    <td>4 hours (business hours)</td>
+                </tr>
+                <tr>
+                    <td><strong>Resolution Time</strong></td>
+                    <td>24 hours (business days)</td>
+                </tr>
+                <tr>
+                    <td><strong>Availability</strong></td>
+                    <td>Monday-Friday, 8:00 AM - 8:00 PM WAT</td>
+                </tr>
+                <tr>
+                    <td><strong>Contact Channels</strong></td>
+                    <td>Email, WhatsApp, Support Portal</td>
+                </tr>
+            </table>
+
+            <h3>4.3 Standard Issues (P3)</h3>
+            <table>
+                <tr>
+                    <th>Criteria</th>
+                    <th>Details</th>
+                </tr>
+                <tr>
+                    <td><strong>Definition</strong></td>
+                    <td>Minor bugs, UI issues, feature requests, general questions</td>
+                </tr>
+                <tr>
+                    <td><strong>Response Time</strong></td>
+                    <td>24 hours (business hours)</td>
+                </tr>
+                <tr>
+                    <td><strong>Resolution Time</strong></td>
+                    <td>72 hours (business days)</td>
+                </tr>
+                <tr>
+                    <td><strong>Availability</strong></td>
+                    <td>Monday-Friday, 9:00 AM - 5:00 PM WAT</td>
+                </tr>
+                <tr>
+                    <td><strong>Contact Channels</strong></td>
+                    <td>Email, Support Portal, Knowledge Base</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>5. FISCALIZATION GUARANTEE <span class="badge">NRS 2026</span></h2>
+
+            <h3>5.1 NRS Compliance</h3>
+            <ul>
+                <li>✓ 100% compliance with NRS 2026 e-invoicing regulations</li>
+                <li>✓ Automatic updates for tax law changes within 48 hours of publication</li>
+                <li>✓ Fiscal code integrity guaranteed (unique, cryptographically signed)</li>
+                <li>✓ QR code validation available for customers and tax authorities</li>
+            </ul>
+
+            <h3>5.2 Transmission Reliability</h3>
+            <ul>
+                <li><strong>Primary Transmission:</strong> Real-time to NRS upon invoice creation</li>
+                <li><strong>Retry Policy:</strong> 3 automatic attempts with exponential backoff</li>
+                <li><strong>Queue System:</strong> Unlimited retention during NRS downtime</li>
+                <li><strong>Manual Retry:</strong> Available in dashboard for failed transmissions</li>
+                <li><strong>Status Tracking:</strong> Real-time updates (pending, transmitting, validated, failed)</li>
+                <li><strong>Notifications:</strong> Email/WhatsApp alerts for failed transmissions</li>
+            </ul>
+
+            <h3>5.3 Fiscal Data Integrity</h3>
+            <ul>
+                <li><strong>Digital Signatures:</strong> SHA-256 cryptographic signatures</li>
+                <li><strong>QR Code Validation:</strong> Public endpoint for verification</li>
+                <li><strong>Tamper-Proof Audit Trail:</strong> Immutable logging of all fiscal events</li>
+                <li><strong>Verification Endpoint:</strong> <code>https://verify.suoops.com/{fiscal_code}</code></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>6. REPORTING & TRANSPARENCY</h2>
+
+            <h3>6.1 Service Status Page</h3>
+            <ul>
+                <li><strong>URL:</strong> <a href="https://status.suoops.com">status.suoops.com</a></li>
+                <li><strong>Real-time Monitoring:</strong> API health, NRS connectivity, database status</li>
+                <li><strong>Incident History:</strong> All incidents published with root cause analysis</li>
+                <li><strong>Planned Maintenance Calendar:</strong> 30-day advance view</li>
+                <li><strong>Subscribe:</strong> Email/SMS/Webhook notifications for incidents</li>
+            </ul>
+
+            <h3>6.2 Monthly Service Reports</h3>
+            <p>Automatically delivered by the 5th of each month:</p>
+            <ul>
+                <li>Uptime statistics with SLA credits (if applicable)</li>
+                <li>Performance metrics (API response times, success rates)</li>
+                <li>Incident summary with resolution details</li>
+                <li>Fiscalization statistics (total invoices, NRS validation rate)</li>
+                <li>Compliance certificate (NRS 2026 adherence)</li>
+            </ul>
+
+            <h3>6.3 Quarterly Business Reviews</h3>
+            <p>For Pro, Business, and Enterprise customers:</p>
+            <ul>
+                <li>Scheduled meeting with account manager</li>
+                <li>Performance optimization recommendations</li>
+                <li>Compliance audit results and action items</li>
+                <li>Product roadmap preview and feature requests</li>
+                <li>Custom integration opportunities</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>7. FINANCIAL TERMS</h2>
+
+            <h3>7.1 SLA Credit Claims</h3>
+            <ul>
+                <li><strong>Automatic Application:</strong> Credits applied to next month's invoice automatically</li>
+                <li><strong>Claim Period:</strong> Must be claimed within 30 days of incident</li>
+                <li><strong>Maximum Credit:</strong> 50% of monthly subscription fee</li>
+                <li><strong>Non-Transferable:</strong> Credits cannot be transferred or refunded as cash</li>
+                <li><strong>Cumulative:</strong> Multiple incidents in same month accumulate up to maximum</li>
+            </ul>
+
+            <h3>7.2 Force Majeure</h3>
+            <p>No SLA credits for events beyond Provider's reasonable control, including but not limited to:</p>
+            <ul>
+                <li>Natural disasters (earthquakes, floods, hurricanes)</li>
+                <li>War, terrorism, civil unrest</li>
+                <li>Government actions or regulations</li>
+                <li>Internet backbone failures</li>
+                <li>Third-party data center outages</li>
+            </ul>
+            <p><strong>Notification:</strong> Customers will be notified within 24 hours of force majeure events.</p>
+        </div>
+
+        <div class="section">
+            <h2>8. AMENDMENTS & TERMINATION</h2>
+
+            <h3>8.1 SLA Updates</h3>
+            <ul>
+                <li><strong>Frequency:</strong> May be updated quarterly to reflect service improvements</li>
+                <li><strong>Notice Period:</strong> 30 days for material changes, 7 days for minor clarifications</li>
+                <li><strong>Notification Method:</strong> Email to registered address + dashboard notification</li>
+                <li><strong>Acceptance:</strong> Continued use of service implies acceptance of updated SLA</li>
+                <li><strong>Opt-Out:</strong> Customers may terminate within 30 days of material changes without penalty</li>
+            </ul>
+
+            <h3>8.2 Service Termination</h3>
+            <ul>
+                <li><strong>Customer Termination:</strong> 30-day notice required</li>
+                <li><strong>Provider Termination:</strong> 60-day notice for non-breach terminations</li>
+                <li><strong>Data Export:</strong> Full data export provided within 48 hours of termination</li>
+                <li><strong>Data Retention:</strong> 7 years for tax compliance, then permanent deletion</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>9. CONTACT INFORMATION</h2>
+            <ul>
+                <li><strong>General Support:</strong> support@suoops.com</li>
+                <li><strong>API & Technical:</strong> api@suoops.com</li>
+                <li><strong>Compliance:</strong> compliance@suoops.com</li>
+                <li><strong>Security:</strong> security@suoops.com</li>
+                <li><strong>WhatsApp Support:</strong> +234-xxx-xxx-xxxx (Business hours)</li>
+                <li><strong>Emergency Hotline:</strong> +234-xxx-xxx-xxxx (24/7 for P1 incidents)</li>
+            </ul>
+        </div>
+
+        <div class="highlight" style="margin-top: 2rem;">
+            <p><strong>Acknowledgment:</strong> By using SuoOps services, you acknowledge that you have read, understood, and agree to be bound by this Service Level Agreement.</p>
+        </div>
+
+        <div class="footer">
+            <p><strong>SuoOps E-Invoicing & Tax Compliance Platform</strong></p>
+            <p>&copy; 2025 SuoOps. All rights reserved. | NRS 2026 Compliant</p>
+            <p style="margin-top: 0.5rem;">
+                <a href="/legal/privacy">Privacy Policy</a> |
+                <a href="/legal/terms">Terms of Service</a> |
+                <a href="/docs/api">API Documentation</a>
+            </p>
+            <p style="margin-top: 1rem; font-size: 0.75rem;">
+                Last Updated: November 7, 2025 | Version 1.0
+            </p>
+        </div>
+    </div>
+</body>
+</html>
