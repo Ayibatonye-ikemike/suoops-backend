@@ -110,11 +110,12 @@ class Invoice(Base):
         back_populates="invoice",
         cascade="all, delete-orphan",
     )  # type: ignore
-    fiscal_data: Mapped["FiscalInvoice | None"] = relationship(
-        "FiscalInvoice",
-        back_populates="invoice",
-        uselist=False,
-    )  # type: ignore
+    # TODO: Re-add fiscal_data relationship when tax_models properly imported in models.py
+    # fiscal_data: Mapped["FiscalInvoice | None"] = relationship(
+    #     "FiscalInvoice",
+    #     back_populates="invoice",
+    #     uselist=False,
+    # )
 
 
 class InvoiceLine(Base):
