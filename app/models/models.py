@@ -3,12 +3,16 @@ from __future__ import annotations
 import datetime as dt
 import enum
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.base_class import Base
+
+if TYPE_CHECKING:
+    from app.models.tax_models import FiscalInvoice, TaxProfile, VATReturn
 
 
 def utcnow() -> dt.datetime:
@@ -92,11 +96,24 @@ class Invoice(Base):
         server_default=func.now(),
     )
     pdf_url: Mapped[str | None]
+    
+    # VAT and fiscalization fields (NRS 2026 compliance)
+    vat_rate: Mapped[float | None] = mapped_column(default=7.5)
+    vat_amount: Mapped[Decimal | None] = mapped_column(Numeric(scale=2), default=0)
+    vat_category: Mapped[str | None] = mapped_column(String(20), default="standard")
+    is_fiscalized: Mapped[bool] = mapped_column(default=False)
+    fiscal_code: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True, index=True)
+    
     customer: Mapped[Customer] = relationship("Customer", back_populates="invoices")  # type: ignore
     lines: Mapped[list[InvoiceLine]] = relationship(
         "InvoiceLine",
         back_populates="invoice",
         cascade="all, delete-orphan",
+    )  # type: ignore
+    fiscal_data: Mapped["FiscalInvoice | None"] = relationship(
+        "FiscalInvoice",
+        back_populates="invoice",
+        uselist=False,
     )  # type: ignore
 
 
@@ -143,6 +160,17 @@ class User(Base):
     account_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    
+    # Tax and compliance relationships
+    tax_profile: Mapped["TaxProfile | None"] = relationship(
+        "TaxProfile",
+        back_populates="user",
+        uselist=False,
+    )  # type: ignore
+    vat_returns: Mapped[list["VATReturn"]] = relationship(
+        "VATReturn",
+        back_populates="user",
+    )  # type: ignore
 
 
 class WebhookEvent(Base):

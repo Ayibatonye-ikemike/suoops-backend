@@ -71,13 +71,12 @@ async def parse_receipt_image(
         # If good, create invoice with returned data
         ```
     
-    Cost: ~₦20 per image (~$0.01)
     Speed: ~5-10 seconds
     """
-    # Check if user has paid plan (OCR is premium feature)
+    # Check if user has paid plan FIRST (before processing file)
     require_paid_plan(db, current_user_id, "Photo invoice OCR")
     
-    # Validate file type
+    # Validate file type (fast check before reading bytes)
     allowed_types = ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]
     if file.content_type not in allowed_types:
         raise HTTPException(

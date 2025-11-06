@@ -14,6 +14,7 @@ from app.api.routes_invoice_public import router as invoice_public_router
 from app.api.routes_metrics import router as metrics_router
 from app.api.routes_ocr import router as ocr_router
 from app.api.routes_subscription import router as subscription_router
+from app.api.routes_tax import router as tax_router
 from app.api.routes_user import router as user_router
 from app.api.routes_webhooks import router as webhook_router
 from app.core.config import settings
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(invoice_router, prefix="/invoices", tags=["invoices"])
     app.include_router(ocr_router, tags=["ocr"])
     app.include_router(subscription_router, prefix="/subscriptions", tags=["subscriptions"])
+    app.include_router(tax_router, tags=["tax"])
     app.include_router(user_router, prefix="/users", tags=["users"])
     app.include_router(metrics_router, tags=["metrics"])
     app.include_router(health_router)

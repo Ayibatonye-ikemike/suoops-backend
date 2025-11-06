@@ -67,6 +67,11 @@ class BaseAppSettings(BaseSettings):
     HSTS_SECONDS: int = 31_536_000
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "plain"
+    
+    # NRS Integration (Nigeria Revenue Service - Tax compliance)
+    NRS_API_URL: str | None = None
+    NRS_API_KEY: str | None = None
+    NRS_MERCHANT_ID: str | None = None
 
     @model_validator(mode="after")
     def _validate_required_fields(self) -> BaseAppSettings:
