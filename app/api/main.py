@@ -12,6 +12,7 @@ from app.api.routes_health import router as health_router
 from app.api.routes_invoice import router as invoice_router
 from app.api.routes_invoice_public import router as invoice_public_router
 from app.api.routes_metrics import router as metrics_router
+from app.api.routes_oauth import router as oauth_router
 from app.api.routes_ocr import router as ocr_router
 from app.api.routes_subscription import router as subscription_router
 from app.api.routes_tax import router as tax_router
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
         app.add_middleware(HTTPSRedirectMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(auth_router, prefix="/auth", tags=["auth"])
+    app.include_router(oauth_router, prefix="/auth/oauth", tags=["oauth"])
     app.include_router(webhook_router, prefix="/webhooks", tags=["webhooks"])
     app.include_router(invoice_public_router, prefix="/public/invoices", tags=["invoices-public"])
     app.include_router(invoice_router, prefix="/invoices", tags=["invoices"])

@@ -267,3 +267,29 @@ class OCRParseOut(BaseModel):
             }
         }
     )
+
+
+
+# OAuth / SSO Schemas
+
+class OAuthProviderInfo(BaseModel):
+    """Information about an OAuth provider."""
+    name: str
+    display_name: str
+    enabled: bool
+    supports_refresh: bool
+    icon_url: str | None = None
+
+
+class OAuthProvidersOut(BaseModel):
+    """List of available OAuth providers."""
+    providers: list[OAuthProviderInfo]
+
+
+class OAuthCallbackOut(BaseModel):
+    """Response from OAuth callback with JWT tokens."""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    redirect_uri: str
+

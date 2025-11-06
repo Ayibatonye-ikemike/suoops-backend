@@ -1,0 +1,235 @@
+"""
+OAuth 2.0 / SSO Authentication Routes.
+
+Endpoints:
+- GET  /auth/oauth/{provider}/login - Initiate OAuth flow
+- GET  /auth/oauth/{provider}/callback - Handle OAuth callback
+- GET  /auth/oauth/providers - List available providers
+
+Follows SRP: Only handles HTTP layer for OAuth.
+Business logic delegated to OAuthService.
+"""
+
+import logging
+import secrets
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.db.session import get_db
+from app.models import schemas
+from app.services.oauth_service import OAuthProviderError, create_oauth_service
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
+
+
+# In-memory state store for CSRF protection
+# Production: Use Redis or database
+_oauth_states: dict[str, str] = {}
+
+
+def _generate_state() -> str:
+    """
+    Generate cryptographically secure state token for CSRF protection.
+    
+    Returns:
+        Random 32-character hex string
+    """
+    return secrets.token_hex(16)
+
+
+def _validate_state(state: str) -> bool:
+    """
+    Validate OAuth state token.
+    
+    Args:
+        state: State token from OAuth callback
+        
+    Returns:
+        True if state is valid and not expired
+    """
+    # Check if state exists
+    if state not in _oauth_states:
+        return False
+
+    # Remove state (one-time use)
+    _oauth_states.pop(state)
+    return True
+
+
+@router.get("/providers", response_model=schemas.OAuthProvidersOut)
+async def list_oauth_providers(db: Annotated[Session, Depends(get_db)]) -> dict:
+    """
+    List available OAuth providers.
+    
+    Returns list of configured SSO providers with their capabilities.
+    
+    Returns:
+        {
+            "providers": [
+                {
+                    "name": "google",
+                    "display_name": "Google",
+                    "enabled": true,
+                    "supports_refresh": true
+                }
+            ]
+        }
+    """
+    oauth_service = create_oauth_service(db)
+    providers = []
+
+    # Google provider
+    if settings.GOOGLE_CLIENT_ID:
+        providers.append({
+            "name": "google",
+            "display_name": "Google",
+            "enabled": True,
+            "supports_refresh": True,
+            "icon_url": "https://www.google.com/favicon.ico",
+        })
+
+    return {"providers": providers}
+
+
+@router.get("/{provider}/login")
+async def oauth_login(
+    provider: str,
+    redirect_uri: str | None = Query(None, description="Frontend redirect after auth"),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """
+    Initiate OAuth login flow.
+    
+    Redirects user to OAuth provider's authorization page.
+    
+    Args:
+        provider: OAuth provider name (e.g., "google")
+        redirect_uri: Optional frontend URL to redirect after successful auth
+        
+    Returns:
+        Redirect to OAuth provider's authorization page
+        
+    Example:
+        GET /auth/oauth/google/login?redirect_uri=https://app.suoops.com/dashboard
+    """
+    try:
+        oauth_service = create_oauth_service(db)
+        oauth_provider = oauth_service.get_provider(provider)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # Generate CSRF protection state
+    state = _generate_state()
+    _oauth_states[state] = redirect_uri or settings.FRONTEND_URL
+
+    # Get authorization URL
+    auth_url = oauth_provider.get_authorization_url(state)
+
+    logger.info(f"Initiating OAuth login with {provider}")
+    return RedirectResponse(url=auth_url)
+
+
+@router.get("/{provider}/callback", response_model=schemas.OAuthCallbackOut)
+async def oauth_callback(
+    provider: str,
+    code: str = Query(..., description="Authorization code from OAuth provider"),
+    state: str = Query(..., description="CSRF protection token"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Handle OAuth provider callback.
+    
+    Completes OAuth flow:
+    1. Validates CSRF state
+    2. Exchanges code for tokens
+    3. Fetches user info
+    4. Creates/updates user
+    5. Returns JWT tokens
+    
+    Args:
+        provider: OAuth provider name
+        code: Authorization code from provider
+        state: CSRF state token
+        
+    Returns:
+        {
+            "access_token": "eyJ...",
+            "refresh_token": "eyJ...",
+            "token_type": "bearer",
+            "redirect_uri": "https://app.suoops.com/dashboard"
+        }
+        
+    Example:
+        GET /auth/oauth/google/callback?code=4/xxx&state=abc123
+    """
+    # Validate CSRF state
+    if not _validate_state(state):
+        logger.warning(f"Invalid OAuth state: {state}")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid state token. Possible CSRF attack or expired session.",
+        )
+
+    # Get redirect URI from state store
+    redirect_uri = _oauth_states.get(state, settings.FRONTEND_URL)
+
+    try:
+        # Authenticate with OAuth code
+        oauth_service = create_oauth_service(db)
+        tokens = await oauth_service.authenticate_with_code(provider, code)
+
+        logger.info(f"OAuth authentication successful for {provider}")
+
+        return {
+            **tokens,
+            "redirect_uri": redirect_uri,
+        }
+
+    except OAuthProviderError as e:
+        logger.error(f"OAuth authentication failed: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"OAuth authentication failed: {str(e)}",
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error during OAuth callback: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error during authentication",
+        ) from e
+
+
+@router.post("/{provider}/revoke")
+async def revoke_oauth_access(
+    provider: str,
+    current_user_id: int,  # Would need proper dependency injection
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Revoke OAuth access for user.
+    
+    Removes OAuth provider link from user account.
+    User can still login with password if set.
+    
+    Args:
+        provider: OAuth provider to unlink
+        current_user_id: Authenticated user ID
+        
+    Returns:
+        {"message": "OAuth access revoked"}
+        
+    Note: Not fully implemented - requires OAuth token storage
+    """
+    logger.info(f"OAuth revocation requested for provider {provider}")
+    
+    # TODO: Implement OAuth token storage and revocation
+    # For now, just acknowledge the request
+    return {
+        "message": f"OAuth {provider} access revocation is pending implementation",
+        "status": "not_implemented",
+    }

@@ -79,6 +79,11 @@ class BaseAppSettings(BaseSettings):
     NRS_API_URL: str | None = None
     NRS_API_KEY: str | None = None
     NRS_MERCHANT_ID: str | None = None
+    
+    # OAuth 2.0 / SSO Configuration
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    OAUTH_STATE_SECRET: str = "change_me_oauth_state"  # For CSRF protection
 
     @model_validator(mode="after")
     def _validate_required_fields(self) -> BaseAppSettings:
