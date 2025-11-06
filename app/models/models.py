@@ -162,16 +162,16 @@ class User(Base):
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     
-    # Tax and compliance relationships
-    tax_profile: Mapped["TaxProfile | None"] = relationship(
-        "TaxProfile",
-        back_populates="user",
-        uselist=False,
-    )  # type: ignore
-    vat_returns: Mapped[list["VATReturn"]] = relationship(
-        "VATReturn",
-        back_populates="user",
-    )  # type: ignore
+    # TODO: Re-add tax relationships when tax_models properly imported in models.py
+    # tax_profile: Mapped["TaxProfile | None"] = relationship(
+    #     "TaxProfile",
+    #     back_populates="user",
+    #     uselist=False,
+    # )
+    # vat_returns: Mapped[list["VATReturn"]] = relationship(
+    #     "VATReturn",
+    #     back_populates="user",
+    # )
 
 
 class WebhookEvent(Base):
