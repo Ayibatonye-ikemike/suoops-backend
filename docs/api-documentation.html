@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuoOps API Documentation - NRS E-Invoicing Platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 3rem 0; margin-bottom: 3rem; }
+        h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        h2 { color: #667eea; margin-top: 2rem; margin-bottom: 1rem; border-bottom: 2px solid #667eea; padding-bottom: 0.5rem; }
+        h3 { color: #764ba2; margin-top: 1.5rem; margin-bottom: 0.75rem; }
+        .section { background: #f8f9fa; padding: 2rem; border-radius: 8px; margin-bottom: 2rem; }
+        .endpoint { background: white; padding: 1.5rem; border-left: 4px solid #667eea; margin-bottom: 1rem; border-radius: 4px; }
+        .method { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 4px; font-weight: bold; margin-right: 1rem; color: white; }
+        .get { background: #28a745; }
+        .post { background: #007bff; }
+        .put { background: #ffc107; color: #333; }
+        .delete { background: #dc3545; }
+        code { background: #e9ecef; padding: 0.2rem 0.4rem; border-radius: 3px; font-family: 'Courier New', monospace; }
+        pre { background: #2d2d2d; color: #f8f8f2; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+        pre code { background: transparent; color: inherit; }
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; background: #28a745; color: white; border-radius: 12px; font-size: 0.875rem; margin-left: 0.5rem; }
+        footer { text-align: center; padding: 2rem; color: #6c757d; border-top: 1px solid #dee2e6; margin-top: 3rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🚀 SuoOps API Documentation</h1>
+            <p>Nigeria's Premier E-Invoicing & Tax Compliance Platform | NRS 2026 Ready</p>
+            <p style="margin-top: 1rem;">
+                <strong>Base URL:</strong> <code>https://api.suoops.com/api/v1</code>
+            </p>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Overview -->
+        <section class="section">
+            <h2>📋 Overview</h2>
+            <p>The SuoOps API provides comprehensive e-invoicing and tax compliance services for Nigerian businesses, ensuring full compliance with NRS 2026 regulations.</p>
+            
+            <h3>Key Features</h3>
+            <ul>
+                <li>✅ Automatic invoice fiscalization with unique codes</li>
+                <li>✅ Real-time NRS transmission and validation</li>
+                <li>✅ VAT calculation (7.5% standard, zero-rated detection)</li>
+                <li>✅ Small business classification (₦100M/₦250M thresholds)</li>
+                <li>✅ Monthly VAT returns generation</li>
+                <li>✅ 7-year audit trail maintenance</li>
+                <li>✅ WhatsApp, Voice, and OCR invoice creation</li>
+            </ul>
+        </section>
+
+        <!-- Authentication -->
+        <section class="section">
+            <h2>🔐 Authentication</h2>
+            <p>All API requests require authentication using JWT Bearer tokens.</p>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/auth/login</code>
+                <pre><code>{
+  "email": "business@example.com",
+  "password": "your-password"
+}</code></pre>
+                <p><strong>Response:</strong></p>
+                <pre><code>{
+  "access_token": "eyJhbG...",
+  "token_type": "bearer",
+  "expires_in": 3600
+}</code></pre>
+            </div>
+
+            <p><strong>Using the token:</strong></p>
+            <pre><code>Authorization: Bearer eyJhbG...</code></pre>
+        </section>
+
+        <!-- Tax & Fiscalization Endpoints -->
+        <section class="section">
+            <h2>💼 Tax & Fiscalization</h2>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/tax/profile</code>
+                <p>Get business tax profile and applicable tax rates</p>
+                <p><strong>Response:</strong></p>
+                <pre><code>{
+  "business_size": "small",
+  "is_small_business": true,
+  "annual_turnover": 50000000,
+  "tax_rates": {
+    "CIT": 0,
+    "CGT": 0,
+    "DEV_LEVY": 0,
+    "VAT": 7.5
+  }
+}</code></pre>
+            </div>
+
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/tax/profile</code>
+                <p>Update tax profile information</p>
+                <pre><code>{
+  "annual_turnover": 75000000,
+  "fixed_assets": 150000000,
+  "tin": "1234567890",
+  "vat_registration_number": "VAT1234567"
+}</code></pre>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/tax/vat/calculate</code>
+                <p>Calculate VAT for an amount</p>
+                <p><strong>Parameters:</strong></p>
+                <ul>
+                    <li><code>amount</code> (required): Amount in Naira</li>
+                    <li><code>category</code> (optional): standard, zero_rated, exempt, export</li>
+                </ul>
+                <p><strong>Example:</strong></p>
+                <pre><code>GET /tax/vat/calculate?amount=10000&category=standard
+
+{
+  "subtotal": 9302.33,
+  "vat_rate": 7.5,
+  "vat_amount": 697.67,
+  "total": 10000.00
+}</code></pre>
+            </div>
+
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/tax/invoice/{invoice_id}/fiscalize</code>
+                <span class="badge">NRS 2026</span>
+                <p>Fiscalize an invoice for NRS compliance</p>
+                <p><strong>Response:</strong></p>
+                <pre><code>{
+  "fiscal_code": "NGR-20260115-00100-00012345-A1B2C3D4",
+  "qr_code": "data:image/png;base64,...",
+  "vat_amount": 697.67,
+  "status": "validated"
+}</code></pre>
+            </div>
+        </section>
+
+        <!-- Invoice Management -->
+        <section class="section">
+            <h2>📄 Invoice Management</h2>
+
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/invoices</code>
+                <p>Create a new invoice</p>
+                <pre><code>{
+  "customer_name": "John Doe",
+  "customer_phone": "+2348012345678",
+  "amount": 10000,
+  "lines": [
+    {
+      "description": "Service rendered",
+      "quantity": 1,
+      "unit_price": 10000
+    }
+  ]
+}</code></pre>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/invoices</code>
+                <p>List all invoices with pagination</p>
+                <p><strong>Query Parameters:</strong></p>
+                <ul>
+                    <li><code>page</code>: Page number (default: 1)</li>
+                    <li><code>limit</code>: Items per page (default: 20)</li>
+                    <li><code>status</code>: Filter by status (pending, paid, cancelled)</li>
+                </ul>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/invoices/{invoice_id}/pdf</code>
+                <p>Download invoice PDF with fiscal QR code</p>
+            </div>
+        </section>
+
+        <!-- VAT Returns -->
+        <section class="section">
+            <h2>📊 VAT Returns</h2>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/tax/vat/summary</code>
+                <p>Get VAT summary and compliance status</p>
+                <p><strong>Response:</strong></p>
+                <pre><code>{
+  "current_month": {
+    "tax_period": "2026-01",
+    "output_vat": 45000,
+    "input_vat": 12000,
+    "net_vat": 33000,
+    "total_invoices": 125,
+    "fiscalized_invoices": 125
+  },
+  "compliance_status": "compliant"
+}</code></pre>
+            </div>
+
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/tax/vat/return</code>
+                <p>Generate VAT return for a specific month</p>
+                <pre><code>{
+  "year": 2026,
+  "month": 1
+}</code></pre>
+            </div>
+        </section>
+
+        <!-- Rate Limits -->
+        <section class="section">
+            <h2>⏱️ Rate Limits</h2>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr style="background: #667eea; color: white;">
+                    <th style="padding: 0.75rem; text-align: left;">Endpoint</th>
+                    <th style="padding: 0.75rem; text-align: left;">Rate Limit</th>
+                </tr>
+                <tr style="background: white;">
+                    <td style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;">Invoice Creation</td>
+                    <td style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;">60 requests/minute</td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;">OCR Processing</td>
+                    <td style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;">10 requests/minute</td>
+                </tr>
+                <tr style="background: white;">
+                    <td style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;">Tax Calculations</td>
+                    <td style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;">100 requests/minute</td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 0.75rem;">All Other Endpoints</td>
+                    <td style="padding: 0.75rem;">1000 requests/minute</td>
+                </tr>
+            </table>
+        </section>
+
+        <!-- Error Codes -->
+        <section class="section">
+            <h2>⚠️ Error Handling</h2>
+            <p>All errors follow a standard format:</p>
+            <pre><code>{
+  "error": {
+    "code": "PREMIUM_FEATURE_REQUIRED",
+    "message": "This feature requires a paid subscription",
+    "current_plan": "free",
+    "upgrade_url": "/subscription/initialize"
+  }
+}</code></pre>
+
+            <h3>Common Error Codes</h3>
+            <ul>
+                <li><strong>400:</strong> Bad Request - Invalid input data</li>
+                <li><strong>401:</strong> Unauthorized - Missing or invalid token</li>
+                <li><strong>403:</strong> Forbidden - Premium feature or limit exceeded</li>
+                <li><strong>404:</strong> Not Found - Resource doesn't exist</li>
+                <li><strong>422:</strong> Unprocessable Entity - Validation failed</li>
+                <li><strong>429:</strong> Too Many Requests - Rate limit exceeded</li>
+                <li><strong>500:</strong> Internal Server Error - Contact support</li>
+            </ul>
+        </section>
+
+        <!-- Webhooks -->
+        <section class="section">
+            <h2>🔔 Webhooks</h2>
+            <p>SuoOps can send webhook notifications for important events:</p>
+            
+            <h3>Available Events</h3>
+            <ul>
+                <li><code>invoice.created</code> - New invoice created</li>
+                <li><code>invoice.fiscalized</code> - Invoice fiscalized with NRS</li>
+                <li><code>vat.return.generated</code> - VAT return ready</li>
+                <li><code>compliance.alert</code> - Compliance issue detected</li>
+            </ul>
+
+            <p><strong>Webhook Payload Example:</strong></p>
+            <pre><code>{
+  "event": "invoice.fiscalized",
+  "timestamp": "2026-01-15T12:00:00Z",
+  "data": {
+    "invoice_id": 12345,
+    "fiscal_code": "NGR-20260115-00100-00012345-A1B2C3D4",
+    "nrs_status": "validated"
+  }
+}</code></pre>
+        </section>
+
+        <!-- Support -->
+        <section class="section">
+            <h2>📞 Support & Resources</h2>
+            <ul>
+                <li><strong>API Status:</strong> <a href="https://status.suoops.com">status.suoops.com</a></li>
+                <li><strong>Email Support:</strong> api@suoops.com</li>
+                <li><strong>WhatsApp:</strong> +234-xxx-xxx-xxxx</li>
+                <li><strong>Interactive API Explorer:</strong> <a href="https://api.suoops.com/docs">api.suoops.com/docs</a></li>
+                <li><strong>GitHub:</strong> <a href="https://github.com/Ayibatonye-ikemike/suoops-backend">github.com/Ayibatonye-ikemike/suoops-backend</a></li>
+            </ul>
+        </section>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 SuoOps. All rights reserved. | NRS 2026 Compliant E-Invoicing Platform</p>
+        <p style="margin-top: 0.5rem;">
+            <a href="/legal/privacy">Privacy Policy</a> |
+            <a href="/legal/terms">Terms of Service</a> |
+            <a href="/legal/sla">Service Level Agreement</a>
+        </p>
+    </footer>
+</body>
+</html>
