@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.db.session import get_db
 from app.api.routes_auth import get_current_user_id
-from app.services.tax_service import TaxProfileService
+from app.services.tax_profile_service import TaxProfileService
 from app.services.vat_service import VATService
 from app.services.fiscalization_service import FiscalizationService, VATCalculator
 from app.models.models import Invoice
