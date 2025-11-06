@@ -12,6 +12,7 @@ Business logic delegated to OAuthService.
 
 import logging
 import secrets
+import ssl
 from typing import Annotated
 
 import redis
@@ -33,14 +34,32 @@ _redis_client: redis.Redis | None = None
 
 
 def _get_redis_client() -> redis.Redis:
-    """Get or create Redis client for OAuth state storage."""
+    """Get or create Redis client for OAuth state storage with SSL support."""
     global _redis_client
     if _redis_client is None:
+        # Configure SSL options for Heroku Redis
+        ssl_cert_reqs = getattr(settings, "REDIS_SSL_CERT_REQS", "required")
+        ssl_options = {}
+        
+        if ssl_cert_reqs:
+            ssl_map = {
+                "required": ssl.CERT_REQUIRED,
+                "optional": ssl.CERT_OPTIONAL,
+                "none": ssl.CERT_NONE,
+            }
+            chosen = ssl_map.get(str(ssl_cert_reqs).lower())
+            if chosen is not None:
+                ssl_options["ssl_cert_reqs"] = chosen
+        
+        if getattr(settings, "REDIS_SSL_CA_CERTS", None):
+            ssl_options["ssl_ca_certs"] = settings.REDIS_SSL_CA_CERTS
+        
         _redis_client = redis.Redis.from_url(
             settings.REDIS_URL,
             decode_responses=True,
             socket_connect_timeout=5,
             socket_timeout=5,
+            **ssl_options
         )
     return _redis_client
 
