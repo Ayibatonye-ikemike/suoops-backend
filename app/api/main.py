@@ -57,7 +57,7 @@ def create_app() -> FastAPI:
         app.add_middleware(HTTPSRedirectMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(auth_router, prefix="/auth", tags=["auth"])
-    app.include_router(oauth_router, prefix="/auth/oauth", tags=["oauth"])
+    app.include_router(oauth_router, tags=["oauth"])
     app.include_router(webhook_router, prefix="/webhooks", tags=["webhooks"])
     app.include_router(invoice_public_router, prefix="/public/invoices", tags=["invoices-public"])
     app.include_router(invoice_router, prefix="/invoices", tags=["invoices"])
