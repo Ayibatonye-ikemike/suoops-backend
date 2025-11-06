@@ -63,7 +63,14 @@ class BaseAppSettings(BaseSettings):
     CORS_ALLOW_METHODS: list[str] = ["*"]
     CORS_ALLOW_HEADERS: list[str] = ["*"]
     CORS_ALLOW_CREDENTIALS: bool = True
-    CONTENT_SECURITY_POLICY: str = "default-src 'self'"
+    CONTENT_SECURITY_POLICY: str = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "img-src 'self' data: https://fastapi.tiangolo.com; "
+        "font-src 'self' data:; "
+        "connect-src 'self'"
+    )
     HSTS_SECONDS: int = 31_536_000
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "plain"
