@@ -1,0 +1,6 @@
+# This is the monorepo root - DO NOT deploy from here
+# Frontend is in ./frontend directory
+# Backend is on Heroku
+
+*
+!frontend/
