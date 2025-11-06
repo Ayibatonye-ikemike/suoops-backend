@@ -165,9 +165,16 @@ We implement ISO 27001 controls:
 | NDPA Compliance | ✅ COMPLIANT | None | - |
 | Data Encryption | ✅ COMPLIANT | None | - |
 | MFA Support | ✅ IMPLEMENTED | None | - |
-| SSO Support | ✅ CODE COMPLETE | Deploy to production | Immediate |
-| VAPT Report | ⚠️ SCHEDULED | Complete assessment | Q1 2026 |
-| ISO 27001 Cert | ⚠️ ALIGNED | Pursue certification | Q4 2026 |
+### ✅ SSO Support | SSO Support | ✅ IMPLEMENTED (Code complete, pending deployment) | MEDIUM | Deployed Q1 2026 | ₦0 (completed) |
+| VAPT Report | ❌ PENDING | HIGH | Q1 2026 | ₦750K |
+| ISO 27001 Cert | ❌ NOT CERTIFIED | LOW | Q4 2026 | ₦7.5M |
+
+**UPDATE (November 7, 2025):**
+- ✅ Backend OAuth deployed: Heroku v110
+- ✅ Frontend OAuth deployed: Vercel production
+- ✅ Google OAuth credentials configured
+- ⏳ Pending: Update Google OAuth redirect URIs
+- ⏳ Pending: End-to-end testing
 
 ---
 
