@@ -14,6 +14,7 @@ import logging
 import secrets
 from typing import Annotated
 
+import redis
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -27,9 +28,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
 
 
-# In-memory state store for CSRF protection
-# Production: Use Redis or database
-_oauth_states: dict[str, str] = {}
+# Redis client for OAuth state storage (shared across dynos)
+_redis_client: redis.Redis | None = None
+
+
+def _get_redis_client() -> redis.Redis:
+    """Get or create Redis client for OAuth state storage."""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.Redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+        )
+    return _redis_client
 
 
 def _generate_state() -> str:
@@ -42,23 +55,45 @@ def _generate_state() -> str:
     return secrets.token_hex(16)
 
 
-def _validate_state(state: str) -> bool:
+def _store_oauth_state(state: str, redirect_uri: str) -> None:
     """
-    Validate OAuth state token.
+    Store OAuth state token in Redis with 10-minute expiration.
+    
+    Args:
+        state: State token for CSRF protection
+        redirect_uri: Frontend redirect URI to store with state
+    """
+    redis_client = _get_redis_client()
+    key = f"oauth:state:{state}"
+    # Store for 10 minutes (OAuth flow should complete quickly)
+    redis_client.setex(key, 600, redirect_uri)
+    logger.debug(f"Stored OAuth state: {state}")
+
+
+def _validate_and_get_redirect(state: str) -> str | None:
+    """
+    Validate OAuth state token and return redirect URI from Redis.
     
     Args:
         state: State token from OAuth callback
         
     Returns:
-        True if state is valid and not expired
+        Redirect URI if state is valid, None otherwise
     """
-    # Check if state exists
-    if state not in _oauth_states:
-        return False
-
-    # Remove state (one-time use)
-    _oauth_states.pop(state)
-    return True
+    redis_client = _get_redis_client()
+    key = f"oauth:state:{state}"
+    
+    # Get redirect URI from Redis
+    redirect_uri = redis_client.get(key)
+    
+    if redirect_uri is None:
+        return None
+    
+    # Delete state (one-time use)
+    redis_client.delete(key)
+    logger.debug(f"Validated and consumed OAuth state: {state}")
+    
+    return redirect_uri
 
 
 @router.get("/providers", response_model=schemas.OAuthProvidersOut)
@@ -123,9 +158,9 @@ async def oauth_login(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
-    # Generate CSRF protection state
+    # Generate CSRF protection state and store in Redis
     state = _generate_state()
-    _oauth_states[state] = redirect_uri or settings.FRONTEND_URL
+    _store_oauth_state(state, redirect_uri or settings.FRONTEND_URL)
 
     # Get authorization URL
     auth_url = oauth_provider.get_authorization_url(state)
@@ -167,16 +202,14 @@ async def oauth_callback(
     Example:
         GET /auth/oauth/google/callback?code=4/xxx&state=abc123
     """
-    # Validate CSRF state
-    if not _validate_state(state):
+    # Validate CSRF state and get redirect URI
+    redirect_uri = _validate_and_get_redirect(state)
+    if redirect_uri is None:
         logger.warning(f"Invalid OAuth state: {state}")
         raise HTTPException(
             status_code=400,
             detail="Invalid state token. Possible CSRF attack or expired session.",
         )
-
-    # Get redirect URI from state store
-    redirect_uri = _oauth_states.get(state, settings.FRONTEND_URL)
 
     try:
         # Authenticate with OAuth code
