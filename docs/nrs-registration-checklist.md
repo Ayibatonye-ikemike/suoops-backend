@@ -1,8 +1,8 @@
-# NRS Registration Checklist
+# Accreditation Readiness Checklist (Former NRS Registration)
 
 **Platform:** SuoOps E-Invoicing & Tax Compliance  
 **Updated:** January 2026  
-**Status:** Ready for Registration
+**Status:** Provisional – Preparing for Accreditation (External gateway transmission disabled)
 
 ---
 
@@ -191,7 +191,7 @@ open https://api.suoops.com/auth/oauth/google/login
 
 ---
 
-## 8. NRS REGISTRATION FORM ANSWERS
+## 8. Accreditation Form Draft Answers (Legacy NRS Structure Refactored)
 
 ### Section A: Company Information
 - **Company Name:** SuoOps Limited
@@ -280,7 +280,7 @@ All documentation is publicly accessible:
 
 ## 11. SUBMISSION CHECKLIST
 
-Before submitting NRS registration:
+Before submitting accreditation application:
 - [x] Complete all sections of registration form
 - [x] Attach API documentation URL
 - [x] Attach SLA document URL
@@ -335,5 +335,5 @@ Email: support@suoops.com
 
 **Prepared by:** SuoOps Technical Team  
 **Last Updated:** January 2026  
-**Status:** READY FOR NRS REGISTRATION ✅
+**Status:** READY FOR PRE-ACCREDITATION REVIEW ✅
 

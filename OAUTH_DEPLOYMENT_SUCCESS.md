@@ -317,7 +317,7 @@ Emergency: 24/7 for P1 incidents
 - **Setup Guide:** `docs/oauth-setup-guide.md`
 - **Deployment Guide:** `OAUTH_DEPLOYMENT_SUCCESS.md` (this file)
 - **Security Compliance:** `SECURITY-COMPLIANCE.md`
-- **NRS Registration Checklist:** `docs/nrs-registration-checklist.md`
+- **Accreditation Readiness Checklist:** `docs/accreditation-readiness-checklist.md` (legacy NRS filename deprecated)
 
 ### Public Documentation
 - **API Documentation:** https://ayibatonye-ikemike.github.io/suoops-backend/

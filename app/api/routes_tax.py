@@ -111,6 +111,53 @@ async def tax_compliance(
         raise HTTPException(status_code=500, detail="Failed compliance summary") from e
 
 
+class FiscalizationStatus(BaseModel):
+    """Accreditation / fiscalization readiness status response."""
+    accredited: bool
+    generated_count: int
+    pending_external_count: int
+    timestamp: str
+
+
+@router.get("/fiscalization/status", response_model=FiscalizationStatus)
+async def get_fiscalization_status(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Return provisional fiscalization readiness metrics.
+
+    - accredited: Whether external gateway accreditation flag is enabled (FIRS readiness)
+    - generated_count: Number of invoices with provisional fiscal data (QR/code) generated internally
+    - pending_external_count: Number of fiscalized invoices not yet transmitted externally (always all until accredited)
+    - timestamp: UTC ISO8601 timestamp of status generation
+    """
+    try:
+        # Accreditation flag from config (fallback False if missing)
+        from app.core.config import settings  # local import to avoid circulars
+        accredited = bool(getattr(settings, "FISCALIZATION_ACCREDITED", False))
+
+        # Count fiscalized invoices
+        from app.models.tax_models import FiscalInvoice
+        from app.models.models import Invoice
+
+        generated_count = db.query(FiscalInvoice).join(Invoice).filter(Invoice.issuer_id == current_user_id).count()
+        # Pending external = all generated if not accredited; else those without transmitted_at
+        pending_external_count = db.query(FiscalInvoice).join(Invoice).filter(
+            Invoice.issuer_id == current_user_id,
+            ~FiscalInvoice.transmitted_at.isnot(None)  # transmitted_at is NULL
+        ).count()
+
+        return FiscalizationStatus(
+            accredited=accredited,
+            generated_count=generated_count,
+            pending_external_count=pending_external_count if accredited else generated_count,
+            timestamp=datetime.utcnow().isoformat() + "Z",
+        )
+    except Exception as e:
+        logger.exception("Failed fiscalization status")
+        raise HTTPException(status_code=500, detail="Failed fiscalization status") from e
+
+
 @router.get("/vat/summary")
 async def get_vat_summary(
     current_user_id: int = Depends(get_current_user_id),

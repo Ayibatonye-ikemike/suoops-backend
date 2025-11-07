@@ -134,7 +134,7 @@ open https://api.suoops.com/auth/oauth/google/login
 **Documentation:**
 - Setup guide: `docs/oauth-setup-guide.md`
 - Security compliance: `SECURITY-COMPLIANCE.md`
-- NRS checklist: `docs/nrs-registration-checklist.md`
+- Accreditation readiness checklist: `docs/accreditation-readiness-checklist.md` (replaces legacy NRS checklist)
 
 ---
 
