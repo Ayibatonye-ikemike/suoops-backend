@@ -13,6 +13,12 @@ from app.db.base_class import Base
 
 if TYPE_CHECKING:
     from app.models.tax_models import FiscalInvoice, TaxProfile, VATReturn
+else:
+    # Import at runtime for SQLAlchemy relationship resolution
+    from app.models import tax_models  # noqa: F401
+    FiscalInvoice = "FiscalInvoice"
+    TaxProfile = "TaxProfile"
+    VATReturn = "VATReturn"
 
 
 def utcnow() -> dt.datetime:
@@ -110,12 +116,11 @@ class Invoice(Base):
         back_populates="invoice",
         cascade="all, delete-orphan",
     )  # type: ignore
-    # TODO: Re-add fiscal_data relationship when tax_models properly imported in models.py
-    # fiscal_data: Mapped["FiscalInvoice | None"] = relationship(
-    #     "FiscalInvoice",
-    #     back_populates="invoice",
-    #     uselist=False,
-    # )
+    fiscal_data: Mapped[FiscalInvoice | None] = relationship(
+        "FiscalInvoice",
+        back_populates="invoice",
+        uselist=False,
+    )  # type: ignore
 
 
 class InvoiceLine(Base):
@@ -162,16 +167,16 @@ class User(Base):
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     
-    # TODO: Re-add tax relationships when tax_models properly imported in models.py
-    # tax_profile: Mapped["TaxProfile | None"] = relationship(
-    #     "TaxProfile",
-    #     back_populates="user",
-    #     uselist=False,
-    # )
-    # vat_returns: Mapped[list["VATReturn"]] = relationship(
-    #     "VATReturn",
-    #     back_populates="user",
-    # )
+    # Tax and compliance relationships
+    tax_profile: Mapped[TaxProfile | None] = relationship(
+        "TaxProfile",
+        back_populates="user",
+        uselist=False,
+    )  # type: ignore
+    vat_returns: Mapped[list[VATReturn]] = relationship(
+        "VATReturn",
+        back_populates="user",
+    )  # type: ignore
 
 
 class WebhookEvent(Base):
