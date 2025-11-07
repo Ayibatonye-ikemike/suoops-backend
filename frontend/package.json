@@ -1,0 +1,42 @@
+{
+  "name": "suoops-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "openapi": "openapi-typescript openapi.json --output src/api/types.generated.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.62.6",
+    "axios": "^1.7.7",
+    "next": "^15.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.24.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^20.16.5",
+    "@types/react": "^18.3.6",
+    "@types/react-dom": "^18.3.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "@tailwindcss/postcss": "^4.1.0",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.11.1",
+    "eslint-config-next": "^15.0.0",
+    "jsdom": "^27.0.0",
+    "openapi-typescript": "^7.6.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
+  }
+}
