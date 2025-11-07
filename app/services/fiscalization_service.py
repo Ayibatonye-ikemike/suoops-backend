@@ -357,11 +357,13 @@ class FiscalizationService:
             vat_amount=invoice.vat_amount or 0,
             total_amount=invoice.amount
         )
-        
-        # External transmission (gated)
-        tx_result = await self.nrs_transmitter.transmit(invoice, fiscal_invoice)
 
-        # Optional NRS transmission (stubbed) if feature flag enabled and accredited (dual gating optional).
+        # Queue external transmission (async) instead of in-request I/O
+        from app.workers.celery_app import celery_app  # local import to avoid early load cost
+        celery_app.send_task("fiscalization.transmit_invoice", args=[fiscal_invoice.fiscal_code])
+        tx_result = {"status": "queued", "message": "Transmission queued"}
+
+        # Optional NRS transmission (stubbed) if feature flag enabled and accredited
         if getattr(settings, "NRS_ENABLED", False) and self.nrs_client:
             try:
                 nrs_payload = {
@@ -372,7 +374,6 @@ class FiscalizationService:
                     "issued_at": invoice.created_at.isoformat(),
                 }
                 nrs_result = self.nrs_client.transmit_invoice(nrs_payload)
-                # Merge minimal NRS response into firs_response for visibility
                 merged = fiscal_invoice.firs_response or {}
                 merged["nrs"] = nrs_result
                 fiscal_invoice.firs_response = merged
@@ -380,22 +381,19 @@ class FiscalizationService:
                     fiscal_invoice.transmitted_at = datetime.now(timezone.utc)
             except Exception as e:
                 logger.warning(f"NRS client transmission failed: {e}")
+
         fiscal_invoice.firs_validation_status = tx_result.get("status", "pending")
         fiscal_invoice.firs_transaction_id = tx_result.get("transaction_id")
-        fiscal_invoice.firs_response = tx_result.get("response") or tx_result
-        
-        if tx_result.get("status") == "validated":
-            fiscal_invoice.transmitted_at = datetime.now(timezone.utc)
-        
-        # Update invoice
+        if not fiscal_invoice.firs_response:
+            fiscal_invoice.firs_response = tx_result
+
+        # Update invoice flags
         invoice.is_fiscalized = True
         invoice.fiscal_code = fiscal_code
-        
-        # Save to database
+
+        # Persist
         self.db.add(fiscal_invoice)
         self.db.commit()
         self.db.refresh(fiscal_invoice)
-        
-        logger.info(f"Invoice {invoice_id} fiscalized: {fiscal_code}")
-        
+        logger.info(f"Invoice {invoice_id} fiscalized (queued transmit): {fiscal_code}")
         return fiscal_invoice
