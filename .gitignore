@@ -24,9 +24,9 @@ frontend/.next/
 frontend/.env.local
 frontend/.env.production
 frontend/.vercel/
+frontend/
 
 # Storage (local files)
 storage/whatsinvoice/
 storage/suoops-s3-bucket/
 .vercel
-frontend/
