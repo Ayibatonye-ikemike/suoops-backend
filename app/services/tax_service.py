@@ -316,6 +316,50 @@ class TaxProfileService:
             "exemption_reason": "small_business" if not applies else None,
         }
 
+    # ---------------- Assessable profit computation -----------------
+    def compute_assessable_profit(
+        self,
+        user_id: int,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        basis: str = "paid"
+    ) -> Decimal:
+        """Compute assessable profit from invoices.
+
+        Rules:
+        - basis="paid": include only invoices with status == 'paid'
+        - basis="all": include all non-refunded invoices regardless of status
+        - Exclude invoices with status == 'refunded' (future status placeholder) or where due_date is in the future.
+        - Subtract discount_amount when present.
+        - Filter by year/month if provided (uses created_at bounds).
+        """
+        from app.models.models import Invoice  # local import to avoid circular at module load
+        q = self.db.query(Invoice).filter(Invoice.issuer_id == user_id)
+        if basis == "paid":
+            q = q.filter(Invoice.status == "paid")
+        else:
+            # Exclude refunded explicitly if such invoices exist; ignore if status not used yet
+            q = q.filter(Invoice.status != "refunded")
+        # Exclude future-due invoices (if due_date set and in the future)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        q = q.filter((Invoice.due_date.is_(None)) | (Invoice.due_date <= now))
+        if year and month:
+            start = datetime(year, month, 1, tzinfo=timezone.utc)
+            if month == 12:
+                end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+            else:
+                end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+            q = q.filter(Invoice.created_at >= start, Invoice.created_at < end)
+        invoices = q.all()
+        total = Decimal("0")
+        for inv in invoices:
+            amount = Decimal(str(inv.amount))
+            if inv.discount_amount:
+                amount -= Decimal(str(inv.discount_amount))
+            total += amount
+        return total
+
     # ---------------- Tax constants (exposed to frontend) -----------------
     def get_tax_constants(self) -> Dict[str, object]:
         """Return static tax thresholds & rates for UI consumption."""
