@@ -283,20 +283,29 @@ class OAuthService:
         user = self.db.query(User).filter(User.email == email).first()
 
         if user:
-            # Update last login
-            user.updated_at = datetime.now(timezone.utc)
+            # Update last_login timestamp
+            user.last_login = datetime.now(timezone.utc)
             logger.info(f"Existing user logged in via {oauth_provider}: {email}")
         else:
-            # Create new user
+            # Fallback phone requirement: model requires 'phone' (unique, non-null). Derive synthetic phone.
+            synthetic_phone = f"oauth_{oauth_provider}_{email.split('@')[0]}"
+            # Ensure length constraint (32) and uniqueness attempt (append timestamp fragment if needed)
+            if len(synthetic_phone) > 30:
+                synthetic_phone = synthetic_phone[:30]
+            attempt = 0
+            base_phone = synthetic_phone
+            while self.db.query(User).filter(User.phone == synthetic_phone).first():
+                attempt += 1
+                synthetic_phone = f"{base_phone[:28]}{attempt:02d}"  # keep within 32 chars
+
             user = User(
+                phone=synthetic_phone,
                 email=email,
+                name=name or email.split("@")[0],
                 business_name=name or email.split("@")[0],
-                # OAuth users don't have passwords - they always use SSO
-                password_hash="",  # Empty for OAuth-only accounts
-                phone_number=None,
             )
             self.db.add(user)
-            logger.info(f"New user created via {oauth_provider}: {email}")
+            logger.info(f"New user created via {oauth_provider}: {email} (phone={synthetic_phone})")
 
         self.db.commit()
         self.db.refresh(user)
