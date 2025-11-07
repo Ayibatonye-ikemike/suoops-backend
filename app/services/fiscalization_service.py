@@ -13,7 +13,7 @@ Single Responsibility: Invoice fiscalization only
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, Optional
 
@@ -356,7 +356,7 @@ class FiscalizationService:
         fiscal_invoice.nrs_response = nrs_result.get("response")
         
         if nrs_result.get("status") == "validated":
-            fiscal_invoice.transmitted_at = datetime.utcnow()
+            fiscal_invoice.transmitted_at = datetime.now(timezone.utc)
         
         # Update invoice
         invoice.is_fiscalized = True

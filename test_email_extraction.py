@@ -38,34 +38,15 @@ def test_email_extraction():
     passed = 0
     failed = 0
     
-    for i, test in enumerate(test_cases, 1):
+    for test in test_cases:
         text = test["text"]
         expected = test["expected_email"]
-        description = test["description"]
-        
         result = nlp.parse_text(text)
         extracted_email = result.entities.get("customer_email")
-        
-        status = "✅ PASS" if extracted_email == expected else "❌ FAIL"
-        
-        if extracted_email == expected:
-            passed += 1
-        else:
-            failed += 1
-        
-        print(f"\nTest {i}: {description}")
-        print(f"Input: {text}")
-        print(f"Expected: {expected}")
-        print(f"Got: {extracted_email}")
-        print(f"Status: {status}")
-        print("-" * 60)
-    
-    print(f"\n📊 Results: {passed} passed, {failed} failed")
-    
-    if failed == 0:
-        print("🎉 All tests passed!")
-    
-    return failed == 0
+        assert extracted_email == expected, f"Email extraction mismatch for '{text}' (expected {expected}, got {extracted_email})"
+        passed += 1
+    # Ensure we covered all cases
+    assert passed == len(test_cases)
 
 if __name__ == "__main__":
     success = test_email_extraction()

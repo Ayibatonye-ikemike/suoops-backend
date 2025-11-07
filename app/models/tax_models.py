@@ -7,7 +7,7 @@ Models for:
 - Invoice fiscalization data
 """
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, JSON, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
@@ -57,7 +57,7 @@ class TaxProfile(Base):
     
     # Compliance tracking
     last_vat_return = Column(DateTime, nullable=True)
-    last_compliance_check = Column(DateTime, default=datetime.utcnow)
+    last_compliance_check = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # NRS Integration credentials
     nrs_registered = Column(Boolean, default=False)
@@ -65,8 +65,8 @@ class TaxProfile(Base):
     nrs_api_key = Column(String(100), nullable=True)
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="tax_profile")
@@ -134,7 +134,7 @@ class FiscalInvoice(Base):
     nrs_validation_status = Column(String(20), default="pending")
     nrs_transaction_id = Column(String(100), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     invoice = relationship("Invoice", back_populates="fiscal_data")
@@ -178,8 +178,8 @@ class VATReturn(Base):
     submitted_at = Column(DateTime, nullable=True)
     nrs_submission_id = Column(String(100), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="vat_returns")

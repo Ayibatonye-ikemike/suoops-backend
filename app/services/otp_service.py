@@ -19,6 +19,7 @@ import redis
 
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
+from app import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -220,29 +221,23 @@ Powered by SuoOps
             raise ValueError(f"Failed to send OTP email: {str(e)}")
 
     def request_signup(self, identifier: str, payload: dict[str, Any]) -> None:
-        """Start signup by persisting user-provided data and sending OTP.
-        
-        Args:
-            identifier: Phone number or email address
-            payload: User signup data to store
-        """
-        self._store.set(self._signup_key(identifier), json.dumps(payload), self.SIGNUP_SESSION_TTL)
+        """Start signup by persisting user-provided data and sending OTP."""
+        now = datetime.now(timezone.utc)
+        enriched = {**payload, "_requested_at": now.isoformat()}
+        self._store.set(self._signup_key(identifier), json.dumps(enriched), self.SIGNUP_SESSION_TTL)
         self._send_otp(identifier, purpose="signup")
 
     def complete_signup(self, identifier: str, otp: str) -> dict[str, Any]:
-        """Validate OTP and return stored signup data.
-        
-        Args:
-            identifier: Phone number or email address
-            otp: OTP code to verify
-        """
+        """Validate OTP and return stored signup data."""
         if not self.verify_otp(identifier, otp, purpose="signup"):
             raise ValueError("Invalid or expired OTP")
         raw_payload = self._store.get(self._signup_key(identifier))
         if not raw_payload:
             raise ValueError("Signup session expired")
         self._store.delete(self._signup_key(identifier))
-        return json.loads(raw_payload)
+        data = json.loads(raw_payload)
+        data.pop("_requested_at", None)  # Not needed post verification
+        return data
 
     def request_login(self, identifier: str) -> None:
         """Send OTP for login.
@@ -256,15 +251,30 @@ Powered by SuoOps
         key = self._otp_key(identifier, purpose)
         raw_record = self._store.get(key)
         if not raw_record:
+            metrics.otp_invalid_attempt()
             return False
         record = OTPRecord.deserialize(raw_record)
         if record.attempts >= self.MAX_ATTEMPTS:
             self._store.delete(key)
+            metrics.otp_invalid_attempt()
             return False
         if record.code != otp:
             record.attempts += 1
             self._store.set(key, record.serialize(), int(self.OTP_TTL))
+            metrics.otp_invalid_attempt()
             return False
+        # Success path: record latency
+        latency = datetime.now(timezone.utc).timestamp() - record.created_at
+        if latency >= 0:
+            if purpose == "signup":
+                metrics.otp_signup_latency_observe(latency)
+            elif purpose == "login":
+                metrics.otp_login_latency_observe(latency)
+        # Resend conversion check before deleting OTP key
+        resend_flag_key = f"otp:resend-used:{purpose}:{identifier}"
+        if self._store.get(resend_flag_key):
+            metrics.otp_resend_success_conversion()
+            self._store.delete(resend_flag_key)
         self._store.delete(key)
         return True
 
@@ -283,6 +293,8 @@ Powered by SuoOps
             if elapsed < self.RESEND_COOLDOWN:
                 raise ValueError("Please wait before requesting another code")
         self._send_otp(identifier, purpose)
+        # Mark that a resend occurred (ephemeral flag used for conversion metric)
+        self._store.set(f"otp:resend-used:{purpose}:{identifier}", "1", self.OTP_TTL)
 
     def _send_otp(self, identifier: str, purpose: str) -> None:
         """Send OTP via email or WhatsApp based on identifier format.
@@ -299,11 +311,21 @@ Powered by SuoOps
         delivery_method = self._get_delivery_method(identifier)
         
         if delivery_method == "email":
-            self._send_email_otp(identifier, code, purpose)
+            try:
+                self._send_email_otp(identifier, code, purpose)
+                metrics.otp_email_delivery_success()
+            except Exception:
+                metrics.otp_email_delivery_failure()
+                raise
         else:
             # WhatsApp OTP
             message = self._format_message(code, purpose)
-            self._delivery.send_text(identifier, message)
+            try:
+                self._delivery.send_text(identifier, message)
+                metrics.otp_whatsapp_delivery_success()
+            except Exception:
+                metrics.otp_whatsapp_delivery_failure()
+                raise
 
     def _generate_code(self) -> str:
         return "".join(random.choices(string.digits, k=self._otp_length))

@@ -48,6 +48,41 @@ tests/            # pytest suite
 ## High-Level Flow
 User sends WhatsApp → webhook → NLP parse → InvoiceService → Payment link → PDF → WhatsApp send.
 
+## Observability & Metrics
+
+Prometheus counters & histograms are exposed via the standard `/metrics` endpoint (enabled when the `prometheus_client` library is installed). Instrumentation lives in `app/metrics.py` behind semantic helper functions.
+
+| Metric | Description |
+| ------ | ----------- |
+| `invoice_created_total` | Invoices successfully created |
+| `invoice_paid_total` | Invoices marked paid |
+| `payment_confirmation_latency_seconds` | Histogram: time from creation to payment confirmation |
+| `whatsapp_parse_unknown_total` | WhatsApp messages with unknown intent |
+| `oauth_logins_total` | Successful OAuth login callbacks |
+| `tax_profile_updates_total` | Tax profile update operations |
+| `vat_calculations_total` | VAT summaries or calculator hits |
+| `compliance_checks_total` | Tax compliance summary requests |
+
+### Usage Pattern
+Add new metrics ONLY by defining them in `app/metrics.py` and providing a helper. Call helpers from routes/services:
+
+```python
+from app.metrics import tax_profile_updated
+
+def update_tax_profile(...):
+  # business logic
+  tax_profile_updated()
+```
+
+If Prometheus isn't installed, helpers become debug logs (no exceptions).
+
+### Suggested Alerts
+Examples (pseudo rules):
+* Spike in VAT calculations: `increase(vat_calculations_total[5m]) > 1000`
+* Low invoice creation during business hours: `sum(invoice_created_total offset 1h) < EXPECTED_MIN`
+
+See `deploy/prometheus.yml` for base Prometheus config.
+
 ## Next Steps
 - Implement actual WhatsApp send logic
 - Implement payment provider API calls

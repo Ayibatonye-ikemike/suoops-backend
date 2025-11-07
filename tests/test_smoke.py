@@ -3,24 +3,34 @@ import secrets
 from fastapi.testclient import TestClient
 
 from app.api.main import app
+from app.services.otp_service import _SHARED_STORE, OTPRecord  # Access test OTP store
 
 
-def _register_and_login(client: TestClient):
+def _signup_and_get_token(client: TestClient):
+    """Perform signup via OTP flow and return auth headers.
+
+    This replaces legacy password-based register/login.
+    """
     phone = "+234" + secrets.token_hex(4)
-    reg = client.post(
-        "/auth/register", json={"phone": phone, "name": "SmokeUser", "password": "Pass1234"}
+    # Request signup OTP
+    req = client.post("/auth/signup/request", json={"phone": phone, "name": "SmokeUser"})
+    assert req.status_code == 200, req.text
+    # Retrieve OTP directly from in-memory store (test environment convenience)
+    key = f"otp:signup:{phone}"
+    raw = _SHARED_STORE.get(key)  # type: ignore[attr-defined]
+    assert raw, "Signup OTP missing from store"
+    otp = OTPRecord.deserialize(raw).code
+    verify = client.post(
+        "/auth/signup/verify", json={"phone": phone, "otp": otp, "name": "SmokeUser"}
     )
-    assert reg.status_code == 200, reg.text
-    login = client.post("/auth/login", json={"phone": phone, "password": "Pass1234"})
-    assert login.status_code == 200, login.text
-    payload = login.json()
-    token = payload["access_token"]
+    assert verify.status_code == 200, verify.text
+    token = verify.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
 def test_create_list_invoice_auth_flow():
     client = TestClient(app)
-    headers = _register_and_login(client)
+    headers = _signup_and_get_token(client)
     resp = client.post(
         "/invoices/",
         json={
@@ -39,7 +49,7 @@ def test_create_list_invoice_auth_flow():
 
 def test_invoice_detail_status_flow():
     client = TestClient(app)
-    headers = _register_and_login(client)
+    headers = _signup_and_get_token(client)
     create_resp = client.post(
         "/invoices/",
         json={
@@ -79,7 +89,7 @@ def test_invoice_detail_status_flow():
 
 def test_public_invoice_confirmation_flow():
     client = TestClient(app)
-    headers = _register_and_login(client)
+    headers = _signup_and_get_token(client)
     create_resp = client.post(
         "/invoices/",
         json={

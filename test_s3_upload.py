@@ -11,10 +11,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from app.core.config import get_settings
 from app.storage.s3_client import S3Client
+import os
+import pytest
 
 
+@pytest.mark.integration
 def test_s3_upload():
-    """Test S3 upload with a sample file"""
+    """Test S3 upload with a sample file (integration gated)."""
+    if not os.getenv("INTEGRATION"):
+        pytest.skip("Skipping S3 upload test (set INTEGRATION=1 to run)")
     print("🧪 Testing S3 Upload to suoops-s3-bucket...")
     print("=" * 60)
     
@@ -39,44 +44,11 @@ def test_s3_upload():
     print(f"\n📤 Uploading test file: {test_key}")
     
     try:
-        # Upload the test file (using upload_bytes method)
-        url = s3_client.upload_bytes(
-            data=test_content,
-            key=test_key,
-            content_type="text/plain"
-        )
-        
-        print(f"✅ Upload successful!")
-        print(f"📍 File URL: {url}")
-        
-        # Note: S3Client doesn't have file_exists or delete_file methods
-        # but the upload itself confirms S3 is working
-        print(f"\n✅ S3 connection verified!")
-        
-        print("\n" + "=" * 60)
-        print("🎉 S3 UPLOAD TEST PASSED!")
-        print("=" * 60)
-        print("\n✅ Your S3 bucket is ready for:")
-        print("  • Logo uploads")
-        print("  • Invoice PDF storage")
-        print("  • Receipt PDF storage")
-        
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ Upload failed!")
-        print(f"Error: {str(e)}")
-        print(f"Error type: {type(e).__name__}")
-        
-        print("\n" + "=" * 60)
-        print("🔧 Troubleshooting Tips:")
-        print("=" * 60)
-        print("1. Verify bucket exists: suoops-s3-bucket in eu-north-1")
-        print("2. Check IAM user has S3 permissions")
-        print("3. Verify credentials are correct in Heroku config")
-        print("4. Check bucket is not blocked by bucket policies")
-        
-        return False
+        url = s3_client.upload_bytes(data=test_content, key=test_key, content_type="text/plain")
+    except Exception as e:  # noqa: BLE001
+        pytest.fail(f"S3 upload failed: {e}")
+    print(f"✅ Upload successful! URL: {url}")
+    assert url and isinstance(url, str)
 
 
 if __name__ == "__main__":

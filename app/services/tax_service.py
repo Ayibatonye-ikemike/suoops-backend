@@ -10,6 +10,7 @@ Single Responsibility: Tax profile management
 """
 import logging
 from decimal import Decimal
+from datetime import datetime, timezone
 from typing import Dict, Optional
 from sqlalchemy.orm import Session
 
@@ -201,3 +202,84 @@ class TaxProfileService:
                 "vat": "7.5% standard rate",
                 "note": "Consider optimizing business structure for tax efficiency"
             }
+
+    # ---------------- Compliance & Eligibility (merged from legacy service) -----------------
+
+    SMALL_BUSINESS_TURNOVER_LIMIT = Decimal("100000000")  # ₦100M
+    SMALL_BUSINESS_ASSETS_LIMIT = Decimal("250000000")    # ₦250M
+
+    def check_small_business_eligibility(self, user_id: int) -> Dict[str, object]:
+        """Return detailed small business eligibility info (unified schema)."""
+        profile = self.get_or_create_profile(user_id)
+        is_eligible = profile.is_small_business
+        turnover_remaining = self.SMALL_BUSINESS_TURNOVER_LIMIT - profile.annual_turnover
+        assets_remaining = self.SMALL_BUSINESS_ASSETS_LIMIT - profile.fixed_assets
+        benefits = []
+        if is_eligible:
+            benefits = [
+                "0% Company Income Tax (CIT)",
+                "0% Capital Gains Tax (CGT)",
+                "0% Development Levy",
+                "Simplified filing requirements",
+                "Reduced compliance burden",
+            ]
+        return {
+            "eligible": is_eligible,
+            "business_size": profile.business_size,
+            "current_turnover": float(profile.annual_turnover),
+            "turnover_limit": float(self.SMALL_BUSINESS_TURNOVER_LIMIT),
+            "turnover_remaining": float(turnover_remaining) if is_eligible else 0,
+            "current_assets": float(profile.fixed_assets),
+            "assets_limit": float(self.SMALL_BUSINESS_ASSETS_LIMIT),
+            "assets_remaining": float(assets_remaining) if is_eligible else 0,
+            "tax_rates": profile.tax_rates,
+            "benefits": benefits,
+            "approaching_limit": (
+                (turnover_remaining < Decimal("10000000"))
+                or (assets_remaining < Decimal("25000000"))
+            ) if is_eligible else False,
+        }
+
+    def get_compliance_summary(self, user_id: int) -> Dict[str, object]:
+        """Unified compliance summary (TIN/VAT/NRS)."""
+        profile = self.get_or_create_profile(user_id)
+        requirements = {
+            "tin_registered": profile.tin is not None,
+            "vat_registered": profile.vat_registered,
+            "nrs_registered": profile.nrs_registered,
+        }
+        completed = sum(1 for v in requirements.values() if v)
+        total = len(requirements)
+        compliance_score = (completed / total) * 100 if total else 0
+        if compliance_score == 100:
+            status = "fully_compliant"
+        elif compliance_score >= 66:
+            status = "mostly_compliant"
+        elif compliance_score >= 33:
+            status = "partially_compliant"
+        else:
+            status = "non_compliant"
+        next_actions: list[str] = []
+        if not profile.tin:
+            next_actions.append("Register for Tax Identification Number (TIN)")
+        if not profile.vat_registered and profile.annual_turnover > Decimal("25000000"):
+            next_actions.append("Register for VAT (turnover exceeds ₦25M)")
+        if not profile.nrs_registered:
+            next_actions.append("Register with Nigeria Revenue Service for e-invoicing")
+        return {
+            "compliance_status": status,
+            "compliance_score": compliance_score,
+            "requirements": requirements,
+            "next_actions": next_actions,
+            "business_size": profile.business_size,
+            "small_business_benefits": profile.is_small_business,
+            "last_check": profile.last_compliance_check.isoformat() if profile.last_compliance_check else None,
+        }
+
+    def update_compliance_check(self, user_id: int) -> TaxProfile:
+        profile = self.get_or_create_profile(user_id)
+        # Use timezone-aware UTC timestamp for consistency
+        profile.last_compliance_check = datetime.now(timezone.utc)
+        self.db.commit()
+        self.db.refresh(profile)
+        return profile

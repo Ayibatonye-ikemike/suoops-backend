@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models import schemas
 from app.services.invoice_service import build_invoice_service, InvoiceService
 from app.utils.feature_gate import check_invoice_limit
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -141,8 +142,11 @@ def verify_invoice(invoice_id: str, db: DbDep):
     else:
         masked_name = customer_name[0] + "*"
     
-    # Get business name from issuer
-    business_name = invoice.issuer.name if invoice.issuer else "Business"
+    # Resolve issuer (business) name via relationship (added FK issuer_id -> user.id)
+    if getattr(invoice, "issuer", None):
+        business_name = invoice.issuer.business_name or invoice.issuer.name
+    else:
+        business_name = "Business"
     
     return schemas.InvoiceVerificationOut(
         invoice_id=invoice_id,
@@ -151,6 +155,6 @@ def verify_invoice(invoice_id: str, db: DbDep):
         customer_name=masked_name,
         business_name=business_name,
         created_at=invoice.created_at,
-        verified_at=datetime.utcnow(),
+        verified_at=datetime.now(timezone.utc),
         authentic=True,
     )

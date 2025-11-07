@@ -7,20 +7,21 @@ from fastapi.testclient import TestClient
 
 from app.api.main import app
 from app.core.config import settings
-
-PASSWORD = "Pass1234!"
+from app.services.otp_service import _SHARED_STORE, OTPRecord
 
 
 def _auth_headers(client: TestClient) -> dict[str, str]:
+    """Obtain auth headers via OTP signup flow (replaces legacy password endpoints)."""
     phone = "+234" + secrets.token_hex(4)
-    register = client.post(
-        "/auth/register",
-        json={"phone": phone, "name": "PUser", "password": PASSWORD},
-    )
-    assert register.status_code == 200, register.text
-    login = client.post("/auth/login", json={"phone": phone, "password": PASSWORD})
-    assert login.status_code == 200, login.text
-    token = login.json()["access_token"]
+    start = client.post("/auth/signup/request", json={"phone": phone, "name": "PUser"})
+    assert start.status_code == 200, start.text
+    key = f"otp:signup:{phone}"
+    raw = _SHARED_STORE.get(key)  # type: ignore[attr-defined]
+    assert raw, "Signup OTP missing"
+    otp = OTPRecord.deserialize(raw).code
+    verify = client.post("/auth/signup/verify", json={"phone": phone, "otp": otp, "name": "PUser"})
+    assert verify.status_code == 200, verify.text
+    token = verify.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 

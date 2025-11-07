@@ -9,7 +9,7 @@ Handles:
 Single Responsibility: VAT returns management
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List
 from sqlalchemy.orm import Session
@@ -80,20 +80,18 @@ class ComplianceChecker:
         if not recent_returns:
             return "return_overdue"
         
-        # Check if last month's return is submitted
-        now = datetime.utcnow()
+        # Check if last month's return is submitted (timezone-aware UTC)
+        now = datetime.now(timezone.utc)
         last_month = now.replace(day=1) - timedelta(days=1)
         last_period = f"{last_month.year:04d}-{last_month.month:02d}"
-        
+
         latest_return = recent_returns[0]
-        
+
         if latest_return.tax_period == last_period:
             if latest_return.status == "submitted":
                 return "compliant"
-            else:
-                return "return_pending"
-        else:
-            return "return_overdue"
+            return "return_pending"
+        return "return_overdue"
 
 
 class VATService:
@@ -227,9 +225,9 @@ class VATService:
                 "registered": False,
                 "message": "Tax profile not set up. Please configure your tax settings."
             }
-        
-        # Get current month VAT
-        now = datetime.utcnow()
+
+        # Get current month VAT (timezone-aware UTC)
+        now = datetime.now(timezone.utc)
         current_vat = self.calculate_monthly_vat(user_id, now.year, now.month)
         
         # Get recent returns (last 3 months)
@@ -246,6 +244,7 @@ class VATService:
             "tin": tax_profile.tin,
             "current_month": {
                 "period": current_vat["tax_period"],
+                "tax_period": current_vat["tax_period"],  # alias for frontend expectations
                 "output_vat": float(current_vat["output_vat"]),
                 "input_vat": float(current_vat["input_vat"]),
                 "net_vat": float(current_vat["net_vat"]),

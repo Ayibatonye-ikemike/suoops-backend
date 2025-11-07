@@ -5,7 +5,7 @@ Handles business tax profile creation, updates, and compliance tracking.
 Following SRP: Tax profile operations only.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any
 
@@ -65,7 +65,7 @@ class TaxProfileService:
             fixed_assets=Decimal("0"),
             vat_registered=False,
             nrs_registered=False,
-            last_compliance_check=datetime.utcnow()
+            last_compliance_check=datetime.now(timezone.utc)
         )
         
         self.db.add(profile)
@@ -126,8 +126,8 @@ class TaxProfileService:
         if "nrs_merchant_id" in data and data["nrs_merchant_id"]:
             profile.nrs_registered = True
             updated_fields.append("nrs_registered")
-        
-        profile.updated_at = datetime.utcnow()
+
+        profile.updated_at = datetime.now(timezone.utc)
         
         self.db.commit()
         self.db.refresh(profile)
@@ -276,8 +276,8 @@ class TaxProfileService:
         
         if api_key:
             profile.nrs_api_key = api_key
-        
-        profile.updated_at = datetime.utcnow()
+
+        profile.updated_at = datetime.now(timezone.utc)
         
         self.db.commit()
         self.db.refresh(profile)
@@ -305,7 +305,7 @@ class TaxProfileService:
         
         profile.vat_registration_number = vat_number
         profile.vat_registered = True
-        profile.updated_at = datetime.utcnow()
+        profile.updated_at = datetime.now(timezone.utc)
         
         self.db.commit()
         self.db.refresh(profile)
@@ -378,7 +378,7 @@ class TaxProfileService:
             Updated TaxProfile
         """
         profile = self.get_or_create_profile(user_id)
-        profile.last_compliance_check = datetime.utcnow()
+        profile.last_compliance_check = datetime.now(timezone.utc)
         
         self.db.commit()
         self.db.refresh(profile)

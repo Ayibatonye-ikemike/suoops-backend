@@ -4,7 +4,9 @@ Quick test script to verify OCR service is working with new OpenAI API key.
 """
 import asyncio
 import sys
+import os
 from pathlib import Path
+import pytest
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -12,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from app.services.ocr_service import OCRService
 
 
+@pytest.mark.skipif(not os.getenv("INTEGRATION"), reason="OCR integration requires OpenAI API key")
 async def test_ocr_basic():
     """Test OCR service initialization and basic config."""
     print("=" * 60)
@@ -41,6 +44,7 @@ async def test_ocr_basic():
         return False
 
 
+@pytest.mark.skipif(not os.getenv("INTEGRATION"), reason="OCR integration requires OpenAI API key")
 async def test_ocr_with_simple_image():
     """Test OCR with a minimal test image."""
     print("\n" + "=" * 60)
@@ -157,5 +161,9 @@ async def main():
 
 
 if __name__ == "__main__":
+    # Allow running standalone; respect INTEGRATION flag
+    if not os.getenv("INTEGRATION"):
+        print("INTEGRATION flag not set; skipping OCR tests.")
+        sys.exit(0)
     exit_code = asyncio.run(main())
     sys.exit(exit_code)

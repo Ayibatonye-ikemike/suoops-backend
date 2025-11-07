@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from app.db.session import get_db
 from app.api.routes_auth import get_current_user_id
 from app.services.tax_service import TaxProfileService  # Use unified tax profile & summary service
+from app.metrics import tax_profile_updated, vat_calculation_record, compliance_check_record
 from app.services.vat_service import VATService
 from app.services.fiscalization_service import FiscalizationService, VATCalculator
 from app.models.models import Invoice
@@ -69,11 +70,10 @@ async def update_tax_profile(
             vat_registration_number=data.vat_registration_number,
             vat_registered=data.vat_registered
         )
+        tax_profile_updated()
         return {
             "message": "Tax profile updated successfully",
-            "business_size": profile.business_size,
-            "is_small_business": profile.is_small_business,
-            "tax_rates": profile.tax_rates
+            "summary": tax_service.get_tax_summary(current_user_id)
         }
     except Exception as e:
         logger.exception("Failed to update tax profile")
@@ -85,12 +85,10 @@ async def small_business_check(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """Return small business eligibility, remaining thresholds and benefits."""
+    """Return small business eligibility, remaining thresholds and benefits (unified service)."""
     try:
-        # Use the richer tax profile service for eligibility details
-        from app.services.tax_profile_service import TaxProfileService as EligibilityService
-        eligibility_service = EligibilityService(db)
-        return eligibility_service.check_small_business_eligibility(current_user_id)
+        tax_service = TaxProfileService(db)
+        return tax_service.check_small_business_eligibility(current_user_id)
     except Exception as e:
         logger.exception("Failed small business eligibility check")
         raise HTTPException(status_code=500, detail="Failed small business check") from e
@@ -103,10 +101,10 @@ async def tax_compliance(
 ):
     """Return tax compliance summary (TIN/VAT/NRS registration status & next actions)."""
     try:
-        from app.services.tax_profile_service import TaxProfileService as ComplianceService
-        compliance_service = ComplianceService(db)
-        summary = compliance_service.get_compliance_summary(current_user_id)
-        compliance_service.update_compliance_check(current_user_id)
+        tax_service = TaxProfileService(db)
+        summary = tax_service.get_compliance_summary(current_user_id)
+        tax_service.update_compliance_check(current_user_id)
+        compliance_check_record()
         return summary
     except Exception as e:
         logger.exception("Failed tax compliance summary")
@@ -130,6 +128,7 @@ async def get_vat_summary(
     try:
         vat_service = VATService(db)
         summary = vat_service.get_vat_summary(current_user_id)
+        vat_calculation_record()
         return summary
     except Exception as e:
         logger.error(f"Error fetching VAT summary: {str(e)}")
@@ -156,6 +155,7 @@ async def calculate_vat(
     """
     try:
         result = VATCalculator.calculate(Decimal(str(amount)), category)
+        vat_calculation_record()
         return {
             "subtotal": float(result["subtotal"]),
             "vat_rate": float(result["vat_rate"]),

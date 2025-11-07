@@ -5,7 +5,7 @@ import logging
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, selectinload, joinedload
 
 from app import metrics
 from app.models import models
@@ -173,10 +173,18 @@ class InvoiceService:
         return invoice
 
     def list_invoices(self, issuer_id: int) -> list[models.Invoice]:
+        """List recent invoices with related entities preloaded to avoid N+1.
+
+        Uses joinedload for small one-to-one/one-to-many sets and selectinload for collections.
+        """
         return (
             self.db.query(models.Invoice)
             .filter(models.Invoice.issuer_id == issuer_id)
-            .options(selectinload(models.Invoice.customer))
+            .options(
+                joinedload(models.Invoice.customer),
+                selectinload(models.Invoice.lines),
+                joinedload(models.Invoice.issuer),
+            )
             .order_by(models.Invoice.id.desc())
             .limit(50)
             .all()
@@ -187,7 +195,8 @@ class InvoiceService:
             self.db.query(models.Invoice)
             .options(
                 selectinload(models.Invoice.lines),
-                selectinload(models.Invoice.customer),
+                joinedload(models.Invoice.customer),
+                joinedload(models.Invoice.issuer),
             )
             .filter(models.Invoice.invoice_id == invoice_id, models.Invoice.issuer_id == issuer_id)
             .one_or_none()
@@ -201,7 +210,7 @@ class InvoiceService:
             raise ValueError("Unsupported status")
         invoice = (
             self.db.query(models.Invoice)
-            .options(selectinload(models.Invoice.customer))
+            .options(joinedload(models.Invoice.customer), joinedload(models.Invoice.issuer))
             .filter(models.Invoice.invoice_id == invoice_id, models.Invoice.issuer_id == issuer_id)
             .one_or_none()
         )

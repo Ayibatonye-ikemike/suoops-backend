@@ -13,9 +13,24 @@ logger = logging.getLogger(__name__)
 
 
 class S3Client:
-    def __init__(self) -> None:
-        self.bucket = settings.S3_BUCKET
-        self._presign_ttl = settings.S3_PRESIGN_TTL
+    def __init__(
+        self,
+        endpoint: str | None = None,
+        access_key: str | None = None,
+        secret_key: str | None = None,
+        bucket: str | None = None,
+        presign_ttl: int | None = None,
+    ) -> None:
+        """Initialize S3 client.
+
+        Backward-compatible with tests that pass explicit endpoint/access/bucket kwargs.
+        Falls back to settings when parameters are omitted.
+        """
+        self.bucket = bucket or settings.S3_BUCKET
+        self._explicit_endpoint = endpoint or settings.S3_ENDPOINT or None
+        self._access_key = access_key or settings.S3_ACCESS_KEY or None
+        self._secret_key = secret_key or settings.S3_SECRET_KEY or None
+        self._presign_ttl = presign_ttl or settings.S3_PRESIGN_TTL
         self._client = self._initialize_client()
         self._filesystem_root: Path | None = None
 
@@ -46,10 +61,10 @@ class S3Client:
     def _initialize_client(self):
         try:
             session = boto3.session.Session(
-                aws_access_key_id=settings.S3_ACCESS_KEY or None,
-                aws_secret_access_key=settings.S3_SECRET_KEY or None,
+                aws_access_key_id=self._access_key,
+                aws_secret_access_key=self._secret_key,
             )
-            endpoint = settings.S3_ENDPOINT or None
+            endpoint = self._explicit_endpoint
             region = getattr(settings, "S3_REGION", "us-east-1")
             
             # For AWS S3, don't set endpoint_url (let boto3 use default AWS endpoints)

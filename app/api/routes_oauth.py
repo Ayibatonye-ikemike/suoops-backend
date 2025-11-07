@@ -24,6 +24,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import _set_refresh_cookie
+from app.api.rate_limit import limiter
+from app.metrics import oauth_login_success
 from app.core.config import settings
 from app.core.security import TokenType, decode_token
 from app.db.session import get_db
@@ -91,7 +93,9 @@ def _store_oauth_state(state: str, redirect_uri: str) -> None:
     key = f"oauth:state:{state}"
     # Store for 10 minutes (OAuth flow should complete quickly)
     redis_client.setex(key, 600, redirect_uri)
-    logger.debug(f"Stored OAuth state: {state}")
+    # Do NOT log raw state token in production to avoid leaking CSRF token.
+    if settings.ENV.lower() != "prod":  # safe to debug in non-prod
+        logger.debug("Stored OAuth state token (length=%s)", len(state))
 
 
 def _build_redirect_with_params(base_url: str, params: dict[str, str]) -> str:
@@ -124,9 +128,11 @@ def _get_redirect_uri(state: str, consume: bool = True) -> str | None:
 
     if consume:
         redis_client.delete(key)
-        logger.debug(f"Validated and consumed OAuth state: {state}")
+        if settings.ENV.lower() != "prod":
+            logger.debug("Consumed OAuth state token (length=%s)", len(state))
     else:
-        logger.debug(f"Validated OAuth state without consuming: {state}")
+        if settings.ENV.lower() != "prod":
+            logger.debug("Validated OAuth state without consuming (length=%s)", len(state))
 
     return redirect_uri
 
@@ -186,8 +192,10 @@ async def list_oauth_providers(db: Annotated[Session, Depends(get_db)]) -> dict:
 
 
 @router.get("/{provider}/login")
+@limiter.limit("30/minute")
 async def oauth_login(
     provider: str,
+    request: Request,  # included for rate limiter key_func
     redirect_uri: str | None = Query(None, description="Frontend redirect after auth"),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -219,11 +227,12 @@ async def oauth_login(
     # Get authorization URL
     auth_url = oauth_provider.get_authorization_url(state)
 
-    logger.info(f"Initiating OAuth login with {provider}")
+    logger.info("OAuth login start | provider=%s", provider)
     return RedirectResponse(url=auth_url)
 
 
 @router.get("/{provider}/callback", response_model=schemas.OAuthCallbackOut)
+@limiter.limit("60/minute")
 async def oauth_callback(
     provider: str,
     request: Request,
@@ -281,8 +290,8 @@ async def oauth_callback(
 
         redirect_with_params = _build_redirect_with_params(redirect_uri, {"code": code, "state": state})
         logger.info(
-            "Redirecting browser to frontend callback with OAuth code | state=%s origin=%s referer=%s",
-            state, origin, referer
+            "OAuth navigate phase redirect | provider=%s origin=%s referer=%s",
+            provider, origin, referer
         )
         return RedirectResponse(url=redirect_with_params)
 
@@ -324,19 +333,18 @@ async def oauth_callback(
 
         response = JSONResponse(content=jsonable_encoder(payload_model))
         _set_refresh_cookie(response, refresh_token)
-
-        logger.info(f"OAuth authentication successful for {provider}")
-
+        logger.info("OAuth callback success | provider=%s", provider)
+        oauth_login_success()
         return response
 
     except OAuthProviderError as e:
-        logger.error(f"OAuth authentication failed: {str(e)}")
+        logger.error("OAuth authentication failed | provider=%s error=%s", provider, e)
         raise HTTPException(
             status_code=400,
             detail=f"OAuth authentication failed: {str(e)}",
         ) from e
     except Exception as e:
-        logger.error(f"Unexpected error during OAuth callback: {str(e)}")
+        logger.exception("OAuth callback unexpected error | provider=%s", provider)
         raise HTTPException(
             status_code=500,
             detail="Internal server error during authentication",

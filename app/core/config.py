@@ -85,6 +85,10 @@ class BaseAppSettings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str | None = None
     OAUTH_STATE_SECRET: str = "change_me_oauth_state"  # For CSRF protection
 
+    # Feature flags / premium gating
+    # When False, voice note invoice feature is available to all users regardless of plan.
+    FEATURE_VOICE_REQUIRES_PAID: bool = True
+
     @model_validator(mode="after")
     def _validate_required_fields(self) -> BaseAppSettings:
         # Convert Heroku's postgres:// URL to postgresql://

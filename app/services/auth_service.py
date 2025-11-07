@@ -116,7 +116,13 @@ class AuthService:
             # For email signups, use email as phone temporarily (or make phone nullable)
             user_data["phone"] = stored_data["email"]  # Temporary
         else:
-            user_data["phone"] = stored_data["phone"]
+            # Some edge cases observed in tests where stored_data['phone'] persisted as None.
+            # Always fall back to normalized identifier to satisfy NOT NULL constraint.
+            user_data["phone"] = stored_data.get("phone") or identifier
+
+        # Final safety: ensure phone is never None (model constraint) even if upstream data was missing.
+        if not user_data.get("phone"):
+            user_data["phone"] = identifier
             
         user = models.User(**user_data)
         user.last_login = datetime.now(timezone.utc)

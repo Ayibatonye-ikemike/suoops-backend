@@ -1,0 +1,99 @@
+{
+  "title": "SuoOps Auth & Invoices",
+  "timezone": "browser",
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Signup Success Rate (5m)",
+      "targets": [
+        {
+          "expr": "sum(rate(otp_signup_verifications_total[5m])) / sum(rate(otp_signup_requests_total[5m]))",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "stat",
+      "title": "Login Success Rate (5m)",
+      "targets": [
+        {
+          "expr": "sum(rate(otp_login_verifications_total[5m])) / sum(rate(otp_login_requests_total[5m]))",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "OTP Invalid Attempt Ratio (15m)",
+      "targets": [
+        {
+          "expr": "sum(rate(otp_invalid_attempts_total[15m])) / sum(rate(otp_signup_requests_total[15m]) + rate(otp_login_requests_total[15m]))",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "Signup Verification Latency p95",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(otp_signup_verify_latency_seconds_bucket[10m])))",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [ { "format": "s" }, { "format": "short" } ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "Login Verification Latency p95",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(otp_login_verify_latency_seconds_bucket[10m])))",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [ { "format": "s" }, { "format": "short" } ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "Resend Conversion Rate (15m)",
+      "targets": [
+        {
+          "expr": "sum(rate(otp_resend_success_conversion_total[15m])) / sum(rate(otp_resends_total[15m]))",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "Delivery Failure Rates (WhatsApp & Email)",
+      "targets": [
+        {"expr": "sum(rate(otp_whatsapp_delivery_failure_total[5m])) / (sum(rate(otp_whatsapp_delivery_failure_total[5m])) + sum(rate(otp_whatsapp_delivery_success_total[5m])))", "refId": "A"},
+        {"expr": "sum(rate(otp_email_delivery_failure_total[5m])) / (sum(rate(otp_email_delivery_failure_total[5m])) + sum(rate(otp_email_delivery_success_total[5m])))", "refId": "B"}
+      ],
+      "legend": {"show": true},
+      "datasource": "Prometheus"
+    },
+    {
+      "type": "graph",
+      "title": "Invoice Payment Latency p95",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(payment_confirmation_latency_seconds_bucket[10m])))",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [ { "format": "s" }, { "format": "short" } ],
+      "datasource": "Prometheus"
+    }
+  ],
+  "schemaVersion": 36,
+  "editable": true
+}

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import warnings
+from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -15,6 +18,12 @@ try:
     from app.models.models import WebhookEvent
 except ImportError:  # pragma: no cover - legacy tables may be removed
     WebhookEvent = None
+
+# --- WhatsApp send patching ---
+try:
+    from app.bot.whatsapp_client import WhatsAppClient
+except Exception:  # pragma: no cover - if module path changes
+    WhatsAppClient = None  # type: ignore
 
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
@@ -32,6 +41,9 @@ settings.DATABASE_URL = TEST_DATABASE_URL  # type: ignore[attr-defined]
 settings.ENV = "test"  # type: ignore[attr-defined]
 db_session.engine = test_engine  # type: ignore[assignment]
 SessionLocal.configure(bind=test_engine)
+
+# Suppress known third-party deprecation warnings (e.g., passlib crypt removal) to keep test output clean.
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="passlib.utils")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -67,6 +79,25 @@ def _reset_webhook_events():
         session.close()
 
 
+@pytest.fixture(autouse=True)
+def _patch_whatsapp_send(monkeypatch):
+    """Prevent real WhatsApp HTTP calls & noisy logs during tests.
+
+    Replaces WhatsAppClient.send_text with a lightweight recorder that stores
+    calls on the function object (for assertion if needed) without network activity.
+    """
+    if WhatsAppClient is None:  # pragma: no cover - safety
+        return
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_send_text(self, to: str, body: str):  # noqa: D401 - simple test double
+        calls.append((to, body))
+
+    monkeypatch.setattr(WhatsAppClient, "send_text", fake_send_text, raising=True)
+    yield SimpleNamespace(calls=calls)
+
+
 @pytest.fixture
 def db_session():
     """Provide a transactional database session for tests."""
@@ -76,3 +107,14 @@ def db_session():
         session.commit()
     finally:
         session.close()
+
+
+# FastAPI TestClient fixture expected by some tests (e.g., invoice verification)
+from fastapi.testclient import TestClient  # noqa: E402
+from app.api.main import app  # noqa: E402
+
+
+@pytest.fixture
+def client():  # noqa: D401 - simple factory fixture
+    """Provide a FastAPI TestClient bound to the application."""
+    return TestClient(app)

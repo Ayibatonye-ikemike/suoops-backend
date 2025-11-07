@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.api.rate_limit import limiter
 from app.core.config import settings
 from app.core.security import TokenExpiredError, TokenValidationError, decode_token
+from app import metrics
 from app.models import schemas
 from app.services.auth_service import AuthService, TokenBundle, get_auth_service
 
@@ -26,6 +27,7 @@ def request_signup(request: Request, payload: schemas.SignupStart, svc: AuthServ
     """Request signup OTP via phone OR email."""
     try:
         svc.start_signup(payload)
+        metrics.otp_signup_requested()
         
         # Determine delivery method for response message
         if payload.email:
@@ -57,10 +59,12 @@ def _cookie_settings() -> dict[str, object]:
     lifespan = timedelta(days=14)
     max_age = int(lifespan.total_seconds())
     expires = datetime.now(timezone.utc) + lifespan
+    # Stricter SameSite policy in production to mitigate CSRF; keep lax elsewhere for local dev
+    samesite = "strict" if secure else "lax"
     return {
         "httponly": True,
         "secure": secure,
-        "samesite": "lax",
+        "samesite": samesite,
         "max_age": max_age,
         "expires": expires,
         "path": "/",
@@ -80,6 +84,7 @@ def _clear_refresh_cookie(response: JSONResponse) -> None:
 def verify_signup(request: Request, payload: schemas.SignupVerify, svc: AuthServiceDep):
     try:
         bundle = svc.complete_signup(payload)
+        metrics.otp_signup_verified()
         return _bundle_to_response(bundle)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -91,6 +96,7 @@ def request_login(request: Request, payload: schemas.OTPPhoneRequest | schemas.O
     """Request login OTP via phone OR email."""
     try:
         svc.request_login(payload)
+        metrics.otp_login_requested()
         
         # Determine delivery method for response
         if hasattr(payload, 'email'):
@@ -107,6 +113,7 @@ def request_login(request: Request, payload: schemas.OTPPhoneRequest | schemas.O
 def verify_login(request: Request, payload: schemas.LoginVerify, svc: AuthServiceDep):
     try:
         bundle = svc.verify_login(payload)
+        metrics.otp_login_verified()
         return _bundle_to_response(bundle)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
@@ -117,6 +124,7 @@ def verify_login(request: Request, payload: schemas.LoginVerify, svc: AuthServic
 def resend_otp(request: Request, payload: schemas.OTPResend, svc: AuthServiceDep):
     """Resend OTP for phone OR email."""
     try:
+        metrics.otp_resend_attempt()
         svc.resend_otp(payload)
         
         # Determine delivery method for response
@@ -126,6 +134,8 @@ def resend_otp(request: Request, payload: schemas.OTPResend, svc: AuthServiceDep
             return schemas.MessageOut(detail="OTP resent to WhatsApp")
             
     except ValueError as exc:
+        # Cooldown or other resend restriction
+        metrics.otp_resend_blocked()
         raise HTTPException(status_code=429, detail=str(exc)) from exc
 
 
@@ -162,3 +172,5 @@ def get_current_user_id(authorization: str = Header(None)) -> int:
         raise HTTPException(status_code=401, detail="Token expired") from exc
     except TokenValidationError as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
+
+# Legacy password-based endpoints removed (migrated fully to OTP flows).

@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
     name="whatsapp.process_inbound",
     autoretry_for=(Exception,),
     retry_backoff=True,
+    retry_jitter=True,
     retry_kwargs={"max_retries": 5},
 )
 def process_whatsapp_inbound(self: Task, payload: dict[str, Any]) -> None:
@@ -37,6 +38,55 @@ def process_whatsapp_inbound(self: Task, payload: dict[str, Any]) -> None:
         asyncio.run(handler.handle_incoming(payload))
 
 
-@celery_app.task(name="maintenance.send_overdue_reminders")
+@celery_app.task(
+    name="maintenance.send_overdue_reminders",
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
 def send_overdue_reminders() -> None:
-    logger.info("(stub) scanning for overdue invoices")
+    try:
+        logger.info("(stub) scanning for overdue invoices")
+        # Simulate potential transient failure placeholder
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Reminder task transient failure: %s", exc)
+        raise
+
+
+@celery_app.task(
+    bind=True,
+    name="payments.sync_provider_status",
+    autoretry_for=(Exception,),
+    retry_backoff=10,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 4},
+)
+def sync_provider_status(self: Task, provider: str, reference: str) -> None:
+    """Sync payment provider status with retries on transient errors."""
+    with session_scope() as db:
+        logger.info("Syncing provider status | provider=%s reference=%s", provider, reference)
+        # Placeholder: would call PaymentService/Provider API
+        # raise Exception("transient") to exercise retry logic if needed
+
+
+@celery_app.task(
+    bind=True,
+    name="ocr.parse_image",
+    autoretry_for=(Exception,),
+    retry_backoff=15,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def ocr_parse_image(self: Task, image_bytes_b64: str, context: str | None = None) -> dict[str, Any]:
+    """Run OCR parse with retries (handles rate limits/timeouts)."""
+    import base64
+    from app.services.ocr_service import OCRService
+    raw = base64.b64decode(image_bytes_b64)
+    service = OCRService()
+    result = asyncio.run(service.parse_receipt(raw, context))
+    if not result.get("success"):
+        # Escalate failure for retry if transient network issues (heuristic)
+        if "timeout" in str(result.get("error", "")).lower():
+            raise Exception(result["error"])  # noqa: TRY002
+    return result

@@ -90,7 +90,7 @@ class Customer(Base):
 class Invoice(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_id: Mapped[str] = mapped_column(String(40), unique=True, index=True)
-    issuer_id: Mapped[int]
+    issuer_id: Mapped[int] = mapped_column(ForeignKey("user.id"))  # type: ignore
     customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"))  # type: ignore
     amount: Mapped[Decimal] = mapped_column(Numeric(scale=2))
     discount_amount: Mapped[Decimal | None] = mapped_column(Numeric(scale=2), nullable=True)
@@ -111,6 +111,7 @@ class Invoice(Base):
     fiscal_code: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True, index=True)
     
     customer: Mapped[Customer] = relationship("Customer", back_populates="invoices")  # type: ignore
+    issuer: Mapped[User] = relationship("User", back_populates="issued_invoices")  # type: ignore
     lines: Mapped[list[InvoiceLine]] = relationship(
         "InvoiceLine",
         back_populates="invoice",
@@ -176,6 +177,12 @@ class User(Base):
     vat_returns: Mapped[list[VATReturn]] = relationship(
         "VATReturn",
         back_populates="user",
+    )  # type: ignore
+    # Invoices issued by this user (as business)
+    issued_invoices: Mapped[list[Invoice]] = relationship(
+        "Invoice",
+        back_populates="issuer",
+        foreign_keys="Invoice.issuer_id",
     )  # type: ignore
 
 

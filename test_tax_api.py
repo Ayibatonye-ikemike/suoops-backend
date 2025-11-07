@@ -3,12 +3,15 @@ Test script for tax and fiscalization features.
 
 Run this to verify the implementation works correctly.
 """
+import os
 import requests
 import json
+import pytest
 
 # Base URL
 BASE_URL = "http://localhost:8000"
 
+@pytest.mark.skipif(not os.getenv("INTEGRATION"), reason="Integration test requires running server")
 def test_vat_calculator():
     """Test VAT calculation endpoint"""
     print("\n" + "="*50)
@@ -32,6 +35,7 @@ def test_vat_calculator():
     print(json.dumps(response.json(), indent=2))
 
 
+@pytest.mark.skipif(not os.getenv("INTEGRATION"), reason="Integration test requires running server")
 def test_api_docs():
     """Check if API documentation includes tax endpoints"""
     print("\n" + "="*50)

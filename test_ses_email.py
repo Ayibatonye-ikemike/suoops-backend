@@ -13,10 +13,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.core.config import get_settings
+import os
+import pytest
 
 
+@pytest.mark.integration
 def test_ses_email():
-    """Test SES email sending"""
+    """Test SES email sending (integration gated)."""
+    if not os.getenv("INTEGRATION"):
+        pytest.skip("Skipping SES email test (set INTEGRATION=1 to run)")
     print("📧 Testing Amazon SES Email Configuration...")
     print("=" * 60)
     
@@ -37,31 +42,12 @@ def test_ses_email():
     print(f"  From Email: {from_email or 'NOT SET'}")
     
     if not all([smtp_host, smtp_user, smtp_password, from_email]):
-        print("\n❌ Email configuration incomplete!")
-        print("\nMissing environment variables:")
-        if not smtp_host:
-            print("  • SES_SMTP_HOST")
-        if not smtp_user:
-            print("  • SES_SMTP_USER")
-        if not smtp_password:
-            print("  • SES_SMTP_PASSWORD")
-        if not from_email:
-            print("  • FROM_EMAIL")
-        
-        print("\nSet them with:")
-        print("  heroku config:set SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com -a suoops-backend")
-        print("  heroku config:set SES_SMTP_USER=<your-smtp-username> -a suoops-backend")
-        print("  heroku config:set SES_SMTP_PASSWORD=<your-smtp-password> -a suoops-backend")
-        print("  heroku config:set FROM_EMAIL=noreply@suoops.com -a suoops-backend")
-        return False
+        pytest.skip("SES email configuration incomplete; skipping")
     
     # Get recipient email
     print("\n" + "=" * 60)
-    to_email = input("Enter recipient email address to test: ").strip()
-    
-    if not to_email or '@' not in to_email:
-        print("❌ Invalid email address!")
-        return False
+    # Loopback send to FROM_EMAIL to avoid interactive input
+    to_email = from_email
     
     # Create test email
     print(f"\n📤 Sending test email to {to_email}...")
@@ -99,78 +85,15 @@ This is an automated test email. Please do not reply.
     msg.attach(MIMEText(body, 'plain'))
     
     try:
-        # Connect to SMTP server
-        print(f"🔌 Connecting to {smtp_host}:{smtp_port}...")
-        server = smtplib.SMTP(smtp_host, smtp_port)
-        server.set_debuglevel(0)  # Set to 1 for verbose output
-        
-        # Start TLS
-        print("🔒 Starting TLS encryption...")
+        server = smtplib.SMTP(smtp_host, smtp_port, timeout=5)
         server.starttls()
-        
-        # Login
-        print("🔑 Authenticating...")
         server.login(smtp_user, smtp_password)
-        
-        # Send email
-        print("📧 Sending email...")
         server.send_message(msg)
-        
-        # Close connection
         server.quit()
-        
-        print("\n" + "=" * 60)
-        print("✅ EMAIL SENT SUCCESSFULLY!")
-        print("=" * 60)
-        print(f"\n📬 Check your inbox at: {to_email}")
-        print("   (Don't forget to check spam folder)")
-        
-        print("\n🎉 Amazon SES is configured correctly!")
-        print("\n📋 Next Steps:")
-        print("  1. Check SES console for delivery status")
-        print("  2. Request production access (if in sandbox)")
-        print("  3. Integrate email notifications in your app")
-        
-        return True
-        
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"\n❌ SMTP Authentication Failed!")
-        print(f"Error: {e}")
-        print("\n🔧 Troubleshooting:")
-        print("  1. Verify SMTP username and password")
-        print("  2. Check you're using eu-north-1 credentials")
-        print("  3. Regenerate SMTP credentials in SES console")
-        return False
-        
-    except smtplib.SMTPException as e:
-        print(f"\n❌ SMTP Error!")
-        print(f"Error: {e}")
-        print("\n🔧 Troubleshooting:")
-        print("  1. Check SMTP host and port")
-        print("  2. Verify network connectivity")
-        print("  3. Check firewall settings")
-        return False
-        
-    except Exception as e:
-        print(f"\n❌ Unexpected Error!")
-        print(f"Error: {e}")
-        print(f"Error type: {type(e).__name__}")
-        return False
+    except Exception as e:  # noqa: BLE001
+        pytest.fail(f"SES send failed: {e}")
+    assert True
 
 
-if __name__ == "__main__":
-    print("\n" + "=" * 60)
-    print("  Amazon SES Email Test Script")
-    print("  SuoOps - Invoice Management System")
-    print("=" * 60 + "\n")
-    
-    success = test_ses_email()
-    
-    print("\n" + "=" * 60)
-    if success:
-        print("✅ Test completed successfully!")
-    else:
-        print("❌ Test failed. See errors above.")
-    print("=" * 60 + "\n")
-    
-    sys.exit(0 if success else 1)
+if __name__ == "__main__":  # pragma: no cover - manual invocation
+    _ = test_ses_email()
