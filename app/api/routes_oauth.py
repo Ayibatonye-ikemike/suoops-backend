@@ -259,6 +259,8 @@ async def oauth_callback(
     """
     accept_header = (request.headers.get("accept", "") or "").lower()
     sec_fetch_mode = (request.headers.get("sec-fetch-mode", "") or "").lower()
+    referer = request.headers.get("referer", "") or ""
+    origin = request.headers.get("origin", "") or ""
     expects_json = (
         "application/json" in accept_header
         or (sec_fetch_mode and sec_fetch_mode != "navigate")
@@ -268,23 +270,35 @@ async def oauth_callback(
     if not expects_json:
         redirect_uri = _get_redirect_uri(state, consume=False)
         if redirect_uri is None:
-            logger.warning(f"Invalid OAuth state (non-JSON request): {state}")
+            logger.warning(
+                "Invalid OAuth state (non-JSON request): %s | headers accept=%s mode=%s origin=%s referer=%s",
+                state, accept_header, sec_fetch_mode, origin, referer
+            )
             raise HTTPException(
                 status_code=400,
-                detail="Invalid state token. Possible CSRF attack or expired session.",
+                detail="Invalid or expired OAuth state (navigate phase)."
             )
 
         redirect_with_params = _build_redirect_with_params(redirect_uri, {"code": code, "state": state})
-        logger.info("Redirecting browser to frontend callback with OAuth code")
+        logger.info(
+            "Redirecting browser to frontend callback with OAuth code | state=%s origin=%s referer=%s",
+            state, origin, referer
+        )
         return RedirectResponse(url=redirect_with_params)
 
     # Validate CSRF state and get redirect URI for token exchange
     redirect_uri = _get_redirect_uri(state, consume=True)
     if redirect_uri is None:
-        logger.warning(f"Invalid or consumed OAuth state: {state}")
+        # Defensive second lookup without consuming in case of race conditions.
+        redirect_uri = _get_redirect_uri(state, consume=False)
+    if redirect_uri is None:
+        logger.warning(
+            "Invalid or consumed OAuth state (JSON phase): %s | headers accept=%s mode=%s origin=%s referer=%s",
+            state, accept_header, sec_fetch_mode, origin, referer
+        )
         raise HTTPException(
             status_code=400,
-            detail="Invalid state token. Possible CSRF attack or expired session.",
+            detail="Invalid or consumed OAuth state during token exchange.",
         )
 
     try:
