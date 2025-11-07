@@ -302,9 +302,10 @@ class FiscalizationService:
         self.vat_calculator = VATCalculator()
         self.code_generator = FiscalCodeGenerator()
         self.qr_generator = QRCodeGenerator()
-    self.nrs_transmitter = FiscalTransmitter()
-    # Initialize NRS client stub (future e-invoicing). Used only when settings.NRS_ENABLED.
-    self.nrs_client = get_nrs_client()
+        # Transmitter for external fiscalization (FIRS gateway placeholder)
+        self.nrs_transmitter = FiscalTransmitter()
+        # NRS client only initialized if feature flag enabled to avoid unnecessary resource usage
+        self.nrs_client = get_nrs_client() if getattr(settings, "NRS_ENABLED", False) else None
     
     async def fiscalize_invoice(self, invoice_id: int) -> FiscalInvoice:
         """
@@ -361,7 +362,7 @@ class FiscalizationService:
         tx_result = await self.nrs_transmitter.transmit(invoice, fiscal_invoice)
 
         # Optional NRS transmission (stubbed) if feature flag enabled and accredited (dual gating optional).
-        if getattr(settings, "NRS_ENABLED", False):
+        if getattr(settings, "NRS_ENABLED", False) and self.nrs_client:
             try:
                 nrs_payload = {
                     "invoice_id": invoice.invoice_id,
