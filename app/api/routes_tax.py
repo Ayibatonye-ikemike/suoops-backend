@@ -12,6 +12,7 @@ All endpoints require authentication.
 """
 import logging
 from decimal import Decimal
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -119,6 +120,18 @@ class FiscalizationStatus(BaseModel):
     timestamp: str
 
 
+class DevelopmentLevyResponse(BaseModel):
+    """Development levy computation response."""
+    user_id: int
+    business_size: str
+    is_small_business: bool
+    assessable_profit: float
+    levy_rate_percent: float
+    levy_applicable: bool
+    levy_amount: float
+    exemption_reason: str | None
+
+
 @router.get("/fiscalization/status", response_model=FiscalizationStatus)
 async def get_fiscalization_status(
     current_user_id: int = Depends(get_current_user_id),
@@ -156,6 +169,24 @@ async def get_fiscalization_status(
     except Exception as e:
         logger.exception("Failed fiscalization status")
         raise HTTPException(status_code=500, detail="Failed fiscalization status") from e
+
+
+@router.get("/levy", response_model=DevelopmentLevyResponse)
+async def development_levy(
+    profit: float = Query(..., ge=0, description="Assessable profit base (Naira)"),
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Compute development levy (4% for non-small businesses)."""
+    try:
+        tax_service = TaxProfileService(db)
+        result = tax_service.compute_development_levy(current_user_id, Decimal(str(profit)))
+        return DevelopmentLevyResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed development levy calculation")
+        raise HTTPException(status_code=500, detail="Failed levy calculation") from e
 
 
 @router.get("/vat/summary")

@@ -283,3 +283,35 @@ class TaxProfileService:
         self.db.commit()
         self.db.refresh(profile)
         return profile
+
+    # ---------------- Development Levy Computation (minimal compliance helper) -----------------
+    def compute_development_levy(self, user_id: int, assessable_profit: Decimal) -> Dict[str, object]:
+        """Compute development levy on assessable profits.
+
+        Rules (2026 draft):
+        - Small businesses: Exempt (0%)
+        - Others: 4% of assessable profits
+
+        Args:
+            user_id: User ID owning the profile
+            assessable_profit: Profit base for levy calculation (>= 0)
+
+        Returns:
+            dict with applicability and amount
+        """
+        if assessable_profit < 0:
+            raise ValueError("assessable_profit must be >= 0")
+        profile = self.get_or_create_profile(user_id)
+        applies = not profile.is_small_business
+        rate = Decimal("0.04") if applies else Decimal("0")
+        amount = (assessable_profit * rate).quantize(Decimal("0.01"))
+        return {
+            "user_id": user_id,
+            "business_size": profile.business_size,
+            "is_small_business": profile.is_small_business,
+            "assessable_profit": float(assessable_profit),
+            "levy_rate_percent": float(rate * 100),
+            "levy_applicable": applies,
+            "levy_amount": float(amount),
+            "exemption_reason": "small_business" if not applies else None,
+        }
