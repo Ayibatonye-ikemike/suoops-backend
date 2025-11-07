@@ -215,15 +215,15 @@ async def fiscalize_invoice(
     db: Session = Depends(get_db)
 ):
     """
-    Fiscalize an invoice for NRS compliance.
+    Fiscalize an invoice (provisional FIRS readiness).
     
     Process:
-    1. Generates unique fiscal code
-    2. Creates digital signature
-    3. Generates QR code
-    4. Transmits to NRS (if configured)
+    1. Generate unique fiscal code
+    2. Create digital signature
+    3. Generate QR code
+    4. Optionally attempt external transmission (only if accredited & configured)
     
-    Returns fiscal data including QR code for display/printing.
+    Returns fiscal data including QR code (truncated) for display/printing.
     """
     try:
         # Verify invoice ownership
@@ -249,16 +249,16 @@ async def fiscalize_invoice(
         return {
             "message": "Invoice fiscalized successfully",
             "fiscal_code": fiscal_data.fiscal_code,
-            "fiscal_signature": fiscal_data.fiscal_signature[:32] + "...",  # Truncate for response
-            "qr_code": fiscal_data.qr_code_data[:100] + "...",  # Truncate (full data in DB)
+            "fiscal_signature": fiscal_data.fiscal_signature[:32] + "...",  # Truncated
+            "qr_code": fiscal_data.qr_code_data[:100] + "...",  # Truncated
             "vat_breakdown": {
                 "subtotal": float(fiscal_data.subtotal),
                 "vat_rate": fiscal_data.vat_rate,
                 "vat_amount": float(fiscal_data.vat_amount),
                 "total": float(fiscal_data.total_amount)
             },
-            "nrs_status": fiscal_data.nrs_validation_status,
-            "nrs_transaction_id": fiscal_data.nrs_transaction_id
+            "fiscalization_status": fiscal_data.firs_validation_status,
+            "fiscalization_transaction_id": fiscal_data.firs_transaction_id
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

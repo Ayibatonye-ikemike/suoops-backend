@@ -20,14 +20,14 @@ from app.db.base_class import Base
 
 
 class BusinessSize(str, Enum):
-    """Business size classification based on NRS 2026 thresholds"""
+    """Business size classification based on draft 2026 FIRS thresholds (subject to change)"""
     SMALL = "small"      # Turnover ≤ ₦100M, Assets ≤ ₦250M (Tax exempt)
     MEDIUM = "medium"    # Above small but below large
     LARGE = "large"      # Major corporations
 
 
 class VATCategory(str, Enum):
-    """VAT categories for goods and services per NRS 2026 rules"""
+    """VAT categories for goods and services (current Nigeria VAT rules; future FIRS enhancements pending)"""
     STANDARD = "standard"        # 7.5% VAT
     ZERO_RATED = "zero_rated"   # 0% VAT (medical, education, basic food)
     EXEMPT = "exempt"            # No VAT (financial services)
@@ -41,7 +41,7 @@ class TaxProfile(Base):
     Tracks:
     - Business classification (small/medium/large)
     - Tax registration numbers (TIN, VAT)
-    - NRS integration credentials
+    - Provisional FIRS fiscalization placeholders
     - Compliance status
     """
     __tablename__ = "tax_profiles"
@@ -77,7 +77,7 @@ class TaxProfile(Base):
     
     @property
     def is_small_business(self) -> bool:
-        """Check if qualifies as small business for NRS 2026 tax exemptions"""
+        """Check if qualifies as small business (≤ ₦100M turnover and ≤ ₦250M assets)"""
         return (
             float(self.annual_turnover or 0) <= 100_000_000 and 
             float(self.fixed_assets or 0) <= 250_000_000
@@ -85,7 +85,7 @@ class TaxProfile(Base):
     
     @property
     def tax_rates(self) -> Dict[str, float]:
-        """Get applicable tax rates based on business size (NRS 2026 rates)"""
+        """Get applicable tax rates based on business size (provisional 2026 adjustments)"""
         if self.is_small_business:
             return {
                 "CIT": 0,           # Company Income Tax - EXEMPT
@@ -104,13 +104,13 @@ class TaxProfile(Base):
 
 class FiscalInvoice(Base):
     """
-    Fiscalized invoice data for NRS compliance.
+    Fiscalized invoice data (provisional FIRS compliance readiness).
     
     Stores:
     - Fiscal codes and signatures
     - QR codes for validation
     - VAT breakdown
-    - NRS transmission status
+    - External transmission metadata (pending accreditation)
     """
     __tablename__ = "fiscal_invoices"
     
@@ -146,7 +146,7 @@ class FiscalInvoice(Base):
 
 class VATReturn(Base):
     """
-    Monthly VAT returns for NRS submission.
+    Monthly VAT returns (internal aggregation; external submission pipeline pending).
     
     Aggregates:
     - Output VAT (collected from customers)
@@ -180,7 +180,7 @@ class VATReturn(Base):
     # Submission tracking
     status = Column(String(20), default="draft")  # draft, submitted, accepted, rejected
     submitted_at = Column(DateTime, nullable=True)
-    nrs_submission_id = Column(String(100), nullable=True)
+    firs_submission_id = Column(String(100), nullable=True)
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

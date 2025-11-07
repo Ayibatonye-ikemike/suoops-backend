@@ -201,7 +201,8 @@ class FiscalTransmitter:
     """
     External fiscalization API communication (SRP: External API only).
 
-    Placeholder transmitter; actual FIRS gateway integration pending credentials.
+    Placeholder transmitter; actual FIRS/Federal gateway integration pending credentials.
+    Transmission is gated by settings.FISCALIZATION_ACCREDITED.
     """
     
     def __init__(self, api_url: Optional[str] = None, api_key: Optional[str] = None):
@@ -213,10 +214,16 @@ class FiscalTransmitter:
         Transmit fiscalized invoice to external fiscalization API (placeholder).
 
         Returns response dict with transaction ID and validation status.
+        Gating:
+        - If settings.FISCALIZATION_ACCREDITED is False → skip, return pending_external.
+        - If credentials missing → skip, return pending_configuration.
         """
+        if not getattr(settings, "FISCALIZATION_ACCREDITED", False):
+            logger.info("Fiscalization not accredited; skipping external transmission")
+            return {"status": "pending_external", "message": "Accreditation pending"}
         if not self.api_url or not self.api_key:
             logger.info("Fiscalization API not configured; deferring transmission")
-            return {"status": "pending", "message": "Fiscalization API not configured"}
+            return {"status": "pending_configuration", "message": "API credentials not set"}
         
         # Prepare NRS-compliant payload
         payload = {
@@ -286,7 +293,7 @@ class FiscalizationService:
     - VAT calculation
     - Fiscal code generation
     - QR code creation
-    - NRS transmission
+    - Optional external transmission (FIRS) – gated & provisional
     """
     
     def __init__(self, db: Session):
@@ -294,25 +301,23 @@ class FiscalizationService:
         self.vat_calculator = VATCalculator()
         self.code_generator = FiscalCodeGenerator()
         self.qr_generator = QRCodeGenerator()
-    self.nrs_transmitter = FiscalTransmitter()
+        self.nrs_transmitter = FiscalTransmitter()
     
     async def fiscalize_invoice(self, invoice_id: int) -> FiscalInvoice:
         """
-        Fiscalize an invoice for NRS compliance.
+        Fiscalize an invoice (provisional FIRS readiness).
         
         Process:
         1. Calculate VAT breakdown
         2. Generate fiscal code and signature
         3. Create QR code
-        4. Transmit to NRS (if configured)
+        4. Attempt external transmission only if accredited & configured
         5. Store fiscal data
         
         Args:
             invoice_id: ID of invoice to fiscalize
-            
         Returns:
             FiscalInvoice record with all fiscal data
-            
         Raises:
             ValueError: If invoice not found or already fiscalized
         """
@@ -349,13 +354,13 @@ class FiscalizationService:
             total_amount=invoice.amount
         )
         
-        # Transmit to NRS
-        nrs_result = await self.nrs_transmitter.transmit(invoice, fiscal_invoice)
-    fiscal_invoice.firs_validation_status = nrs_result.get("status", "pending")
-    fiscal_invoice.firs_transaction_id = nrs_result.get("transaction_id")
-    fiscal_invoice.firs_response = nrs_result.get("response")
+        # External transmission (gated)
+        tx_result = await self.nrs_transmitter.transmit(invoice, fiscal_invoice)
+        fiscal_invoice.firs_validation_status = tx_result.get("status", "pending")
+        fiscal_invoice.firs_transaction_id = tx_result.get("transaction_id")
+        fiscal_invoice.firs_response = tx_result.get("response") or tx_result
         
-        if nrs_result.get("status") == "validated":
+        if tx_result.get("status") == "validated":
             fiscal_invoice.transmitted_at = datetime.now(timezone.utc)
         
         # Update invoice

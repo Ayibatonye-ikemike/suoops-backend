@@ -79,6 +79,8 @@ class BaseAppSettings(BaseSettings):
     FIRS_API_URL: str | None = None
     FIRS_API_KEY: str | None = None
     FIRS_MERCHANT_ID: str | None = None
+    # Accreditation / readiness flag: when False we never attempt external transmission
+    FISCALIZATION_ACCREDITED: bool = False
     
     # OAuth 2.0 / SSO Configuration
     GOOGLE_CLIENT_ID: str | None = None
