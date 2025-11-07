@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.db.session import get_db
 from app.api.routes_auth import get_current_user_id
-from app.services.tax_profile_service import TaxProfileService
+from app.services.tax_service import TaxProfileService  # Use unified tax profile & summary service
 from app.services.vat_service import VATService
 from app.services.fiscalization_service import FiscalizationService, VATCalculator
 from app.models.models import Invoice
@@ -43,22 +43,13 @@ async def get_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """
-    Get user's tax profile and business classification.
-    
-    Returns:
-    - Business size classification (small/medium/large)
-    - Applicable tax rates
-    - Registration status
-    - Tax benefits
-    """
+    """Return comprehensive tax profile summary including classification and benefits."""
     try:
         tax_service = TaxProfileService(db)
-        profile = tax_service.get_tax_summary(current_user_id)
-        return profile
+        return tax_service.get_tax_summary(current_user_id)
     except Exception as e:
-        logger.error(f"Error fetching tax profile: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch tax profile")
+        logger.exception("Failed to fetch tax profile summary")
+        raise HTTPException(status_code=500, detail="Failed to fetch tax profile") from e
 
 
 @router.post("/profile")
@@ -67,13 +58,7 @@ async def update_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """
-    Update tax profile information.
-    
-    Automatically recalculates business size classification based on:
-    - Annual turnover ≤ ₦100M AND assets ≤ ₦250M = Small (tax exempt)
-    - Above thresholds = Medium/Large (taxable)
-    """
+    """Update tax profile and return updated classification & rates."""
     try:
         tax_service = TaxProfileService(db)
         profile = tax_service.update_profile(
@@ -84,7 +69,6 @@ async def update_tax_profile(
             vat_registration_number=data.vat_registration_number,
             vat_registered=data.vat_registered
         )
-        
         return {
             "message": "Tax profile updated successfully",
             "business_size": profile.business_size,
@@ -92,8 +76,41 @@ async def update_tax_profile(
             "tax_rates": profile.tax_rates
         }
     except Exception as e:
-        logger.error(f"Error updating tax profile: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update tax profile")
+        logger.exception("Failed to update tax profile")
+        raise HTTPException(status_code=500, detail="Failed to update tax profile") from e
+
+
+@router.get("/small-business-check")
+async def small_business_check(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Return small business eligibility, remaining thresholds and benefits."""
+    try:
+        # Use the richer tax profile service for eligibility details
+        from app.services.tax_profile_service import TaxProfileService as EligibilityService
+        eligibility_service = EligibilityService(db)
+        return eligibility_service.check_small_business_eligibility(current_user_id)
+    except Exception as e:
+        logger.exception("Failed small business eligibility check")
+        raise HTTPException(status_code=500, detail="Failed small business check") from e
+
+
+@router.get("/compliance")
+async def tax_compliance(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Return tax compliance summary (TIN/VAT/NRS registration status & next actions)."""
+    try:
+        from app.services.tax_profile_service import TaxProfileService as ComplianceService
+        compliance_service = ComplianceService(db)
+        summary = compliance_service.get_compliance_summary(current_user_id)
+        compliance_service.update_compliance_check(current_user_id)
+        return summary
+    except Exception as e:
+        logger.exception("Failed tax compliance summary")
+        raise HTTPException(status_code=500, detail="Failed compliance summary") from e
 
 
 @router.get("/vat/summary")
