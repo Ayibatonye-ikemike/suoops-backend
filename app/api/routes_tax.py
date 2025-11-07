@@ -148,6 +148,14 @@ class DevelopmentLevyResponse(BaseModel):
     period: str | None = None
     source: str | None = None
 
+class AlertEventOut(BaseModel):
+    id: int
+    category: str
+    severity: str
+    message: str
+    created_at: str | None
+    model_config = dict(from_attributes=True)
+
 
 @router.get("/fiscalization/status", response_model=FiscalizationStatus)
 async def get_fiscalization_status(
@@ -252,6 +260,36 @@ def generate_monthly_tax_report(
         "pdf_url": report.pdf_url,
         "basis": basis,
     }
+
+@router.get("/admin/alerts", response_model=list[AlertEventOut])
+def list_recent_alerts(
+    limit: int = Query(50, ge=1, le=200),
+    category: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """Return recent alert events (temporary: all authenticated users).
+
+    Future enhancement: restrict to admin roles.
+    """
+    try:
+        from app.models.alert_models import AlertEvent
+    except Exception:
+        raise HTTPException(status_code=500, detail="Alert model unavailable")
+    q = db.query(AlertEvent).order_by(AlertEvent.created_at.desc())
+    if category:
+        q = q.filter(AlertEvent.category == category)
+    records = q.limit(limit).all()
+    return [
+        AlertEventOut(
+            id=r.id,
+            category=r.category,
+            severity=r.severity,
+            message=r.message,
+            created_at=r.created_at.isoformat() if r.created_at else None,
+        )
+        for r in records
+    ]
 
 
 @router.get("/reports/{year}/{month}/download")

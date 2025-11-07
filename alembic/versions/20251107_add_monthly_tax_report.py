@@ -1,7 +1,7 @@
 """add monthly tax report table
 
 Revision ID: 20251107_add_monthly_tax_report
-Revises: 
+Revises: 0017_rename_nrs_submission_id
 Create Date: 2025-11-07
 """
 from __future__ import annotations
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20251107_add_monthly_tax_report'
-down_revision = None  # Set to previous revision ID if exists
+down_revision = '0017_rename_nrs_submission_id'
 branch_labels = None
 depends_on = None
 

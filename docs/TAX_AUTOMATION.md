@@ -86,19 +86,28 @@ Development Levy:
 3. Enable Celery beat scheduling in production.
 4. Add alerting for failed report generation attempts (future enhancement).
 
+## New Additions (Current Release)
+- Refunded invoice handling implemented: basis `all` excludes status `refunded`; monthly report & VAT breakdown automatically exclude refunded invoices.
+- CSV export endpoint: `GET /tax/reports/{year}/{month}/csv?basis=paid|all` regenerates metrics and returns a presigned CSV URL.
+- Watermark feature: enable with `PDF_WATERMARK_ENABLED` / customize text via `PDF_WATERMARK_TEXT` for both invoice and monthly report PDFs (HTML + ReportLab fallback).
+- Alerting: generation task records per-user failures and summary alerts in `alert_events` table (categories `tax.report` and `tax.report.summary`).
+
 ## Future Enhancements
 - Include input VAT (supplier invoices) once capture is implemented.
-- Add refunded invoice handling when status is introduced.
-- Add signature & hash for PDF authenticity.
-- Provide CSV export alongside PDF.
+- Add cryptographic signature & hash for PDF authenticity (beyond watermark).
+- External alert forwarding (email/webhook) and dashboard surfacing of recent alerts.
+- Consolidated compliance dashboard including alert counts and SLA metrics.
 
 ## Troubleshooting
 | Issue | Cause | Resolution |
 |-------|-------|------------|
-| Missing `pdf_url` after generation | WeasyPrint failed & fallback not executed | Check logs for template errors; ensure ReportLab dependency installed |
+| Missing `pdf_url` after generation | WeasyPrint failed & fallback not executed | Check logs; verify ReportLab & jinja2 installed; fallback logs warning |
 | Levy shows 0 for medium business | Business classified small (thresholds) | Update turnover/assets via `/tax/profile` |
-| VAT collected is 0 | Invoices missing `vat_amount` population | Ensure VAT calculation stored at invoice creation/fiscalization |
+| VAT collected is 0 | Invoices missing `vat_amount` field populated | Ensure VAT calculation & persistence at invoice creation/fiscalization |
 | Automation task skipped user | No invoices in period | Expected; report still generated with zeros |
+| CSV export returns 404 | Report not generated yet | Call POST `/tax/reports/generate` first or ensure automation ran |
+| Alerts not recorded | `alert_events` table missing migration | Run Alembic migrations up to latest revision |
+| Watermark missing | Feature flag disabled | Set `PDF_WATERMARK_ENABLED=true` & optionally `PDF_WATERMARK_TEXT` |
 
 ## Security Notes
 - PDFs are presigned URLs with expiry (controlled by `S3_PRESIGN_TTL`).
