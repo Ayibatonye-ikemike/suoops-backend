@@ -381,6 +381,20 @@ class TaxProfileService:
         self.db.refresh(profile)
         return profile
 
+    # -------- Alert Recording (lightweight) --------
+    def record_alert(self, category: str, message: str, severity: str = "error") -> None:
+        """Persist a simple alert event (best-effort)."""
+        try:
+            from app.models.alert_models import AlertEvent  # type: ignore
+        except Exception:
+            return
+        evt = AlertEvent(category=category, message=message, severity=severity)
+        self.db.add(evt)
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+
     # ---------------- Development Levy Computation (minimal compliance helper) -----------------
     def compute_development_levy(self, user_id: int, assessable_profit: Decimal) -> Dict[str, object]:
         """Compute development levy on assessable profits.

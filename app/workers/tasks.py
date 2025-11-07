@@ -119,6 +119,7 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
         tax_service = TaxProfileService(db)
         pdf_service = PDFService(s3_client)
         users = db.query(User).all()
+        failures = 0
         for user in users:
             try:
                 report = tax_service.generate_monthly_report(user.id, year, prev_month, basis=basis, force_regenerate=False)
@@ -127,4 +128,16 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
                     tax_service.attach_report_pdf(report, pdf_url)
                 logger.info("Generated monthly tax report for user=%s period=%s-%02d", user.id, year, prev_month)
             except Exception as e:  # noqa: BLE001
+                failures += 1
                 logger.exception("Failed generating report for user %s: %s", user.id, e)
+                tax_service.record_alert(
+                    category="tax.report",
+                    message=f"Monthly report generation failed for user {user.id}: {e}",
+                    severity="error",
+                )
+        if failures:
+            tax_service.record_alert(
+                category="tax.report.summary",
+                message=f"Monthly report generation completed with {failures} failures",
+                severity="warning" if failures < len(users) else "error",
+            )
