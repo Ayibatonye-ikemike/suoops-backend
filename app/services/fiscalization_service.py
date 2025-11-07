@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.models import Invoice
+from app.services.nrs_client import get_nrs_client
 from app.models.tax_models import FiscalInvoice, VATCategory
 
 logger = logging.getLogger(__name__)
@@ -301,7 +302,9 @@ class FiscalizationService:
         self.vat_calculator = VATCalculator()
         self.code_generator = FiscalCodeGenerator()
         self.qr_generator = QRCodeGenerator()
-        self.nrs_transmitter = FiscalTransmitter()
+    self.nrs_transmitter = FiscalTransmitter()
+    # Initialize NRS client stub (future e-invoicing). Used only when settings.NRS_ENABLED.
+    self.nrs_client = get_nrs_client()
     
     async def fiscalize_invoice(self, invoice_id: int) -> FiscalInvoice:
         """
@@ -356,6 +359,26 @@ class FiscalizationService:
         
         # External transmission (gated)
         tx_result = await self.nrs_transmitter.transmit(invoice, fiscal_invoice)
+
+        # Optional NRS transmission (stubbed) if feature flag enabled and accredited (dual gating optional).
+        if getattr(settings, "NRS_ENABLED", False):
+            try:
+                nrs_payload = {
+                    "invoice_id": invoice.invoice_id,
+                    "fiscal_code": fiscal_invoice.fiscal_code,
+                    "amount": float(fiscal_invoice.total_amount),
+                    "vat_amount": float(fiscal_invoice.vat_amount),
+                    "issued_at": invoice.created_at.isoformat(),
+                }
+                nrs_result = self.nrs_client.transmit_invoice(nrs_payload)
+                # Merge minimal NRS response into firs_response for visibility
+                merged = fiscal_invoice.firs_response or {}
+                merged["nrs"] = nrs_result
+                fiscal_invoice.firs_response = merged
+                if nrs_result.get("status") == "accepted" and not fiscal_invoice.transmitted_at:
+                    fiscal_invoice.transmitted_at = datetime.now(timezone.utc)
+            except Exception as e:
+                logger.warning(f"NRS client transmission failed: {e}")
         fiscal_invoice.firs_validation_status = tx_result.get("status", "pending")
         fiscal_invoice.firs_transaction_id = tx_result.get("transaction_id")
         fiscal_invoice.firs_response = tx_result.get("response") or tx_result
