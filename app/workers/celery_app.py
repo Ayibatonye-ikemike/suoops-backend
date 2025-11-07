@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import certifi
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -78,6 +79,15 @@ def _create_celery() -> Celery:
             broker_use_ssl=ssl_options,
             redis_backend_use_ssl=ssl_options,
         )
+    # Beat schedule (only active outside test env)
+    if settings.ENV.lower() not in {"test"}:
+        celery.conf.beat_schedule = {
+            "monthly-tax-reports": {
+                "task": "tax.generate_previous_month_reports",
+                "schedule": crontab(minute=0, hour=2, day_of_month=1),  # 02:00 UTC first day
+                "args": ["paid"],
+            }
+        }
     return celery
 
 
