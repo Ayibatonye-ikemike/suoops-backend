@@ -24,7 +24,8 @@ frontend/.next/
 frontend/.env.local
 frontend/.env.production
 frontend/.vercel/
-frontend/
+# Allow tracking of frontend source; keep specific ignores
+# frontend/
 
 # Storage (local files)
 storage/whatsinvoice/
