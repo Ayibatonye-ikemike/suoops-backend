@@ -76,3 +76,30 @@ def test_tax_profile_update_returns_summary():
     assert ju.get("message") == "Tax profile updated successfully"
     assert "summary" in ju
     assert "classification" in ju["summary"]
+
+
+def test_tax_profile_invalid_tin_vat_validation():
+    client, token = _auth_client()
+    headers = _auth_headers(token)
+    # Invalid TIN length
+    r1 = client.post("/tax/profile", json={"tin": "123"}, headers=headers)
+    assert r1.status_code == 422
+    assert "exactly 10" in r1.text
+    # Invalid TIN non-numeric
+    r2 = client.post("/tax/profile", json={"tin": "ABCDEFGHIJ"}, headers=headers)
+    assert r2.status_code == 422
+    # Invalid TIN trivial sequence
+    r3 = client.post("/tax/profile", json={"tin": "1234567890"}, headers=headers)
+    assert r3.status_code == 422
+    # Valid TIN
+    ok = client.post("/tax/profile", json={"tin": "9876543210"}, headers=headers)
+    assert ok.status_code == 200, ok.text
+    # Invalid VAT number pattern (too short)
+    v1 = client.post("/tax/profile", json={"vat_registration_number": "ABC123"}, headers=headers)
+    assert v1.status_code == 422
+    # Invalid VAT number pattern (chars + dash)
+    v2 = client.post("/tax/profile", json={"vat_registration_number": "ABCD-1234"}, headers=headers)
+    assert v2.status_code == 422
+    # Valid VAT number
+    vok = client.post("/tax/profile", json={"vat_registration_number": "ABCD1234"}, headers=headers)
+    assert vok.status_code == 200, vok.text

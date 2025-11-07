@@ -56,6 +56,11 @@ class TaxProfile(Base):
     
     # Tax registration details
     tin = Column(String(20), nullable=True, index=True)
+    tin_verified = Column(Boolean, default=False)
+    vat_verified = Column(Boolean, default=False)
+    verification_status = Column(String(20), default="pending")  # pending, verified, failed
+    verification_attempts = Column(Integer, default=0)
+    last_verification_at = Column(DateTime, nullable=True)
     vat_registered = Column(Boolean, default=False)
     vat_registration_number = Column(String(20), nullable=True)
     
@@ -100,6 +105,15 @@ class TaxProfile(Base):
                 "DEV_LEVY": 4,      # New 4% Development Levy
                 "VAT": 7.5          # Standard VAT rate
             }
+
+    def mark_verified(self, tin: bool = False, vat: bool = False) -> None:
+        """Helper to update verified flags consistently."""
+        if tin:
+            self.tin_verified = True
+        if vat:
+            self.vat_verified = True
+        if self.tin_verified or self.vat_verified:
+            self.verification_status = "verified"
 
 
 class FiscalInvoice(Base):

@@ -124,10 +124,28 @@ class TaxProfileService:
             profile.fixed_assets = fixed_assets
         
         if tin is not None:
+            # Basic TIN format validation (Nigeria): numeric, length 10, not trivial
+            if tin:
+                if not tin.isdigit():
+                    raise ValueError("TIN must be numeric")
+                if len(tin) != 10:
+                    raise ValueError("TIN must be exactly 10 digits")
+                if tin in {"0000000000", "1111111111", "1234567890"}:
+                    raise ValueError("TIN appears invalid (trivial sequence)")
             profile.tin = tin
+            # Reset verification flags if value changed
+            profile.tin_verified = False
+            profile.verification_status = "pending"
         
         if vat_registration_number is not None:
+            if vat_registration_number:
+                # Provisional VAT reg format check: allow alnum, length 8-15 (placeholder rule)
+                import re
+                if not re.fullmatch(r"[A-Za-z0-9]{8,15}", vat_registration_number):
+                    raise ValueError("VAT registration number must be 8-15 alphanumeric characters")
             profile.vat_registration_number = vat_registration_number
+            profile.vat_verified = False
+            profile.verification_status = "pending"
         
         if vat_registered is not None:
             profile.vat_registered = vat_registered

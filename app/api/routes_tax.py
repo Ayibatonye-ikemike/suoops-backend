@@ -77,6 +77,8 @@ async def update_tax_profile(
             "message": "Tax profile updated successfully",
             "summary": tax_service.get_tax_summary(current_user_id)
         }
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.exception("Failed to update tax profile")
         raise HTTPException(status_code=500, detail="Failed to update tax profile") from e
