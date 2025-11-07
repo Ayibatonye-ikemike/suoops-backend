@@ -1,10 +1,14 @@
 """
-Tax and Fiscalization Models for NRS Compliance
+Tax and Fiscalization Models (Pre-Fiscalization Integration).
 
 Models for:
 - Business tax profiles and classification
 - VAT tracking and returns
 - Invoice fiscalization data
+
+Note: Field names formerly referencing NRS have been updated to FIRS terminology to
+reflect Federal Inland Revenue Service. External API integration is pending; current
+fields store provisional registration metadata only.
 """
 from enum import Enum
 from datetime import datetime, timezone
@@ -59,10 +63,10 @@ class TaxProfile(Base):
     last_vat_return = Column(DateTime, nullable=True)
     last_compliance_check = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
-    # NRS Integration credentials
-    nrs_registered = Column(Boolean, default=False)
-    nrs_merchant_id = Column(String(50), nullable=True)
-    nrs_api_key = Column(String(100), nullable=True)
+    # Fiscalization / FIRS integration (pending external API availability)
+    firs_registered = Column(Boolean, default=False)
+    firs_merchant_id = Column(String(50), nullable=True)
+    firs_api_key = Column(String(100), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -128,11 +132,11 @@ class FiscalInvoice(Base):
     zero_rated_amount = Column(Numeric(15, 2), default=0)
     zero_rated_items = Column(JSON, nullable=True)
     
-    # NRS transmission tracking
+    # Fiscalization transmission tracking (FIRS pending)
     transmitted_at = Column(DateTime, nullable=True)
-    nrs_response = Column(JSON, nullable=True)
-    nrs_validation_status = Column(String(20), default="pending")
-    nrs_transaction_id = Column(String(100), nullable=True)
+    firs_response = Column(JSON, nullable=True)
+    firs_validation_status = Column(String(20), default="pending")
+    firs_transaction_id = Column(String(100), nullable=True)
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     

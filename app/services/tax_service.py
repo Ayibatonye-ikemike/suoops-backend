@@ -24,7 +24,7 @@ class BusinessClassifier:
     """
     Business size classification (SRP: Classification logic only).
     
-    NRS 2026 thresholds:
+    Threshold assumptions (legacy placeholder; verify with FIRS current guidance):
     - Small: Turnover ≤ ₦100M AND Assets ≤ ₦250M
     - Medium: Above small but < ₦500M turnover
     - Large: ₦500M+ turnover
@@ -37,7 +37,7 @@ class BusinessClassifier:
     @classmethod
     def classify(cls, turnover: Decimal, assets: Decimal) -> str:
         """
-        Classify business size based on NRS 2026 criteria.
+    Classify business size based on assumed criteria.
         
         Args:
             turnover: Annual turnover in Naira
@@ -178,8 +178,8 @@ class TaxProfileService:
                 "tin": profile.tin,
                 "vat_registered": profile.vat_registered,
                 "vat_number": profile.vat_registration_number,
-                "nrs_registered": profile.nrs_registered,
-                "nrs_merchant_id": profile.nrs_merchant_id
+                "firs_registered": profile.firs_registered,
+                "firs_merchant_id": profile.firs_merchant_id
             },
             "tax_benefits": self._get_tax_benefits(profile)
         }
@@ -246,7 +246,7 @@ class TaxProfileService:
         requirements = {
             "tin_registered": profile.tin is not None,
             "vat_registered": profile.vat_registered,
-            "nrs_registered": profile.nrs_registered,
+            "firs_registered": profile.firs_registered,
         }
         completed = sum(1 for v in requirements.values() if v)
         total = len(requirements)
@@ -264,8 +264,8 @@ class TaxProfileService:
             next_actions.append("Register for Tax Identification Number (TIN)")
         if not profile.vat_registered and profile.annual_turnover > Decimal("25000000"):
             next_actions.append("Register for VAT (turnover exceeds ₦25M)")
-        if not profile.nrs_registered:
-            next_actions.append("Register with Nigeria Revenue Service for e-invoicing")
+        if not profile.firs_registered:
+            next_actions.append("Register for forthcoming FIRS fiscalization/e-invoicing")
         return {
             "compliance_status": status,
             "compliance_score": compliance_score,

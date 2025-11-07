@@ -1,12 +1,12 @@
 """
-Invoice Fiscalization Service for NRS E-Invoice Compliance.
+Invoice Fiscalization Service (pre-integration placeholder).
 
 Handles:
 - Fiscal code generation
 - Digital signatures
 - QR code creation
 - VAT calculations
-- NRS transmission
+- Future external transmission (FIRS or approved gateway)
 
 Single Responsibility: Invoice fiscalization only
 """
@@ -197,26 +197,26 @@ class QRCodeGenerator:
         return f"data:image/png;base64,{qr_base64}"
 
 
-class NRSTransmitter:
+class FiscalTransmitter:
     """
-    NRS API communication (SRP: External API only).
-    
-    Handles transmission of fiscal invoices to Nigeria Revenue Service.
+    External fiscalization API communication (SRP: External API only).
+
+    Placeholder transmitter; actual FIRS gateway integration pending credentials.
     """
     
     def __init__(self, api_url: Optional[str] = None, api_key: Optional[str] = None):
-        self.api_url = api_url or getattr(settings, "NRS_API_URL", None)
-        self.api_key = api_key or getattr(settings, "NRS_API_KEY", None)
+        self.api_url = api_url or getattr(settings, "FIRS_API_URL", None)
+        self.api_key = api_key or getattr(settings, "FIRS_API_KEY", None)
     
     async def transmit(self, invoice: Invoice, fiscal_invoice: FiscalInvoice) -> Dict:
         """
-        Transmit fiscalized invoice to NRS.
-        
-        Returns NRS response with transaction ID and validation status.
+        Transmit fiscalized invoice to external fiscalization API (placeholder).
+
+        Returns response dict with transaction ID and validation status.
         """
         if not self.api_url or not self.api_key:
-            logger.warning("NRS API not configured, skipping transmission")
-            return {"status": "pending", "message": "NRS API not configured"}
+            logger.info("Fiscalization API not configured; deferring transmission")
+            return {"status": "pending", "message": "Fiscalization API not configured"}
         
         # Prepare NRS-compliant payload
         payload = {
@@ -257,21 +257,21 @@ class NRSTransmitter:
                 
                 if response.status_code == 200:
                     result = response.json()
-                    logger.info(f"Invoice {invoice.id} transmitted to NRS successfully")
+                    logger.info(f"Invoice {invoice.id} transmitted to fiscalization gateway successfully")
                     return {
                         "status": "validated",
                         "transaction_id": result.get("transaction_id"),
                         "response": result
                     }
                 else:
-                    logger.error(f"NRS transmission failed: {response.status_code}")
+                    logger.error(f"Fiscalization transmission failed: {response.status_code}")
                     return {
                         "status": "failed",
                         "error": response.text
                     }
                     
             except Exception as e:
-                logger.error(f"NRS transmission exception: {str(e)}")
+                logger.error(f"Fiscalization transmission exception: {str(e)}")
                 return {
                     "status": "failed",
                     "error": str(e)
@@ -294,7 +294,7 @@ class FiscalizationService:
         self.vat_calculator = VATCalculator()
         self.code_generator = FiscalCodeGenerator()
         self.qr_generator = QRCodeGenerator()
-        self.nrs_transmitter = NRSTransmitter()
+    self.nrs_transmitter = FiscalTransmitter()
     
     async def fiscalize_invoice(self, invoice_id: int) -> FiscalInvoice:
         """
@@ -351,9 +351,9 @@ class FiscalizationService:
         
         # Transmit to NRS
         nrs_result = await self.nrs_transmitter.transmit(invoice, fiscal_invoice)
-        fiscal_invoice.nrs_validation_status = nrs_result.get("status", "pending")
-        fiscal_invoice.nrs_transaction_id = nrs_result.get("transaction_id")
-        fiscal_invoice.nrs_response = nrs_result.get("response")
+    fiscal_invoice.firs_validation_status = nrs_result.get("status", "pending")
+    fiscal_invoice.firs_transaction_id = nrs_result.get("transaction_id")
+    fiscal_invoice.firs_response = nrs_result.get("response")
         
         if nrs_result.get("status") == "validated":
             fiscal_invoice.transmitted_at = datetime.now(timezone.utc)

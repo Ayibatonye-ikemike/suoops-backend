@@ -26,10 +26,10 @@ class TaxProfileService:
     - Create/update tax profiles
     - Business size classification
     - Compliance status tracking
-    - NRS registration management
+    - FIRS fiscalization registration management (pending external API)
     """
     
-    # NRS 2026 small business thresholds
+    # Small business thresholds (policy assumptions; verify with current FIRS guidance)
     SMALL_BUSINESS_TURNOVER_LIMIT = Decimal("100000000")  # ₦100M
     SMALL_BUSINESS_ASSETS_LIMIT = Decimal("250000000")    # ₦250M
     
@@ -64,7 +64,7 @@ class TaxProfileService:
             annual_turnover=Decimal("0"),
             fixed_assets=Decimal("0"),
             vat_registered=False,
-            nrs_registered=False,
+            firs_registered=False,
             last_compliance_check=datetime.now(timezone.utc)
         )
         
@@ -102,8 +102,8 @@ class TaxProfileService:
             "tin",
             "vat_registration_number",
             "vat_registered",
-            "nrs_merchant_id",
-            "nrs_api_key"
+            "firs_merchant_id",
+            "firs_api_key"
         }
         
         # Update fields
@@ -123,9 +123,9 @@ class TaxProfileService:
             updated_fields.append("business_size")
         
         # Update NRS registration status
-        if "nrs_merchant_id" in data and data["nrs_merchant_id"]:
-            profile.nrs_registered = True
-            updated_fields.append("nrs_registered")
+        if "firs_merchant_id" in data and data["firs_merchant_id"]:
+            profile.firs_registered = True
+            updated_fields.append("firs_registered")
 
         profile.updated_at = datetime.now(timezone.utc)
         
@@ -252,14 +252,14 @@ class TaxProfileService:
             ) if is_eligible else False
         }
     
-    def register_for_nrs(
+    def register_for_firs(
         self,
         user_id: int,
         merchant_id: str,
         api_key: Optional[str] = None
     ) -> TaxProfile:
         """
-        Register business with NRS (Nigeria Revenue Service).
+        Register business with FIRS (Federal Inland Revenue Service) for future fiscalization.
         
         Args:
             user_id: User ID
@@ -271,18 +271,18 @@ class TaxProfileService:
         """
         profile = self.get_or_create_profile(user_id)
         
-        profile.nrs_merchant_id = merchant_id
-        profile.nrs_registered = True
+    profile.firs_merchant_id = merchant_id
+    profile.firs_registered = True
         
         if api_key:
-            profile.nrs_api_key = api_key
+            profile.firs_api_key = api_key
 
         profile.updated_at = datetime.now(timezone.utc)
         
         self.db.commit()
         self.db.refresh(profile)
         
-        logger.info(f"User {user_id} registered with NRS: {merchant_id}")
+    logger.info(f"User {user_id} registered with FIRS (provisional): {merchant_id}")
         
         return profile
     
@@ -330,7 +330,7 @@ class TaxProfileService:
         requirements = {
             "tin_registered": profile.tin is not None,
             "vat_registered": profile.vat_registered,
-            "nrs_registered": profile.nrs_registered
+            "firs_registered": profile.firs_registered
         }
         
         # Compliance score
@@ -354,8 +354,8 @@ class TaxProfileService:
             next_actions.append("Register for Tax Identification Number (TIN)")
         if not profile.vat_registered and profile.annual_turnover > Decimal("25000000"):
             next_actions.append("Register for VAT (turnover exceeds ₦25M)")
-        if not profile.nrs_registered:
-            next_actions.append("Register with Nigeria Revenue Service for e-invoicing")
+        if not profile.firs_registered:
+            next_actions.append("Register for future FIRS fiscalization / e-invoicing")
         
         return {
             "compliance_status": status,

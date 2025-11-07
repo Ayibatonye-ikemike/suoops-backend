@@ -75,10 +75,10 @@ class BaseAppSettings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "plain"
     
-    # NRS Integration (Nigeria Revenue Service - Tax compliance)
-    NRS_API_URL: str | None = None
-    NRS_API_KEY: str | None = None
-    NRS_MERCHANT_ID: str | None = None
+    # Fiscalization Integration (FIRS - provisional placeholders, external API pending)
+    FIRS_API_URL: str | None = None
+    FIRS_API_KEY: str | None = None
+    FIRS_MERCHANT_ID: str | None = None
     
     # OAuth 2.0 / SSO Configuration
     GOOGLE_CLIENT_ID: str | None = None
