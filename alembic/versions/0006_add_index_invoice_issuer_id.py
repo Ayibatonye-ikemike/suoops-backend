@@ -1,7 +1,7 @@
 """Add index on invoice.issuer_id for faster filtering by business
 
-Revision ID: 0006_add_index_invoice_issuer_id
-Revises: 0005_add_invoice_issuer_fk
+Revision ID: 0015_add_index_invoice_issuer_id
+Revises: 0014_add_invoice_issuer_fk
 Create Date: 2025-11-07
 """
 from typing import Sequence, Union
@@ -10,8 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = "0006_add_index_invoice_issuer_id"
-down_revision: Union[str, None] = "0005_add_invoice_issuer_fk"
+revision: str = "0015_add_index_invoice_issuer_id"
+down_revision: Union[str, None] = "0014_add_invoice_issuer_fk"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1,7 +1,7 @@
 """Add foreign key constraint for invoice.issuer_id -> user.id
 
-Revision ID: 0005_add_invoice_issuer_fk
-Revises: 0004_tz_aware
+Revision ID: 0014_add_invoice_issuer_fk
+Revises: 0013_add_tax_fiscalization
 Create Date: 2025-11-07
 """
 from typing import Sequence, Union
@@ -10,8 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = "0005_add_invoice_issuer_fk"
-down_revision: Union[str, None] = "0004_tz_aware"
+revision: str = "0014_add_invoice_issuer_fk"
+down_revision: Union[str, None] = "0013_add_tax_fiscalization"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
