@@ -315,3 +315,15 @@ class TaxProfileService:
             "levy_amount": float(amount),
             "exemption_reason": "small_business" if not applies else None,
         }
+
+    # ---------------- Tax constants (exposed to frontend) -----------------
+    def get_tax_constants(self) -> Dict[str, object]:
+        """Return static tax thresholds & rates for UI consumption."""
+        return {
+            "small_business_turnover_limit": float(self.SMALL_BUSINESS_TURNOVER_LIMIT),
+            "small_business_assets_limit": float(self.SMALL_BUSINESS_ASSETS_LIMIT),
+            "development_levy_rate": 0.04,  # 4%
+            "cit_rate_standard": 25,
+            "cgt_rate_company": 30,
+            "vat_rate_standard": 7.5,
+        }

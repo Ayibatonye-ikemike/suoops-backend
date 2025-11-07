@@ -120,6 +120,20 @@ class FiscalizationStatus(BaseModel):
     timestamp: str
 
 
+@router.get("/config")
+async def tax_config(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Expose tax constants for frontend (thresholds, rates)."""
+    try:
+        service = TaxProfileService(db)
+        return service.get_tax_constants()
+    except Exception as e:
+        logger.exception("Failed to fetch tax config")
+        raise HTTPException(status_code=500, detail="Failed tax config") from e
+
+
 class DevelopmentLevyResponse(BaseModel):
     """Development levy computation response."""
     user_id: int
@@ -130,6 +144,8 @@ class DevelopmentLevyResponse(BaseModel):
     levy_applicable: bool
     levy_amount: float
     exemption_reason: str | None
+    period: str | None = None
+    source: str | None = None
 
 
 @router.get("/fiscalization/status", response_model=FiscalizationStatus)
@@ -173,14 +189,43 @@ async def get_fiscalization_status(
 
 @router.get("/levy", response_model=DevelopmentLevyResponse)
 async def development_levy(
-    profit: float = Query(..., ge=0, description="Assessable profit base (Naira)"),
+    profit: float | None = Query(None, ge=0, description="Override assessable profit base (Naira)"),
+    year: int | None = Query(None, ge=2024, le=2030, description="Year for profit computation"),
+    month: int | None = Query(None, ge=1, le=12, description="Month for profit computation (1-12)"),
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """Compute development levy (4% for non-small businesses)."""
+    """Compute development levy (4% for non-small businesses).
+
+    If profit override not provided, compute from PAID invoices for optional period.
+    """
     try:
         tax_service = TaxProfileService(db)
-        result = tax_service.compute_development_levy(current_user_id, Decimal(str(profit)))
+        # Auto compute profit from paid invoices if not provided
+        computed_profit = None
+        source = "override"
+        if profit is None:
+            from app.models.models import Invoice
+            q = db.query(Invoice).filter(Invoice.issuer_id == current_user_id, Invoice.status == "paid")
+            if year and month:
+                # Filter by month boundaries (assuming created_at is timezone-aware)
+                from datetime import datetime, timezone
+                start = datetime(year, month, 1, tzinfo=timezone.utc)
+                if month == 12:
+                    end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+                else:
+                    end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+                q = q.filter(Invoice.created_at >= start, Invoice.created_at < end)
+            invoices = q.all()
+            computed_profit = sum(float(inv.amount) for inv in invoices)
+            profit_to_use = Decimal(str(computed_profit))
+            source = "paid_invoices"
+        else:
+            profit_to_use = Decimal(str(profit))
+        result = tax_service.compute_development_levy(current_user_id, profit_to_use)
+        period = f"{year:04d}-{month:02d}" if year and month else None
+        result["period"] = period
+        result["source"] = source
         return DevelopmentLevyResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
