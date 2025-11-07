@@ -43,7 +43,7 @@ class TaxProfile(Base):
     __tablename__ = "tax_profiles"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("user.id"), unique=True, nullable=False)
     
     # Business classification (auto-calculated)
     business_size = Column(String(20), default=BusinessSize.SMALL)
@@ -111,7 +111,7 @@ class FiscalInvoice(Base):
     __tablename__ = "fiscal_invoices"
     
     id = Column(Integer, primary_key=True, index=True)
-    invoice_id = Column(Integer, ForeignKey("invoices.id"), unique=True, nullable=False)
+    invoice_id = Column(Integer, ForeignKey("invoice.id"), unique=True, nullable=False)
     
     # Fiscal identifiers
     fiscal_code = Column(String(100), unique=True, nullable=False, index=True)
@@ -153,7 +153,7 @@ class VATReturn(Base):
     __tablename__ = "vat_returns"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     
     # Tax period
     tax_period = Column(String(7), nullable=False, index=True)  # Format: YYYY-MM
