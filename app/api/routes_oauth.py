@@ -203,9 +203,9 @@ async def oauth_login(
 @router.get("/{provider}/callback", response_model=schemas.OAuthCallbackOut)
 async def oauth_callback(
     provider: str,
+    request: Request,
     code: str = Query(..., description="Authorization code from OAuth provider"),
     state: str = Query(..., description="CSRF protection token"),
-    request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
     """
