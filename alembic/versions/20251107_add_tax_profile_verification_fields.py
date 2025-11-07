@@ -1,8 +1,8 @@
 """add tax profile verification fields
 
-Revision ID: 20251107_add_tax_profile_verification_fields
+Revision ID: 20251107_tax_profile_verify
 Revises: 20251107_add_alert_events
-Create Date: 2025-11-07
+Create Date: 2025-11-07 (revised to shorten revision ID < 32 chars)
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = "20251107_add_tax_profile_verification_fields"
+revision = "20251107_tax_profile_verify"
 down_revision = "20251107_add_alert_events"
 branch_labels = None
 depends_on = None
