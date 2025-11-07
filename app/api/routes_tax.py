@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from app.db.session import get_db
 from app.api.routes_auth import get_current_user_id
 from app.services.tax_service import TaxProfileService  # Use unified tax profile & summary service
+from app.models.tax_models import MonthlyTaxReport
 from app.metrics import tax_profile_updated, vat_calculation_record, compliance_check_record
 from app.services.vat_service import VATService
 from app.services.fiscalization_service import FiscalizationService, VATCalculator
@@ -192,6 +193,7 @@ async def development_levy(
     profit: float | None = Query(None, ge=0, description="Override assessable profit base (Naira)"),
     year: int | None = Query(None, ge=2024, le=2030, description="Year for profit computation"),
     month: int | None = Query(None, ge=1, le=12, description="Month for profit computation (1-12)"),
+    basis: str = Query("paid", pattern="^(paid|all)$", description="Profit basis: paid or all"),
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
@@ -205,21 +207,14 @@ async def development_levy(
         computed_profit = None
         source = "override"
         if profit is None:
-            from app.models.models import Invoice
-            q = db.query(Invoice).filter(Invoice.issuer_id == current_user_id, Invoice.status == "paid")
-            if year and month:
-                # Filter by month boundaries (assuming created_at is timezone-aware)
-                from datetime import datetime, timezone
-                start = datetime(year, month, 1, tzinfo=timezone.utc)
-                if month == 12:
-                    end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-                else:
-                    end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
-                q = q.filter(Invoice.created_at >= start, Invoice.created_at < end)
-            invoices = q.all()
-            computed_profit = sum(float(inv.amount) for inv in invoices)
-            profit_to_use = Decimal(str(computed_profit))
-            source = "paid_invoices"
+            computed_profit = tax_service.compute_assessable_profit(
+                current_user_id,
+                year=year,
+                month=month,
+                basis=basis,
+            )
+            profit_to_use = computed_profit
+            source = f"{basis}_invoices"
         else:
             profit_to_use = Decimal(str(profit))
         result = tax_service.compute_development_levy(current_user_id, profit_to_use)
@@ -232,6 +227,48 @@ async def development_levy(
     except Exception as e:
         logger.exception("Failed development levy calculation")
         raise HTTPException(status_code=500, detail="Failed levy calculation") from e
+
+
+@router.post("/reports/generate", response_model=dict)
+def generate_monthly_tax_report(
+    year: int = Query(..., ge=2020, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    basis: str = Query("paid", pattern="^(paid|all)$"),
+    force: bool = Query(False),
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    service = TaxProfileService(db)
+    report = service.generate_monthly_report(current_user_id, year, month, basis=basis, force_regenerate=force)
+    return {
+        "year": report.year,
+        "month": report.month,
+        "assessable_profit": float(report.assessable_profit or 0),
+        "levy_amount": float(report.levy_amount or 0),
+        "vat_collected": float(report.vat_collected or 0),
+        "taxable_sales": float(report.taxable_sales or 0),
+        "zero_rated_sales": float(report.zero_rated_sales or 0),
+        "exempt_sales": float(report.exempt_sales or 0),
+        "pdf_url": report.pdf_url,
+        "basis": basis,
+    }
+
+
+@router.get("/reports/{year}/{month}/download")
+def download_monthly_tax_report(
+    year: int,
+    month: int,
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    report = db.query(MonthlyTaxReport).filter(
+        MonthlyTaxReport.user_id == current_user_id,
+        MonthlyTaxReport.year == year,
+        MonthlyTaxReport.month == month,
+    ).first()
+    if not report or not report.pdf_url:
+        raise HTTPException(status_code=404, detail="Report or PDF not found. Generate first.")
+    return {"pdf_url": report.pdf_url}
 
 
 @router.get("/vat/summary")

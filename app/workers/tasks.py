@@ -11,6 +11,12 @@ from app.bot.whatsapp_adapter import WhatsAppClient, WhatsAppHandler
 from app.core.config import settings
 from app.db.session import session_scope
 from app.workers.celery_app import celery_app
+from app.db.session import session_scope
+from app.services.tax_service import TaxProfileService
+from app.storage.s3_client import s3_client
+from app.services.pdf_service import PDFService
+from app.models.tax_models import MonthlyTaxReport
+from app.models.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -90,3 +96,35 @@ def ocr_parse_image(self: Task, image_bytes_b64: str, context: str | None = None
         if "timeout" in str(result.get("error", "")).lower():
             raise Exception(result["error"])  # noqa: TRY002
     return result
+
+
+@celery_app.task(
+    bind=True,
+    name="tax.generate_previous_month_reports",
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
+    """Generate monthly tax reports (PDF) for all users for the previous month.
+
+    Intended to run on the 1st day of the month via a scheduler (e.g. cron hitting Celery beat).
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    prev_month = now.month - 1 or 12
+    year = now.year - 1 if prev_month == 12 and now.month == 1 else (now.year if prev_month != 12 or now.month != 1 else now.year)
+    with session_scope() as db:
+        tax_service = TaxProfileService(db)
+        pdf_service = PDFService(s3_client)
+        users = db.query(User).all()
+        for user in users:
+            try:
+                report = tax_service.generate_monthly_report(user.id, year, prev_month, basis=basis, force_regenerate=False)
+                if not report.pdf_url:
+                    pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis=basis)
+                    tax_service.attach_report_pdf(report, pdf_url)
+                logger.info("Generated monthly tax report for user=%s period=%s-%02d", user.id, year, prev_month)
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Failed generating report for user %s: %s", user.id, e)

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Monthly Tax Report {{ report.year }}-{{ '%02d'|format(report.month) }}</title>
+  <style>
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 13px; margin: 28px; color: #222; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .meta { color: #555; margin-bottom: 16px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    .section-title { margin-top: 24px; font-size: 15px; }
+    .footer { margin-top: 40px; font-size: 11px; color: #777; }
+  </style>
+</head>
+<body>
+  <h1>Monthly Tax Report</h1>
+  <div class="meta">Period: {{ report.year }}-{{ '%02d'|format(report.month) }} &mdash; Generated {{ report.generated_at }}</div>
+  <h2 class="section-title">Profit & Levy</h2>
+  <table>
+    <tr><th>Assessable Profit (basis: {{ basis }})</th><td>₦{{ '%.2f'|format(float(report.assessable_profit or 0)) }}</td></tr>
+    <tr><th>Development Levy</th><td>₦{{ '%.2f'|format(float(report.levy_amount or 0)) }}</td></tr>
+  </table>
+  <h2 class="section-title">VAT Breakdown</h2>
+  <table>
+    <tr><th>VAT Collected</th><td>₦{{ '%.2f'|format(float(report.vat_collected or 0)) }}</td></tr>
+    <tr><th>Taxable Sales</th><td>₦{{ '%.2f'|format(float(report.taxable_sales or 0)) }}</td></tr>
+    <tr><th>Zero-rated Sales</th><td>₦{{ '%.2f'|format(float(report.zero_rated_sales or 0)) }}</td></tr>
+    <tr><th>Exempt Sales</th><td>₦{{ '%.2f'|format(float(report.exempt_sales or 0)) }}</td></tr>
+  </table>
+  <div class="footer">This internal compliance report was generated automatically by Suoops. Figures are provisional and subject to FIRS guidance updates.</div>
+</body>
+</html>

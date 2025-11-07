@@ -187,3 +187,30 @@ class VATReturn(Base):
     
     # Relationships
     user = relationship("User", back_populates="vat_returns")
+
+
+class MonthlyTaxReport(Base):
+    """Monthly consolidated tax compliance report metadata.
+
+    Stores:
+    - Assessable profit & development levy
+    - VAT breakdown (taxable, zero-rated, exempt)
+    - Generated PDF URL
+    """
+    __tablename__ = "monthly_tax_reports"
+    __table_args__ = ({},)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    assessable_profit = Column(Numeric(15, 2), default=0)
+    levy_amount = Column(Numeric(15, 2), default=0)
+    vat_collected = Column(Numeric(15, 2), default=0)
+    taxable_sales = Column(Numeric(15, 2), default=0)
+    zero_rated_sales = Column(Numeric(15, 2), default=0)
+    exempt_sales = Column(Numeric(15, 2), default=0)
+    pdf_url = Column(String(500), nullable=True)
+    generated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
