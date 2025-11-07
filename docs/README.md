@@ -1,6 +1,6 @@
 # SuoOps Documentation
 
-This directory contains public-facing documentation for NRS 2026 registration and customer onboarding.
+This directory contains public-facing documentation for SuoOps platform features and provisional fiscalization readiness (FIRS accreditation pending – no live external gateway integration yet). Any former references to NRS registration are historical and will be phased out; external compliance claims are forward-looking only.
 
 ## Files
 
@@ -9,7 +9,7 @@ This directory contains public-facing documentation for NRS 2026 registration an
 
 ## Deployment to Public URL
 
-### Option 1: GitHub Pages (Recommended for NRS Registration)
+### Option 1: GitHub Pages (Lightweight Public Hosting)
 
 ```bash
 # 1. Create docs branch
@@ -96,13 +96,13 @@ aws s3 website s3://docs.suoops.com --index-document api-documentation.html
 aws cloudfront create-distribution --origin-domain-name docs.suoops.com.s3-website-us-east-1.amazonaws.com
 ```
 
-## For NRS Registration Submission
+## Accreditation & External Integration (Forward-Looking)
 
-Use these public URLs in your NRS technical capabilities form:
+Public URLs (API docs, SLA) will support future accreditation submissions. Until FIRS accreditation is granted, they represent provisional capabilities only:
 
-1. **API Documentation URL:** `https://docs.suoops.com/api` (or GitHub Pages equivalent)
-2. **SLA Document URL:** `https://docs.suoops.com/sla` (or GitHub Pages equivalent)
-3. **Security Policy URL:** (add privacy policy later if required)
+1. **API Documentation URL:** `https://docs.suoops.com/api`
+2. **SLA Document URL:** `https://docs.suoops.com/sla`
+3. **(Optional)** Privacy/Security Policy URLs (to be added pre-accreditation)
 
 ## Local Testing
 
@@ -120,7 +120,7 @@ python3 -m http.server 8000
 
 - **Updates:** Edit HTML files directly, redeploy using chosen method
 - **Versioning:** Include version number and date in footer (already added)
-- **Compliance:** Review quarterly for NRS regulation updates
+- **Compliance:** Review quarterly for evolving FIRS e-invoicing guidance
 - **Feedback:** Send updates to support@suoops.com
 
 ## Security Notes
@@ -134,6 +134,9 @@ python3 -m http.server 8000
 
 1. ✅ Documentation created (api-documentation.html, service-level-agreement.html)
 2. ⏳ Deploy to public URL using one of the methods above
-3. ⏳ Update NRS registration form with public URLs
+3. ⏳ Prepare accreditation dossier (architecture, security, SLA) – pending
 4. ⏳ Add actual phone numbers and support emails before production
-5. ⏳ Consider adding privacy policy (privacy-policy.html) if required by NRS
+5. ⏳ Add privacy & security policy pages (pre-accreditation)
+
+---
+DISCLAIMER: Documentation describes provisional fiscalization readiness. No live external regulatory transmission occurs until accreditation approval; all gateway references are roadmap items.

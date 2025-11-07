@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SuoOps API Documentation - FIRS Fiscalization Readiness (Preview)</title>
+    <title>SuoOps API Documentation - FIRS E-Invoicing Readiness (Pre-Accreditation)</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
@@ -32,10 +32,11 @@
             <h1>🚀 SuoOps API Documentation</h1>
             <p>Nigeria's E-Invoicing & Tax Platform | FIRS Readiness (Pre-Accreditation)</p>
             <div style="margin-top:1rem;padding:0.75rem 1rem;background:#fff3cd;border-left:4px solid #ffc107;color:#7a5a00;border-radius:4px;font-size:0.9rem;">
-                <strong>Disclaimer:</strong> External fiscalization transmission & validation are <em>pending accreditation</em>. Current outputs (codes, QR) are provisional. Many micro & small businesses below VAT threshold (₦25M) or turnover ₦100M may not require fiscalization immediately.
+                <strong>Disclaimer:</strong> External FIRS fiscalization transmission is <em>not yet active</em>. We generate provisional fiscal codes & QR metadata for future integration. Most micro & small businesses below ₦25M VAT threshold or ₦100M turnover may not require immediate fiscalization.
             </div>
             <p style="margin-top: 1rem;">
-                <strong>Base URL:</strong> <code>https://api.suoops.com/api/v1</code>
+                <strong>Base URL:</strong> <code>https://api.suoops.com</code> | 
+                <strong>Interactive Docs:</strong> <a href="https://api.suoops.com/docs" style="color: #ffd700;">api.suoops.com/docs</a>
             </p>
         </div>
     </header>
@@ -44,12 +45,12 @@
         <!-- Overview -->
         <section class="section">
             <h2>📋 Overview</h2>
-            <p>The SuoOps API provides e-invoicing & tax tooling preparing for forthcoming FIRS fiscalization standards. External gateway integration is not yet active; transmission is gated until accreditation.</p>
+            <p>The SuoOps API provides comprehensive e-invoicing and tax compliance services for Nigerian businesses, ensuring full compliance with NRS 2026 regulations.</p>
             
             <h3>Key Features</h3>
             <ul>
                 <li>✅ Automatic invoice fiscalization with unique codes</li>
-                <li>✅ Provisional fiscalization metadata (external validation pending)</li>
+                <li>✅ Provisional fiscal codes & QR metadata (external transmission pending accreditation)</li>
                 <li>✅ VAT calculation (7.5% standard, zero-rated detection)</li>
                 <li>✅ Small business classification (₦100M/₦250M thresholds)</li>
                 <li>✅ Monthly VAT returns generation</li>
@@ -139,14 +140,14 @@
             <div class="endpoint">
                 <span class="method post">POST</span>
                 <code>/tax/invoice/{invoice_id}/fiscalize</code>
-                <span class="badge">FIRS Preview</span>
-                <p>Generate provisional fiscalization metadata</p>
+                <span class="badge">FIRS (Preview)</span>
+                <p>Generate provisional fiscalization metadata (pre-accreditation)</p>
                 <p><strong>Response:</strong></p>
                 <pre><code>{
-    "fiscal_code": "NGR-20260115-00100-00012345-A1B2C3D4",
-    "qr_code": "data:image/png;base64,...",
-    "vat_amount": 697.67,
-    "fiscalization_status": "pending_external"
+  "fiscal_code": "NGR-20260115-00100-00012345-A1B2C3D4",
+  "qr_code": "data:image/png;base64,...",
+  "vat_amount": 697.67,
+  "status": "validated"
 }</code></pre>
             </div>
         </section>
@@ -285,7 +286,7 @@
             <h3>Available Events</h3>
             <ul>
                 <li><code>invoice.created</code> - New invoice created</li>
-                <li><code>invoice.fiscalized</code> - Provisional fiscalization metadata generated</li>
+                <li><code>invoice.fiscalized</code> - Invoice provisional fiscalization generated</li>
                 <li><code>vat.return.generated</code> - VAT return ready</li>
                 <li><code>compliance.alert</code> - Compliance issue detected</li>
             </ul>
@@ -307,8 +308,9 @@
             <h2>📞 Support & Resources</h2>
             <ul>
                 <li><strong>API Status:</strong> <a href="https://status.suoops.com">status.suoops.com</a></li>
-                <li><strong>Email Support:</strong> api@suoops.com</li>
-                <li><strong>WhatsApp:</strong> +234-xxx-xxx-xxxx</li>
+                <li><strong>General Inquiries:</strong> info@suoops.com</li>
+                <li><strong>Technical Support:</strong> support@suoops.com</li>
+                <li><strong>Phone/WhatsApp:</strong> <a href="https://wa.me/2348162088344">+234 816 208 8344</a></li>
                 <li><strong>Interactive API Explorer:</strong> <a href="https://api.suoops.com/docs">api.suoops.com/docs</a></li>
                 <li><strong>GitHub:</strong> <a href="https://github.com/Ayibatonye-ikemike/suoops-backend">github.com/Ayibatonye-ikemike/suoops-backend</a></li>
             </ul>
@@ -316,11 +318,11 @@
     </div>
 
     <footer>
-    <p>&copy; 2025 SuoOps. All rights reserved. | FIRS Fiscalization Readiness (Pre-Accreditation)</p>
+    <p>&copy; 2025 SuoOps. All rights reserved. | FIRS E-Invoicing Readiness (Pre-Accreditation)</p>
         <p style="margin-top: 0.5rem;">
-            <a href="/legal/privacy">Privacy Policy</a> |
-            <a href="/legal/terms">Terms of Service</a> |
-            <a href="/legal/sla">Service Level Agreement</a>
+            <a href="https://status.suoops.com">Dashboard</a> |
+            <a href="sla.html">Service Level Agreement</a> |
+            <a href="index.html">API Documentation</a>
         </p>
     </footer>
 </body>

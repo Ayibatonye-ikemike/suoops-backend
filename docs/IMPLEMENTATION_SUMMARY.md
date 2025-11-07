@@ -1,8 +1,8 @@
 # Tax & Fiscalization Implementation Summary
 
-## ✅ Implementation Complete!
+## ✅ Core Module Implemented (Provisional)
 
-Successfully implemented comprehensive tax and fiscalization system for NRS 2026 compliance.
+Foundational tax modeling & provisional fiscalization completed for FIRS readiness. External regulatory transmission is DISABLED until accreditation (no live gateway calls performed). All external integration references are roadmap, not live claims.
 
 ## 📊 Code Statistics
 
@@ -14,253 +14,213 @@ Successfully implemented comprehensive tax and fiscalization system for NRS 2026
 | Tax Service | `tax_service.py` | 175 | ✅ |
 | API Routes | `routes_tax.py` | 220 | ✅ |
 | Migration | `0005_add_tax_fiscalization.py` | 130 | ✅ |
-| Documentation | `tax-compliance.md` | - | ✅ |
+| Documentation | `tax-compliance.md` | - | ✅ (updated for provisional readiness) |
 | Test Script | `test_tax_api.py` | - | ✅ |
 | **TOTAL** | **8 files** | **~1,935 lines** | **✅** |
 
-## 🎯 Best Practices Followed
+## 🎯 Engineering Practices
 
-- ✅ **SRP (Single Responsibility)**: Each class has one clear purpose
-- ✅ **DRY**: No code duplication, reusable components
-- ✅ **OOP**: Proper encapsulation and composition
-- ✅ **< 400 LOC**: All files under 400 lines
-- ✅ **Type Hints**: Full type annotations
-- ✅ **Documentation**: Comprehensive docstrings
-- ✅ **Error Handling**: Proper exception handling
-- ✅ **Logging**: Structured logging throughout
+- ✅ SRP service/component boundaries
+- ✅ DRY VAT and code generation helpers
+- ✅ OOP composition over inheritance
+- ✅ File size < 400 LOC
+- ✅ Type hints & docstrings
+- ✅ Structured logging (sanitized)
+- ✅ Explicit error paths
 
 ## 🏗️ Architecture
 
-### Service Layer Pattern
+### Layered Flow
 ```
 API Routes (routes_tax.py)
     ↓
-Services Layer (orchestrators)
+Service Orchestrators
     ├── TaxProfileService
     ├── VATService
-    └── FiscalizationService
+    └── FiscalizationService (provisional)
         ↓
-Component Layer (SRP classes)
+Component Classes (SRP)
     ├── VATCalculator
     ├── FiscalCodeGenerator
     ├── QRCodeGenerator
-    ├── NRSTransmitter
+    ├── FiscalTransmitter (placeholder, gated)
     ├── VATCalculationService
     ├── ComplianceChecker
     └── BusinessClassifier
         ↓
-Models Layer
+Models
     ├── TaxProfile
     ├── FiscalInvoice
     └── VATReturn
 ```
 
-## 📋 Features Implemented
+## 📋 Feature Status
 
 ### 1. Business Tax Classification
-- [x] Automatic size classification (small/medium/large)
-- [x] NRS 2026 thresholds (₦100M turnover, ₦250M assets)
-- [x] Tax rate calculation by size
-- [x] Tax benefits summary
+- [x] Size classification (small/medium/large)
+- [x] MSME threshold logic (₦100M turnover, ₦250M assets) for exemptions
+- [x] Tax rate mapping
+- [x] Benefit summary surfacing
 
 ### 2. VAT Management
-- [x] 7.5% standard VAT calculation
-- [x] Zero-rated item detection (medical, education, food)
-- [x] Exempt categories (financial services)
-- [x] Export handling (0% VAT)
-- [x] Monthly VAT aggregation
+- [x] Standard 7.5% computation
+- [x] Zero-rated detection (medical, education, food)
+- [x] Exempt category handling (financial services)
+- [x] Export 0% path
+- [x] Monthly aggregation (draft returns)
 
-### 3. Invoice Fiscalization
-- [x] Unique fiscal code generation
-- [x] SHA256 digital signatures
-- [x] QR code generation with embedded data
-- [x] NRS transmission (when configured)
-- [x] Validation status tracking
+### 3. Invoice Fiscalization (Provisional)
+- [x] Deterministic fiscal code generation
+- [x] Local SHA256 integrity signature
+- [x] QR code artifact
+- [ ] External transmission (deferred – accreditation required)
+- [x] Status surface (pending_external)
 
 ### 4. VAT Returns
-- [x] Monthly VAT calculation
-- [x] Output VAT (collected from customers)
-- [x] Input VAT placeholder (for expenses)
-- [x] Net VAT calculation
-- [x] Zero-rated/exempt sales tracking
+- [x] Monthly output VAT aggregation
+- [x] Input VAT placeholder (future expense tracking)
+- [x] Net VAT computation
+- [x] Zero-rated/exempt totals
 
 ### 5. Compliance Tracking
-- [x] Registration status (TIN, VAT)
-- [x] Compliance status checking
-- [x] Next action recommendations
-- [x] Return submission tracking
+- [x] Profile registration fields (TIN, VAT)
+- [x] Classification snapshot
+- [x] Next action hints
+- [x] Return status tracking
 
-## 🔌 API Endpoints
+## 🔌 API Endpoints (Excerpt)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/tax/profile` | Get tax profile & classification |
-| POST | `/tax/profile` | Update business info |
-| GET | `/tax/vat/summary` | VAT compliance dashboard |
-| GET | `/tax/vat/calculate` | Calculate VAT |
-| POST | `/tax/vat/return` | Generate VAT return |
-| POST | `/tax/invoice/{id}/fiscalize` | Fiscalize invoice |
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/tax/profile` | Retrieve classification & rates |
+| POST | `/tax/profile` | Update business tax details |
+| GET | `/tax/vat/summary` | VAT dashboard |
+| GET | `/tax/vat/calculate` | On-demand VAT breakdown |
+| POST | `/tax/vat/return` | Generate draft VAT return |
+| POST | `/tax/invoice/{id}/fiscalize` | Provisional fiscalization |
 
-## 💾 Database Schema
+## 💾 Schema Overview
 
 ### New Tables
-1. **tax_profiles** (13 columns)
-   - Business classification
-   - Tax registration (TIN, VAT)
-   - NRS credentials
-
-2. **fiscal_invoices** (14 columns)
-   - Fiscal codes & signatures
-   - QR codes
-   - VAT breakdown
-   - NRS transmission status
-
-3. **vat_returns** (15 columns)
-   - Monthly periods
-   - VAT calculations
-   - Submission tracking
+1. **tax_profiles**
+   - Classification & registration fields
+   - Readiness/accreditation metadata
+2. **fiscal_invoices**
+   - Local fiscal artifacts (code/signature/QR)
+   - Provisional status
+3. **vat_returns**
+   - Period aggregates (output VAT, zero-rated, exempt)
+   - Draft state
 
 ### Updated Tables
-- **invoice** (+5 columns)
-  - vat_rate, vat_amount, vat_category
-  - is_fiscalized, fiscal_code
+- **invoice** (+5 columns): `vat_rate`, `vat_amount`, `vat_category`, `is_fiscalized`, `fiscal_code`
 
 ## 🚀 Deployment Checklist
 
 ### Before Deploying
-- [x] All files created
-- [x] No TypeScript/Python errors
-- [x] Git committed
-- [ ] Run migration on Heroku
-- [ ] Add NRS environment variables
-- [ ] Test endpoints
+- [x] Code committed
+- [x] Migrations present
+- [ ] Run migration on hosting environment
+- [ ] Set accreditation flag appropriately (`FISCALIZATION_ACCREDITED=false`)
+- [ ] Smoke test endpoints
 
-### Environment Variables Needed
+### Environment Variables (Post-Accreditation Placeholder)
 ```bash
-# Add to Heroku config
-NRS_API_URL=https://api.nrs.gov.ng/v1
-NRS_API_KEY=(after NRS registration)
-NRS_MERCHANT_ID=(after NRS registration)
+FISCALIZATION_ACCREDITED=false
+FIRS_API_URL=
+FIRS_API_KEY=
 ```
 
 ### Migration Command
 ```bash
-# On Heroku
-heroku run alembic upgrade head -a suoops-backend
-
-# Or locally
 alembic upgrade head
 ```
 
-## 📝 Next Steps
+## 📝 Roadmap & Next Steps
 
-### Immediate (Today)
-1. Push to GitHub
-2. Deploy to Heroku
-3. Run migration
-4. Test endpoints
+### Immediate
+1. Apply migrations
+2. Integrate accreditation flag into ops dashboard
+3. Frontend UI for tax profile & fiscalization status
 
-### Short Term (This Week)
-1. Submit NRS registration
-2. Add frontend UI for tax settings
-3. Update invoice PDF with fiscal QR code
-4. Create compliance dashboard
+### Short Term
+1. Prepare accreditation dossier (security, architecture, SLA)
+2. Add invoice PDF QR rendering
+3. Compliance dashboard metrics
 
-### Medium Term (Next Month)
-1. Receive NRS credentials
-2. Configure production NRS integration
-3. Test fiscalization with real data
-4. Launch tax-compliant invoicing
+### Medium Term
+1. Acquire sandbox credentials
+2. Test sandbox transmission & payload validation
+3. Implement retry queue + Prometheus metrics
+4. Expense tracking (input VAT)
 
-### Long Term (Q1 2025)
-1. Add expense tracking (input VAT)
-2. Advanced tax optimization
-3. Multi-entity support
-4. White-label fiscalization
+### Long Term
+1. Accreditation approval & production credentials
+2. Live external transmission & status callbacks
+3. Multi-entity & white-label features
+4. Advanced optimization analytics
 
-## 🎉 Impact
+## 🎉 Impact (Projected)
 
 ### For MSMEs
-- ✅ Automatic tax classification
-- ✅ Know if they're exempt (small business)
-- ✅ VAT returns in 1 click
-- ✅ NRS-compliant invoices
-- ✅ Save ₦2M-10M annually (if small)
+- ✅ Simplified classification & exemption awareness
+- ✅ Fast VAT summaries & draft returns
+- ✅ Provisional fiscal documents for internal controls
+- 💡 Future: Accredited external validation & official status feedback
 
 ### For SuoOps
-- ✅ First-mover advantage
-- ✅ Compliance ready for Jan 2026
-- ✅ Premium feature for paid plans
-- ✅ Government partnership potential
-- ✅ Competitive differentiation
+- ✅ Positioned for early accreditation readiness
+- ✅ Differentiated compliance roadmap
+- ✅ Modular expansion path (multi-entity, analytics)
+- 💡 Future partnership potential post-accreditation
 
-### Market Position
-> **"SuoOps: Nigeria's First MSME-Focused Tax-Compliant Invoice Platform"**
+### Market Position (Forward-Looking)
+> "SuoOps: MSME-focused tax & fiscalization readiness platform" (accreditation pending)
 
-## 🧪 Testing
-
-### Manual Testing
+## 🧪 Testing (Illustrative)
 ```bash
-# Test VAT calculator
 curl "http://localhost:8000/tax/vat/calculate?amount=10000&category=standard"
-
-# Test API docs
 open http://localhost:8000/docs
-```
-
-### Automated Testing
-```bash
 python test_tax_api.py
 ```
 
 ## 📚 Documentation
-
-- **Main Docs**: `docs/tax-compliance.md` (comprehensive guide)
-- **API Docs**: Available at `/docs` endpoint
-- **Code Comments**: Inline documentation throughout
-- **Test Script**: `test_tax_api.py` with examples
+- Main Guide: `docs/tax-compliance.md`
+- OpenAPI: `/docs`
+- Inline comments throughout services & models
 
 ## 🔐 Security Considerations
-
-- ✅ Digital signatures for tamper detection
-- ✅ QR codes for validation
-- ✅ NRS API key in environment variables
-- ✅ User-specific tax profiles
-- ✅ Audit trail in fiscal_invoices table
+- ✅ Local signature (tamper indicator)
+- ✅ Sanitized logs (no secrets)
+- ✅ Config flag prevents premature external calls
+- ✅ Audit trail via `fiscal_invoices`
+- 🔒 Future: Credential vaulting & transmission signing
 
 ## 💰 Business Model Integration
 
 ### Free Tier
-- Basic VAT calculation
-- Manual fiscalization
+- VAT calculations
+- Draft returns
 
-### Paid Tiers (Starter+)
-- Automatic fiscalization
-- VAT returns generation
+### Paid Tiers
+- Provisional fiscalization artifacts
 - Compliance dashboard
-- NRS integration
+- Advisory thresholds
 
-### Enterprise
-- Multi-entity support
-- White-label fiscalization
-- Custom tax workflows
-- Dedicated support
+### Enterprise (Roadmap)
+- Multi-entity & white-label
+- Advanced analytics
+- Priority support & SLA uplift
 
 ## 📞 Support
-
-For questions or issues:
-- Check `docs/tax-compliance.md`
-- API docs at `/docs`
+- Docs: see `tax-compliance.md`
+- API schema: `/docs`
 - Email: support@suoops.com
 
 ---
+## ✅ Status Summary
+- Best-practice architecture achieved
+- Provisional fiscalization operational
+- External accreditation pending (no live claims)
 
-## 🎊 Congratulations!
-
-You now have a production-ready tax and fiscalization system that:
-- Follows all best practices (SRP, DRY, OOP, <400 LOC)
-- Complies with NRS 2026 requirements
-- Scales to thousands of users
-- Positions SuoOps as a market leader
-
-**Ready to deploy!** 🚀
+**Ready for provisional use; external transmission pending accreditation.** 🚀

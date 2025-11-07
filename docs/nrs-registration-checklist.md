@@ -32,25 +32,16 @@
 - ✅ **Status Page:** https://status.suoops.com
 - ✅ **Health Check:** https://api.suoops.com/healthz
 - ✅ **SSL Certificate:** Valid until January 26, 2026 (ACM)
-
----
+**Status:** Preparing for Accreditation (No external gateway transmission active)
 
 ## 2. DATA AND INFORMATION SECURITY ✅
 
 ### Nigerian Data Protection Act (NDPA) Compliance
-- ✅ **Status:** COMPLIANT
-- ✅ **Documentation:** SECURITY-COMPLIANCE.md
-- ✅ **Implementation:**
-  - Data minimization (only necessary business/tax data)
-  - Explicit user consent for data processing
-  - Data subject rights (access, modify, delete)
+⚠️ **Timeline:** Before accreditation production launch (Q1 2026 target)
   - 72-hour breach notification protocol
   - Data Protection Officer: support@suoops.com
   - Cross-border data transfer compliance (AWS eu-north-1, GDPR)
   - 7-year audit trail for tax compliance
-
-### Data Encryption Standards
-- ✅ **At Rest:** AES-256
   - PostgreSQL database (Heroku managed encryption)
   - AWS S3 file storage (SSE-S3)
   - Bcrypt password hashing (adaptive cost)
@@ -60,13 +51,7 @@
   - ACM certificate (auto-renewal)
 - ✅ **API Security:**
   - JWT tokens (HS256 algorithm)
-  - Access tokens: 24-hour expiry
-  - Refresh tokens: 14-day expiry
-
----
-
 ## 3. AUTHENTICATION PROTOCOLS ✅
-
 ### Multi-Factor Authentication (MFA)
 - ✅ **Status:** IMPLEMENTED
 - ✅ **Method:** WhatsApp OTP
@@ -79,28 +64,12 @@
   - Mixed case (upper + lowercase)
   - Alphanumeric
   - Strength validation on registration
-
-### Single Sign-On (SSO)
-- ✅ **Status:** IMPLEMENTED (Code complete, pending deployment)
-- ✅ **Protocol:** OAuth 2.0 with OpenID Connect (RFC 6749)
-- ✅ **Provider:** Google (extensible for Microsoft, Apple)
 - ✅ **Implementation Files:**
-  - Service layer: `app/services/oauth_service.py` (390 lines)
   - HTTP layer: `app/api/routes_oauth.py` (230 lines)
   - Configuration: `app/core/config.py`
   - Schemas: `app/models/schemas.py`
 - ✅ **Security Features:**
-  - CSRF state token validation
-  - One-time use validation
-  - Cryptographically secure random generation
-  - JWT access tokens (24-hour expiry)
-  - JWT refresh tokens (14-day expiry)
-- ✅ **User Provisioning:** Auto-create users, update existing
-- ✅ **Scopes:** openid, email, profile
-- ✅ **Documentation:** docs/oauth-setup-guide.md
-- 📅 **Deployment:** Pending Google OAuth credentials + Heroku config
 
----
 
 ## 4. PENETRATION TESTING & VULNERABILITY ASSESSMENT
 
@@ -124,7 +93,6 @@
   - AWS S3 (ISO 27001, SOC 2/3, GDPR)
   - Vercel (SOC 2 Type II)
 
-### Remediation Plan
 1. Complete OAuth deployment (immediate)
 2. Schedule VAPT with certified firm (January 2026)
 3. Address findings (February 2026)
@@ -140,11 +108,10 @@
   - Heroku: ISO 27001:2013 certified
   - AWS: ISO 27001:2013 certified
   - Vercel: SOC 2 Type II compliant
-  - Paystack: PCI DSS Level 1
 
 ### ISO 27001 Alignment
 We implement ISO 27001 controls:
-- ✅ **A.9 Access Control:** JWT authentication, RBAC
+**Status:** PROVISIONAL – Accreditation Pending (No external transmission) ⚠️
 - ✅ **A.10 Cryptography:** TLS 1.3, AES-256, bcrypt
 - ✅ **A.12 Operations Security:** Logging, monitoring, backup
 - ✅ **A.13 Communications Security:** HTTPS-only, HSTS, CSP

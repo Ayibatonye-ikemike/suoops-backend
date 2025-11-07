@@ -33,7 +33,7 @@
         </header>
 
         <div class="highlight">
-            <p><strong>Agreement Overview:</strong> This Service Level Agreement ("SLA") outlines the terms and conditions between SuoOps ("Provider") and our customers ("Taxpayers") for the delivery of e-invoicing and tax compliance services, ensuring full compliance with Nigeria Revenue Service (NRS) 2026 regulations.</p>
+            <p><strong>Agreement Overview:</strong> This Service Level Agreement ("SLA") outlines the terms and conditions between SuoOps ("Provider") and our customers ("Users") for delivery of e-invoicing and tax tooling preparing for forthcoming Federal Inland Revenue Service (FIRS) fiscalization standards. <strong>Disclaimer:</strong> External fiscalization transmission & validation are pending formal accreditation; current functionality generates provisional metadata only.</p>
         </div>
 
         <div class="section">
@@ -77,7 +77,7 @@
 
             <h3>1.4 Exclusions from SLA Coverage</h3>
             <ul>
-                <li>Third-party service failures (NRS API, AWS, OpenAI, etc.)</li>
+                <li>Third-party service failures (external fiscalization gateway, AWS, OpenAI, etc.)</li>
                 <li>Customer infrastructure or internet connectivity issues</li>
                 <li>Force majeure events (natural disasters, war, government actions)</li>
                 <li>Customer-caused incidents (abuse, security breaches from customer side)</li>
@@ -103,7 +103,7 @@
                     <td>&lt; 2 seconds</td>
                 </tr>
                 <tr>
-                    <td>NRS Fiscalization & Transmission</td>
+                    <td>Fiscalization (Provisional Metadata Generation)</td>
                     <td>&lt; 5 seconds</td>
                 </tr>
                 <tr>
@@ -124,13 +124,13 @@
             <ul>
                 <li><strong>Target Success Rate:</strong> 99.9% successful fiscalization</li>
                 <li><strong>Automatic Retry Policy:</strong> 3 attempts with exponential backoff (1s, 5s, 15s)</li>
-                <li><strong>Queue During NRS Downtime:</strong> Unlimited retention, auto-transmit when NRS recovers</li>
+                <li><strong>Queue Handling:</strong> Prepared for future external transmission; currently retention only</li>
                 <li><strong>Manual Retry:</strong> Available via dashboard for failed transmissions</li>
             </ul>
 
             <h3>2.3 Data Synchronization</h3>
             <ul>
-                <li><strong>Real-time NRS Sync:</strong> &lt; 10 seconds from fiscalization to NRS validation</li>
+                <li><strong>External Sync:</strong> Pending accreditation (no live transmission)</li>
                 <li><strong>VAT Calculations:</strong> Real-time (no delay)</li>
                 <li><strong>Compliance Reports:</strong> &lt; 60 seconds generation time</li>
                 <li><strong>Database Replication:</strong> &lt; 5 seconds across backup regions</li>
@@ -151,7 +151,7 @@
             <h3>3.2 Data Backup & Recovery</h3>
             <ul>
                 <li><strong>Backup Frequency:</strong> Automated daily backups at 2:00 AM WAT</li>
-                <li><strong>Backup Retention:</strong> 30 days rolling + 7-year archive (NRS compliance)</li>
+                <li><strong>Backup Retention:</strong> 30 days rolling + 7-year archive (statutory record-keeping readiness)</li>
                 <li><strong>Recovery Point Objective (RPO):</strong> 1 hour (maximum data loss)</li>
                 <li><strong>Recovery Time Objective (RTO):</strong> 4 hours (service restoration)</li>
                 <li><strong>Backup Locations:</strong> Multi-region (US East primary, EU backup)</li>
@@ -160,7 +160,7 @@
 
             <h3>3.3 Audit Trails & Compliance</h3>
             <ul>
-                <li><strong>Retention Period:</strong> 7 years (NRS requirement)</li>
+                <li><strong>Retention Period:</strong> 7 years (anticipated regulatory requirement)</li>
                 <li><strong>Immutability:</strong> Cryptographically signed logs (tamper-proof)</li>
                 <li><strong>Logged Events:</strong> All API calls, user actions, fiscal transmissions, admin changes</li>
                 <li><strong>Access:</strong> Customers can export audit logs on-demand (CSV, JSON, XML)</li>
@@ -196,7 +196,7 @@
                 </tr>
                 <tr>
                     <td><strong>Definition</strong></td>
-                    <td>System completely down, data loss, security breach, NRS transmission failure affecting all customers</td>
+                    <td>System completely down, data loss, security breach (no external transmission active)</td>
                 </tr>
                 <tr>
                     <td><strong>Response Time</strong></td>
@@ -224,7 +224,7 @@
                 </tr>
                 <tr>
                     <td><strong>Definition</strong></td>
-                    <td>Major feature broken, individual NRS sync failure, VAT calculation errors</td>
+                    <td>Major feature broken, fiscalization metadata error, VAT calculation errors</td>
                 </tr>
                 <tr>
                     <td><strong>Response Time</strong></td>
@@ -274,32 +274,32 @@
         </div>
 
         <div class="section">
-            <h2>5. FISCALIZATION GUARANTEE <span class="badge">NRS 2026</span></h2>
+            <h2>5. FISCALIZATION STATUS <span class="badge">FIRS PREVIEW</span></h2>
 
-            <h3>5.1 NRS Compliance</h3>
+            <h3>5.1 Current Capability (Pre-Accreditation)</h3>
             <ul>
-                <li>✓ 100% compliance with NRS 2026 e-invoicing regulations</li>
-                <li>✓ Automatic updates for tax law changes within 48 hours of publication</li>
-                <li>✓ Fiscal code integrity guaranteed (unique, cryptographically signed)</li>
-                <li>✓ QR code validation available for customers and tax authorities</li>
+                <li>✓ Provisional fiscal codes (unique, cryptographically generated)</li>
+                <li>✓ QR code metadata for future validation endpoints</li>
+                <li>⚠️ External transmission & validation: pending accreditation</li>
+                <li>⚠️ Regulatory change adaptation: roadmap-driven (not automatic guarantees)</li>
             </ul>
 
-            <h3>5.2 Transmission Reliability</h3>
+            <h3>5.2 Transmission Roadmap</h3>
             <ul>
-                <li><strong>Primary Transmission:</strong> Real-time to NRS upon invoice creation</li>
-                <li><strong>Retry Policy:</strong> 3 automatic attempts with exponential backoff</li>
-                <li><strong>Queue System:</strong> Unlimited retention during NRS downtime</li>
+                <li><strong>Phase 1:</strong> Metadata generation (current)</li>
+                <li><strong>Phase 2:</strong> Sandbox transmission (post-accreditation)</li>
+                <li><strong>Phase 3:</strong> Production gateway validation</li>
                 <li><strong>Manual Retry:</strong> Available in dashboard for failed transmissions</li>
-                <li><strong>Status Tracking:</strong> Real-time updates (pending, transmitting, validated, failed)</li>
-                <li><strong>Notifications:</strong> Email/WhatsApp alerts for failed transmissions</li>
+                <li><strong>Status Tracking:</strong> Internal states only (pending_external, generated)</li>
+                <li><strong>Notifications:</strong> Transmission alerts deferred until live integration</li>
             </ul>
 
-            <h3>5.3 Fiscal Data Integrity</h3>
+            <h3>5.3 Data Integrity</h3>
             <ul>
                 <li><strong>Digital Signatures:</strong> SHA-256 cryptographic signatures</li>
                 <li><strong>QR Code Validation:</strong> Public endpoint for verification</li>
                 <li><strong>Tamper-Proof Audit Trail:</strong> Immutable logging of all fiscal events</li>
-                <li><strong>Verification Endpoint:</strong> <code>https://verify.suoops.com/{fiscal_code}</code></li>
+                <li><strong>Verification Endpoint:</strong> Planned post-accreditation</li>
             </ul>
         </div>
 
@@ -309,7 +309,7 @@
             <h3>6.1 Service Status Page</h3>
             <ul>
                 <li><strong>URL:</strong> <a href="https://status.suoops.com">status.suoops.com</a></li>
-                <li><strong>Real-time Monitoring:</strong> API health, NRS connectivity, database status</li>
+                <li><strong>Real-time Monitoring:</strong> API health, accreditation flag status, database metrics</li>
                 <li><strong>Incident History:</strong> All incidents published with root cause analysis</li>
                 <li><strong>Planned Maintenance Calendar:</strong> 30-day advance view</li>
                 <li><strong>Subscribe:</strong> Email/SMS/Webhook notifications for incidents</li>
@@ -321,8 +321,8 @@
                 <li>Uptime statistics with SLA credits (if applicable)</li>
                 <li>Performance metrics (API response times, success rates)</li>
                 <li>Incident summary with resolution details</li>
-                <li>Fiscalization statistics (total invoices, NRS validation rate)</li>
-                <li>Compliance certificate (NRS 2026 adherence)</li>
+                <li>Fiscalization statistics (total invoices, provisional metadata count)</li>
+                <li>Compliance readiness summary (non-accredited)</li>
             </ul>
 
             <h3>6.3 Quarterly Business Reviews</h3>
@@ -399,7 +399,7 @@
 
         <div class="footer">
             <p><strong>SuoOps E-Invoicing & Tax Compliance Platform</strong></p>
-            <p>&copy; 2025 SuoOps. All rights reserved. | NRS 2026 Compliant</p>
+            <p>&copy; 2025 SuoOps. All rights reserved. | FIRS Fiscalization Readiness (Pre-Accreditation)</p>
             <p style="margin-top: 0.5rem;">
                 <a href="/legal/privacy">Privacy Policy</a> |
                 <a href="/legal/terms">Terms of Service</a> |
