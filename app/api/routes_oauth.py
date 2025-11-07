@@ -14,9 +14,10 @@ import logging
 import secrets
 import ssl
 from typing import Annotated
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import redis
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -89,12 +90,22 @@ def _store_oauth_state(state: str, redirect_uri: str) -> None:
     logger.debug(f"Stored OAuth state: {state}")
 
 
-def _validate_and_get_redirect(state: str) -> str | None:
+def _build_redirect_with_params(base_url: str, params: dict[str, str]) -> str:
+    """Append query parameters to an existing URL safely."""
+    parsed = urlparse(base_url)
+    existing_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    existing_params.update(params)
+    new_query = urlencode(existing_params)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+def _get_redirect_uri(state: str, consume: bool = True) -> str | None:
     """
     Validate OAuth state token and return redirect URI from Redis.
     
     Args:
         state: State token from OAuth callback
+        consume: Whether to delete the state entry after retrieval
         
     Returns:
         Redirect URI if state is valid, None otherwise
@@ -102,16 +113,17 @@ def _validate_and_get_redirect(state: str) -> str | None:
     redis_client = _get_redis_client()
     key = f"oauth:state:{state}"
     
-    # Get redirect URI from Redis
     redirect_uri = redis_client.get(key)
-    
+
     if redirect_uri is None:
         return None
-    
-    # Delete state (one-time use)
-    redis_client.delete(key)
-    logger.debug(f"Validated and consumed OAuth state: {state}")
-    
+
+    if consume:
+        redis_client.delete(key)
+        logger.debug(f"Validated and consumed OAuth state: {state}")
+    else:
+        logger.debug(f"Validated OAuth state without consuming: {state}")
+
     return redirect_uri
 
 
@@ -193,6 +205,7 @@ async def oauth_callback(
     provider: str,
     code: str = Query(..., description="Authorization code from OAuth provider"),
     state: str = Query(..., description="CSRF protection token"),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -221,10 +234,31 @@ async def oauth_callback(
     Example:
         GET /auth/oauth/google/callback?code=4/xxx&state=abc123
     """
-    # Validate CSRF state and get redirect URI
-    redirect_uri = _validate_and_get_redirect(state)
+    accept_header = (request.headers.get("accept", "") or "").lower()
+    sec_fetch_mode = (request.headers.get("sec-fetch-mode", "") or "").lower()
+    expects_json = (
+        "application/json" in accept_header
+        or (sec_fetch_mode and sec_fetch_mode != "navigate")
+    )
+
+    # For browser navigations we redirect back to the frontend with original parameters
+    if not expects_json:
+        redirect_uri = _get_redirect_uri(state, consume=False)
+        if redirect_uri is None:
+            logger.warning(f"Invalid OAuth state (non-JSON request): {state}")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid state token. Possible CSRF attack or expired session.",
+            )
+
+        redirect_with_params = _build_redirect_with_params(redirect_uri, {"code": code, "state": state})
+        logger.info("Redirecting browser to frontend callback with OAuth code")
+        return RedirectResponse(url=redirect_with_params)
+
+    # Validate CSRF state and get redirect URI for token exchange
+    redirect_uri = _get_redirect_uri(state, consume=True)
     if redirect_uri is None:
-        logger.warning(f"Invalid OAuth state: {state}")
+        logger.warning(f"Invalid or consumed OAuth state: {state}")
         raise HTTPException(
             status_code=400,
             detail="Invalid state token. Possible CSRF attack or expired session.",
