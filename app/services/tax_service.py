@@ -221,6 +221,13 @@ class TaxProfileService:
             Invoice.created_at >= start,
             Invoice.created_at < end,
         )
+        # Basis-aware VAT aggregation & refund exclusion:
+        #  - basis==paid: only paid invoices
+        #  - basis==all: include all non-refunded invoices
+        if basis == "paid":
+            q = q.filter(Invoice.status == "paid")
+        else:
+            q = q.filter(Invoice.status != "refunded")
         invoices = q.all()
         taxable_sales = Decimal("0")
         zero_rated_sales = Decimal("0")

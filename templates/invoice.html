@@ -92,6 +92,11 @@
     {% if logo_url %}
     <img src="{{ logo_url }}" alt="Business Logo" class="logo" />
     {% endif %}
+    {% if watermark_text %}
+    <div style="position:fixed; top:35%; left:5%; right:5%; text-align:center; opacity:0.08; font-size:72px; transform:rotate(-25deg); pointer-events:none; z-index:-1; color:#0b4f9f;">
+      {{ watermark_text }}
+    </div>
+    {% endif %}
     <h1>Invoice {{ invoice.invoice_id }}</h1>
     <p><strong>Customer:</strong> {{ invoice.customer.name }}</p>
     {% if invoice.customer.phone %}
@@ -154,6 +159,25 @@
   <p class="total" style="font-size: 20px; color: #007bff;">
     Total: ₦{{ "{:,.2f}".format(invoice.amount) }}
   </p>
+  <h3>Tax & Compliance</h3>
+  <table style="margin-top:10px;">
+    <tr>
+      <th style="text-align:left;">VAT Category</th>
+      <td>{{ (invoice.vat_category or 'standard')|upper }}</td>
+    </tr>
+    <tr>
+      <th style="text-align:left;">VAT Rate</th>
+      <td>{{ (invoice.vat_rate if invoice.vat_rate is not none else 7.5) }}%</td>
+    </tr>
+    <tr>
+      <th style="text-align:left;">VAT Amount</th>
+      <td>₦{{ "{:,.2f}".format(invoice.vat_amount or 0) }}</td>
+    </tr>
+    <tr>
+      <th style="text-align:left;">Fiscal Code</th>
+      <td>{{ invoice.fiscal_code or '—' }}</td>
+    </tr>
+  </table>
   
   {% if qr_code %}
   <div class="qr-section">
@@ -172,6 +196,7 @@
     {% else %}
     <p>After making payment, please notify us and your receipt will be sent automatically.</p>
     {% endif %}
+    <p style="margin-top:16px; font-size:11px; color:#666;">VAT details shown are provisional and subject to regulatory updates. Refunds (if any) will invalidate VAT previously shown.</p>
   </div>
 </body>
 </html>

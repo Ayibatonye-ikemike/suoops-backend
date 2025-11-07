@@ -270,6 +270,55 @@ def download_monthly_tax_report(
         raise HTTPException(status_code=404, detail="Report or PDF not found. Generate first.")
     return {"pdf_url": report.pdf_url}
 
+@router.get("/reports/{year}/{month}/csv")
+def download_monthly_tax_report_csv(
+    year: int,
+    month: int,
+    basis: str = Query("paid", pattern="^(paid|all)$"),
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Generate (on-demand) CSV export for a monthly tax report.
+
+    Unlike the PDF (which may be pre-generated & cached), CSV is generated fresh to reflect
+    any recent changes (e.g., refunds). It excludes refunded invoices similarly to the PDF.
+    """
+    from io import StringIO
+    from app.storage.s3_client import s3_client
+    report = db.query(MonthlyTaxReport).filter(
+        MonthlyTaxReport.user_id == current_user_id,
+        MonthlyTaxReport.year == year,
+        MonthlyTaxReport.month == month,
+    ).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found. Generate first.")
+    # Recompute profit & VAT if basis provided (keeps CSV consistent with chosen basis)
+    service = TaxProfileService(db)
+    refreshed = service.generate_monthly_report(current_user_id, year, month, basis=basis, force_regenerate=True)
+    buf = StringIO()
+    headers = [
+        "year","month","basis","assessable_profit","levy_amount","vat_collected",
+        "taxable_sales","zero_rated_sales","exempt_sales","generated_at"
+    ]
+    buf.write(",".join(headers) + "\n")
+    row = [
+        str(refreshed.year),
+        f"{refreshed.month:02d}",
+        basis,
+        f"{float(refreshed.assessable_profit or 0):.2f}",
+        f"{float(refreshed.levy_amount or 0):.2f}",
+        f"{float(refreshed.vat_collected or 0):.2f}",
+        f"{float(refreshed.taxable_sales or 0):.2f}",
+        f"{float(refreshed.zero_rated_sales or 0):.2f}",
+        f"{float(refreshed.exempt_sales or 0):.2f}",
+        (refreshed.generated_at.isoformat() if refreshed.generated_at else ""),
+    ]
+    buf.write(",".join(row) + "\n")
+    data = buf.getvalue().encode("utf-8")
+    key = f"tax-reports/{current_user_id}/{year}-{month:02d}-{basis}.csv"
+    url = s3_client.upload_bytes(data, key, content_type="text/csv")
+    return {"csv_url": url, "basis": basis}
+
 
 @router.get("/vat/summary")
 async def get_vat_summary(

@@ -56,6 +56,8 @@ class BaseAppSettings(BaseSettings):
     REDIS_SSL_CERT_REQS: str | None = "required"
     REDIS_SSL_CA_CERTS: str | None = None
     HTML_PDF_ENABLED: bool = False
+    PDF_WATERMARK_ENABLED: bool = False
+    PDF_WATERMARK_TEXT: str = "SUOOPS COMPLIANT"
     PRIMARY_PAYMENT_PROVIDER: str = "paystack"
     FRONTEND_URL: str = "https://suoops.com"
     BACKEND_URL: str = "https://api.suoops.com"  # Used for QR code verification URLs

@@ -15,6 +15,11 @@
   </style>
 </head>
 <body>
+  {% if watermark_text %}
+  <div style="position:fixed; top:38%; left:5%; right:5%; text-align:center; opacity:0.06; font-size:110px; transform:rotate(-30deg); pointer-events:none; z-index:-1; color:#0b4f9f;">
+    {{ watermark_text }}
+  </div>
+  {% endif %}
   <h1>Monthly Tax Report</h1>
   <div class="meta">Period: {{ report.year }}-{{ '%02d'|format(report.month) }} &mdash; Generated {{ report.generated_at }}</div>
   <h2 class="section-title">Profit & Levy</h2>
@@ -29,6 +34,6 @@
     <tr><th>Zero-rated Sales</th><td>₦{{ '%.2f'|format(float(report.zero_rated_sales or 0)) }}</td></tr>
     <tr><th>Exempt Sales</th><td>₦{{ '%.2f'|format(float(report.exempt_sales or 0)) }}</td></tr>
   </table>
-  <div class="footer">This internal compliance report was generated automatically by Suoops. Figures are provisional and subject to FIRS guidance updates.</div>
+  <div class="footer">This internal compliance report was generated automatically by Suoops. Figures exclude refunded invoices and are provisional, subject to FIRS guidance updates.</div>
 </body>
 </html>
