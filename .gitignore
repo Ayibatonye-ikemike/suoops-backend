@@ -31,3 +31,4 @@ frontend/.vercel/
 storage/whatsinvoice/
 storage/suoops-s3-bucket/
 .vercel
+npm-audit-report.json
