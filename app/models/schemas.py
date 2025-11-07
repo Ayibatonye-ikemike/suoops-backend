@@ -290,6 +290,7 @@ class OAuthCallbackOut(BaseModel):
     """Response from OAuth callback with JWT tokens."""
     access_token: str
     refresh_token: str
+    access_expires_at: dt.datetime
     token_type: str = "bearer"
     redirect_uri: str
 

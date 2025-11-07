@@ -13,15 +13,19 @@ Business logic delegated to OAuthService.
 import logging
 import secrets
 import ssl
+from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import redis
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.api.routes_auth import _set_refresh_cookie
 from app.core.config import settings
+from app.core.security import TokenType, decode_token
 from app.db.session import get_db
 from app.models import schemas
 from app.services.oauth_service import OAuthProviderError, create_oauth_service
@@ -125,6 +129,25 @@ def _get_redirect_uri(state: str, consume: bool = True) -> str | None:
         logger.debug(f"Validated OAuth state without consuming: {state}")
 
     return redirect_uri
+
+
+def _extract_access_expiry(access_token: str) -> datetime:
+    """Derive expiry timestamp from a signed access token."""
+    payload = decode_token(access_token, expected_type=TokenType.ACCESS)
+    raw_exp = payload.get("exp")
+
+    if isinstance(raw_exp, (int, float)):
+        return datetime.fromtimestamp(raw_exp, tz=timezone.utc)
+    if isinstance(raw_exp, str):
+        try:
+            parsed = datetime.fromisoformat(raw_exp)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError as exc:  # pragma: no cover - defensive fallback
+            raise ValueError("Unable to parse token expiry") from exc
+    if isinstance(raw_exp, datetime):
+        return raw_exp if raw_exp.tzinfo else raw_exp.replace(tzinfo=timezone.utc)
+
+    raise ValueError("Unsupported exp claim in access token")
 
 
 @router.get("/providers", response_model=schemas.OAuthProvidersOut)
@@ -265,16 +288,32 @@ async def oauth_callback(
         )
 
     try:
-        # Authenticate with OAuth code
         oauth_service = create_oauth_service(db)
         tokens = await oauth_service.authenticate_with_code(provider, code)
 
+        access_token = tokens.get("access_token")
+        refresh_token = tokens.get("refresh_token")
+
+        if not access_token or not refresh_token:
+            logger.error("OAuth provider response missing tokens")
+            raise HTTPException(status_code=500, detail="Failed to issue authentication tokens")
+
+        access_expires_at = _extract_access_expiry(access_token)
+
+        payload_model = schemas.OAuthCallbackOut(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            access_expires_at=access_expires_at,
+            token_type=tokens.get("token_type", "bearer"),
+            redirect_uri=redirect_uri,
+        )
+
+        response = JSONResponse(content=jsonable_encoder(payload_model))
+        _set_refresh_cookie(response, refresh_token)
+
         logger.info(f"OAuth authentication successful for {provider}")
 
-        return {
-            **tokens,
-            "redirect_uri": redirect_uri,
-        }
+        return response
 
     except OAuthProviderError as e:
         logger.error(f"OAuth authentication failed: {str(e)}")
