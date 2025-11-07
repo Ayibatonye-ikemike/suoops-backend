@@ -349,8 +349,8 @@ class OAuthService:
         )
 
         # Generate JWT tokens
-    access_token_jwt = create_access_token(str(user.id))
-    refresh_token_jwt = create_refresh_token(str(user.id))
+        access_token_jwt = create_access_token(str(user.id))
+        refresh_token_jwt = create_refresh_token(str(user.id))
 
         logger.info(f"User authenticated via {provider_name}: {user.email}")
 
