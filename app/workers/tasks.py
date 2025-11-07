@@ -20,6 +20,8 @@ from app.storage.s3_client import s3_client
 from app.services.pdf_service import PDFService
 from app.models.tax_models import MonthlyTaxReport
 from app.models.models import User
+from app.models.tax_models import FiscalInvoice
+from app.models.models import Invoice
 
 logger = logging.getLogger(__name__)
 
@@ -171,3 +173,47 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
         if rss_final > 0:
             logger.info("[tax.generate_previous_month_reports] completed users=%s rss_final=%.1fMB failures=%s", total, rss_final, failures)
     gc.collect()
+
+
+@celery_app.task(name="fiscalization.transmit_invoice", bind=True)
+def transmit_invoice(self: Task, fiscal_code: str) -> None:
+    """Background transmission of a fiscalized invoice to external gateway.
+
+    Looks up FiscalInvoice by fiscal_code then attempts external transmit using FiscalTransmitter.
+    Safe no-op if accreditation or credentials are missing.
+    """
+    from app.services.fiscalization_service import FiscalTransmitter  # local import
+    with session_scope() as db:
+        fi: FiscalInvoice | None = db.query(FiscalInvoice).filter(FiscalInvoice.fiscal_code == fiscal_code).first()
+        if not fi:
+            logger.warning("Transmit skip: fiscal invoice not found | fiscal_code=%s", fiscal_code)
+            return
+        inv: Invoice | None = db.query(Invoice).filter(Invoice.id == fi.invoice_id).first()
+        if not inv:
+            logger.warning("Transmit skip: invoice missing | fiscal_code=%s invoice_id=%s", fiscal_code, fi.invoice_id)
+            return
+        transmitter = FiscalTransmitter()
+        try:
+            import asyncio
+            tx_result = asyncio.run(transmitter.transmit(inv, fi))
+            fi.firs_validation_status = tx_result.get("status", fi.firs_validation_status)
+            if tx_result.get("transaction_id"):
+                fi.firs_transaction_id = tx_result["transaction_id"]
+            # Merge/new response data
+            existing = fi.firs_response or {}
+            existing["transmission"] = tx_result
+            fi.firs_response = existing
+            if tx_result.get("status") == "validated" and not fi.transmitted_at:
+                from datetime import datetime, timezone as _tz
+                fi.transmitted_at = datetime.now(_tz.utc)
+            db.commit()
+            logger.info("Fiscal invoice transmitted | fiscal_code=%s status=%s", fiscal_code, fi.firs_validation_status)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Fiscal invoice transmission failed | fiscal_code=%s error=%s", fiscal_code, e)
+            # Record alert best-effort
+            try:
+                from app.models.alert_models import AlertEvent  # type: ignore
+                evt = AlertEvent(category="fiscal.transmit", message=f"Transmit failed {fiscal_code}: {e}", severity="error")
+                db.add(evt); db.commit()
+            except Exception:
+                db.rollback()
