@@ -58,6 +58,10 @@ class S3Client:
         logger.debug("Stored %s locally at %s", key, local_url)
         return local_url
 
+    async def upload_file(self, data: bytes, key: str, content_type: str = "image/png") -> str:
+        """Async wrapper for upload_bytes. Used by logo upload endpoint."""
+        return self.upload_bytes(data, key, content_type)
+
     def _initialize_client(self):
         try:
             session = boto3.session.Session(
