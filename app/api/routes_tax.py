@@ -12,7 +12,7 @@ All endpoints require authentication.
 """
 import logging
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -191,7 +191,7 @@ async def get_fiscalization_status(
             accredited=accredited,
             generated_count=generated_count,
             pending_external_count=pending_external_count if accredited else generated_count,
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         )
     except Exception as e:
         logger.exception("Failed fiscalization status")

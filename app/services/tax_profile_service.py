@@ -7,13 +7,11 @@ Following SRP: Tax profile operations only.
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
-from app.models.models import User
-from app.models.tax_models import TaxProfile, BusinessSize
+from app.models.tax_models import BusinessSize, TaxProfile
 
 logger = logging.getLogger(__name__)
 
@@ -270,20 +268,15 @@ class TaxProfileService:
             Updated TaxProfile
         """
         profile = self.get_or_create_profile(user_id)
-        
-    profile.firs_merchant_id = merchant_id
-    profile.firs_registered = True
-        
+        # Persist provisional FIRS/NRS registration metadata
+        profile.firs_merchant_id = merchant_id
+        profile.firs_registered = True
         if api_key:
             profile.firs_api_key = api_key
-
         profile.updated_at = datetime.now(timezone.utc)
-        
         self.db.commit()
         self.db.refresh(profile)
-        
-    logger.info(f"User {user_id} registered with FIRS (provisional): {merchant_id}")
-        
+        logger.info("User %s registered with FIRS (provisional): %s", user_id, merchant_id)
         return profile
     
     def register_for_vat(

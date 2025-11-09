@@ -53,6 +53,8 @@ class InvoiceOut(BaseModel):
     amount: Decimal
     status: str
     pdf_url: str | None
+    receipt_pdf_url: str | None = None
+    paid_at: dt.datetime | None = None
     created_at: dt.datetime | None = None
     due_date: dt.datetime | None = None
 
@@ -91,6 +93,7 @@ class InvoicePublicOut(BaseModel):
     bank_name: str | None = None
     account_number: str | None = None
     account_name: str | None = None
+    paid_at: dt.datetime | None = None
 
     @field_serializer("amount")
     def _serialize_amount(self, value: Decimal) -> str:
@@ -220,6 +223,16 @@ class InvoiceVerificationOut(BaseModel):
     @field_serializer("amount")
     def _serialize_amount(self, value: Decimal) -> str:
         return _format_amount(value) or "0"
+
+# ----------------- Quota / Feature Gating -----------------
+
+class InvoiceQuotaOut(BaseModel):
+    """Invoice quota information for the authenticated user."""
+    current_count: int = Field(description="Number of invoices created this month")
+    limit: int | None = Field(description="Monthly invoice limit (None means unlimited)")
+    current_plan: str = Field(description="Current subscription plan code")
+    can_create: bool = Field(description="Whether user can still create invoices this month")
+    upgrade_url: str | None = Field(default=None, description="URL to upgrade subscription plan")
 
 
 # ----------------- OCR -----------------

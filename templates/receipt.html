@@ -1,10 +1,49 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Receipt {{ receipt.receipt_id }}</title></head>
+<head>
+  <meta charset="utf-8" />
+  <title>Payment Receipt {{ invoice.invoice_id }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 26px; }
+    h1 { margin: 0 0 6px 0; font-size: 26px; }
+    .header { position: relative; margin-bottom: 22px; }
+    .meta { font-size: 13px; color: #555; margin: 4px 0; }
+    .box { background:#f9fafb; border:1px solid #d0d7de; border-radius:8px; padding:16px; margin:20px 0; }
+    .box h3 { margin:0 0 12px 0; font-size:16px; color:#0b4f9f; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { border:1px solid #e2e8f0; padding:8px; font-size:13px; }
+    th { background:#f1f5f9; text-align:left; }
+    .total { text-align:right; font-weight:bold; font-size:16px; margin-top:10px; }
+    .watermark { position:fixed; top:35%; left:5%; right:5%; text-align:center; opacity:0.08; font-size:72px; transform:rotate(-25deg); pointer-events:none; z-index:-1; color:#0b8245; }
+    .footer { margin-top:32px; font-size:11px; color:#666; line-height:1.4; }
+  </style>
+</head>
 <body>
-  <h1>Receipt {{ receipt.receipt_id }}</h1>
-  <p>Invoice: {{ receipt.invoice_id }}</p>
-  <p>Amount Paid: {{ receipt.amount }}</p>
-  <p>Date: {{ receipt.created_at }}</p>
+  <div class="header">
+    <h1>Payment Receipt</h1>
+    {% if watermark_text %}<div class="watermark">{{ watermark_text }}</div>{% else %}<div class="watermark">PAID</div>{% endif %}
+    <p class="meta"><strong>Invoice:</strong> {{ invoice.invoice_id }}</p>
+    <p class="meta"><strong>Customer:</strong> {{ invoice.customer.name if invoice.customer else 'Customer' }}</p>
+    <p class="meta"><strong>Amount Paid:</strong> ₦{{ "{:,.2f}".format(invoice.amount) }}</p>
+    <p class="meta"><strong>Payment Date:</strong> {{ paid_at_display }}</p>
+    <p class="meta"><strong>Status:</strong> PAID</p>
+  </div>
+  <div class="box">
+    <h3>Summary</h3>
+    <table>
+      <tr><th>Invoice ID</th><td>{{ invoice.invoice_id }}</td></tr>
+      <tr><th>Customer</th><td>{{ invoice.customer.name if invoice.customer else 'Customer' }}</td></tr>
+      <tr><th>Amount</th><td>₦{{ "{:,.2f}".format(invoice.amount) }}</td></tr>
+      <tr><th>Payment Method</th><td>Bank Transfer</td></tr>
+      <tr><th>Confirmed Status</th><td>PAID</td></tr>
+      <tr><th>Timestamp</th><td>{{ paid_at_display }}</td></tr>
+    </table>
+    <p class="total">Total Paid: ₦{{ "{:,.2f}".format(invoice.amount) }}</p>
+  </div>
+  <div class="footer">
+    <p>This document serves as official confirmation that the above invoice has been settled in full.</p>
+    <p>Keep this receipt for your records. For any disputes or inquiries, contact the issuing business.</p>
+    <p style="margin-top:10px;">Powered by SuoOps • Automated Receipting</p>
+  </div>
 </body>
 </html>

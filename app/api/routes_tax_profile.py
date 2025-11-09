@@ -1,0 +1,81 @@
+"""Tax profile & small business endpoints split from routes_tax.py for modularity."""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
+from decimal import Decimal
+from typing import Optional
+
+from app.db.session import get_db
+from app.api.routes_auth import get_current_user_id
+from app.services.tax_service import TaxProfileService
+
+router = APIRouter(prefix="/tax", tags=["tax-profile"])
+
+
+class TaxProfileUpdate(BaseModel):
+    annual_turnover: Optional[Decimal] = Field(None, ge=0)
+    fixed_assets: Optional[Decimal] = Field(None, ge=0)
+    tin: Optional[str] = Field(None, max_length=20)
+    vat_registration_number: Optional[str] = Field(None, max_length=20)
+    vat_registered: Optional[bool] = None
+
+
+@router.get("/profile")
+async def get_tax_profile(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    try:
+        service = TaxProfileService(db)
+        return service.get_tax_summary(current_user_id)
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Failed to fetch tax profile") from e
+
+
+@router.post("/profile")
+async def update_tax_profile(
+    data: TaxProfileUpdate,
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    try:
+        service = TaxProfileService(db)
+        service.update_profile(
+            user_id=current_user_id,
+            annual_turnover=data.annual_turnover,
+            fixed_assets=data.fixed_assets,
+            tin=data.tin,
+            vat_registration_number=data.vat_registration_number,
+            vat_registered=data.vat_registered,
+        )
+        return {"message": "Tax profile updated successfully", "summary": service.get_tax_summary(current_user_id)}
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Failed to update tax profile") from e
+
+
+@router.get("/small-business-check")
+async def small_business_check(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    try:
+        service = TaxProfileService(db)
+        return service.check_small_business_eligibility(current_user_id)
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Failed small business check") from e
+
+
+@router.get("/compliance")
+async def tax_compliance(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    try:
+        service = TaxProfileService(db)
+        summary = service.get_compliance_summary(current_user_id)
+        service.update_compliance_check(current_user_id)
+        return summary
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Failed compliance summary") from e

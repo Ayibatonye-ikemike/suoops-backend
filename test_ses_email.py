@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""
-Test Amazon SES Email Sending
-Tests SMTP connection and email delivery
-"""
+"""Integration test for Amazon SES email sending (gated by INTEGRATION env)."""
+
+from __future__ import annotations
+
+import os
 import smtplib
-import sys
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from pathlib import Path
+from pathlib import Path  # noqa: F401 - kept for potential future path usage
 
-# Add app to path
-sys.path.insert(0, str(Path(__file__).parent))
+import pytest
 
 from app.core.config import get_settings
-import os
-import pytest
 
 
 @pytest.mark.integration
@@ -35,7 +32,7 @@ def test_ses_email():
     from_email = getattr(settings, 'FROM_EMAIL', None)
     
     # Display configuration
-    print(f"\n📋 Email Configuration:")
+    print("\n📋 Email Configuration:")
     print(f"  SMTP Host: {smtp_host or 'NOT SET'}")
     print(f"  SMTP Port: {smtp_port}")
     print(f"  SMTP User: {smtp_user[:20] + '...' if smtp_user else 'NOT SET'}")

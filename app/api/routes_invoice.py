@@ -9,7 +9,7 @@ from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import schemas
 from app.services.invoice_service import build_invoice_service, InvoiceService
-from app.utils.feature_gate import check_invoice_limit
+from app.utils.feature_gate import check_invoice_limit, FeatureGate
 from datetime import datetime, timezone
 
 router = APIRouter()
@@ -55,6 +55,27 @@ async def create_invoice(
         return invoice
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/quota", response_model=schemas.InvoiceQuotaOut)
+def get_invoice_quota(current_user_id: CurrentUserDep, db: DbDep):
+    """Return current monthly invoice usage and limit for the authenticated user.
+
+    Enables frontend preflight checks to disable creation when limit reached.
+    """
+    gate = FeatureGate(db, current_user_id)
+    current_count = gate.get_monthly_invoice_count()
+    plan = gate.user.plan
+    limit = plan.invoice_limit  # None means unlimited
+    can_create, _ = gate.can_create_invoice()
+    upgrade_url = "/subscription/initialize" if not can_create else None
+    return schemas.InvoiceQuotaOut(
+        current_count=current_count,
+        limit=limit,
+        current_plan=plan.value,
+        can_create=can_create,
+        upgrade_url=upgrade_url,
+    )
 
 
 @router.get("/", response_model=list[schemas.InvoiceOut])

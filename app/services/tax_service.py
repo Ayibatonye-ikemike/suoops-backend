@@ -202,102 +202,7 @@ class TaxProfileService:
             "tax_benefits": self._get_tax_benefits(profile)
         }
 
-    # ---------------- Monthly Report Aggregation -----------------
-    def generate_monthly_report(
-        self,
-        user_id: int,
-        year: int,
-        month: int,
-        basis: str = "paid",
-        force_regenerate: bool = False,
-    ) -> MonthlyTaxReport:
-        """Generate or retrieve consolidated monthly tax report.
-
-        Steps:
-        - Compute assessable profit (basis-aware)
-        - Compute development levy
-        - Aggregate VAT (taxable vs zero-rated vs exempt)
-        - Persist & optionally (re)generate PDF (stub URL for now)
-        """
-        from app.models.models import Invoice  # local import
-        existing = self.db.query(MonthlyTaxReport).filter(
-            MonthlyTaxReport.user_id == user_id,
-            MonthlyTaxReport.year == year,
-            MonthlyTaxReport.month == month,
-        ).first()
-        if existing and not force_regenerate:
-            return existing
-
-        profit = self.compute_assessable_profit(user_id, year=year, month=month, basis=basis)
-        levy = self.compute_development_levy(user_id, profit)
-
-        # VAT aggregation for month
-        start = datetime(year, month, 1, tzinfo=timezone.utc)
-        end = datetime(year + (month == 12), (month % 12) + 1, 1, tzinfo=timezone.utc)
-        q = self.db.query(Invoice).filter(
-            Invoice.issuer_id == user_id,
-            Invoice.created_at >= start,
-            Invoice.created_at < end,
-        )
-        # Basis-aware VAT aggregation & refund exclusion:
-        #  - basis==paid: only paid invoices
-        #  - basis==all: include all non-refunded invoices
-        if basis == "paid":
-            q = q.filter(Invoice.status == "paid")
-        else:
-            q = q.filter(Invoice.status != "refunded")
-        invoices = q.all()
-        taxable_sales = Decimal("0")
-        zero_rated_sales = Decimal("0")
-        exempt_sales = Decimal("0")
-        vat_collected = Decimal("0")
-        for inv in invoices:
-            amount = Decimal(str(inv.amount))
-            if inv.discount_amount:
-                amount -= Decimal(str(inv.discount_amount))
-            cat = (inv.vat_category or "standard").lower()
-            if cat in {"standard"}:
-                taxable_sales += amount
-                if inv.vat_amount:
-                    vat_collected += Decimal(str(inv.vat_amount))
-            elif cat in {"zero_rated", "export"}:
-                zero_rated_sales += amount
-            elif cat in {"exempt"}:
-                exempt_sales += amount
-            else:
-                taxable_sales += amount  # fallback classification
-
-        if not existing:
-            report = MonthlyTaxReport(
-                user_id=user_id,
-                year=year,
-                month=month,
-                assessable_profit=profit,
-                levy_amount=Decimal(str(levy["levy_amount"])),
-                vat_collected=vat_collected,
-                taxable_sales=taxable_sales,
-                zero_rated_sales=zero_rated_sales,
-                exempt_sales=exempt_sales,
-                pdf_url=None,  # will be filled by PDF generation step
-            )
-            self.db.add(report)
-        else:
-            report = existing
-            report.assessable_profit = profit
-            report.levy_amount = Decimal(str(levy["levy_amount"]))
-            report.vat_collected = vat_collected
-            report.taxable_sales = taxable_sales
-            report.zero_rated_sales = zero_rated_sales
-            report.exempt_sales = exempt_sales
-        self.db.commit()
-        self.db.refresh(report)
-        return report
-
-    def attach_report_pdf(self, report: MonthlyTaxReport, pdf_url: str) -> MonthlyTaxReport:
-        report.pdf_url = pdf_url
-        self.db.commit()
-        self.db.refresh(report)
-        return report
+    # Monthly report & assessment moved to tax_reporting_service.TaxReportingService
     
     def _get_tax_benefits(self, profile: TaxProfile) -> Dict:
         """Get list of applicable tax benefits based on classification"""
@@ -414,80 +319,47 @@ class TaxProfileService:
             self.db.rollback()
 
     # ---------------- Development Levy Computation (minimal compliance helper) -----------------
-    def compute_development_levy(self, user_id: int, assessable_profit: Decimal) -> Dict[str, object]:
-        """Compute development levy on assessable profits.
+    # Development levy calculation moved to reporting service.
+    def compute_development_levy(self, user_id: int, assessable_profit: Decimal):  # backward compat wrapper
+        """Wrapper delegating to TaxReportingService.compute_development_levy.
 
-        Rules (2026 draft):
-        - Small businesses: Exempt (0%)
-        - Others: 4% of assessable profits
-
-        Args:
-            user_id: User ID owning the profile
-            assessable_profit: Profit base for levy calculation (>= 0)
-
-        Returns:
-            dict with applicability and amount
+        NOTE: Core implementation moved to tax_reporting_service.TaxReportingService.
+        This wrapper preserves existing public API while callers migrate.
         """
-        if assessable_profit < 0:
-            raise ValueError("assessable_profit must be >= 0")
-        profile = self.get_or_create_profile(user_id)
-        applies = not profile.is_small_business
-        rate = Decimal("0.04") if applies else Decimal("0")
-        amount = (assessable_profit * rate).quantize(Decimal("0.01"))
-        return {
-            "user_id": user_id,
-            "business_size": profile.business_size,
-            "is_small_business": profile.is_small_business,
-            "assessable_profit": float(assessable_profit),
-            "levy_rate_percent": float(rate * 100),
-            "levy_applicable": applies,
-            "levy_amount": float(amount),
-            "exemption_reason": "small_business" if not applies else None,
-        }
+        from app.services.tax_reporting_service import TaxReportingService  # local import to avoid circular
+        return TaxReportingService(self.db).compute_development_levy(user_id, assessable_profit)
 
     # ---------------- Assessable profit computation -----------------
+    # Assessable profit computation moved to reporting service.
     def compute_assessable_profit(
         self,
         user_id: int,
         year: Optional[int] = None,
         month: Optional[int] = None,
-        basis: str = "paid"
-    ) -> Decimal:
-        """Compute assessable profit from invoices.
+        basis: str = "paid",
+    ) -> Decimal:  # type: ignore[override]
+        """Wrapper delegating to TaxReportingService.compute_assessable_profit."""
+        from app.services.tax_reporting_service import TaxReportingService
+        return TaxReportingService(self.db).compute_assessable_profit(user_id, year=year, month=month, basis=basis)
 
-        Rules:
-        - basis="paid": include only invoices with status == 'paid'
-        - basis="all": include all non-refunded invoices regardless of status
-        - Exclude invoices with status == 'refunded' (future status placeholder) or where due_date is in the future.
-        - Subtract discount_amount when present.
-        - Filter by year/month if provided (uses created_at bounds).
-        """
-        from app.models.models import Invoice  # local import to avoid circular at module load
-        q = self.db.query(Invoice).filter(Invoice.issuer_id == user_id)
-        if basis == "paid":
-            q = q.filter(Invoice.status == "paid")
-        else:
-            # Exclude refunded explicitly if such invoices exist; ignore if status not used yet
-            q = q.filter(Invoice.status != "refunded")
-        # Exclude future-due invoices (if due_date set and in the future)
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        q = q.filter((Invoice.due_date.is_(None)) | (Invoice.due_date <= now))
-        if year and month:
-            start = datetime(year, month, 1, tzinfo=timezone.utc)
-            if month == 12:
-                end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-            else:
-                end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
-            q = q.filter(Invoice.created_at >= start, Invoice.created_at < end)
-        invoices = q.all()
-        total = Decimal("0")
-        for inv in invoices:
-            amount = Decimal(str(inv.amount))
-            if inv.discount_amount:
-                amount -= Decimal(str(inv.discount_amount))
-            total += amount
-        return total
+    def generate_monthly_report(
+        self,
+        user_id: int,
+        year: int,
+        month: int,
+        basis: str = "paid",
+        force_regenerate: bool = False,
+    ) -> MonthlyTaxReport:  # type: ignore[override]
+        """Wrapper delegating to TaxReportingService.generate_monthly_report."""
+        from app.services.tax_reporting_service import TaxReportingService
+        return TaxReportingService(self.db).generate_monthly_report(
+            user_id, year, month, basis=basis, force_regenerate=force_regenerate
+        )
+
+    def attach_report_pdf(self, report: MonthlyTaxReport, pdf_url: str) -> MonthlyTaxReport:  # type: ignore[override]
+        """Wrapper delegating to TaxReportingService.attach_report_pdf."""
+        from app.services.tax_reporting_service import TaxReportingService
+        return TaxReportingService(self.db).attach_report_pdf(report, pdf_url)
 
     # ---------------- Tax constants (exposed to frontend) -----------------
     def get_tax_constants(self) -> Dict[str, object]:
