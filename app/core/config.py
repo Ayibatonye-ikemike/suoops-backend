@@ -26,6 +26,7 @@ class BaseAppSettings(BaseSettings):
     
     # Brevo (Sendinblue) - For both Email and SMS
     BREVO_API_KEY: str | None = None  # Get from Brevo dashboard
+    BREVO_SMTP_LOGIN: str | None = None  # Brevo SMTP login (e.g., "9a485d001@smtp-brevo.com")
     BREVO_SENDER_NAME: str = "SuoOps"  # Sender name for emails and SMS
     
     # SMS Configuration

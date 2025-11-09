@@ -49,11 +49,11 @@ class NotificationService:
             # https://developers.brevo.com/docs/send-emails-with-smtp
             host = "smtp-relay.brevo.com"
             port = 587
-            user = getattr(settings, "FROM_EMAIL", None)  # Brevo uses FROM_EMAIL as SMTP login
+            user = getattr(settings, "BREVO_SMTP_LOGIN", None)  # Brevo SMTP login (e.g., "9a485d001@smtp-brevo.com")
             password = getattr(settings, "BREVO_API_KEY", None)  # Brevo SMTP uses API key as password
             
             if not all([user, password]):
-                logger.warning("Brevo email not configured. Set FROM_EMAIL and BREVO_API_KEY")
+                logger.warning("Brevo email not configured. Set BREVO_SMTP_LOGIN and BREVO_API_KEY")
                 return None
                 
             logger.info("Using Brevo SMTP for email: %s", host)
