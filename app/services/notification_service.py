@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -599,7 +600,7 @@ Powered by SuoOps
         recipient_email: str,
         pdf_url: str | None = None,
     ) -> bool:
-        """Send payment receipt email with invoice PDF attachment.
+        """Send payment receipt email with receipt PDF attachment (currently using invoice PDF).
         
         Args:
             invoice: Invoice model instance
@@ -638,9 +639,9 @@ Payment Confirmation:
 - Invoice ID: {invoice.invoice_id}
 - Amount Paid: ₦{invoice.amount:,.2f}
 - Status: PAID ✓
-- Payment Date: {invoice.created_at.strftime('%B %d, %Y')}
+- Payment Date: {datetime.now(timezone.utc).strftime('%B %d, %Y')}
 
-Your invoice is attached as a PDF for your records.
+Your receipt is attached as a PDF for your records.
 
 Thank you for your business!
 
