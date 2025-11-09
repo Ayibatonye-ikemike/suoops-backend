@@ -1,5 +1,6 @@
 """Subscription management and Paystack payment integration."""
 import logging
+from datetime import datetime
 from typing import Annotated
 
 import httpx
@@ -77,8 +78,9 @@ async def initialize_subscription_payment(
     amount_naira = PLAN_PRICES[plan]
     amount_kobo = amount_naira * 100  # Paystack uses kobo (smallest unit)
     
-    # Generate unique reference
-    reference = f"SUB-{current_user_id}-{plan}-{int(user.created_at.timestamp())}"
+    # Generate unique reference with current timestamp to avoid duplicates
+    timestamp = int(datetime.utcnow().timestamp() * 1000)  # milliseconds for uniqueness
+    reference = f"SUB-{current_user_id}-{plan}-{timestamp}"
     
     # Initialize Paystack transaction
     try:
