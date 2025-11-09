@@ -388,7 +388,7 @@ class InvoiceService:
             if user.phone:
                 try:
                     results["sms"] = await notification_service._send_brevo_sms(
-                        to_phone=user.phone,
+                        to=user.phone,
                         message=message.replace("🔔", ""),  # Remove emoji for SMS
                     )
                 except Exception as exc:
