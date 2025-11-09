@@ -37,8 +37,14 @@ class BaseAppSettings(BaseSettings):
     SES_SMTP_PASSWORD: str | None = None
     SES_REGION: str = "eu-north-1"  # Same region as S3
     
-    # SMS Configuration (Termii - Nigerian SMS provider)
-    SMS_PROVIDER: str = "termii"  # Options: termii, twilio
+    # SMS Configuration
+    SMS_PROVIDER: str = "brevo"  # Options: brevo, termii, twilio
+    
+    # Brevo (Sendinblue) - For both Email and SMS
+    BREVO_API_KEY: str | None = None  # Get from Brevo dashboard for SMS
+    BREVO_SENDER_NAME: str = "SuoOps"  # SMS sender name
+    
+    # Termii - Alternative SMS provider (Nigerian)
     TERMII_API_KEY: str | None = None
     TERMII_SENDER_ID: str = "SuoOps"  # Max 11 characters for SMS
     TERMII_DEVICE_ID: str = "TID"  # Max 9 characters for WhatsApp (use "TID" for testing)

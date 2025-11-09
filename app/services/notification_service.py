@@ -24,9 +24,18 @@ class NotificationService:
         """Initialize notification service."""
         self.whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
         self.whatsapp_phone_number_id = getattr(settings, "WHATSAPP_PHONE_NUMBER_ID", None)
+        
+        # SMS provider configuration
+        self.sms_provider = getattr(settings, "SMS_PROVIDER", "brevo")
+        
+        # Brevo (Sendinblue) configuration
+        self.brevo_api_key = getattr(settings, "BREVO_API_KEY", None)
+        self.brevo_sender_name = getattr(settings, "BREVO_SENDER_NAME", "SuoOps")
+        
+        # Termii configuration (alternative)
         self.termii_api_key = getattr(settings, "TERMII_API_KEY", None)
         self.termii_sender_id = getattr(settings, "TERMII_SENDER_ID", "SuoOps")
-        self.sms_provider = getattr(settings, "SMS_PROVIDER", "termii")
+        self.termii_device_id = getattr(settings, "TERMII_DEVICE_ID", "TID")
     
     def _get_smtp_config(self) -> dict[str, str | int] | None:
         """Get SMTP configuration based on EMAIL_PROVIDER setting.
@@ -304,10 +313,6 @@ Powered by SuoOps
             bool: True if SMS sent successfully, False otherwise
         """
         try:
-            if not self.termii_api_key:
-                logger.warning("SMS not configured. Set TERMII_API_KEY")
-                return False
-            
             # Get business name from issuer
             business_name = "Business"
             if hasattr(invoice, 'issuer') and invoice.issuer:
@@ -322,15 +327,23 @@ Powered by SuoOps
             message += f"Amount: ₦{invoice.amount:,.2f}\n"
             message += f"Pay here: {payment_link}"
             
-            # Send via Termii
-            if self.sms_provider == "termii":
+            # Send via configured provider
+            if self.sms_provider == "brevo":
+                if not self.brevo_api_key:
+                    logger.warning("SMS not configured. Set BREVO_API_KEY")
+                    return False
+                success = await self._send_brevo_sms(recipient_phone, message)
+            elif self.sms_provider == "termii":
+                if not self.termii_api_key:
+                    logger.warning("SMS not configured. Set TERMII_API_KEY")
+                    return False
                 success = await self._send_termii_sms(recipient_phone, message)
             else:
                 logger.warning("Unsupported SMS provider: %s", self.sms_provider)
                 return False
             
             if success:
-                logger.info("Sent invoice SMS to %s", recipient_phone)
+                logger.info("Sent invoice SMS to %s via %s", recipient_phone, self.sms_provider)
             return success
             
         except Exception as e:
@@ -352,10 +365,6 @@ Powered by SuoOps
             bool: True if SMS sent successfully, False otherwise
         """
         try:
-            if not self.termii_api_key:
-                logger.warning("SMS not configured for receipt")
-                return False
-            
             # Get business name from issuer
             business_name = "Business"
             if hasattr(invoice, 'issuer') and invoice.issuer:
@@ -367,19 +376,73 @@ Powered by SuoOps
             message += f"Status: PAID\n"
             message += f"- {business_name}"
             
-            # Send via Termii
-            if self.sms_provider == "termii":
+            # Send via configured provider
+            if self.sms_provider == "brevo":
+                if not self.brevo_api_key:
+                    logger.warning("SMS not configured for receipt")
+                    return False
+                success = await self._send_brevo_sms(recipient_phone, message)
+            elif self.sms_provider == "termii":
+                if not self.termii_api_key:
+                    logger.warning("SMS not configured for receipt")
+                    return False
                 success = await self._send_termii_sms(recipient_phone, message)
             else:
                 logger.warning("Unsupported SMS provider: %s", self.sms_provider)
                 return False
             
             if success:
-                logger.info("Sent receipt SMS to %s", recipient_phone)
+                logger.info("Sent receipt SMS to %s via %s", recipient_phone, self.sms_provider)
             return success
             
         except Exception as e:
             logger.error("Failed to send receipt via SMS: %s", e)
+            return False
+
+    async def _send_brevo_sms(self, to: str, message: str) -> bool:
+        """Send SMS via Brevo (Sendinblue) API.
+        
+        Args:
+            to: Phone number (with country code, e.g., +2348012345678)
+            message: SMS message text
+            
+        Returns:
+            bool: True if sent successfully
+        """
+        try:
+            url = "https://api.brevo.com/v3/transactionalSMS/sms"
+            
+            # Ensure phone has + prefix
+            phone = to if to.startswith("+") else f"+{to}"
+            
+            payload = {
+                "sender": self.brevo_sender_name,
+                "recipient": phone,
+                "content": message,
+                "type": "transactional",
+            }
+            
+            headers = {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "api-key": self.brevo_api_key,
+            }
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                
+                # Brevo returns reference on success
+                if data.get("reference"):
+                    logger.info("Brevo SMS sent successfully to %s (ref: %s)", to, data.get("reference"))
+                    return True
+                else:
+                    logger.error("Brevo SMS failed: %s", data)
+                    return False
+                    
+        except Exception as e:
+            logger.error("Failed to send Brevo SMS: %s", e)
             return False
 
     async def _send_termii_sms(self, to: str, message: str) -> bool:
