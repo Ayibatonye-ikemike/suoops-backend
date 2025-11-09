@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20251109_increase_invoice_status_length"
-down_revision = "20251107_add_monthly_tax_report"
+down_revision = "20251107_tax_profile_verify"
 branch_labels = None
 depends_on = None
 
