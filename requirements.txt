@@ -1,7 +1,7 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.0
 sqlalchemy==2.0.32
-# Temporary: psycopg2-binary 2.9.9 wheel unavailable for Python 3.13 on macOS; omit for test/lint environment.
+psycopg2-binary==2.9.9
 pydantic==2.8.2
 pydantic-settings==2.0.0
 jinja2==3.1.4
