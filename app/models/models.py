@@ -102,6 +102,10 @@ class Invoice(Base):
         server_default=func.now(),
     )
     pdf_url: Mapped[str | None]
+    # When customer payment is confirmed and invoice marked paid
+    paid_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Separate receipt PDF (with PAID watermark)
+    receipt_pdf_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     
     # VAT and fiscalization fields (NRS 2026 compliance)
     vat_rate: Mapped[float | None] = mapped_column(default=7.5)

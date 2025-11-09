@@ -575,10 +575,11 @@ Powered by SuoOps
         
         # Send Email if email provided  
         if customer_email:
+            # Pass receipt_pdf_url preferentially
             results["email"] = await self._send_receipt_email(
                 invoice=invoice,
                 recipient_email=customer_email,
-                pdf_url=pdf_url,
+                pdf_url=invoice.receipt_pdf_url or pdf_url,
             )
         
         # Send WhatsApp if phone provided
@@ -632,7 +633,15 @@ Powered by SuoOps
             msg = MIMEMultipart()
             msg['From'] = from_email
             msg['To'] = recipient_email
-            msg['Subject'] = f"Payment Receipt - {invoice.invoice_id}"
+            # Include business name if available
+            business_name = None
+            try:
+                if hasattr(invoice, 'issuer') and invoice.issuer:
+                    business_name = getattr(invoice.issuer, 'business_name', None) or getattr(invoice.issuer, 'name', None)
+            except Exception:
+                business_name = None
+            subject_business = f"{business_name} - " if business_name else ""
+            msg['Subject'] = f"Payment Receipt - {subject_business}{invoice.invoice_id}"
             
             # Receipt email body
             body = f"""
@@ -656,10 +665,12 @@ Powered by SuoOps
             msg.attach(MIMEText(body, 'plain'))
             
             # Download and attach PDF if available
-            if pdf_url:
+            # Prefer receipt PDF if stored on the invoice object
+            effective_pdf_url = pdf_url or getattr(invoice, 'receipt_pdf_url', None)
+            if effective_pdf_url:
                 try:
                     async with httpx.AsyncClient(timeout=30.0) as client:
-                        response = await client.get(pdf_url)
+                        response = await client.get(effective_pdf_url)
                         response.raise_for_status()
                         pdf_data = response.content
                     

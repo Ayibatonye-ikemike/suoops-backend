@@ -120,6 +120,77 @@ class PDFService:
         logger.info("Uploaded fallback PDF for %s", invoice.invoice_id)
         return url
 
+    def generate_receipt_pdf(self, invoice: Invoice) -> str:
+        """Generate a payment receipt PDF with PAID watermark.
+
+        Uses HTML template if available (receipt.html), otherwise
+        falls back to a minimal ReportLab layout with diagonal PAID watermark.
+        """
+        paid_at_display = None
+        if getattr(invoice, "paid_at", None):
+            try:
+                paid_at_display = invoice.paid_at.strftime("%B %d, %Y %H:%M UTC")
+            except Exception:  # noqa: BLE001
+                paid_at_display = str(invoice.paid_at)
+        else:
+            paid_at_display = "(time not recorded)"
+
+        if settings.HTML_PDF_ENABLED and _WEASY_AVAILABLE:
+            try:
+                # If a dedicated receipt template exists use it; otherwise reuse invoice.html
+                template_name = "receipt.html"
+                try:
+                    template = self.jinja.get_template(template_name)
+                except Exception:  # noqa: BLE001
+                    template = self.jinja.get_template("invoice.html")
+                watermark_text = "PAID"  # force PAID watermark on receipt
+                html_str = template.render(
+                    invoice=invoice,
+                    bank_details=None,
+                    logo_url=None,
+                    customer_portal_url=None,
+                    qr_code=None,
+                    watermark_text=watermark_text,
+                    paid_at_display=paid_at_display,
+                    is_receipt=True,
+                )
+                from weasyprint import HTML  # type: ignore
+                pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
+                key = f"receipts/{invoice.invoice_id}.pdf"
+                url = self.s3.upload_bytes(pdf_bytes, key)
+                logger.info("Uploaded receipt HTML PDF for %s", invoice.invoice_id)
+                return url
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Receipt HTML generation failed (%s); using fallback", e)
+
+        # Fallback ReportLab rendering
+        buf = BytesIO()
+        c = canvas.Canvas(buf, pagesize=A4)
+        c.setFont("Helvetica-Bold", 18)
+        c.drawString(40, 800, f"Payment Receipt {invoice.invoice_id}")
+        c.setFont("Helvetica", 11)
+        c.drawString(40, 775, f"Customer: {getattr(invoice.customer, 'name', 'Customer')}")
+        c.drawString(40, 760, f"Amount Paid: ₦{invoice.amount:,.2f}")
+        c.drawString(40, 745, f"Status: PAID")
+        c.drawString(40, 730, f"Payment Date: {paid_at_display}")
+        c.setFont("Helvetica", 9)
+        c.drawString(40, 705, "Thank you for your payment. This receipt confirms full settlement of this invoice.")
+        # PAID watermark
+        c.saveState()
+        c.setFont("Helvetica-Bold", 70)
+        c.setFillColorRGB(0.0, 0.6, 0.2, )  # solid color (ReportLab lacks alpha pre 3.0)
+        c.translate(300, 400)
+        c.rotate(30)
+        c.drawString(-160, 0, "PAID")
+        c.restoreState()
+        c.showPage()
+        c.save()
+        pdf_bytes = buf.getvalue()
+        key = f"receipts/{invoice.invoice_id}.pdf"
+        url = self.s3.upload_bytes(pdf_bytes, key)
+        logger.info("Uploaded fallback receipt PDF for %s", invoice.invoice_id)
+        return url
+
     def _render_invoice_html(
         self,
         invoice: Invoice,

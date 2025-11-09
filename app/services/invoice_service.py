@@ -233,9 +233,20 @@ class InvoiceService:
         if previous_status == status:
             return invoice
         invoice.status = status
+        # Set paid_at when transitioning to paid
+        if status == "paid" and invoice.paid_at is None:
+            # Use timezone-aware UTC timestamp
+            invoice.paid_at = dt.datetime.now(dt.timezone.utc)
         self.db.commit()
         if status == "paid" and previous_status != "paid":
             metrics.invoice_paid()
+            # Generate receipt PDF if missing
+            try:
+                if not invoice.receipt_pdf_url:
+                    invoice.receipt_pdf_url = self.pdf_service.generate_receipt_pdf(invoice)
+                    self.db.commit()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Failed to generate receipt PDF for %s: %s", invoice_id, e)
             # Send receipt to customer (manual payment confirmation)
             logger.info("Invoice %s manually marked as paid, sending receipt", invoice_id)
             self._send_receipt_to_customer(invoice)
