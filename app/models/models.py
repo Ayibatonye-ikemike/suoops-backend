@@ -94,7 +94,7 @@ class Invoice(Base):
     customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"))  # type: ignore
     amount: Mapped[Decimal] = mapped_column(Numeric(scale=2))
     discount_amount: Mapped[Decimal | None] = mapped_column(Numeric(scale=2), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending")
+    status: Mapped[str] = mapped_column(String(30), default="pending")
     due_date: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
