@@ -135,7 +135,7 @@ class NotificationService:
             frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
             payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
             
-            # Email body
+            # Email body (includes mention of copyable bank details on payment page)
             body = f"""
 Hello {invoice.customer.name if invoice.customer else 'Customer'},
 
@@ -150,7 +150,12 @@ Invoice Details:
 📌 Click here to make payment:
 {payment_link}
 
-The payment page will show you our bank details which you can copy and use to transfer the amount. After transferring, please confirm your payment on the page.
+On the payment page you can:
+- View bank name, account number, and account name
+- Use one-click "Copy" buttons or copy all details at once
+- Notify the business after you've made the transfer
+
+After you complete the transfer, tap "I've sent the transfer" on that page so the business can confirm and your receipt will be issued.
 
 Please find your invoice attached as a PDF.
 
