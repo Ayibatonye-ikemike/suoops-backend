@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '0010_recreate_webhookevent'
-down_revision = '0009_add_customer_email'
+down_revision = '20251109_add_paid_at_receipt'
 branch_labels = None
 depends_on = None
 
