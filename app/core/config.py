@@ -20,29 +20,16 @@ class BaseAppSettings(BaseSettings):
     S3_REGION: str = "us-east-1"  # AWS region for S3 bucket
     S3_PRESIGN_TTL: int = 3600
     
-    # Email/SMTP Configuration
-    EMAIL_PROVIDER: str = "gmail"  # Options: gmail, ses, brevo, mailgun
-    
-    # Gmail SMTP (default, 500 emails/day)
-    SMTP_HOST: str | None = None
-    SMTP_PORT: int = 587
-    SMTP_USER: str | None = None
-    SMTP_PASSWORD: str | None = None
+    # Email/SMS Configuration - Using Brevo
+    EMAIL_PROVIDER: str = "brevo"  # We use Brevo for email and SMS
     FROM_EMAIL: str | None = None
     
-    # Amazon SES SMTP (for high volume, no daily limit)
-    SES_SMTP_HOST: str = "email-smtp.eu-north-1.amazonaws.com"
-    SES_SMTP_PORT: int = 587
-    SES_SMTP_USER: str | None = None
-    SES_SMTP_PASSWORD: str | None = None
-    SES_REGION: str = "eu-north-1"  # Same region as S3
+    # Brevo (Sendinblue) - For both Email and SMS
+    BREVO_API_KEY: str | None = None  # Get from Brevo dashboard
+    BREVO_SENDER_NAME: str = "SuoOps"  # Sender name for emails and SMS
     
     # SMS Configuration
     SMS_PROVIDER: str = "brevo"  # Options: brevo, termii, twilio
-    
-    # Brevo (Sendinblue) - For both Email and SMS
-    BREVO_API_KEY: str | None = None  # Get from Brevo dashboard for SMS
-    BREVO_SENDER_NAME: str = "SuoOps"  # SMS sender name
     
     # Termii - Alternative SMS provider (Nigerian)
     TERMII_API_KEY: str | None = None
