@@ -410,10 +410,10 @@ Powered by SuoOps
             bool: True if sent successfully
         """
         try:
-            url = "https://api.brevo.com/v3/transactionalSMS/sms"
+            url = "https://api.brevo.com/v3/transactionalSMS/send"
             
-            # Ensure phone has + prefix
-            phone = to if to.startswith("+") else f"+{to}"
+            # Remove + prefix and any spaces for Brevo (they expect just numbers with country code)
+            phone = to.replace("+", "").replace(" ", "").replace("-", "")
             
             payload = {
                 "sender": self.brevo_sender_name,
@@ -433,9 +433,9 @@ Powered by SuoOps
                 response.raise_for_status()
                 data = response.json()
                 
-                # Brevo returns reference on success
-                if data.get("reference"):
-                    logger.info("Brevo SMS sent successfully to %s (ref: %s)", to, data.get("reference"))
+                # Brevo returns messageId on success
+                if data.get("messageId"):
+                    logger.info("Brevo SMS sent successfully to %s (messageId: %s)", to, data.get("messageId"))
                     return True
                 else:
                     logger.error("Brevo SMS failed: %s", data)
