@@ -130,6 +130,10 @@ class NotificationService:
             msg['To'] = recipient_email
             msg['Subject'] = f"{subject} - {invoice.invoice_id}"
             
+            # Build payment link
+            frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+            payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
+            
             # Email body
             body = f"""
 Hello {invoice.customer.name if invoice.customer else 'Customer'},
@@ -141,6 +145,11 @@ Invoice Details:
 - Amount: ₦{invoice.amount:,.2f}
 - Status: {invoice.status.upper()}
 {f"- Due Date: {invoice.due_date.strftime('%B %d, %Y')}" if invoice.due_date else ""}
+
+📌 Click here to make payment:
+{payment_link}
+
+The payment page will show you our bank details which you can copy and use to transfer the amount. After transferring, please confirm your payment on the page.
 
 Please find your invoice attached as a PDF.
 
