@@ -83,19 +83,23 @@ def _generate_state() -> str:
 
 def _store_oauth_state(state: str, redirect_uri: str) -> None:
     """
-    Store OAuth state token in Redis with 10-minute expiration.
+    Store OAuth state token in Redis with redirect URI.
     
     Args:
-        state: State token for CSRF protection
+        state: State token to store
         redirect_uri: Frontend redirect URI to store with state
     """
-    redis_client = _get_redis_client()
-    key = f"oauth:state:{state}"
-    # Store for 10 minutes (OAuth flow should complete quickly)
-    redis_client.setex(key, 600, redirect_uri)
-    # Do NOT log raw state token in production to avoid leaking CSRF token.
-    if settings.ENV.lower() != "prod":  # safe to debug in non-prod
-        logger.debug("Stored OAuth state token (length=%s)", len(state))
+    try:
+        redis_client = _get_redis_client()
+        key = f"oauth:state:{state}"
+        # Store for 10 minutes (OAuth flow should complete quickly)
+        redis_client.setex(key, 600, redirect_uri)
+        # Do NOT log raw state token in production to avoid leaking CSRF token.
+        if settings.ENV.lower() != "prod":  # safe to debug in non-prod
+            logger.debug("Stored OAuth state token (length=%s)", len(state))
+    except Exception as e:
+        logger.error("Failed to store OAuth state in Redis: %s. OAuth may fail.", e)
+        # Continue anyway - OAuth state validation will fail gracefully
 
 
 def _build_redirect_with_params(base_url: str, params: dict[str, str]) -> str:
@@ -118,23 +122,27 @@ def _get_redirect_uri(state: str, consume: bool = True) -> str | None:
     Returns:
         Redirect URI if state is valid, None otherwise
     """
-    redis_client = _get_redis_client()
-    key = f"oauth:state:{state}"
-    
-    redirect_uri = redis_client.get(key)
+    try:
+        redis_client = _get_redis_client()
+        key = f"oauth:state:{state}"
+        
+        redirect_uri = redis_client.get(key)
 
-    if redirect_uri is None:
-        return None
+        if redirect_uri is None:
+            return None
 
-    if consume:
-        redis_client.delete(key)
-        if settings.ENV.lower() != "prod":
-            logger.debug("Consumed OAuth state token (length=%s)", len(state))
-    else:
-        if settings.ENV.lower() != "prod":
-            logger.debug("Validated OAuth state without consuming (length=%s)", len(state))
+        if consume:
+            redis_client.delete(key)
+            if settings.ENV.lower() != "prod":
+                logger.debug("Consumed OAuth state token (length=%s)", len(state))
+        else:
+            if settings.ENV.lower() != "prod":
+                logger.debug("Validated OAuth state without consuming (length=%s)", len(state))
 
-    return redirect_uri
+        return redirect_uri
+    except Exception as e:
+        logger.error("Failed to retrieve OAuth state from Redis: %s", e)
+        return None  # Treat as invalid state
 
 
 def _extract_access_expiry(access_token: str) -> datetime:
