@@ -192,8 +192,8 @@ async def verify_subscription_payment(
             plan = metadata.get("plan")
             user_id = metadata.get("user_id")
             
-            # Verify user ID matches
-            if user_id != current_user_id:
+            # Verify user ID matches (convert to int since metadata comes as string from JSON)
+            if int(user_id) != current_user_id:
                 raise HTTPException(status_code=403, detail="Payment reference does not belong to you")
             
             # Upgrade user's plan
