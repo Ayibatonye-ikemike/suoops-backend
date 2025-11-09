@@ -127,6 +127,13 @@
     </div>
     {% endif %}
   </div>
+  {% else %}
+  <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 16px; margin: 20px 0;">
+    <h3 style="margin: 0 0 8px 0; color: #856404;">⚠️ Payment Details Missing</h3>
+    <p style="margin: 0; font-size: 14px; color: #856404;">
+      Bank transfer details haven't been configured for this invoice. Please contact the business directly for payment instructions.
+    </p>
+  </div>
   {% endif %}
   
   <h3>Items</h3>

@@ -149,6 +149,13 @@ class InvoiceService:
 
         # Get issuer's bank details for the PDF
         user = self.db.query(models.User).filter(models.User.id == issuer_id).one()
+        
+        # Validate bank details are set
+        if not user.bank_name or not user.account_number:
+            raise ValueError(
+                "Bank details required. Please add your bank information in Settings before creating invoices."
+            )
+        
         bank_details = {
             "bank_name": user.bank_name,
             "account_number": user.account_number,
