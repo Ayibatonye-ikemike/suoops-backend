@@ -340,9 +340,12 @@ class InvoiceService:
             logger.error("Failed to send receipt to customer: %s", e)
 
     def _notify_business_of_customer_confirmation(self, invoice: models.Invoice) -> None:
-        """Notify the business owner that the customer marked the invoice as transferred."""
-
+        """Notify the business owner that the customer marked the invoice as transferred.
+        
+        Sends notification via Email and SMS to the business owner.
+        """
         from app.core.config import settings
+        import asyncio
 
         try:
             user = self.db.query(models.User).filter(models.User.id == invoice.issuer_id).one_or_none()
@@ -354,34 +357,57 @@ class InvoiceService:
             logger.warning("Cannot notify business for invoice %s: issuer missing", invoice.invoice_id)
             return
 
-        whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
-        whatsapp_phone = getattr(user, "phone", None)
-
-        if whatsapp_key and whatsapp_phone:
-            try:
-                from app.bot.whatsapp_adapter import WhatsAppClient
-
-                client = WhatsAppClient(whatsapp_key)
-                message = (
-                    "🔔 Customer reported a transfer.\n\n"
-                    f"Invoice: {invoice.invoice_id}\n"
-                    f"Amount: ₦{invoice.amount:,.2f}\n\n"
-                    "Please confirm the funds and mark the invoice as paid to send their receipt."
-                )
-                client.send_text(whatsapp_phone, message)
-                logger.info(
-                    "Sent awaiting confirmation notification for invoice %s to business %s",
-                    invoice.invoice_id,
-                    whatsapp_phone,
-                )
-                return
-            except Exception as exc:  # pragma: no cover - best effort
-                logger.error("Failed to send WhatsApp notification for invoice %s: %s", invoice.invoice_id, exc)
-
-        logger.info(
-            "Invoice %s awaiting confirmation; business notification skipped (WhatsApp not configured)",
-            invoice.invoice_id,
+        # Prepare notification message
+        message = (
+            "🔔 Customer reported a transfer.\n\n"
+            f"Invoice: {invoice.invoice_id}\n"
+            f"Amount: ₦{invoice.amount:,.2f}\n\n"
+            "Please confirm the funds and mark the invoice as paid to send their receipt."
         )
+
+        # Send via Email and SMS
+        async def send_notifications():
+            from app.services.notification_service import NotificationService
+            notification_service = NotificationService()
+            
+            results = {"email": False, "sms": False}
+            
+            # Send Email notification to business
+            if user.email:
+                try:
+                    results["email"] = await notification_service.send_email(
+                        to_email=user.email,
+                        subject=f"Payment Confirmation - Invoice {invoice.invoice_id}",
+                        body=message.replace("🔔", ""),  # Remove emoji for email
+                    )
+                except Exception as exc:
+                    logger.error("Failed to send email notification to business for invoice %s: %s", 
+                               invoice.invoice_id, exc)
+            
+            # Send SMS notification to business phone
+            if user.phone:
+                try:
+                    results["sms"] = await notification_service._send_brevo_sms(
+                        to_phone=user.phone,
+                        message=message.replace("🔔", ""),  # Remove emoji for SMS
+                    )
+                except Exception as exc:
+                    logger.error("Failed to send SMS notification to business for invoice %s: %s", 
+                               invoice.invoice_id, exc)
+            
+            logger.info(
+                "Business notification for invoice %s - Email: %s, SMS: %s",
+                invoice.invoice_id,
+                results["email"],
+                results["sms"],
+            )
+        
+        # Run async notifications
+        try:
+            asyncio.create_task(send_notifications())
+        except RuntimeError:
+            # If no event loop, run in new loop
+            asyncio.run(send_notifications())
 
     # ---------- Internal helpers ----------
     def _get_or_create_customer(

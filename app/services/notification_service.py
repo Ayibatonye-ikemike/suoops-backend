@@ -585,4 +585,52 @@ Powered by SuoOps
                    results["email"], results["whatsapp"], results["sms"])
         return results
 
+    async def send_email(
+        self,
+        to_email: str,
+        subject: str,
+        body: str,
+    ) -> bool:
+        """Send a simple text email.
+        
+        Args:
+            to_email: Recipient email address
+            subject: Email subject
+            body: Email body text
+            
+        Returns:
+            bool: True if sent successfully
+        """
+        try:
+            smtp_config = self._get_smtp_config()
+            if not smtp_config:
+                logger.warning("No email provider configured")
+                return False
+            
+            smtp_host = smtp_config["host"]
+            smtp_port = smtp_config["port"]
+            smtp_user = smtp_config["user"]
+            smtp_password = smtp_config["password"]
+            
+            from_email = getattr(settings, "FROM_EMAIL", smtp_user)
+            
+            msg = MIMEMultipart()
+            msg['From'] = from_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
+            
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+            
+            logger.info("Simple email sent to %s", to_email)
+            return True
+            
+        except Exception as e:
+            logger.error("Failed to send email to %s: %s", to_email, e)
+            return False
+
+
 
