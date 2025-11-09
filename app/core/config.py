@@ -37,6 +37,11 @@ class BaseAppSettings(BaseSettings):
     SES_SMTP_PASSWORD: str | None = None
     SES_REGION: str = "eu-north-1"  # Same region as S3
     
+    # SMS Configuration (Termii - Nigerian SMS provider)
+    SMS_PROVIDER: str = "termii"  # Options: termii, twilio
+    TERMII_API_KEY: str | None = None
+    TERMII_SENDER_ID: str = "SuoOps"  # Max 11 characters
+    
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
     WHATSAPP_VERIFY_TOKEN: str = "suoops_verify_2025"

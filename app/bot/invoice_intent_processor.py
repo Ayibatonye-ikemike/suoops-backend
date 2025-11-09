@@ -83,37 +83,41 @@ class InvoiceIntentProcessor:
         self.client.send_text(sender, limit_message)
         return False
     
-    async def _send_invoice_email(self, invoice, recipient_email: str) -> bool:
+    async def _send_invoice_notifications(
+        self,
+        invoice,
+        customer_email: str | None = None,
+        customer_phone: str | None = None
+    ) -> dict[str, bool]:
         """
-        Send invoice email with PDF attachment.
+        Send invoice notifications via all available channels (Email, WhatsApp, SMS).
         
         Args:
             invoice: Invoice model instance
-            recipient_email: Customer email address
+            customer_email: Customer email address (optional)
+            customer_phone: Customer phone number (optional)
         
         Returns:
-            bool: True if email sent successfully
+            dict: Status of each channel {"email": bool, "whatsapp": bool, "sms": bool}
         """
         try:
             from app.services.notification_service import NotificationService
             
             notification_service = NotificationService()
-            email_sent = await notification_service.send_invoice_email(
+            results = await notification_service.send_invoice_notification(
                 invoice=invoice,
-                recipient_email=recipient_email,
+                customer_email=customer_email,
+                customer_phone=customer_phone,
                 pdf_url=invoice.pdf_url,
-                subject="New Invoice"
             )
             
-            if email_sent:
-                logger.info("Invoice email sent to %s for invoice %s", recipient_email, invoice.invoice_id)
-            else:
-                logger.warning("Failed to send invoice email to %s", recipient_email)
+            logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s, SMS: %s",
+                       invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
             
-            return email_sent
+            return results
         except Exception as exc:  # noqa: BLE001
-            logger.error("Error sending invoice email: %s", exc)
-            return False
+            logger.error("Error sending invoice notifications: %s", exc)
+            return {"email": False, "whatsapp": False, "sms": False}
 
     async def _create_invoice(
         self,
@@ -138,15 +142,26 @@ class InvoiceIntentProcessor:
                 self.client.send_text(sender, f"Error: {exc}")
             return
 
-        # Send email if customer email provided
+        # Send notifications via all channels (Email, WhatsApp, SMS)
         customer_email = data.get("customer_email")
-        if customer_email:
-            await self._send_invoice_email(invoice, customer_email)
+        customer_phone = data.get("customer_phone")
+        
+        results = await self._send_invoice_notifications(
+            invoice,
+            customer_email=customer_email,
+            customer_phone=customer_phone
+        )
 
-        self._notify_business(sender, invoice, customer_email)
+        self._notify_business(sender, invoice, customer_email, results)
         self._notify_customer(invoice, data, issuer_id)
 
-    def _notify_business(self, sender: str, invoice, customer_email: str | None = None) -> None:
+    def _notify_business(
+        self,
+        sender: str,
+        invoice,
+        customer_email: str | None = None,
+        notification_results: dict[str, bool] | None = None
+    ) -> None:
         customer_name = getattr(invoice.customer, "name", "N/A") if invoice.customer else "N/A"
         business_message = (
             f"✅ Invoice {invoice.invoice_id} created!\n\n"
@@ -155,8 +170,20 @@ class InvoiceIntentProcessor:
             f"📊 Status: {invoice.status}\n"
         )
         
-        if customer_email:
-            business_message += f"📧 Email: {customer_email}\n\n✉️ Invoice email sent to customer!"
+        # Show notification status
+        if notification_results:
+            sent_channels = []
+            if notification_results.get("email"):
+                sent_channels.append("📧 Email")
+            if notification_results.get("whatsapp"):
+                sent_channels.append("💬 WhatsApp")
+            if notification_results.get("sms"):
+                sent_channels.append("📱 SMS")
+            
+            if sent_channels:
+                business_message += f"\n✉️ Sent via: {', '.join(sent_channels)}"
+        elif customer_email:
+            business_message += "\n📧 Notifications sent to customer!"
         else:
             business_message += "\n📧 WhatsApp invoice sent to customer!"
         

@@ -166,6 +166,19 @@ class InvoiceService:
         user.invoices_this_month += 1
         
         self.db.commit()
+        
+        # Reload invoice with relationships for notifications
+        self.db.refresh(invoice)
+        invoice = (
+            self.db.query(models.Invoice)
+            .options(
+                joinedload(models.Invoice.customer),
+                joinedload(models.Invoice.issuer),
+            )
+            .filter(models.Invoice.id == invoice.id)
+            .one()
+        )
+        
         logger.info("Created invoice %s for issuer %s (usage: %s/%s)", 
                    invoice.invoice_id, issuer_id, user.invoices_this_month, 
                    user.plan.invoice_limit or "unlimited")
@@ -285,39 +298,44 @@ class InvoiceService:
         return invoice, issuer
 
     def _send_receipt_to_customer(self, invoice: models.Invoice) -> None:
-        """Send payment receipt to customer via WhatsApp."""
+        """Send payment receipt to customer via Email, WhatsApp, and SMS."""
+        import asyncio
+        
         try:
-            from app.bot.whatsapp_adapter import WhatsAppClient
-            from app.core.config import settings
+            from app.services.notification_service import NotificationService
             
-            whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
-            if not whatsapp_key or not invoice.customer or not invoice.customer.phone:
-                logger.info("Cannot send receipt: missing WhatsApp config or customer phone")
+            notification_service = NotificationService()
+            
+            if not invoice.customer:
+                logger.info("Cannot send receipt: no customer on invoice %s", invoice.invoice_id)
                 return
             
-            client = WhatsAppClient(whatsapp_key)
+            # Get customer contact info
+            customer_email = getattr(invoice.customer, 'email', None)
+            customer_phone = getattr(invoice.customer, 'phone', None)
             
-            # Send receipt message
-            receipt_message = f"🎉 Payment Received!\n\n"
-            receipt_message += f"Thank you for your payment!\n\n"
-            receipt_message += f"📄 Invoice: {invoice.invoice_id}\n"
-            receipt_message += f"💰 Amount Paid: ₦{invoice.amount:,.2f}\n"
-            receipt_message += f"✅ Status: PAID\n\n"
-            receipt_message += f"Your receipt has been generated and sent to you."
+            if not customer_email and not customer_phone:
+                logger.info("Cannot send receipt: no contact info for invoice %s", invoice.invoice_id)
+                return
             
-            client.send_text(invoice.customer.phone, receipt_message)
+            # Send receipts via all channels
+            try:
+                # Create and run async task for sending receipt notifications
+                async def send_receipt():
+                    return await notification_service.send_receipt_notification(
+                        invoice=invoice,
+                        customer_email=customer_email,
+                        customer_phone=customer_phone,
+                        pdf_url=invoice.pdf_url,
+                    )
+                
+                # Run the async function
+                results = asyncio.run(send_receipt())
+                logger.info("Receipt sent for invoice %s - Email: %s, WhatsApp: %s, SMS: %s",
+                           invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
+            except Exception as e:
+                logger.error("Failed to send receipt notifications: %s", e)
             
-            # If PDF URL is accessible, send receipt PDF
-            if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-                client.send_document(
-                    invoice.customer.phone,
-                    invoice.pdf_url,
-                    f"Receipt_{invoice.invoice_id}.pdf",
-                    f"Payment Receipt - ₦{invoice.amount:,.2f}"
-                )
-            
-            logger.info("Sent receipt for invoice %s to customer %s", 
-                       invoice.invoice_id, invoice.customer.phone)
         except Exception as e:
             logger.error("Failed to send receipt to customer: %s", e)
 

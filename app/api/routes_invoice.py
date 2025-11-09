@@ -36,20 +36,21 @@ async def create_invoice(
     try:
         invoice = svc.create_invoice(issuer_id=current_user_id, data=data.model_dump())
         
-        # Send email if customer email provided
-        if data.customer_email:
+        # Send notifications via all available channels (Email, WhatsApp, SMS)
+        if data.customer_email or data.customer_phone:
             from app.services.notification_service import NotificationService
             notification_service = NotificationService()
-            email_sent = await notification_service.send_invoice_email(
+            results = await notification_service.send_invoice_notification(
                 invoice=invoice,
-                recipient_email=data.customer_email,
+                customer_email=data.customer_email,
+                customer_phone=data.customer_phone,
                 pdf_url=invoice.pdf_url,
-                subject="New Invoice"
             )
-            if email_sent:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.info("Invoice email sent to %s", data.customer_email)
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s, SMS: %s",
+                       invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
         
         return invoice
     except ValueError as e:
