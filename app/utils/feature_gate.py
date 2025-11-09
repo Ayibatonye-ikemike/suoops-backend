@@ -1,8 +1,11 @@
 """
 Feature gating utilities for subscription-based access control.
 
-Free tier: 5 invoices per month only
-Paid tiers: All features unlocked + invoice limits
+Tier structure (profitable pricing):
+- Free: 5 invoices/month, manual only
+- Starter (₦4,500): 100 invoices/month + tax reports
+- Pro (₦8,000): 200 invoices/month + custom branding
+- Business (₦16,000): 300 invoices/month + voice (15 max) + OCR (15 max) [5% quota]
 """
 import datetime as dt
 from fastapi import HTTPException
@@ -128,6 +131,80 @@ class FeatureGate:
                     "upgrade_url": "/subscription/initialize"
                 }
             )
+    
+    def get_monthly_voice_ocr_count(self) -> int:
+        """
+        Get number of voice + OCR invoices created this month.
+        Used for Business plan 5% quota enforcement.
+        """
+        # TODO: Track voice/OCR invoices separately in database
+        # For now, return 0 (will implement proper tracking in next iteration)
+        return 0
+    
+    def can_use_voice_ocr(self) -> tuple[bool, str | None]:
+        """
+        Check if user can use voice/OCR features (Business plan with quota check).
+        
+        Business plan: 5% quota (15 invoices out of 300)
+        Enterprise: Unlimited
+        
+        Returns:
+            (can_use: bool, error_message: str | None)
+        """
+        plan = self.user.plan
+        features = plan.features
+        
+        # Check if plan has voice/OCR access at all
+        if not features.get("voice_invoice") or not features.get("photo_invoice_ocr"):
+            return False, (
+                "Voice invoices and Photo OCR are only available on Business and Enterprise plans. "
+                "Upgrade to unlock these premium features."
+            )
+        
+        # Enterprise has unlimited
+        if plan == models.SubscriptionPlan.ENTERPRISE:
+            return True, None
+        
+        # Business plan: check 5% quota (15 out of 300)
+        if plan == models.SubscriptionPlan.BUSINESS:
+            quota = int(plan.invoice_limit * 0.05)  # 5% of 300 = 15
+            current_count = self.get_monthly_voice_ocr_count()
+            
+            if current_count >= quota:
+                return False, (
+                    f"You've reached your Business plan voice/OCR quota of {quota} premium invoices per month "
+                    f"({quota}/{plan.invoice_limit} = 5%). You can still create {plan.invoice_limit - self.get_monthly_invoice_count()} "
+                    "manual invoices this month, or upgrade to Enterprise for unlimited premium features."
+                )
+            
+            return True, None
+        
+        # Shouldn't reach here, but safe fallback
+        return False, "Voice/OCR not available on your plan"
+    
+    def check_voice_ocr_quota(self) -> None:
+        """
+        Check voice/OCR quota and raise exception if exceeded.
+        
+        Raises:
+            HTTPException: 403 if quota exceeded or feature not available
+        """
+        can_use, error_msg = self.can_use_voice_ocr()
+        if not can_use:
+            quota = int(self.user.plan.invoice_limit * 0.05) if self.user.plan == models.SubscriptionPlan.BUSINESS else 0
+            current_count = self.get_monthly_voice_ocr_count()
+            
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "voice_ocr_quota_exceeded" if current_count >= quota else "voice_ocr_not_available",
+                    "message": error_msg,
+                    "current_count": current_count,
+                    "quota": quota,
+                    "current_plan": self.user.plan.value,
+                    "upgrade_url": "/subscription/initialize"
+                }
+            )
 
 
 def require_paid_plan(db: Session, user_id: int, feature_name: str = "This feature") -> None:
@@ -159,3 +236,48 @@ def check_invoice_limit(db: Session, user_id: int) -> None:
     """
     gate = FeatureGate(db, user_id)
     gate.check_invoice_creation()
+
+
+def check_voice_ocr_quota(db: Session, user_id: int) -> None:
+    """
+    Convenience function to check voice/OCR quota for Business plan.
+    
+    Args:
+        db: Database session
+        user_id: User ID to check
+    
+    Raises:
+        HTTPException: 403 if quota exceeded or feature not available
+    """
+    gate = FeatureGate(db, user_id)
+    gate.check_voice_ocr_quota()
+
+
+def require_plan_feature(db: Session, user_id: int, feature_key: str, feature_name: str = None) -> None:
+    """
+    Check if user's plan has a specific feature.
+    
+    Args:
+        db: Database session
+        user_id: User ID to check
+        feature_key: Key in plan.features dict (e.g., 'custom_branding', 'tax_automation')
+        feature_name: Human-readable feature name for error message
+    
+    Raises:
+        HTTPException: 403 if feature not available on user's plan
+    """
+    gate = FeatureGate(db, user_id)
+    features = gate.user.plan.features
+    
+    if not features.get(feature_key):
+        feature_display = feature_name or feature_key.replace("_", " ").title()
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "feature_not_available",
+                "message": f"{feature_display} is not available on your {gate.user.plan.value} plan. Please upgrade.",
+                "current_plan": gate.user.plan.value,
+                "required_feature": feature_key,
+                "upgrade_url": "/subscription/initialize"
+            }
+        )

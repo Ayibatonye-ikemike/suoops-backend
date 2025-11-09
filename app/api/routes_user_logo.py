@@ -8,6 +8,7 @@ from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models, schemas
 from app.storage.s3_client import s3_client
+from app.utils.feature_gate import require_plan_feature
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
@@ -19,6 +20,10 @@ async def upload_logo(
     current_user_id: Annotated[int, Depends(get_current_user_id)] = None,
     db: Annotated[Session, Depends(get_db)] = None,
 ):
+    """Upload custom logo (Pro+ feature)."""
+    # Check if user has Pro, Business, or Enterprise plan
+    require_plan_feature(db, current_user_id, "custom_branding", "Custom Logo Branding")
+    
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image (PNG, JPG, JPEG, or SVG)")
     allowed_types = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml"]

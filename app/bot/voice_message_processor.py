@@ -27,21 +27,24 @@ class VoiceMessageProcessor:
         self.invoice_processor = invoice_processor
         self._speech_service_factory = speech_service_factory
 
-    def _check_user_has_paid_plan(self, sender: str) -> bool:
-        """Determine if voice feature is allowed.
-
-        Controlled by FEATURE_VOICE_REQUIRES_PAID flag. If the flag is False, everyone gets
-        access regardless of environment or subscription. This makes enabling/disabling the
-        premium gate a simple config change without code edits.
-        When True, only paid (non-FREE) plans are allowed in production; in non-production
-        environments we always allow to keep tests/dev simple.
+    def _check_user_has_business_plan(self, sender: str) -> tuple[bool, models.User | None]:
+        """
+        Check if user has Business or Enterprise plan for voice/OCR features.
+        
+        Voice and OCR are now exclusive to Business+ plans.
+        Business plan: 5% quota (15 voice+OCR invoices per month)
+        Enterprise: Unlimited
+        
+        Returns:
+            (has_access: bool, user: User | None)
         """
         # Fast path: feature flag disabled – open access.
         if not settings.FEATURE_VOICE_REQUIRES_PAID:
-            return True
+            return True, None
         # Dev/Test environments bypass gating for easier local workflows.
         if settings.ENV.lower() not in {"prod", "production"}:
-            return True
+            return True, None
+        
         normalized = sender.strip()
         if not normalized.startswith("+"):
             if normalized.startswith("234"):
@@ -50,31 +53,38 @@ class VoiceMessageProcessor:
                 normalized = f"+234{normalized[1:]}"
             else:
                 normalized = f"+{normalized}"
+        
         user = (
             self.invoice_processor.db.query(models.User)
             .filter(models.User.phone == normalized)
             .first()
         )
         if not user:
-            return False
-        return user.plan != models.SubscriptionPlan.FREE
+            return False, None
+        
+        # Check if Business or Enterprise plan
+        has_access = user.plan in (models.SubscriptionPlan.BUSINESS, models.SubscriptionPlan.ENTERPRISE)
+        return has_access, user
 
     async def process(self, sender: str, media_id: str, payload: dict[str, Any]) -> None:
         try:
-            # Check if user has paid plan (voice messages are premium feature)
-            if not self._check_user_has_paid_plan(sender):
+            # Check if user has Business/Enterprise plan (voice is premium feature)
+            has_access, user = self._check_user_has_business_plan(sender)
+            if not has_access:
                 self.client.send_text(
                     sender,
                     "🔒 Voice Invoice Feature\n\n"
-                    "Voice message invoices are only available on paid plans.\n\n"
-                    "✅ Upgrade your plan to unlock:\n"
-                    "• Voice note invoices\n"
-                    "• Photo invoices (OCR)\n"
-                    "• More monthly invoices\n"
-                    "• Priority support\n\n"
+                    "Voice message invoices are only available on Business and Enterprise plans.\n\n"
+                    "📊 Current Plans:\n"
+                    "• Starter (₦4,500/mo): 100 invoices + Tax reports\n"
+                    "• Pro (₦8,000/mo): 200 invoices + Custom branding\n"
+                    "• Business (₦16,000/mo): 300 invoices + Voice + Photo OCR (15 premium/mo)\n\n"
                     "Visit suoops.com/dashboard/subscription to upgrade!"
                 )
                 return
+            
+            # TODO: Check Business plan quota (5% = 15 voice+OCR per month)
+            # For now, allow all Business/Enterprise users
             
             self.client.send_text(sender, "🎙️ Processing your voice message...")
             media_url = await self.client.get_media_url(media_id)

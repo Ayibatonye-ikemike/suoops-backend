@@ -39,8 +39,8 @@ class SubscriptionPlan(str, enum.Enum):
         limits = {
             SubscriptionPlan.FREE: 5,
             SubscriptionPlan.STARTER: 100,
-            SubscriptionPlan.PRO: 1000,
-            SubscriptionPlan.BUSINESS: 3000,
+            SubscriptionPlan.PRO: 200,
+            SubscriptionPlan.BUSINESS: 300,
             SubscriptionPlan.ENTERPRISE: None,  # Unlimited
         }
         return limits[self]
@@ -50,9 +50,9 @@ class SubscriptionPlan(str, enum.Enum):
         """Monthly price in Naira."""
         prices = {
             SubscriptionPlan.FREE: 0,
-            SubscriptionPlan.STARTER: 2500,
-            SubscriptionPlan.PRO: 7500,
-            SubscriptionPlan.BUSINESS: 15000,
+            SubscriptionPlan.STARTER: 4500,
+            SubscriptionPlan.PRO: 8000,
+            SubscriptionPlan.BUSINESS: 16000,
             SubscriptionPlan.ENTERPRISE: 50000,
         }
         return prices[self]
@@ -64,17 +64,35 @@ class SubscriptionPlan(str, enum.Enum):
     
     @property
     def features(self) -> dict:
-        """Get feature access for this plan."""
-        is_paid = self != SubscriptionPlan.FREE
+        """
+        Get feature access for this plan.
+        
+        Feature gates:
+        - FREE: Manual invoices only (5/month)
+        - STARTER: + Tax reports & automation
+        - PRO: + Custom logo branding  
+        - BUSINESS: + Voice invoices (5% quota) + Photo OCR (5% quota)
+        - ENTERPRISE: Unlimited everything
+        """
         return {
             "invoices_per_month": self.invoice_limit,
-            "photo_invoice_ocr": is_paid,
-            "voice_invoice": is_paid,
             "whatsapp_bot": True,  # Available to all
             "email_notifications": True,  # Available to all
             "pdf_generation": True,  # Available to all
-            "custom_branding": is_paid,
-            "priority_support": is_paid,
+            "qr_verification": True,  # Available to all
+            # Tax features: Starter+
+            "tax_automation": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
+            "tax_reports": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
+            # Custom branding: Pro+
+            "custom_branding": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
+            # Voice & OCR: Business+ only (with 5% quota for Business, unlimited for Enterprise)
+            "voice_invoice": self in (SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
+            "photo_invoice_ocr": self in (SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
+            # Business plan has 5% quota (15 invoices for 300 total)
+            "voice_ocr_quota_percent": 5 if self == SubscriptionPlan.BUSINESS else None,
+            # Enterprise perks
+            "priority_support": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
+            "api_access": self in (SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
         }
 
 

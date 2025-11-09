@@ -23,7 +23,7 @@ from app.models import schemas
 from app.services.ocr_service import OCRService
 from app.services.invoice_service import InvoiceService
 from app.api.routes_auth import get_current_user_id
-from app.utils.feature_gate import require_paid_plan, check_invoice_limit
+from app.utils.feature_gate import check_invoice_limit, check_voice_ocr_quota, require_plan_feature
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ocr", tags=["ocr"])
@@ -73,8 +73,8 @@ async def parse_receipt_image(
     
     Speed: ~5-10 seconds
     """
-    # Check if user has paid plan FIRST (before processing file)
-    require_paid_plan(db, current_user_id, "Photo invoice OCR")
+    # Check if user has Business/Enterprise plan with available quota
+    check_voice_ocr_quota(db, current_user_id)
     
     # Validate file type (fast check before reading bytes)
     allowed_types = ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]
@@ -167,8 +167,8 @@ async def create_invoice_from_image(
     
     Note: Review the created invoice - OCR may have errors!
     """
-    # Check if user has paid plan (OCR is premium feature)
-    require_paid_plan(db, current_user_id, "Photo invoice OCR")
+    # Check if user has Business/Enterprise plan with available quota
+    check_voice_ocr_quota(db, current_user_id)
     
     # Check invoice creation limit
     check_invoice_limit(db, current_user_id)
