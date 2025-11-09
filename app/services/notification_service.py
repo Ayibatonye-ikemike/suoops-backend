@@ -551,20 +551,19 @@ Powered by SuoOps
             invoice: Invoice model instance
             customer_email: Customer email address (optional)
             customer_phone: Customer phone number (optional)
-            pdf_url: URL to receipt PDF
+            pdf_url: URL to receipt PDF (same as invoice PDF for now)
             
         Returns:
             dict: Status of each channel {"email": bool, "whatsapp": bool, "sms": bool}
         """
         results = {"email": False, "whatsapp": False, "sms": False}
         
-        # Send Email if email provided
+        # Send Email if email provided  
         if customer_email:
-            results["email"] = await self.send_invoice_email(
+            results["email"] = await self._send_receipt_email(
                 invoice=invoice,
                 recipient_email=customer_email,
                 pdf_url=pdf_url,
-                subject="Payment Receipt"
             )
         
         # Send WhatsApp if phone provided
@@ -584,6 +583,93 @@ Powered by SuoOps
         logger.info("Receipt notification sent - Email: %s, WhatsApp: %s, SMS: %s",
                    results["email"], results["whatsapp"], results["sms"])
         return results
+
+    async def _send_receipt_email(
+        self,
+        invoice: "models.Invoice",
+        recipient_email: str,
+        pdf_url: str | None = None,
+    ) -> bool:
+        """Send payment receipt email with invoice PDF attachment.
+        
+        Args:
+            invoice: Invoice model instance
+            recipient_email: Customer email address
+            pdf_url: URL to invoice PDF
+            
+        Returns:
+            bool: True if email sent successfully
+        """
+        try:
+            smtp_config = self._get_smtp_config()
+            if not smtp_config:
+                logger.warning("No email provider configured")
+                return False
+            
+            smtp_host = smtp_config["host"]
+            smtp_port = smtp_config["port"]
+            smtp_user = smtp_config["user"]
+            smtp_password = smtp_config["password"]
+            
+            from_email = getattr(settings, "FROM_EMAIL", smtp_user)
+            
+            # Create email message
+            msg = MIMEMultipart()
+            msg['From'] = from_email
+            msg['To'] = recipient_email
+            msg['Subject'] = f"Payment Receipt - {invoice.invoice_id}"
+            
+            # Receipt email body
+            body = f"""
+Hello {invoice.customer.name if invoice.customer else 'Customer'},
+
+Thank you for your payment! We have received your payment for invoice {invoice.invoice_id}.
+
+Payment Confirmation:
+- Invoice ID: {invoice.invoice_id}
+- Amount Paid: ₦{invoice.amount:,.2f}
+- Status: PAID ✓
+- Payment Date: {invoice.created_at.strftime('%B %d, %Y')}
+
+Your invoice is attached as a PDF for your records.
+
+Thank you for your business!
+
+---
+Powered by SuoOps
+"""
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Download and attach PDF if available
+            if pdf_url:
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.get(pdf_url)
+                        response.raise_for_status()
+                        pdf_data = response.content
+                    
+                    pdf_attachment = MIMEApplication(pdf_data, _subtype='pdf')
+                    pdf_attachment.add_header(
+                        'Content-Disposition',
+                        'attachment',
+                        filename=f'Receipt_{invoice.invoice_id}.pdf'
+                    )
+                    msg.attach(pdf_attachment)
+                except Exception as e:
+                    logger.error("Failed to download PDF for receipt: %s", e)
+            
+            # Send email
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+            
+            logger.info("Sent receipt email to %s for invoice %s", recipient_email, invoice.invoice_id)
+            return True
+            
+        except Exception as e:
+            logger.error("Failed to send receipt email: %s", e)
+            return False
 
     async def send_email(
         self,
