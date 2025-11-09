@@ -6,20 +6,20 @@ import json
 import logging
 import random
 import smtplib
+import ssl
 import string
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Protocol
-import ssl
 
 import redis
 
+from app import metrics
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
-from app import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +40,20 @@ class OTPRecord:
     created_at: float
 
     def serialize(self) -> str:
-        return json.dumps({"code": self.code, "attempts": self.attempts, "created_at": self.created_at})
+        return json.dumps({
+            "code": self.code,
+            "attempts": self.attempts,
+            "created_at": self.created_at,
+        })
 
     @classmethod
-    def deserialize(cls, payload: str) -> "OTPRecord":
+    def deserialize(cls, payload: str) -> OTPRecord:
         data = json.loads(payload)
-        return cls(code=data["code"], attempts=int(data.get("attempts", 0)), created_at=float(data["created_at"]))
+        return cls(
+            code=data["code"],
+            attempts=int(data.get("attempts", 0)),
+            created_at=float(data["created_at"]),
+        )
 
 
 class BaseKeyValueStore(Protocol):
@@ -218,7 +226,7 @@ Powered by SuoOps
             
         except Exception as e:
             logger.error("Failed to send email OTP: %s", e)
-            raise ValueError(f"Failed to send OTP email: {str(e)}")
+            raise ValueError(f"Failed to send OTP email: {e}") from e
 
     def request_signup(self, identifier: str, payload: dict[str, Any]) -> None:
         """Start signup by persisting user-provided data and sending OTP."""

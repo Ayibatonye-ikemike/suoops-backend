@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import os
 import warnings
-from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+import sys
+from pathlib import Path
+
+# Ensure project root (suoops-backend) is on sys.path for 'app' imports when running tests directly.
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from app.api.main import app  # noqa: E402
 from app.core.config import settings
 from app.db import session as db_session
 from app.db.base_class import Base
@@ -42,8 +51,18 @@ settings.ENV = "test"  # type: ignore[attr-defined]
 db_session.engine = test_engine  # type: ignore[assignment]
 SessionLocal.configure(bind=test_engine)
 
-# Suppress known third-party deprecation warnings (e.g., passlib crypt removal) to keep test output clean.
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="passlib.utils")
+# Suppress known third-party deprecation warnings (e.g., passlib crypt removal).
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module="passlib.utils",
+)
+# Suppress third-party utcnow deprecation chatter (botocore) until upstream fixes.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*datetime\.datetime\.utcnow\(\) is deprecated.*",
+    module="botocore.auth",
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -110,8 +129,6 @@ def db_session():
 
 
 # FastAPI TestClient fixture expected by some tests (e.g., invoice verification)
-from fastapi.testclient import TestClient  # noqa: E402
-from app.api.main import app  # noqa: E402
 
 
 @pytest.fixture

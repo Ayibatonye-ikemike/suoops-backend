@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""
-Test S3 Upload Functionality
-Tests if the backend can successfully upload files to suoops-s3-bucket
-"""
-import sys
-from pathlib import Path
+"""Integration test for S3 upload functionality (gated by INTEGRATION env)."""
 
-# Add app to path
-sys.path.insert(0, str(Path(__file__).parent))
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path  # noqa: F401 - retained for potential path manipulations
+
+import pytest
 
 from app.core.config import get_settings
 from app.storage.s3_client import S3Client
-import os
-import pytest
 
 
 @pytest.mark.integration
@@ -26,7 +24,7 @@ def test_s3_upload():
     settings = get_settings()
     
     # Display configuration
-    print(f"\n📋 S3 Configuration:")
+    print("\n📋 S3 Configuration:")
     print(f"  Bucket: {settings.S3_BUCKET}")
     print(f"  Region: {settings.S3_REGION}")
     print(f"  Access Key: {settings.S3_ACCESS_KEY[:10]}...")

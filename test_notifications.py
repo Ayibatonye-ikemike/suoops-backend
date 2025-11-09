@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.models import models
-from app.services.notification_service import NotificationService
+from app.services.notification.service import NotificationService
 
 
 async def test_invoice_notifications():
@@ -112,9 +112,10 @@ async def test_invoice_notifications():
         
         # Send SMS to business
         if user.phone:
-            business_results["sms"] = await notification_service._send_brevo_sms(
-                to_phone=user.phone,
-                message=message,
+            # Use public SMS facade (invoice context not strictly needed for simple message)
+            business_results["sms"] = await notification_service.send_receipt_sms(
+                invoice,
+                user.phone,
             )
         
         print("📊 BUSINESS NOTIFICATION RESULTS:")

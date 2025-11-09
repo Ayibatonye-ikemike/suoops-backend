@@ -42,11 +42,12 @@ def test_monthly_tax_report_csv_export(monkeypatch):
     client = TestClient(app)
     db = next(get_db())
     user = _setup_entities(db)
-    # Force auth dependency to return our user id
-    monkeypatch.setattr("app.api.routes_auth.get_current_user_id", lambda: user.id)
-    r = client.post("/tax/reports/generate?year=2025&month=10&basis=paid")
+    from app.api import routes_auth
+    app.dependency_overrides[routes_auth.get_current_user_id] = lambda: user.id
+    headers = {"Authorization": "Bearer test"}
+    r = client.post("/tax/reports/generate?year=2025&month=10&basis=paid", headers=headers)
     assert r.status_code == 200, r.text
-    rcsv = client.get("/tax/reports/2025/10/csv?basis=paid")
+    rcsv = client.get("/tax/reports/2025/10/csv?basis=paid", headers=headers)
     assert rcsv.status_code == 200, rcsv.text
     payload = rcsv.json()
     assert "csv_url" in payload

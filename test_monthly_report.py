@@ -1,13 +1,16 @@
 """Tests for MonthlyTaxReport aggregation logic."""
-from decimal import Decimal
-from datetime import datetime, timezone
 
-from app.services.tax_service import TaxProfileService
-from app.models.tax_models import MonthlyTaxReport
-from app.models.models import Invoice, User, Customer
-from app.db.base_class import Base
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from decimal import Decimal
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+from app.db.base_class import Base
+from app.models.models import Customer, Invoice, User
+from app.services.tax_reporting_service import TaxReportingService
 
 engine = create_engine("sqlite:///:memory:")
 SessionLocal = sessionmaker(bind=engine)
@@ -15,14 +18,38 @@ Base.metadata.create_all(bind=engine)
 
 
 def seed_user(session, user_id: int = 1):
-    u = User(id=user_id, phone="+234111111111", name="ReportUser", email="ru@example.com")
-    c = Customer(id=user_id, name="ReportCust", phone="+234111111112", email="rc@example.com")
+    """Create a user + matching customer with unique phone/email.
+
+    Ensures uniqueness across test invocations.
+    """
+    u = User(
+        id=user_id,
+        phone=f"+234{user_id:09d}",
+        name="ReportUser",
+        email=f"ru{user_id}@example.com",
+    )
+    c = Customer(
+        id=user_id,
+        name="ReportCust",
+        phone=f"+234{user_id:09d}9",
+        email=f"rc{user_id}@example.com",
+    )
     session.add_all([u, c])
     session.commit()
     return u
 
 
-def add_invoice(session, issuer_id: int, amount: float, category: str, vat_amount: float | None, year: int, month: int, day: int = 15):
+def add_invoice(
+    session,
+    issuer_id: int,
+    amount: float,
+    category: str,
+    vat_amount: float | None,
+    year: int,
+    month: int,
+    day: int = 15,
+):
+    """Insert a paid invoice with deterministic timestamps."""
     created = datetime(year, month, day, tzinfo=timezone.utc)
     inv = Invoice(
         invoice_id=f"INV-{issuer_id}-{year}{month}{day}-{category}",
@@ -44,7 +71,7 @@ def add_invoice(session, issuer_id: int, amount: float, category: str, vat_amoun
 def test_monthly_report_aggregation_vat_and_levy():
     session = SessionLocal()
     seed_user(session, 1)
-    service = TaxProfileService(session)
+    service = TaxReportingService(session)
     now = datetime.now(timezone.utc)
     year = now.year
     month = now.month
@@ -63,8 +90,12 @@ def test_monthly_report_aggregation_vat_and_levy():
     assert float(report.vat_collected) == 750.0
     # Assessable profit equals sum of all (no discounts)
     assert float(report.assessable_profit) == 10000 + 4000 + 6000
-    # Levy > 0 since default profile may classify as small with zero turnover/assets causing exemption; ensure classification update
-    service.update_profile(1, annual_turnover=Decimal("150000000"), fixed_assets=Decimal("300000000"))
+    # Update classification to medium and regenerate levy
+    service.update_profile(
+        1,
+        annual_turnover=Decimal("150000000"),
+        fixed_assets=Decimal("300000000"),
+    )
     report2 = service.generate_monthly_report(1, year, month, basis="paid", force_regenerate=True)
     assert float(report2.levy_amount) > 0
 
@@ -72,13 +103,19 @@ def test_monthly_report_aggregation_vat_and_levy():
 def test_monthly_report_regeneration_retains_pdf_url():
     session = SessionLocal()
     seed_user(session, 2)
-    service = TaxProfileService(session)
+    service = TaxReportingService(session)
     now = datetime.now(timezone.utc)
     year = now.year
     month = now.month
     add_invoice(session, 2, 5000, "standard", 375, year, month)
     report = service.generate_monthly_report(2, year, month, basis="paid", force_regenerate=True)
-    # Simulate PDF attach
+    # Simulate PDF attach and ensure retained when not forcing regeneration
     service.attach_report_pdf(report, "http://example.com/report.pdf")
-    regenerated = service.generate_monthly_report(2, year, month, basis="paid", force_regenerate=False)
+    regenerated = service.generate_monthly_report(
+        2,
+        year,
+        month,
+        basis="paid",
+        force_regenerate=False,
+    )
     assert regenerated.pdf_url == "http://example.com/report.pdf"

@@ -15,8 +15,11 @@ from app.api.routes_metrics import router as metrics_router
 from app.api.routes_oauth import router as oauth_router
 from app.api.routes_ocr import router as ocr_router
 from app.api.routes_subscription import router as subscription_router
-from app.api.routes_tax import router as tax_router
+from app.api.routes_tax_main import router as tax_router
 from app.api.routes_user import router as user_router
+from app.api.routes_user_logo import router as user_logo_router
+from app.api.routes_user_phone import router as user_phone_router
+from app.api.routes_user_bank import router as user_bank_router
 from app.api.routes_webhooks import router as webhook_router
 from app.core.config import settings
 from app.core.logger import init_logging
@@ -64,7 +67,11 @@ def create_app() -> FastAPI:
     app.include_router(ocr_router, tags=["ocr"])
     app.include_router(subscription_router, prefix="/subscriptions", tags=["subscriptions"])
     app.include_router(tax_router, tags=["tax"])
+    # User routers split for maintainability
     app.include_router(user_router, prefix="/users", tags=["users"])
+    app.include_router(user_logo_router, prefix="/users", tags=["users"])
+    app.include_router(user_phone_router, prefix="/users", tags=["users"])
+    app.include_router(user_bank_router, prefix="/users", tags=["users"])
     app.include_router(metrics_router, tags=["metrics"])
     app.include_router(health_router)
     return app

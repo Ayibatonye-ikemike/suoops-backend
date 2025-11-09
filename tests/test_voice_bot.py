@@ -1,13 +1,14 @@
-"""
-Tests for voice note transcription and speech processing.
+"""Tests for voice note transcription and speech processing."""
 
-Validates SRP: Each service has focused tests.
-"""
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, Mock, call, patch
 
-from app.services.speech_service import SpeechService
 from app.bot.nlp_service import NLPService
+from app.bot.whatsapp_adapter import WhatsAppClient, WhatsAppHandler
+from app.services.speech_service import SpeechService
 
 
 class TestSpeechService:
@@ -99,8 +100,6 @@ class TestWhatsAppVoiceIntegration:
     @pytest.mark.asyncio
     async def test_voice_note_too_short(self):
         """Test handling of very short voice notes."""
-        from app.bot.whatsapp_adapter import WhatsAppHandler, WhatsAppClient
-        from app.bot.nlp_service import NLPService
         
         mock_client = Mock(spec=WhatsAppClient)
         mock_client.send_text = Mock()
@@ -139,8 +138,11 @@ class TestWhatsAppVoiceIntegration:
         await handler.handle_incoming(voice_payload)
 
         assert mock_client.send_text.call_count >= 2
-        error_call = [call for call in mock_client.send_text.call_args_list if "too short" in str(call)]
-        assert error_call
+        error_calls = [
+            c for c in mock_client.send_text.call_args_list
+            if "too short" in str(c)
+        ]
+        assert error_calls
 
 
 if __name__ == "__main__":

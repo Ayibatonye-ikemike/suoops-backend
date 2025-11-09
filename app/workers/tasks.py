@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import gc
+import logging
 from typing import Any
+
 try:
     import resource  # POSIX-only; used for memory diagnostics
 except Exception:  # pragma: no cover
@@ -13,15 +14,13 @@ from celery import Task
 
 from app.core.config import settings
 from app.db.session import session_scope
-from app.workers.celery_app import celery_app
-from app.db.session import session_scope
+from app.models.models import Invoice, User
+from app.models.tax_models import FiscalInvoice
+from app.services.pdf_service import PDFService
+from app.services.tax_reporting_service import TaxReportingService
 from app.services.tax_service import TaxProfileService
 from app.storage.s3_client import s3_client
-from app.services.pdf_service import PDFService
-from app.models.tax_models import MonthlyTaxReport
-from app.models.models import User
-from app.models.tax_models import FiscalInvoice
-from app.models.models import Invoice
+from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +78,7 @@ def send_overdue_reminders() -> None:
 )
 def sync_provider_status(self: Task, provider: str, reference: str) -> None:
     """Sync payment provider status with retries on transient errors."""
-    with session_scope() as db:
-        logger.info("Syncing provider status | provider=%s reference=%s", provider, reference)
-        # Placeholder: would call PaymentService/Provider API
-        # raise Exception("transient") to exercise retry logic if needed
+    logger.info("Syncing provider status | provider=%s reference=%s", provider, reference)
 
 
 @celery_app.task(
@@ -96,6 +92,7 @@ def sync_provider_status(self: Task, provider: str, reference: str) -> None:
 def ocr_parse_image(self: Task, image_bytes_b64: str, context: str | None = None) -> dict[str, Any]:
     """Run OCR parse with retries (handles rate limits/timeouts)."""
     import base64
+
     from app.services.ocr_service import OCRService
     raw = base64.b64decode(image_bytes_b64)
     service = OCRService()
@@ -131,9 +128,14 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
 
     now = datetime.now(timezone.utc)
     prev_month = now.month - 1 or 12
-    year = now.year - 1 if prev_month == 12 and now.month == 1 else (now.year if prev_month != 12 or now.month != 1 else now.year)
+    # If rolling from January to December, decrement year; else current year
+    if prev_month == 12 and now.month == 1:
+        year = now.year - 1
+    else:
+        year = now.year
     with session_scope() as db:
-        tax_service = TaxProfileService(db)
+        tax_service = TaxProfileService(db)  # profile/classification
+        reporting = TaxReportingService(db)
         pdf_service = PDFService(s3_client)
         # Stream just IDs to keep ORM identity map small
         user_id_iter = db.query(User.id).yield_per(100)
@@ -142,16 +144,31 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
         for (user_id,) in user_id_iter:
             total += 1
             try:
-                report = tax_service.generate_monthly_report(user_id, year, prev_month, basis=basis, force_regenerate=False)
+                report = reporting.generate_monthly_report(
+                    user_id,
+                    year,
+                    prev_month,
+                    basis=basis,
+                    force_regenerate=False,
+                )
                 if not report.pdf_url:
                     pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis=basis)
-                    tax_service.attach_report_pdf(report, pdf_url)
+                    reporting.attach_report_pdf(report, pdf_url)
                 if total % 25 == 0:
                     gc.collect()
                     rss = _rss_mb()
                     if rss > 0:
-                        logger.info("[tax.generate_previous_month_reports] progress=%s users rss=%.1fMB", total, rss)
-                logger.info("Generated monthly tax report for user=%s period=%s-%02d", user_id, year, prev_month)
+                        logger.info(
+                            "[tax.generate_previous_month_reports] progress=%s users rss=%.1fMB",
+                            total,
+                            rss,
+                        )
+                logger.info(
+                    "Generated monthly tax report for user=%s period=%s-%02d",
+                    user_id,
+                    year,
+                    prev_month,
+                )
             except Exception as e:  # noqa: BLE001
                 failures += 1
                 logger.exception("Failed generating report for user %s: %s", user_id, e)
@@ -171,7 +188,12 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
         # Final memory log
         rss_final = _rss_mb()
         if rss_final > 0:
-            logger.info("[tax.generate_previous_month_reports] completed users=%s rss_final=%.1fMB failures=%s", total, rss_final, failures)
+            logger.info(
+                "[tax.generate_previous_month_reports] completed users=%s rss_final=%.1fMB failures=%s",
+                total,
+                rss_final,
+                failures,
+            )
     gc.collect()
 
 
@@ -184,11 +206,19 @@ def transmit_invoice(self: Task, fiscal_code: str) -> None:
     """
     from app.services.fiscalization_service import FiscalTransmitter  # local import
     with session_scope() as db:
-        fi: FiscalInvoice | None = db.query(FiscalInvoice).filter(FiscalInvoice.fiscal_code == fiscal_code).first()
+        fi: FiscalInvoice | None = (
+            db.query(FiscalInvoice)
+            .filter(FiscalInvoice.fiscal_code == fiscal_code)
+            .first()
+        )
         if not fi:
             logger.warning("Transmit skip: fiscal invoice not found | fiscal_code=%s", fiscal_code)
             return
-        inv: Invoice | None = db.query(Invoice).filter(Invoice.id == fi.invoice_id).first()
+        inv: Invoice | None = (
+            db.query(Invoice)
+            .filter(Invoice.id == fi.invoice_id)
+            .first()
+        )
         if not inv:
             logger.warning("Transmit skip: invoice missing | fiscal_code=%s invoice_id=%s", fiscal_code, fi.invoice_id)
             return
@@ -204,16 +234,30 @@ def transmit_invoice(self: Task, fiscal_code: str) -> None:
             existing["transmission"] = tx_result
             fi.firs_response = existing
             if tx_result.get("status") == "validated" and not fi.transmitted_at:
-                from datetime import datetime, timezone as _tz
+                from datetime import datetime
+                from datetime import timezone as _tz
                 fi.transmitted_at = datetime.now(_tz.utc)
             db.commit()
-            logger.info("Fiscal invoice transmitted | fiscal_code=%s status=%s", fiscal_code, fi.firs_validation_status)
+            logger.info(
+                "Fiscal invoice transmitted | fiscal_code=%s status=%s",
+                fiscal_code,
+                fi.firs_validation_status,
+            )
         except Exception as e:  # noqa: BLE001
-            logger.exception("Fiscal invoice transmission failed | fiscal_code=%s error=%s", fiscal_code, e)
+            logger.exception(
+                "Fiscal invoice transmission failed | fiscal_code=%s error=%s",
+                fiscal_code,
+                e,
+            )
             # Record alert best-effort
             try:
                 from app.models.alert_models import AlertEvent  # type: ignore
-                evt = AlertEvent(category="fiscal.transmit", message=f"Transmit failed {fiscal_code}: {e}", severity="error")
-                db.add(evt); db.commit()
+                evt = AlertEvent(
+                    category="fiscal.transmit",
+                    message=f"Transmit failed {fiscal_code}: {e}",
+                    severity="error",
+                )
+                db.add(evt)
+                db.commit()
             except Exception:
                 db.rollback()

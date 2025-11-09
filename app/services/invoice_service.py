@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import asyncio
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -216,6 +217,9 @@ class InvoiceService:
         )
         if not invoice:
             raise ValueError("Invoice not found")
+        # Normalize timezone for paid_at in case backend (e.g., SQLite) returned naive datetime
+        if invoice.paid_at is not None and invoice.paid_at.tzinfo is None:
+            invoice.paid_at = invoice.paid_at.replace(tzinfo=dt.timezone.utc)
         return invoice
 
     def update_status(self, issuer_id: int, invoice_id: str, status: str) -> models.Invoice:
@@ -238,6 +242,10 @@ class InvoiceService:
             # Use timezone-aware UTC timestamp
             invoice.paid_at = dt.datetime.now(dt.timezone.utc)
         self.db.commit()
+        # Normalize timezone awareness in case backend (e.g., SQLite) strips tzinfo on round-trip
+        if invoice.paid_at and invoice.paid_at.tzinfo is None:
+            invoice.paid_at = invoice.paid_at.replace(tzinfo=dt.timezone.utc)
+            self.db.commit()
         if status == "paid" and previous_status != "paid":
             metrics.invoice_paid()
             # Generate receipt PDF if missing
@@ -247,9 +255,31 @@ class InvoiceService:
                     self.db.commit()
             except Exception as e:  # noqa: BLE001
                 logger.warning("Failed to generate receipt PDF for %s: %s", invoice_id, e)
-            # Send receipt to customer (manual payment confirmation)
+            # Send receipt to customer (manual payment confirmation) using NotificationService facade
             logger.info("Invoice %s manually marked as paid, sending receipt", invoice_id)
-            self._send_receipt_to_customer(invoice)
+            try:
+                from app.services.notification.service import NotificationService
+
+                service = NotificationService()
+                customer_email = getattr(invoice.customer, "email", None) if invoice.customer else None
+                customer_phone = getattr(invoice.customer, "phone", None) if invoice.customer else None
+                async def _run():  # pragma: no cover - network IO
+                    return await service.send_receipt_notification(
+                        invoice=invoice,
+                        customer_email=customer_email,
+                        customer_phone=customer_phone,
+                        pdf_url=invoice.pdf_url,
+                    )
+                results = asyncio.run(_run())
+                logger.info(
+                    "Receipt sent for invoice %s - Email: %s, WhatsApp: %s, SMS: %s",
+                    invoice.invoice_id,
+                    results["email"],
+                    results["whatsapp"],
+                    results["sms"],
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.error("Failed to send receipt notifications for %s: %s", invoice.invoice_id, e)
         return self.get_invoice(issuer_id, invoice_id)
 
     def confirm_transfer(self, invoice_id: str) -> models.Invoice:
@@ -279,7 +309,54 @@ class InvoiceService:
                 invoice_id,
                 previous_status,
             )
-            self._notify_business_of_customer_confirmation(invoice)
+            # Notify business owner directly via NotificationService (legacy helper removed)
+            try:
+                from app.models import models as _models  # local import to avoid circulars
+                user = (
+                    self.db.query(_models.User)
+                    .filter(_models.User.id == invoice.issuer_id)
+                    .one_or_none()
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to load issuer for invoice %s: %s", invoice.invoice_id, exc)
+                return invoice
+            if not user:
+                logger.warning("Cannot notify business for invoice %s: issuer missing", invoice.invoice_id)
+                return invoice
+            message = (
+                "Customer reported a transfer.\n\n"
+                f"Invoice: {invoice.invoice_id}\n"
+                f"Amount: ₦{invoice.amount:,.2f}\n\n"
+                "Please confirm the funds and mark the invoice as paid to send their receipt."
+            )
+            try:
+                from app.services.notification.service import NotificationService
+                service = NotificationService()
+                async def _run():  # pragma: no cover - network IO
+                    results = {"email": False, "sms": False}
+                    if user.email:
+                        try:
+                            results["email"] = await service.send_email(
+                                to_email=user.email,
+                                subject=f"Payment Confirmation - Invoice {invoice.invoice_id}",
+                                body=message,
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            logger.error("Failed email notify business %s: %s", invoice.invoice_id, exc)
+                    if user.phone:
+                        try:
+                            results["sms"] = await service.send_receipt_sms(invoice, user.phone)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.error("Failed SMS notify business %s: %s", invoice.invoice_id, exc)
+                    logger.info(
+                        "Business notification for invoice %s - Email: %s, SMS: %s",
+                        invoice.invoice_id,
+                        results["email"],
+                        results["sms"],
+                    )
+                asyncio.run(_run())
+            except Exception as e:  # noqa: BLE001
+                logger.error("Notification dispatch failed for invoice %s: %s", invoice.invoice_id, e)
 
         return invoice
 
@@ -308,117 +385,7 @@ class InvoiceService:
 
         return invoice, issuer
 
-    def _send_receipt_to_customer(self, invoice: models.Invoice) -> None:
-        """Send payment receipt to customer via Email, WhatsApp, and SMS."""
-        import asyncio
-        
-        try:
-            from app.services.notification_service import NotificationService
-            
-            notification_service = NotificationService()
-            
-            if not invoice.customer:
-                logger.info("Cannot send receipt: no customer on invoice %s", invoice.invoice_id)
-                return
-            
-            # Get customer contact info
-            customer_email = getattr(invoice.customer, 'email', None)
-            customer_phone = getattr(invoice.customer, 'phone', None)
-            
-            if not customer_email and not customer_phone:
-                logger.info("Cannot send receipt: no contact info for invoice %s", invoice.invoice_id)
-                return
-            
-            # Send receipts via all channels
-            try:
-                # Create and run async task for sending receipt notifications
-                async def send_receipt():
-                    return await notification_service.send_receipt_notification(
-                        invoice=invoice,
-                        customer_email=customer_email,
-                        customer_phone=customer_phone,
-                        pdf_url=invoice.pdf_url,
-                    )
-                
-                # Run the async function
-                results = asyncio.run(send_receipt())
-                logger.info("Receipt sent for invoice %s - Email: %s, WhatsApp: %s, SMS: %s",
-                           invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
-            except Exception as e:
-                logger.error("Failed to send receipt notifications: %s", e)
-            
-        except Exception as e:
-            logger.error("Failed to send receipt to customer: %s", e)
-
-    def _notify_business_of_customer_confirmation(self, invoice: models.Invoice) -> None:
-        """Notify the business owner that the customer marked the invoice as transferred.
-        
-        Sends notification via Email and SMS to the business owner.
-        """
-        from app.core.config import settings
-        import asyncio
-
-        try:
-            user = self.db.query(models.User).filter(models.User.id == invoice.issuer_id).one_or_none()
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logger.error("Failed to load issuer for invoice %s: %s", invoice.invoice_id, exc)
-            return
-
-        if not user:
-            logger.warning("Cannot notify business for invoice %s: issuer missing", invoice.invoice_id)
-            return
-
-        # Prepare notification message
-        message = (
-            "🔔 Customer reported a transfer.\n\n"
-            f"Invoice: {invoice.invoice_id}\n"
-            f"Amount: ₦{invoice.amount:,.2f}\n\n"
-            "Please confirm the funds and mark the invoice as paid to send their receipt."
-        )
-
-        # Send via Email and SMS
-        async def send_notifications():
-            from app.services.notification_service import NotificationService
-            notification_service = NotificationService()
-            
-            results = {"email": False, "sms": False}
-            
-            # Send Email notification to business
-            if user.email:
-                try:
-                    results["email"] = await notification_service.send_email(
-                        to_email=user.email,
-                        subject=f"Payment Confirmation - Invoice {invoice.invoice_id}",
-                        body=message.replace("🔔", ""),  # Remove emoji for email
-                    )
-                except Exception as exc:
-                    logger.error("Failed to send email notification to business for invoice %s: %s", 
-                               invoice.invoice_id, exc)
-            
-            # Send SMS notification to business phone
-            if user.phone:
-                try:
-                    results["sms"] = await notification_service._send_brevo_sms(
-                        to=user.phone,
-                        message=message.replace("🔔", ""),  # Remove emoji for SMS
-                    )
-                except Exception as exc:
-                    logger.error("Failed to send SMS notification to business for invoice %s: %s", 
-                               invoice.invoice_id, exc)
-            
-            logger.info(
-                "Business notification for invoice %s - Email: %s, SMS: %s",
-                invoice.invoice_id,
-                results["email"],
-                results["sms"],
-            )
-        
-        # Run async notifications
-        try:
-            asyncio.create_task(send_notifications())
-        except RuntimeError:
-            # If no event loop, run in new loop
-            asyncio.run(send_notifications())
+    # (legacy invoice_notifications helpers removed; direct NotificationService facade usage in methods)
 
     # ---------- Internal helpers ----------
     def _get_or_create_customer(
@@ -429,7 +396,8 @@ class InvoiceService:
             q = q.filter(models.Customer.phone == phone)
         elif email:
             q = q.filter(models.Customer.email == email)
-        existing = q.one_or_none()
+        # Use first() instead of one_or_none() to tolerate duplicate legacy rows with same (name, phone)
+        existing = q.first()
         if existing:
             # Update email if provided and not already set
             if email and not existing.email:
