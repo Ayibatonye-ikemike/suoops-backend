@@ -18,10 +18,10 @@ router = APIRouter()
 
 PLAN_PRICES = {
     "FREE": 0,
-    "STARTER": 2500,  # ₦2,500/month
-    "PRO": 7500,       # ₦7,500/month
-    "BUSINESS": 15000, # ₦15,000/month
-    "ENTERPRISE": 50000, # ₦50,000/month
+    "STARTER": 2500,  # ₦2,500/month - Photo OCR, Voice invoices, Custom branding
+    "PRO": 7500,       # ₦7,500/month - Higher limits, Priority support
+    "BUSINESS": 15000, # ₦15,000/month - LEGACY (not actively sold)
+    "ENTERPRISE": 50000, # ₦50,000/month - LEGACY (not actively sold)
 }
 
 
