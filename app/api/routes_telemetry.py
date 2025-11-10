@@ -22,14 +22,16 @@ try:  # pragma: no cover
 except Exception:  # noqa: BLE001
     _TELEMETRY_COUNTER = None
 
-router = APIRouter(prefix="/telemetry", tags=["telemetry"])
-
 
 class TelemetryIn(BaseModel):
+    """Telemetry event payload from frontend."""
     type: str = Field(min_length=1, max_length=100)
     ts: str
     trace_id: str | None = None
     detail: dict[str, Any] | None = None
+
+
+router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 
 LOG_PATH = Path("telemetry.log")
