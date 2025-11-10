@@ -31,6 +31,7 @@ def get_redis_pool() -> ConnectionPool:
         "socket_connect_timeout": 5,
         "retry_on_timeout": True,
         "health_check_interval": 30,
+        "decode_responses": True,  # Return strings instead of bytes
     }
     
         # Handle SSL for rediss:// URLs
