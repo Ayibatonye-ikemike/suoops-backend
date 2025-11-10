@@ -158,7 +158,7 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
     try:
         bundle = svc.refresh(refresh_value)
         # Extract user_id from the new access token
-        from app.core.jwt import decode_token, TokenType
+        from app.core.security import decode_token, TokenType
         token_payload = decode_token(bundle.access_token, expected_type=TokenType.ACCESS)
         user_id = int(token_payload["sub"])
         log_audit_event("auth.refresh", user_id=user_id)
