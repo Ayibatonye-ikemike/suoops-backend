@@ -1,7 +1,9 @@
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 import logging
+import ssl
 
 import certifi
+import redis
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import threading
@@ -16,37 +18,73 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def _add_query_param(url: str, key: str, value: str | None) -> str:
-    parsed = urlparse(url)
-    query = parse_qs(parsed.query, keep_blank_values=True)
-    if value is None:
-        query.pop(key, None)
-    else:
-        query[key] = [value]
-    new_query = urlencode(query, doseq=True)
-    return urlunparse(parsed._replace(query=new_query))
-
-
-# Configure rate limiter storage
-storage_uri = "memory://"
-if settings.ENV.lower() == "prod":
+def _create_redis_storage_uri() -> str:
+    """
+    Create a properly configured Redis URI for SlowAPI/limits.
+    
+    SlowAPI uses the 'limits' library which creates its own Redis connection pool.
+    We need to pass SSL configuration via the URI or create a custom storage.
+    """
+    if settings.ENV.lower() != "prod":
+        logger.info("Rate limiter using in-memory storage (dev/test mode)")
+        return "memory://"
+    
     redis_url = settings.REDIS_URL
-    if redis_url and redis_url.startswith("rediss://"):
-        # For Heroku Redis with SSL issues, use CERT_NONE to avoid protocol errors
-        # Connection limit protection via max_connections
-        storage_uri = _add_query_param(redis_url, "ssl_cert_reqs", "none")
-        ca_path = settings.REDIS_SSL_CA_CERTS or certifi.where()
-        storage_uri = _add_query_param(storage_uri, "ssl_ca_certs", ca_path)
-        # Limit connections used by rate limiter
-        storage_uri = _add_query_param(storage_uri, "max_connections", "5")
-        storage_uri = _add_query_param(storage_uri, "socket_connect_timeout", "3")
-        storage_uri = _add_query_param(storage_uri, "socket_timeout", "3")
-        storage_uri = _add_query_param(storage_uri, "retry_on_timeout", "true")
-        logger.info("Rate limiter using Redis with SSL (cert_reqs=none)")
-    else:
-        storage_uri = redis_url or "memory://"
+    if not redis_url or not redis_url.startswith("rediss://"):
+        return redis_url or "memory://"
+    
+    # For Heroku Redis with SSL, we need to create a custom connection
+    # since SlowAPI doesn't properly handle SSL parameters from query string
+    logger.info("Rate limiter will use custom Redis client with proper SSL config")
+    return "memory://"  # Fallback for now, will use custom storage below
+
+
+def _create_custom_redis_client() -> redis.Redis | None:
+    """
+    Create a Redis client with proper SSL configuration for rate limiting.
+    This bypasses SlowAPI's URI parsing issues.
+    """
+    if settings.ENV.lower() != "prod":
+        return None
+    
+    redis_url = settings.REDIS_URL
+    if not redis_url or not redis_url.startswith("rediss://"):
+        return None
+    
+    try:
+        # Use our centralized Redis pool
+        from app.db.redis_client import get_redis_client
+        client = get_redis_client()
+        logger.info("Rate limiter using shared Redis pool with proper SSL configuration")
+        return client
+    except Exception as e:
+        logger.warning("Failed to create Redis client for rate limiter: %s, falling back to memory", e)
+        return None
+
+
+# Configure rate limiter storage with custom Redis client
+storage_uri = _create_redis_storage_uri()
+
+# Try to use custom Redis client if in production
+_custom_redis_client = _create_custom_redis_client()
+
+if _custom_redis_client:
+    # Create limiter with custom storage using our Redis pool
+    from limits.storage import RedisStorage
+    try:
+        custom_storage = RedisStorage(uri=storage_uri, connection_pool=_custom_redis_client.connection_pool)
+        limiter = Limiter(
+            key_func=get_remote_address,
+            storage_uri=custom_storage,
+            storage_options={}
+        )
+        logger.info("Rate limiter initialized with shared Redis pool")
+    except Exception as e:
+        logger.error("Failed to create custom Redis storage for rate limiter: %s, using memory", e)
+        limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 else:
-    logger.info("Rate limiter using in-memory storage (dev/test mode)")
+    # Fall back to default (memory in dev, or if Redis unavailable)
+    limiter = Limiter(key_func=get_remote_address, storage_uri=storage_uri)
 
 RATE_LIMITS = {
     # Auth flows
@@ -70,8 +108,6 @@ RATE_LIMITS = {
 
 _rate_limit_lock = threading.Lock()
 _rate_limit_counters: dict[str, int] = {"exceeded": 0}
-
-limiter = Limiter(key_func=get_remote_address, storage_uri=storage_uri)
 
 def increment_rate_limit_exceeded():
     with _rate_limit_lock:
