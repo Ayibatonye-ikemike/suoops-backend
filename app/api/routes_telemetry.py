@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -27,8 +27,8 @@ class TelemetryIn(BaseModel):
     """Telemetry event payload from frontend."""
     type: str = Field(min_length=1, max_length=100)
     ts: str
-    trace_id: str | None = None
-    detail: dict[str, Any] | None = None
+    trace_id: Optional[str] = None
+    detail: Optional[Dict[str, Any]] = None
 
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
