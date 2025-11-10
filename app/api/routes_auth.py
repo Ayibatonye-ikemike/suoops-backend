@@ -157,7 +157,11 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
         raise HTTPException(status_code=401, detail="Missing refresh token")
     try:
         bundle = svc.refresh(refresh_value)
-        log_audit_event("auth.refresh", user_id=bundle.user_id)
+        # Extract user_id from the new access token
+        from app.core.jwt import decode_token, TokenType
+        token_payload = decode_token(bundle.access_token, expected_type=TokenType.ACCESS)
+        user_id = int(token_payload["sub"])
+        log_audit_event("auth.refresh", user_id=user_id)
         return _bundle_to_response(bundle)
     except ValueError as exc:
         log_failure("auth.refresh", user_id=None, error=str(exc))
