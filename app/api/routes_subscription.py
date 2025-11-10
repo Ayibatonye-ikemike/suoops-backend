@@ -31,7 +31,6 @@ async def initialize_subscription_payment(
     plan: str,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
-    _auth=Depends(staff_or_admin_required),
 ):
     """
     Initialize Paystack payment for subscription upgrade.
@@ -155,7 +154,6 @@ async def verify_subscription_payment(
     reference: str,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
-    _auth=Depends(staff_or_admin_required),
 ):
     """
     Verify Paystack payment status.
