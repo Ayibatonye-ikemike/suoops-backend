@@ -29,6 +29,7 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 EXEMPT_PATHS = {
     "/health",
     "/metrics",
+    "/auth/",              # Auth endpoints use secure tokens (JWT/OAuth)
     "/webhooks/whatsapp",  # External webhooks have their own verification
     "/webhooks/paystack",
     "/public/invoices/",   # Public read-only endpoints
