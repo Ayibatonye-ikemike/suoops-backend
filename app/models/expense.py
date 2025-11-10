@@ -96,8 +96,9 @@ class Expense(Base):
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
     
-    # Relationships
-    user = relationship("User", back_populates="expenses")
+    # Note: This table is DEPRECATED - expenses are now tracked as invoices with invoice_type='expense'
+    # Keeping this model for backward compatibility only
+    # Relationship removed since User.expenses no longer exists
     
     def __repr__(self):
         return f"<Expense(id={self.id}, user_id={self.user_id}, amount={self.amount}, category={self.category}, date={self.date})>"
