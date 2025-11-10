@@ -8,6 +8,7 @@ from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 from app.api.rate_limit import limiter, increment_rate_limit_exceeded, rate_limit_stats
 from app.api.routes_auth import router as auth_router
+from app.api.routes_expense import router as expense_router
 from app.api.routes_health import router as health_router
 from app.api.routes_invoice import router as invoice_router
 from app.api.routes_invoice_public import router as invoice_public_router
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(webhook_router, prefix="/webhooks", tags=["webhooks"])
     app.include_router(invoice_public_router, prefix="/public/invoices", tags=["invoices-public"])
     app.include_router(invoice_router, prefix="/invoices", tags=["invoices"])
+    app.include_router(expense_router, tags=["expenses"])
     app.include_router(ocr_router, tags=["ocr"])
     app.include_router(subscription_router, prefix="/subscriptions", tags=["subscriptions"])
     app.include_router(tax_router, tags=["tax"])

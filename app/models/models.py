@@ -212,6 +212,11 @@ class User(Base):
         back_populates="issuer",
         foreign_keys="Invoice.issuer_id",
     )  # type: ignore
+    # Business expenses for profit calculation
+    expenses: Mapped[list["Expense"]] = relationship(
+        "Expense",
+        back_populates="user",
+    )  # type: ignore
 
 
 class WebhookEvent(Base):

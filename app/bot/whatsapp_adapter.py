@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.bot.expense_intent_processor import ExpenseIntentProcessor
 from app.bot.invoice_intent_processor import InvoiceIntentProcessor
 from app.bot.message_extractor import extract_message
 from app.bot.voice_message_processor import VoiceMessageProcessor
@@ -26,6 +27,7 @@ class WhatsAppHandler:
         self._speech_service = None
 
         self.invoice_processor = InvoiceIntentProcessor(db=db, client=client)
+        self.expense_processor = ExpenseIntentProcessor(db=db, client=client)
         self.voice_processor = VoiceMessageProcessor(
             client=client,
             nlp=nlp,
@@ -55,10 +57,15 @@ class WhatsAppHandler:
             if media_id:
                 await self.voice_processor.process(sender, media_id, message)
             return
+        
+        if msg_type == "image":
+            # Handle image messages (receipts)
+            await self._handle_image_message(sender, message)
+            return
 
         self.client.send_text(
             sender,
-            "Sorry, I only support text messages and voice notes.",
+            "Sorry, I only support text messages, voice notes, and images.",
         )
 
     async def _handle_text_message(self, sender: str, message: dict[str, Any]) -> None:
@@ -68,7 +75,17 @@ class WhatsAppHandler:
             return
 
         parse = self.nlp.parse_text(text, is_speech=False)
+        
+        # Try expense processor first (checks if expense-related)
+        await self.expense_processor.handle(sender, parse, message)
+        
+        # Then try invoice processor
         await self.invoice_processor.handle(sender, parse, message)
+    
+    async def _handle_image_message(self, sender: str, message: dict[str, Any]) -> None:
+        """Handle image messages (receipt photos)"""
+        parse = {}  # Empty parse for images
+        await self.expense_processor.handle(sender, parse, message)
 
     @property
     def speech_service(self):

@@ -15,12 +15,126 @@ from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal
 from typing import Optional, Tuple
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.expense import Expense
 from app.models.tax_models import MonthlyTaxReport
 from app.services.tax_service import TaxProfileService  # for profile access & exemptions
 
 logger = logging.getLogger(__name__)
+
+
+def compute_revenue_by_date_range(
+    db: Session,
+    user_id: int,
+    start_date: date,
+    end_date: date,
+    basis: str = "paid",
+) -> Decimal:
+    """
+    Compute total revenue from invoices for a date range.
+    
+    This is a standalone utility function for calculating revenue.
+    Used by both tax reporting and expense statistics.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        basis: 'paid' (only paid invoices) or 'all' (all non-refunded)
+        
+    Returns:
+        Total revenue for the period
+    """
+    from app.models.models import Invoice
+    
+    # Convert dates to datetime with timezone
+    start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+    
+    q = db.query(Invoice).filter(
+        Invoice.issuer_id == user_id,
+        Invoice.created_at >= start_dt,
+        Invoice.created_at <= end_dt,
+    )
+    
+    if basis == "paid":
+        q = q.filter(Invoice.status == "paid")
+    else:
+        q = q.filter(Invoice.status != "refunded")
+    
+    invoices = q.all()
+    total = Decimal("0")
+    for inv in invoices:
+        amount = Decimal(str(inv.amount))
+        if inv.discount_amount:
+            amount -= Decimal(str(inv.discount_amount))
+        total += amount
+    return total
+
+
+def compute_expenses_by_date_range(
+    db: Session,
+    user_id: int,
+    start_date: date,
+    end_date: date,
+) -> Decimal:
+    """
+    Compute total expenses for a date range.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        
+    Returns:
+        Total expenses for the period
+    """
+    result = db.query(func.sum(Expense.amount)).filter(
+        Expense.user_id == user_id,
+        Expense.date >= start_date,
+        Expense.date <= end_date,
+    ).scalar()
+    
+    return result or Decimal("0")
+
+
+def compute_actual_profit_by_date_range(
+    db: Session,
+    user_id: int,
+    start_date: date,
+    end_date: date,
+    basis: str = "paid",
+) -> Decimal:
+    """
+    Compute ACTUAL profit: Revenue - Expenses.
+    
+    This is the correct taxable profit calculation per 2026 Nigerian Tax Law.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        basis: 'paid' (only paid invoices) or 'all' (all non-refunded)
+        
+    Returns:
+        Actual profit (Revenue - Expenses) for the period
+    """
+    revenue = compute_revenue_by_date_range(db, user_id, start_date, end_date, basis)
+    expenses = compute_expenses_by_date_range(db, user_id, start_date, end_date)
+    
+    profit = revenue - expenses
+    
+    logger.info(
+        f"Profit calculation for user {user_id} ({start_date} to {end_date}): "
+        f"Revenue={revenue}, Expenses={expenses}, Profit={profit}"
+    )
+    
+    return profit
 
 
 class TaxReportingService:
@@ -315,7 +429,9 @@ class TaxReportingService:
         end_date: date,
         basis: str = "paid",
     ) -> Decimal:
-        """Compute assessable profit for a specific date range.
+        """Compute assessable profit (ACTUAL PROFIT = Revenue - Expenses) for a date range.
+        
+        Per 2026 Nigerian Tax Law: Profit = Revenue - Expenses
         
         Args:
             user_id: User ID
@@ -324,30 +440,12 @@ class TaxReportingService:
             basis: 'paid' (only paid invoices) or 'all' (all non-refunded)
             
         Returns:
-            Total assessable profit (revenue) for the period
+            Actual profit (Revenue - Expenses) for the period
         """
-        from app.models.models import Invoice
-        
-        # Convert dates to datetime with timezone
-        start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-        end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
-        
-        q = self.db.query(Invoice).filter(
-            Invoice.issuer_id == user_id,
-            Invoice.created_at >= start_dt,
-            Invoice.created_at <= end_dt,
+        return compute_actual_profit_by_date_range(
+            self.db,
+            user_id,
+            start_date,
+            end_date,
+            basis,
         )
-        
-        if basis == "paid":
-            q = q.filter(Invoice.status == "paid")
-        else:
-            q = q.filter(Invoice.status != "refunded")
-        
-        invoices = q.all()
-        total = Decimal("0")
-        for inv in invoices:
-            amount = Decimal(str(inv.amount))
-            if inv.discount_amount:
-                amount -= Decimal(str(inv.discount_amount))
-            total += amount
-        return total

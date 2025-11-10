@@ -307,6 +307,7 @@ def generate_tax_report(
             "exempt_sales": float(report.exempt_sales or 0),
             "pdf_url": report.pdf_url,
             "basis": basis,
+            "warning": "Note: 'Assessable Profit' currently shows total revenue. Track business expenses separately to calculate actual taxable profit (Revenue - Expenses) per 2026 Nigerian Tax Law.",
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

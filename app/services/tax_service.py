@@ -24,13 +24,16 @@ class BusinessClassifier:
     """
     Business size classification (SRP: Classification logic only).
     
-    Threshold assumptions (legacy placeholder; verify with FIRS current guidance):
-    - Small: Turnover ≤ ₦100M AND Assets ≤ ₦250M
-    - Medium: Above small but < ₦500M turnover
-    - Large: ₦500M+ turnover
+    Based on 2026 Nigerian Tax Law:
+    - Small: Turnover ≤ ₦50M (EXEMPT from CIT, pays PIT)
+    - Medium: ₦50M < Turnover < ₦500M
+    - Large: Turnover ≥ ₦500M
+    
+    Note: Small businesses owned by individuals pay Personal Income Tax (PIT)
+    using progressive rates, not Company Income Tax (CIT).
     """
     
-    SMALL_TURNOVER_THRESHOLD = Decimal("100000000")   # ₦100M
+    SMALL_TURNOVER_THRESHOLD = Decimal("50000000")    # ₦50M (2026 law)
     SMALL_ASSETS_THRESHOLD = Decimal("250000000")     # ₦250M
     MEDIUM_TURNOVER_THRESHOLD = Decimal("500000000")  # ₦500M
     
@@ -225,7 +228,7 @@ class TaxProfileService:
 
     # ---------------- Compliance & Eligibility (merged from legacy service) -----------------
 
-    SMALL_BUSINESS_TURNOVER_LIMIT = Decimal("100000000")  # ₦100M
+    SMALL_BUSINESS_TURNOVER_LIMIT = Decimal("50000000")   # ₦50M (2026 Nigerian Tax Law)
     SMALL_BUSINESS_ASSETS_LIMIT = Decimal("250000000")    # ₦250M
 
     def check_small_business_eligibility(self, user_id: int) -> Dict[str, object]:
