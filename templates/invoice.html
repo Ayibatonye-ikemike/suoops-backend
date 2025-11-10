@@ -123,7 +123,7 @@
     </div>
     {% if customer_portal_url %}
     <div class="confirm-box">
-      <p style="margin: 0;">Done with the transfer? Tap <a href="{{ customer_portal_url }}" target="_blank" rel="noopener">I've sent the transfer</a> so the business can confirm and send your receipt.</p>
+      <p style="margin: 0;">After completing your transfer, please <a href="{{ customer_portal_url }}" target="_blank" rel="noopener">click here to confirm payment</a> so we can verify and send your receipt.</p>
     </div>
     {% endif %}
   </div>
@@ -201,8 +201,10 @@
   <div class="footer">
     <p>Thank you for your business!</p>
     {% if customer_portal_url %}
-  <p>Keep this link handy: <a href="{{ customer_portal_url }}" target="_blank" rel="noopener">{{ customer_portal_url }}</a></p>
-  <p>Tap "I've sent the transfer" there once you pay so we can confirm quickly.</p>
+    <p style="margin-top:12px; font-size:13px;">
+      <strong>Payment Portal:</strong> <a href="{{ customer_portal_url }}" target="_blank" rel="noopener">{{ customer_portal_url }}</a>
+    </p>
+    <p style="font-size:12px; color:#666;">Use this link to confirm your transfer and check payment status.</p>
     {% else %}
     <p>After making payment, please notify us and your receipt will be sent automatically.</p>
     {% endif %}
