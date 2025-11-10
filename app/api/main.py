@@ -75,7 +75,16 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 def create_app() -> FastAPI:
     init_logging()
     init_monitoring()
-    app = FastAPI(title=settings.APP_NAME)
+    
+    # Disable debug mode and interactive docs in production for security
+    is_production = settings.ENV.lower() == "prod"
+    app = FastAPI(
+        title=settings.APP_NAME,
+        debug=False,  # Always disable debug mode
+        docs_url=None if is_production else "/docs",
+        redoc_url=None if is_production else "/redoc",
+        openapi_url=None if is_production else "/openapi.json",
+    )
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)

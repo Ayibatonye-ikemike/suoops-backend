@@ -31,7 +31,19 @@ else:
     # If URL is PostgreSQL but driver not installed (tests), gracefully downgrade to file-based sqlite
     if raw_url and raw_url.startswith("postgresql"):
         try:
-            engine = create_engine(raw_url, future=True)
+            # Configure connection pool for production PostgreSQL
+            # Pool size: base connections kept open
+            # Max overflow: additional connections that can be created on demand
+            # Pool recycle: recycle connections after 1 hour to prevent stale connections
+            # Pool pre-ping: verify connection health before using
+            engine = create_engine(
+                raw_url,
+                future=True,
+                pool_size=5,  # Base pool size (Heroku Standard-0: 20 connections max, shared with workers)
+                max_overflow=10,  # Allow up to 15 total connections (5 + 10)
+                pool_recycle=3600,  # Recycle connections after 1 hour
+                pool_pre_ping=True,  # Verify connection health before use
+            )
         except ModuleNotFoundError:
             fallback_url = "sqlite:///./storage/test_fallback.db"
             engine = create_engine(fallback_url, future=True)
