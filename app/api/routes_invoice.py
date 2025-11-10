@@ -60,8 +60,8 @@ async def create_invoice(
 
 @router.post("/upload-receipt", response_model=schemas.ReceiptUploadOut)
 async def upload_expense_receipt(
+    current_user_id: CurrentUserDep,
     file: UploadFile = File(...),
-    current_user_id: CurrentUserDep = Depends(get_current_user_id),
 ):
     """Upload expense receipt image and return S3 URL for use in invoice creation.
     
