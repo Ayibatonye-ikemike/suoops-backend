@@ -1,7 +1,7 @@
 """add pit_amount to monthly_tax_reports
 
 Revision ID: add_pit_amount_20251110
-Revises: add_expense_tracking
+Revises: unify_invoice_expense
 Create Date: 2025-11-10 16:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'add_pit_amount_20251110'
-down_revision = 'add_expense_tracking'
+down_revision = 'unify_invoice_expense'
 branch_labels = None
 depends_on = None
 
