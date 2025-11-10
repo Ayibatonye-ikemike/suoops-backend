@@ -136,6 +136,10 @@ class InvoiceService:
         discount_raw = data.get("discount_amount")
         discount_amount = Decimal(str(discount_raw)) if discount_raw else None
         
+        # Expense invoices are automatically marked as paid (already paid expenses)
+        status = "paid" if invoice_type == "expense" else "pending"
+        paid_at = dt.datetime.now(dt.timezone.utc) if invoice_type == "expense" else None
+        
         invoice = models.Invoice(
             invoice_id=generate_id("INV" if invoice_type == "revenue" else "EXP"),
             issuer_id=issuer_id,
@@ -143,6 +147,8 @@ class InvoiceService:
             amount=Decimal(str(data.get("amount"))),
             discount_amount=discount_amount,
             due_date=data.get("due_date"),
+            status=status,  # Auto-paid for expenses
+            paid_at=paid_at,  # Set paid timestamp for expenses
             invoice_type=invoice_type,
             category=data.get("category"),
             vendor_name=data.get("vendor_name"),
