@@ -13,7 +13,7 @@ fields store provisional registration metadata only.
 from enum import Enum
 from datetime import datetime, timezone
 from typing import Dict
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, JSON, ForeignKey, Numeric
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, JSON, ForeignKey, Numeric, Date
 from sqlalchemy.orm import relationship
 
 from app.db.base_class import Base
@@ -204,20 +204,33 @@ class VATReturn(Base):
 
 
 class MonthlyTaxReport(Base):
-    """Monthly consolidated tax compliance report metadata.
+    """Tax compliance report metadata supporting multiple time aggregations.
 
     Stores:
     - Assessable profit & development levy
     - VAT breakdown (taxable, zero-rated, exempt)
     - Generated PDF URL
+    - Period type: day, week, month, year
+    - Date range: start_date to end_date
+    
+    Backward compatible with monthly reports (year + month).
     """
     __tablename__ = "monthly_tax_reports"
     __table_args__ = ({},)
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
-    year = Column(Integer, nullable=False)
-    month = Column(Integer, nullable=False)
+    
+    # Period type and date range (new fields)
+    period_type = Column(String(10), nullable=False, default="month", server_default="month")
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    
+    # Legacy fields for backward compatibility (nullable for non-monthly reports)
+    year = Column(Integer, nullable=True)
+    month = Column(Integer, nullable=True)
+    
+    # Financial data
     assessable_profit = Column(Numeric(15, 2), default=0)
     levy_amount = Column(Numeric(15, 2), default=0)
     vat_collected = Column(Numeric(15, 2), default=0)

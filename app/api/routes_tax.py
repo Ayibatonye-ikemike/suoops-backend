@@ -240,28 +240,79 @@ async def development_levy(
 
 
 @router.post("/reports/generate", response_model=dict)
-def generate_monthly_tax_report(
-    year: int = Query(..., ge=2020, le=2100),
-    month: int = Query(..., ge=1, le=12),
-    basis: str = Query("paid", pattern="^(paid|all)$"),
-    force: bool = Query(False),
+def generate_tax_report(
+    period_type: str = Query("month", pattern="^(day|week|month|year)$", description="Period type: day, week, month, or year"),
+    year: int = Query(..., ge=2020, le=2100, description="Year (required for all periods)"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Month (required for month/day)"),
+    day: Optional[int] = Query(None, ge=1, le=31, description="Day (required for day)"),
+    week: Optional[int] = Query(None, ge=1, le=53, description="ISO week number (required for week)"),
+    basis: str = Query("paid", pattern="^(paid|all)$", description="Basis: paid or all"),
+    force: bool = Query(False, description="Force regeneration"),
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    service = TaxProfileService(db)
-    report = service.generate_monthly_report(current_user_id, year, month, basis=basis, force_regenerate=force)
-    return {
-        "year": report.year,
-        "month": report.month,
-        "assessable_profit": float(report.assessable_profit or 0),
-        "levy_amount": float(report.levy_amount or 0),
-        "vat_collected": float(report.vat_collected or 0),
-        "taxable_sales": float(report.taxable_sales or 0),
-        "zero_rated_sales": float(report.zero_rated_sales or 0),
-        "exempt_sales": float(report.exempt_sales or 0),
-        "pdf_url": report.pdf_url,
-        "basis": basis,
-    }
+    """Generate tax report for specified period.
+    
+    Period Types:
+    - day: Requires year, month, day
+    - week: Requires year, week (ISO 8601 week number)
+    - month: Requires year, month (default, backward compatible)
+    - year: Requires year only
+    
+    Examples:
+    - Daily: /tax/reports/generate?period_type=day&year=2025&month=1&day=15&basis=paid
+    - Weekly: /tax/reports/generate?period_type=week&year=2025&week=3&basis=paid
+    - Monthly: /tax/reports/generate?year=2025&month=1&basis=paid
+    - Yearly: /tax/reports/generate?period_type=year&year=2025&basis=paid
+    """
+    try:
+        service = TaxProfileService(db)
+        from app.services.tax_reporting_service import TaxReportingService
+        reporting_service = TaxReportingService(db)
+        
+        report = reporting_service.generate_report(
+            user_id=current_user_id,
+            period_type=period_type,
+            year=year,
+            month=month,
+            day=day,
+            week=week,
+            basis=basis,
+            force_regenerate=force,
+        )
+        
+        # Format period label for response
+        if period_type == "day":
+            period_label = f"{year}-{month:02d}-{day:02d}"
+        elif period_type == "week":
+            period_label = f"{year}-W{week:02d}"
+        elif period_type == "month":
+            period_label = f"{year}-{month:02d}"
+        else:  # year
+            period_label = str(year)
+        
+        return {
+            "id": report.id,
+            "period_type": report.period_type,
+            "period_label": period_label,
+            "start_date": report.start_date.isoformat() if report.start_date else None,
+            "end_date": report.end_date.isoformat() if report.end_date else None,
+            "year": report.year,
+            "month": report.month,
+            "assessable_profit": float(report.assessable_profit or 0),
+            "levy_amount": float(report.levy_amount or 0),
+            "vat_collected": float(report.vat_collected or 0),
+            "taxable_sales": float(report.taxable_sales or 0),
+            "zero_rated_sales": float(report.zero_rated_sales or 0),
+            "exempt_sales": float(report.exempt_sales or 0),
+            "pdf_url": report.pdf_url,
+            "basis": basis,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to generate tax report")
+        raise HTTPException(status_code=500, detail=f"Failed to generate tax report: {str(e)}")
 
 @router.get("/admin/alerts", response_model=list[AlertEventOut])
 def list_recent_alerts(
@@ -294,6 +345,27 @@ def list_recent_alerts(
     ]
 
 
+@router.get("/reports/{report_id}/download")
+def download_tax_report_by_id(
+    report_id: int,
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Download tax report PDF by report ID."""
+    report = db.query(MonthlyTaxReport).filter(
+        MonthlyTaxReport.id == report_id,
+        MonthlyTaxReport.user_id == current_user_id,
+    ).first()
+    if not report or not report.pdf_url:
+        raise HTTPException(status_code=404, detail="Report or PDF not found. Generate first.")
+    return {
+        "pdf_url": report.pdf_url,
+        "period_type": report.period_type,
+        "start_date": report.start_date.isoformat() if report.start_date else None,
+        "end_date": report.end_date.isoformat() if report.end_date else None,
+    }
+
+
 @router.get("/reports/{year}/{month}/download")
 def download_monthly_tax_report(
     year: int,
@@ -301,8 +373,10 @@ def download_monthly_tax_report(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
+    """Download monthly tax report PDF (backward compatible endpoint)."""
     report = db.query(MonthlyTaxReport).filter(
         MonthlyTaxReport.user_id == current_user_id,
+        MonthlyTaxReport.period_type == "month",
         MonthlyTaxReport.year == year,
         MonthlyTaxReport.month == month,
     ).first()
@@ -310,40 +384,51 @@ def download_monthly_tax_report(
         raise HTTPException(status_code=404, detail="Report or PDF not found. Generate first.")
     return {"pdf_url": report.pdf_url}
 
-@router.get("/reports/{year}/{month}/csv")
-def download_monthly_tax_report_csv(
-    year: int,
-    month: int,
+@router.get("/reports/{report_id}/csv")
+def download_tax_report_csv_by_id(
+    report_id: int,
     basis: str = Query("paid", pattern="^(paid|all)$"),
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Generate (on-demand) CSV export for a monthly tax report.
-
-    Unlike the PDF (which may be pre-generated & cached), CSV is generated fresh to reflect
-    any recent changes (e.g., refunds). It excludes refunded invoices similarly to the PDF.
-    """
+    """Generate CSV export for a tax report by ID."""
     from io import StringIO
     from app.storage.s3_client import s3_client
+    from app.services.tax_reporting_service import TaxReportingService
+    
     report = db.query(MonthlyTaxReport).filter(
+        MonthlyTaxReport.id == report_id,
         MonthlyTaxReport.user_id == current_user_id,
-        MonthlyTaxReport.year == year,
-        MonthlyTaxReport.month == month,
     ).first()
     if not report:
-        raise HTTPException(status_code=404, detail="Report not found. Generate first.")
-    # Recompute profit & VAT if basis provided (keeps CSV consistent with chosen basis)
-    service = TaxProfileService(db)
-    refreshed = service.generate_monthly_report(current_user_id, year, month, basis=basis, force_regenerate=True)
+        raise HTTPException(status_code=404, detail="Report not found.")
+    
+    # Regenerate to get fresh data
+    service = TaxReportingService(db)
+    refreshed = service.generate_report(
+        user_id=current_user_id,
+        period_type=report.period_type,
+        year=report.year,
+        month=report.month,
+        day=report.start_date.day if report.period_type == "day" and report.start_date else None,
+        week=report.start_date.isocalendar()[1] if report.period_type == "week" and report.start_date else None,
+        basis=basis,
+        force_regenerate=True,
+    )
+    
     buf = StringIO()
     headers = [
-        "year","month","basis","assessable_profit","levy_amount","vat_collected",
-        "taxable_sales","zero_rated_sales","exempt_sales","generated_at"
+        "period_type", "start_date", "end_date", "year", "month", "basis",
+        "assessable_profit", "levy_amount", "vat_collected",
+        "taxable_sales", "zero_rated_sales", "exempt_sales", "generated_at"
     ]
     buf.write(",".join(headers) + "\n")
     row = [
-        str(refreshed.year),
-        f"{refreshed.month:02d}",
+        refreshed.period_type,
+        refreshed.start_date.isoformat() if refreshed.start_date else "",
+        refreshed.end_date.isoformat() if refreshed.end_date else "",
+        str(refreshed.year) if refreshed.year else "",
+        f"{refreshed.month:02d}" if refreshed.month else "",
         basis,
         f"{float(refreshed.assessable_profit or 0):.2f}",
         f"{float(refreshed.levy_amount or 0):.2f}",
@@ -355,9 +440,46 @@ def download_monthly_tax_report_csv(
     ]
     buf.write(",".join(row) + "\n")
     data = buf.getvalue().encode("utf-8")
-    key = f"tax-reports/{current_user_id}/{year}-{month:02d}-{basis}.csv"
+    
+    # Use period type in filename
+    if report.period_type == "day":
+        filename = f"{report.start_date.isoformat()}-{basis}.csv"
+    elif report.period_type == "week":
+        week_num = report.start_date.isocalendar()[1]
+        filename = f"{report.year}-W{week_num:02d}-{basis}.csv"
+    elif report.period_type == "month":
+        filename = f"{report.year}-{report.month:02d}-{basis}.csv"
+    else:  # year
+        filename = f"{report.year}-{basis}.csv"
+    
+    key = f"tax-reports/{current_user_id}/{filename}"
     url = s3_client.upload_bytes(data, key, content_type="text/csv")
     return {"csv_url": url, "basis": basis}
+
+
+@router.get("/reports/{year}/{month}/csv")
+def download_monthly_tax_report_csv(
+    year: int,
+    month: int,
+    basis: str = Query("paid", pattern="^(paid|all)$"),
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Generate CSV export for monthly tax report (backward compatible)."""
+    from io import StringIO
+    from app.storage.s3_client import s3_client
+    
+    report = db.query(MonthlyTaxReport).filter(
+        MonthlyTaxReport.user_id == current_user_id,
+        MonthlyTaxReport.period_type == "month",
+        MonthlyTaxReport.year == year,
+        MonthlyTaxReport.month == month,
+    ).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found. Generate first.")
+    
+    # Use the new endpoint by report ID
+    return download_tax_report_csv_by_id(report.id, basis, current_user_id, db)
 
 
 @router.get("/vat/summary")

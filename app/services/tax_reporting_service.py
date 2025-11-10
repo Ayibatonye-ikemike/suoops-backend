@@ -1,18 +1,19 @@
-"""Monthly tax reporting and computation service extracted from tax_service.py.
+"""Tax reporting and computation service with multi-period aggregation support.
 
 Responsibilities:
-- Assessable profit computation (basis-aware)
-- Monthly VAT aggregation
+- Assessable profit computation (basis-aware) for multiple time periods
+- VAT aggregation for day/week/month/year periods
 - Development levy computation
-- Monthly report persistence & PDF attachment
+- Report persistence & PDF attachment
+- Period type: day, week, month, year
 
 This module focuses purely on reporting/calculation logic; profile CRUD & classification
 remain in TaxProfileService for separation of concerns.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -30,51 +31,154 @@ class TaxReportingService:
     # Wrapper to maintain backward compatibility for tests expecting update_profile on this service
     def update_profile(self, user_id: int, **kwargs):
         return self.profile_service.update_profile(user_id, **kwargs)
+    
+    # -------- Period Date Range Calculation --------
+    def _calculate_period_range(
+        self,
+        period_type: str,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        day: Optional[int] = None,
+        week: Optional[int] = None,
+    ) -> Tuple[date, date]:
+        """Calculate start_date and end_date for a given period type.
+        
+        Args:
+            period_type: 'day', 'week', 'month', or 'year'
+            year: Required for all period types
+            month: Required for 'month' and 'day'
+            day: Required for 'day' period type
+            week: Required for 'week' period type (ISO week number)
+            
+        Returns:
+            Tuple of (start_date, end_date) inclusive
+        """
+        if not year:
+            raise ValueError("year is required for all period types")
+            
+        if period_type == "day":
+            if not month or not day:
+                raise ValueError("month and day required for daily reports")
+            try:
+                target_date = date(year, month, day)
+                return (target_date, target_date)
+            except ValueError as e:
+                raise ValueError(f"Invalid date: {year}-{month}-{day}") from e
+                
+        elif period_type == "week":
+            if not week:
+                raise ValueError("week number required for weekly reports")
+            # ISO 8601 week calculation: week 1 is first week with Thursday
+            # Use datetime.fromisocalendar for accurate ISO week dates
+            try:
+                start_dt = datetime.fromisocalendar(year, week, 1)  # Monday
+                end_dt = datetime.fromisocalendar(year, week, 7)    # Sunday
+                return (start_dt.date(), end_dt.date())
+            except ValueError as e:
+                raise ValueError(f"Invalid ISO week: {year}-W{week:02d}") from e
+                
+        elif period_type == "month":
+            if not month:
+                raise ValueError("month required for monthly reports")
+            try:
+                start_dt = datetime(year, month, 1)
+                # Calculate last day of month
+                if month == 12:
+                    end_dt = datetime(year, 12, 31)
+                else:
+                    end_dt = datetime(year, month + 1, 1) - timedelta(days=1)
+                return (start_dt.date(), end_dt.date())
+            except ValueError as e:
+                raise ValueError(f"Invalid month: {year}-{month}") from e
+                
+        elif period_type == "year":
+            return (date(year, 1, 1), date(year, 12, 31))
+            
+        else:
+            raise ValueError(f"Invalid period_type: {period_type}. Must be day/week/month/year")
 
-    # -------- Monthly Report Aggregation --------
-    def generate_monthly_report(
+    # -------- Report Generation (Multi-Period Support) --------
+    def generate_report(
         self,
         user_id: int,
-        year: int,
-        month: int,
+        period_type: str = "month",
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        day: Optional[int] = None,
+        week: Optional[int] = None,
         basis: str = "paid",
         force_regenerate: bool = False,
     ) -> MonthlyTaxReport:
-        """Generate or retrieve consolidated monthly tax report.
+        """Generate or retrieve tax report for any period type.
 
+        Args:
+            user_id: User ID
+            period_type: 'day', 'week', 'month', or 'year'
+            year: Required for all period types
+            month: Required for month/day reports
+            day: Required for day reports
+            week: Required for week reports (ISO week number)
+            basis: 'paid' (only paid invoices) or 'all' (all non-refunded)
+            force_regenerate: Force regeneration even if report exists
+            
+        Returns:
+            MonthlyTaxReport instance with calculated data
+            
         Basis rules:
         - paid: only paid invoices
         - all: all non-refunded invoices
         """
-        from app.models.models import Invoice  # local import
+        # Calculate date range for the period
+        start_date, end_date = self._calculate_period_range(
+            period_type=period_type,
+            year=year,
+            month=month,
+            day=day,
+            week=week,
+        )
+        
+        # Check for existing report
         existing = self.db.query(MonthlyTaxReport).filter(
             MonthlyTaxReport.user_id == user_id,
-            MonthlyTaxReport.year == year,
-            MonthlyTaxReport.month == month,
+            MonthlyTaxReport.period_type == period_type,
+            MonthlyTaxReport.start_date == start_date,
+            MonthlyTaxReport.end_date == end_date,
         ).first()
+        
         if existing and not force_regenerate:
             return existing
 
-        profit = self.compute_assessable_profit(user_id, year=year, month=month, basis=basis)
+        # Compute profit and levy for the period
+        profit = self.compute_assessable_profit_by_date_range(
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+            basis=basis,
+        )
         levy = self.compute_development_levy(user_id, profit)
 
-        start = datetime(year, month, 1, tzinfo=timezone.utc)
-        end = datetime(year + (month == 12), (month % 12) + 1, 1, tzinfo=timezone.utc)
+        # Query invoices in the period
+        from app.models.models import Invoice
+        start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+        end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+        
         q = self.db.query(Invoice).filter(
             Invoice.issuer_id == user_id,
-            Invoice.created_at >= start,
-            Invoice.created_at < end,
+            Invoice.created_at >= start_dt,
+            Invoice.created_at <= end_dt,
         )
         if basis == "paid":
             q = q.filter(Invoice.status == "paid")
         else:
             q = q.filter(Invoice.status != "refunded")
         invoices = q.all()
-        # Initialize VAT category buckets
+        
+        # Aggregate VAT by category
         taxable_sales = Decimal("0")
         zero_rated_sales = Decimal("0")
         exempt_sales = Decimal("0")
         vat_collected = Decimal("0")
+        
         for inv in invoices:
             amount = Decimal(str(inv.amount))
             if inv.discount_amount:
@@ -91,9 +195,13 @@ class TaxReportingService:
             else:
                 taxable_sales += amount
 
+        # Create or update report
         if not existing:
             report = MonthlyTaxReport(
                 user_id=user_id,
+                period_type=period_type,
+                start_date=start_date,
+                end_date=end_date,
                 year=year,
                 month=month,
                 assessable_profit=profit,
@@ -113,9 +221,35 @@ class TaxReportingService:
             report.taxable_sales = taxable_sales
             report.zero_rated_sales = zero_rated_sales
             report.exempt_sales = exempt_sales
+        
         self.db.commit()
         self.db.refresh(report)
         return report
+
+    def generate_monthly_report(
+        self,
+        user_id: int,
+        year: int,
+        month: int,
+        basis: str = "paid",
+        force_regenerate: bool = False,
+    ) -> MonthlyTaxReport:
+        """Backward-compatible wrapper for monthly reports.
+        
+        Delegates to generate_report with period_type='month'.
+        
+        Basis rules:
+        - paid: only paid invoices
+        - all: all non-refunded invoices
+        """
+        return self.generate_report(
+            user_id=user_id,
+            period_type="month",
+            year=year,
+            month=month,
+            basis=basis,
+            force_regenerate=force_regenerate,
+        )
 
     def attach_report_pdf(self, report: MonthlyTaxReport, pdf_url: str) -> MonthlyTaxReport:
         report.pdf_url = pdf_url
@@ -165,6 +299,50 @@ class TaxReportingService:
             start = datetime(year, month, 1, tzinfo=timezone.utc)
             end = datetime(year + (month == 12), (month % 12) + 1, 1, tzinfo=timezone.utc)
             q = q.filter(Invoice.created_at >= start, Invoice.created_at < end)
+        invoices = q.all()
+        total = Decimal("0")
+        for inv in invoices:
+            amount = Decimal(str(inv.amount))
+            if inv.discount_amount:
+                amount -= Decimal(str(inv.discount_amount))
+            total += amount
+        return total
+
+    def compute_assessable_profit_by_date_range(
+        self,
+        user_id: int,
+        start_date: date,
+        end_date: date,
+        basis: str = "paid",
+    ) -> Decimal:
+        """Compute assessable profit for a specific date range.
+        
+        Args:
+            user_id: User ID
+            start_date: Start date of period (inclusive)
+            end_date: End date of period (inclusive)
+            basis: 'paid' (only paid invoices) or 'all' (all non-refunded)
+            
+        Returns:
+            Total assessable profit (revenue) for the period
+        """
+        from app.models.models import Invoice
+        
+        # Convert dates to datetime with timezone
+        start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+        end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+        
+        q = self.db.query(Invoice).filter(
+            Invoice.issuer_id == user_id,
+            Invoice.created_at >= start_dt,
+            Invoice.created_at <= end_dt,
+        )
+        
+        if basis == "paid":
+            q = q.filter(Invoice.status == "paid")
+        else:
+            q = q.filter(Invoice.status != "refunded")
+        
         invoices = q.all()
         total = Decimal("0")
         for inv in invoices:
