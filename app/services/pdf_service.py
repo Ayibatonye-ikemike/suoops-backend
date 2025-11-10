@@ -204,7 +204,9 @@ class PDFService:
         qr_code_data: str | None = None,
     ) -> str:
         """Render invoice HTML template with bank transfer details and business logo."""
-        template = self.jinja.get_template("invoice.html")
+        # Use expense template for expense invoices
+        template_name = "expense_invoice.html" if invoice.invoice_type == "expense" else "invoice.html"
+        template = self.jinja.get_template(template_name)
         watermark_text = (
             settings.PDF_WATERMARK_TEXT
             if getattr(settings, "PDF_WATERMARK_ENABLED", False)
