@@ -233,6 +233,7 @@ class MonthlyTaxReport(Base):
     # Financial data
     assessable_profit = Column(Numeric(15, 2), default=0)
     levy_amount = Column(Numeric(15, 2), default=0)
+    pit_amount = Column(Numeric(15, 2), default=0, nullable=True)  # Personal Income Tax
     vat_collected = Column(Numeric(15, 2), default=0)
     taxable_sales = Column(Numeric(15, 2), default=0)
     zero_rated_sales = Column(Numeric(15, 2), default=0)

@@ -349,23 +349,27 @@ class PDFService:
             Base64 encoded image as data URI, or None if fetch fails
         """
         try:
-            import urllib.request
+            import requests
             import mimetypes
             
-            # Fetch the image from S3
-            with urllib.request.urlopen(receipt_url, timeout=10) as response:
-                image_data = response.read()
-                
-            # Determine MIME type from URL or content
-            mime_type = mimetypes.guess_type(receipt_url)[0]
+            # Fetch the image from S3 with timeout
+            response = requests.get(receipt_url, timeout=15)
+            response.raise_for_status()
+            image_data = response.content
+            
+            # Determine MIME type from URL or response headers
+            mime_type = response.headers.get('Content-Type')
+            if not mime_type:
+                mime_type = mimetypes.guess_type(receipt_url)[0]
             if not mime_type:
                 # Default to jpeg if unknown
                 mime_type = "image/jpeg"
             
             # Convert to base64
             img_base64 = base64.b64encode(image_data).decode('utf-8')
+            logger.info("Successfully fetched and encoded receipt image from %s (size: %d bytes)", receipt_url, len(image_data))
             return f"data:{mime_type};base64,{img_base64}"
             
         except Exception as e:  # noqa: BLE001
-            logger.warning("Failed to fetch receipt image from %s: %s", receipt_url, e)
+            logger.error("Failed to fetch receipt image from %s: %s", receipt_url, e)
             return None

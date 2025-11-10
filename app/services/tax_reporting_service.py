@@ -24,6 +24,73 @@ from app.services.tax_service import TaxProfileService  # for profile access & e
 logger = logging.getLogger(__name__)
 
 
+# Nigerian Personal Income Tax (PIT) Bands for 2026
+# Progressive taxation on profit (revenue - expenses)
+PIT_BANDS = [
+    (800_000, 0.00),         # First ₦800,000: 0%
+    (3_000_000, 0.15),       # Next ₦2.2M (₦800K-₦3M): 15%
+    (12_000_000, 0.18),      # Next ₦9M (₦3M-₦12M): 18%
+    (25_000_000, 0.21),      # Next ₦13M (₦12M-₦25M): 21%
+    (50_000_000, 0.23),      # Next ₦25M (₦25M-₦50M): 23%
+    (float('inf'), 0.25),    # Above ₦50M: 25%
+]
+
+
+def compute_personal_income_tax(profit: Decimal) -> dict:
+    """
+    Calculate Nigerian Personal Income Tax (PIT) using progressive bands.
+    
+    Per 2026 Nigerian Tax Law:
+    - Small businesses (turnover <₦50M) are exempt from CIT
+    - Owners pay PIT on profit using progressive rates
+    - Tax is charged on profit (Revenue - Expenses), not revenue
+    
+    Args:
+        profit: Taxable profit (Revenue - Expenses)
+        
+    Returns:
+        dict with pit_amount, effective_rate, band_label
+    """
+    if profit <= 0:
+        return {
+            "pit_amount": Decimal("0"),
+            "effective_rate": Decimal("0"),
+            "band_label": "0% (No profit)",
+        }
+    
+    profit_float = float(profit)
+    tax_amount = Decimal("0")
+    previous_threshold = 0
+    
+    # Calculate tax using progressive bands
+    for threshold, rate in PIT_BANDS:
+        if profit_float <= previous_threshold:
+            break
+            
+        taxable_in_band = min(profit_float, threshold) - previous_threshold
+        tax_in_band = Decimal(str(taxable_in_band * rate))
+        tax_amount += tax_in_band
+        
+        previous_threshold = threshold
+    
+    # Determine which band the profit falls into
+    for threshold, rate in PIT_BANDS:
+        if profit_float <= threshold:
+            band_label = f"{int(rate * 100)}%"
+            break
+    else:
+        band_label = "25%"
+    
+    # Calculate effective rate
+    effective_rate = (tax_amount / profit * 100) if profit > 0 else Decimal("0")
+    
+    return {
+        "pit_amount": tax_amount.quantize(Decimal("0.01")),
+        "effective_rate": effective_rate.quantize(Decimal("0.01")),
+        "band_label": band_label,
+    }
+
+
 def compute_revenue_by_date_range(
     db: Session,
     user_id: int,
@@ -280,45 +347,57 @@ class TaxReportingService:
             basis=basis,
         )
         levy = self.compute_development_levy(user_id, profit)
+        
+        # Calculate Personal Income Tax (PIT) on profit
+        pit_calc = compute_personal_income_tax(profit)
+        pit_amount = pit_calc["pit_amount"]
 
-        # Query invoices in the period (ONLY REVENUE INVOICES for VAT)
-        from app.models.models import Invoice
-        start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-        end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+        # Check if user is on BUSINESS plan (VAT-eligible)
+        # STARTER and PRO plans are for small businesses (<₦50M threshold)
+        # Only BUSINESS plan users track VAT (they meet ₦50M threshold)
+        from app.models.models import Invoice, User, SubscriptionPlan
+        user = self.db.query(User).filter(User.id == user_id).first()
+        is_vat_eligible = user and user.plan == SubscriptionPlan.BUSINESS
         
-        q = self.db.query(Invoice).filter(
-            Invoice.issuer_id == user_id,
-            Invoice.invoice_type == "revenue",  # Only revenue invoices have VAT
-            Invoice.created_at >= start_dt,
-            Invoice.created_at <= end_dt,
-        )
-        if basis == "paid":
-            q = q.filter(Invoice.status == "paid")
-        else:
-            q = q.filter(Invoice.status != "refunded")
-        invoices = q.all()
-        
-        # Aggregate VAT by category
+        # Initialize VAT fields (only calculate for BUSINESS plan)
         taxable_sales = Decimal("0")
         zero_rated_sales = Decimal("0")
         exempt_sales = Decimal("0")
         vat_collected = Decimal("0")
         
-        for inv in invoices:
-            amount = Decimal(str(inv.amount))
-            if inv.discount_amount:
-                amount -= Decimal(str(inv.discount_amount))
-            cat = (inv.vat_category or "standard").lower()
-            if cat in {"standard"}:
-                taxable_sales += amount
-                if inv.vat_amount:
-                    vat_collected += Decimal(str(inv.vat_amount))
-            elif cat in {"zero_rated", "export"}:
-                zero_rated_sales += amount
-            elif cat in {"exempt"}:
-                exempt_sales += amount
+        if is_vat_eligible:
+            # Query invoices in the period (ONLY REVENUE INVOICES for VAT)
+            start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+            
+            q = self.db.query(Invoice).filter(
+                Invoice.issuer_id == user_id,
+                Invoice.invoice_type == "revenue",  # Only revenue invoices have VAT
+                Invoice.created_at >= start_dt,
+                Invoice.created_at <= end_dt,
+            )
+            if basis == "paid":
+                q = q.filter(Invoice.status == "paid")
             else:
-                taxable_sales += amount
+                q = q.filter(Invoice.status != "refunded")
+            invoices = q.all()
+            
+            # Aggregate VAT by category (BUSINESS plan only)
+            for inv in invoices:
+                amount = Decimal(str(inv.amount))
+                if inv.discount_amount:
+                    amount -= Decimal(str(inv.discount_amount))
+                cat = (inv.vat_category or "standard").lower()
+                if cat in {"standard"}:
+                    taxable_sales += amount
+                    if inv.vat_amount:
+                        vat_collected += Decimal(str(inv.vat_amount))
+                elif cat in {"zero_rated", "export"}:
+                    zero_rated_sales += amount
+                elif cat in {"exempt"}:
+                    exempt_sales += amount
+                else:
+                    taxable_sales += amount
 
         # Create or update report
         if not existing:
@@ -331,6 +410,7 @@ class TaxReportingService:
                 month=month,
                 assessable_profit=profit,
                 levy_amount=Decimal(str(levy["levy_amount"])),
+                pit_amount=pit_amount,
                 vat_collected=vat_collected,
                 taxable_sales=taxable_sales,
                 zero_rated_sales=zero_rated_sales,
@@ -342,6 +422,7 @@ class TaxReportingService:
             report = existing
             report.assessable_profit = profit
             report.levy_amount = Decimal(str(levy["levy_amount"]))
+            report.pit_amount = pit_amount
             report.vat_collected = vat_collected
             report.taxable_sales = taxable_sales
             report.zero_rated_sales = zero_rated_sales

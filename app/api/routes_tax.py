@@ -291,6 +291,10 @@ def generate_tax_report(
         else:  # year
             period_label = str(year)
         
+        # Check if user is VAT-eligible (BUSINESS plan only)
+        user = db.query(models.User).filter(models.User.id == current_user_id).first()
+        is_vat_eligible = user and user.plan == models.SubscriptionPlan.BUSINESS
+        
         return {
             "id": report.id,
             "period_type": report.period_type,
@@ -301,13 +305,14 @@ def generate_tax_report(
             "month": report.month,
             "assessable_profit": float(report.assessable_profit or 0),
             "levy_amount": float(report.levy_amount or 0),
+            "pit_amount": float(report.pit_amount or 0),
             "vat_collected": float(report.vat_collected or 0),
             "taxable_sales": float(report.taxable_sales or 0),
             "zero_rated_sales": float(report.zero_rated_sales or 0),
             "exempt_sales": float(report.exempt_sales or 0),
             "pdf_url": report.pdf_url,
             "basis": basis,
-            "warning": "Note: 'Assessable Profit' currently shows total revenue. Track business expenses separately to calculate actual taxable profit (Revenue - Expenses) per 2026 Nigerian Tax Law.",
+            "is_vat_eligible": is_vat_eligible,  # BUSINESS plan only
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
