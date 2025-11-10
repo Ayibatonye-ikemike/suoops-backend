@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Response, Depends
-from app.core.rbac import staff_or_admin_required
+from fastapi import APIRouter, Response
 
 try:  # pragma: no cover
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -11,7 +10,13 @@ router = APIRouter()
 
 
 @router.get("/metrics")
-def metrics_endpoint(_auth=Depends(staff_or_admin_required)) -> Response:
+def metrics_endpoint() -> Response:
+    """
+    Prometheus metrics endpoint.
+    
+    Public endpoint (no auth required) so monitoring tools can scrape metrics.
+    Exposes application performance metrics for Grafana/CloudWatch/etc.
+    """
     if not _PROM_AVAILABLE:
         return Response("prometheus client not installed", media_type="text/plain", status_code=503)
     # Native counters are incremented at event points; just expose registry.
