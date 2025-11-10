@@ -5,7 +5,7 @@ import enum
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -131,6 +131,18 @@ class Invoice(Base):
     vat_category: Mapped[str | None] = mapped_column(String(20), default="standard")
     is_fiscalized: Mapped[bool] = mapped_column(default=False)
     fiscal_code: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True, index=True)
+    
+    # Unified Invoice/Expense fields (revenue or expense tracking)
+    invoice_type: Mapped[str] = mapped_column(String(20), default="revenue", index=True)  # "revenue" or "expense"
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)  # For expenses: rent, utilities, etc.
+    vendor_name: Mapped[str | None] = mapped_column(String(200), nullable=True)  # For expenses: supplier name
+    merchant: Mapped[str | None] = mapped_column(String(200), nullable=True)  # Merchant/vendor alternative field
+    receipt_url: Mapped[str | None] = mapped_column(String(500), nullable=True)  # Receipt image/PDF URL
+    receipt_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # OCR extracted text
+    input_method: Mapped[str | None] = mapped_column(String(20), nullable=True)  # voice, text, photo, manual
+    channel: Mapped[str | None] = mapped_column(String(20), nullable=True)  # whatsapp, email, dashboard
+    verified: Mapped[bool | None] = mapped_column(default=False, nullable=True)  # For expense verification
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Additional notes
     
     customer: Mapped[Customer] = relationship("Customer", back_populates="invoices")  # type: ignore
     issuer: Mapped[User] = relationship("User", back_populates="issued_invoices")  # type: ignore

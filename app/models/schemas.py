@@ -29,13 +29,31 @@ class InvoiceLineIn(BaseModel):
 
 
 class InvoiceCreate(BaseModel):
-    customer_name: str
-    customer_phone: str | None = None
-    customer_email: str | None = None
+    # Common fields for both revenue and expense invoices
     amount: Decimal
     due_date: dt.datetime | None = None
     lines: list[InvoiceLineIn] | None = None
     discount_amount: Decimal | None = None
+    
+    # Invoice type
+    invoice_type: Literal["revenue", "expense"] = "revenue"
+    
+    # Revenue invoice fields (when invoice_type="revenue")
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    customer_email: str | None = None
+    
+    # Expense invoice fields (when invoice_type="expense")
+    vendor_name: str | None = None
+    category: str | None = None  # rent, utilities, supplies, etc.
+    merchant: str | None = None
+    description: str | None = None
+    receipt_url: str | None = None
+    receipt_text: str | None = None
+    input_method: str | None = None  # voice, text, photo, manual
+    channel: str | None = None  # whatsapp, email, dashboard
+    verified: bool = False
+    notes: str | None = None
 
 
 class CustomerOut(BaseModel):
@@ -57,6 +75,14 @@ class InvoiceOut(BaseModel):
     paid_at: dt.datetime | None = None
     created_at: dt.datetime | None = None
     due_date: dt.datetime | None = None
+    
+    # Unified invoice/expense fields
+    invoice_type: str = "revenue"
+    category: str | None = None
+    vendor_name: str | None = None
+    merchant: str | None = None
+    verified: bool | None = None
+    notes: str | None = None
 
 
 class InvoiceLineOut(BaseModel):

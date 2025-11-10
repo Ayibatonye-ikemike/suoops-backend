@@ -36,8 +36,8 @@ async def create_invoice(
     try:
         invoice = svc.create_invoice(issuer_id=current_user_id, data=data.model_dump())
         
-        # Send notifications via all available channels (Email, WhatsApp, SMS)
-        if data.customer_email or data.customer_phone:
+        # Send notifications via all available channels (Email, WhatsApp, SMS) - ONLY for revenue invoices
+        if invoice.invoice_type == "revenue" and (data.customer_email or data.customer_phone):
             from app.services.notification_service import NotificationService
             notification_service = NotificationService()
             results = await notification_service.send_invoice_notification(
@@ -79,9 +79,19 @@ def get_invoice_quota(current_user_id: CurrentUserDep, db: DbDep):
 
 
 @router.get("/", response_model=list[schemas.InvoiceOut])
-def list_invoices(current_user_id: CurrentUserDep, db: DbDep):
+def list_invoices(
+    current_user_id: CurrentUserDep, 
+    db: DbDep,
+    invoice_type: str | None = None,  # Optional filter: "revenue", "expense", or None for all
+):
     svc = get_invoice_service_for_user(current_user_id, db)
-    return svc.list_invoices(current_user_id)
+    invoices = svc.list_invoices(current_user_id)
+    
+    # Filter by invoice_type if specified
+    if invoice_type:
+        invoices = [inv for inv in invoices if inv.invoice_type == invoice_type]
+    
+    return invoices
 
 
 @router.get("/{invoice_id}", response_model=schemas.InvoiceOutDetailed)

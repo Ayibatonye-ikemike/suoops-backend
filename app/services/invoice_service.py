@@ -107,28 +107,54 @@ class InvoiceService:
         return messages.get(current_plan, "Upgrade to increase your invoice limit!")
 
     def create_invoice(self, issuer_id: int, data: dict[str, object]) -> models.Invoice:
-        # Check quota before creating invoice
-        quota_check = self.check_invoice_quota(issuer_id)
-        if not quota_check["can_create"]:
-            raise ValueError(
-                f"Invoice limit reached. {quota_check['message']}"
+        # Check quota before creating invoice (only for revenue invoices)
+        invoice_type = data.get("invoice_type", "revenue")
+        if invoice_type == "revenue":
+            quota_check = self.check_invoice_quota(issuer_id)
+            if not quota_check["can_create"]:
+                raise ValueError(
+                    f"Invoice limit reached. {quota_check['message']}"
+                )
+        
+        # Handle customer/vendor based on invoice type
+        if invoice_type == "revenue":
+            # Revenue invoice: need customer
+            customer = self._get_or_create_customer(
+                data.get("customer_name"),
+                data.get("customer_phone"),
+                data.get("customer_email"),
+            )
+        else:
+            # Expense invoice: create customer from vendor_name
+            vendor_name = data.get("vendor_name") or data.get("merchant") or "Expense Vendor"
+            customer = self._get_or_create_customer(
+                vendor_name,
+                None,  # vendors typically don't have phone
+                None,  # vendors typically don't have email
             )
         
-        customer = self._get_or_create_customer(
-            data.get("customer_name"),
-            data.get("customer_phone"),
-            data.get("customer_email"),
-        )
         discount_raw = data.get("discount_amount")
         discount_amount = Decimal(str(discount_raw)) if discount_raw else None
+        
         invoice = models.Invoice(
-            invoice_id=generate_id("INV"),
+            invoice_id=generate_id("INV" if invoice_type == "revenue" else "EXP"),
             issuer_id=issuer_id,
             customer=customer,
             amount=Decimal(str(data.get("amount"))),
             discount_amount=discount_amount,
             due_date=data.get("due_date"),
+            invoice_type=invoice_type,
+            category=data.get("category"),
+            vendor_name=data.get("vendor_name"),
+            merchant=data.get("merchant"),
+            receipt_url=data.get("receipt_url"),
+            receipt_text=data.get("receipt_text"),
+            input_method=data.get("input_method"),
+            channel=data.get("channel"),
+            verified=data.get("verified", False),
+            notes=data.get("notes"),
         )
+        
         lines_data = data.get("lines") or [
             {
                 "description": data.get("description", "Item"),
@@ -147,31 +173,44 @@ class InvoiceService:
         self.db.commit()
         self.db.refresh(invoice)
 
-        # Get issuer's bank details for the PDF
+        # Get issuer's details for the PDF
         user = self.db.query(models.User).filter(models.User.id == issuer_id).one()
         
-        # Validate bank details are set
-        if not user.bank_name or not user.account_number:
-            raise ValueError(
-                "Bank details required. Please add your bank information in Settings before creating invoices."
+        # Generate PDF (different templates for revenue vs expense)
+        if invoice_type == "revenue":
+            # Validate bank details are set for revenue invoices
+            if not user.bank_name or not user.account_number:
+                raise ValueError(
+                    "Bank details required. Please add your bank information in Settings before creating invoices."
+                )
+            
+            bank_details = {
+                "bank_name": user.bank_name,
+                "account_number": user.account_number,
+                "account_name": user.account_name,
+            }
+            
+            # Generate revenue invoice PDF with bank transfer details and logo
+            pdf_url = self.pdf_service.generate_invoice_pdf(
+                invoice, 
+                bank_details=bank_details,
+                logo_url=user.logo_url
+            )
+        else:
+            # Generate expense receipt PDF (simpler, no bank details needed)
+            # For now, use the same PDF generator
+            # TODO: Create expense-specific PDF template
+            pdf_url = self.pdf_service.generate_invoice_pdf(
+                invoice,
+                bank_details=None,  # No bank details for expenses
+                logo_url=user.logo_url
             )
         
-        bank_details = {
-            "bank_name": user.bank_name,
-            "account_number": user.account_number,
-            "account_name": user.account_name,
-        }
-        
-        # Generate PDF with bank transfer details and logo
-        pdf_url = self.pdf_service.generate_invoice_pdf(
-            invoice, 
-            bank_details=bank_details,
-            logo_url=user.logo_url
-        )
         invoice.pdf_url = pdf_url
         
-        # Increment usage counter
-        user.invoices_this_month += 1
+        # Increment usage counter (only for revenue invoices)
+        if invoice_type == "revenue":
+            user.invoices_this_month += 1
         
         self.db.commit()
         
@@ -187,10 +226,13 @@ class InvoiceService:
             .one()
         )
         
-        logger.info("Created invoice %s for issuer %s (usage: %s/%s)", 
-                   invoice.invoice_id, issuer_id, user.invoices_this_month, 
-                   user.plan.invoice_limit or "unlimited")
-        metrics.invoice_created()
+        logger.info("Created %s invoice %s for issuer %s", 
+                   invoice_type, invoice.invoice_id, issuer_id)
+        if invoice_type == "revenue":
+            logger.info("Revenue invoice usage: %s/%s", 
+                       user.invoices_this_month, user.plan.invoice_limit or "unlimited")
+            metrics.invoice_created()
+        
         return invoice
 
     def list_invoices(self, issuer_id: int) -> list[models.Invoice]:

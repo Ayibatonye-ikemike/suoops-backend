@@ -18,7 +18,6 @@ from typing import Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.expense import Expense
 from app.models.tax_models import MonthlyTaxReport
 from app.services.tax_service import TaxProfileService  # for profile access & exemptions
 
@@ -33,10 +32,9 @@ def compute_revenue_by_date_range(
     basis: str = "paid",
 ) -> Decimal:
     """
-    Compute total revenue from invoices for a date range.
+    Compute total revenue from REVENUE invoices for a date range.
     
-    This is a standalone utility function for calculating revenue.
-    Used by both tax reporting and expense statistics.
+    Uses unified Invoice model filtered by invoice_type='revenue'.
     
     Args:
         db: Database session
@@ -56,6 +54,7 @@ def compute_revenue_by_date_range(
     
     q = db.query(Invoice).filter(
         Invoice.issuer_id == user_id,
+        Invoice.invoice_type == "revenue",  # Only revenue invoices
         Invoice.created_at >= start_dt,
         Invoice.created_at <= end_dt,
     )
@@ -82,7 +81,10 @@ def compute_expenses_by_date_range(
     end_date: date,
 ) -> Decimal:
     """
-    Compute total expenses for a date range.
+    Compute total expenses from EXPENSE invoices for a date range.
+    
+    Uses unified Invoice model filtered by invoice_type='expense'.
+    No longer uses separate Expense table.
     
     Args:
         db: Database session
@@ -93,10 +95,18 @@ def compute_expenses_by_date_range(
     Returns:
         Total expenses for the period
     """
-    result = db.query(func.sum(Expense.amount)).filter(
-        Expense.user_id == user_id,
-        Expense.date >= start_date,
-        Expense.date <= end_date,
+    from app.models.models import Invoice
+    
+    # Convert dates to datetime with timezone
+    start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+    
+    result = db.query(func.sum(Invoice.amount)).filter(
+        Invoice.issuer_id == user_id,
+        Invoice.invoice_type == "expense",  # Only expense invoices
+        Invoice.created_at >= start_dt,
+        Invoice.created_at <= end_dt,
+        Invoice.status == "paid",  # Only count paid expenses
     ).scalar()
     
     return result or Decimal("0")
@@ -271,13 +281,14 @@ class TaxReportingService:
         )
         levy = self.compute_development_levy(user_id, profit)
 
-        # Query invoices in the period
+        # Query invoices in the period (ONLY REVENUE INVOICES for VAT)
         from app.models.models import Invoice
         start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
         end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
         
         q = self.db.query(Invoice).filter(
             Invoice.issuer_id == user_id,
+            Invoice.invoice_type == "revenue",  # Only revenue invoices have VAT
             Invoice.created_at >= start_dt,
             Invoice.created_at <= end_dt,
         )
@@ -399,7 +410,10 @@ class TaxReportingService:
         basis: str = "paid",
     ) -> Decimal:
         from app.models.models import Invoice
-        q = self.db.query(Invoice).filter(Invoice.issuer_id == user_id)
+        q = self.db.query(Invoice).filter(
+            Invoice.issuer_id == user_id,
+            Invoice.invoice_type == "revenue"  # Only revenue invoices for profit calculation
+        )
         if basis == "paid":
             q = q.filter(Invoice.status == "paid")
         else:
