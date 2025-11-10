@@ -164,21 +164,31 @@
     Total: ₦{{ "{:,.2f}".format(invoice.amount) }}
   </p>
   
-  {% if receipt_data_url or invoice.receipt_url %}
+  {% if invoice.receipt_url %}
   <div class="receipt-image">
     <h3>📎 Proof of Purchase</h3>
     <p style="margin-bottom: 10px; font-size: 12px; color: #666;">Original receipt attached for verification</p>
+    
+    <!-- Always show clickable link first -->
+    <div style="padding: 15px; background: #f0f9ff; border: 2px solid #3b82f6; border-radius: 8px; margin-bottom: 15px; text-align: center;">
+      <strong style="display: block; margin-bottom: 8px; color: #1e40af; font-size: 14px;">
+        {% if invoice.receipt_url.endswith('.pdf') %}📄 Receipt PDF{% else %}🖼️ Receipt Image{% endif %}
+      </strong>
+      <a href="{{ invoice.receipt_url }}" 
+         style="color: #3b82f6; text-decoration: underline; font-weight: 600; word-wrap: break-word; font-size: 13px;"
+         target="_blank">
+        Click here to view receipt
+      </a>
+      <p style="margin-top: 5px; font-size: 11px; color: #666;">{{ invoice.receipt_url }}</p>
+    </div>
+    
+    <!-- Try to embed image if available (may not work in all PDF viewers) -->
     {% if receipt_data_url %}
-    <img src="{{ receipt_data_url }}" alt="Receipt" style="max-width: 100%; max-height: 400px; border: 1px solid #ddd; border-radius: 8px;" />
-    {% elif invoice.receipt_url.endswith('.pdf') %}
-    <p style="padding: 20px; background: #f0f9ff; border: 2px dashed #3b82f6; border-radius: 8px; text-align: center;">
-      <strong>Receipt PDF Document</strong><br/>
-      <a href="{{ invoice.receipt_url }}" style="color: #3b82f6; text-decoration: none;">{{ invoice.receipt_url }}</a>
-    </p>
-    {% else %}
-    <div style="padding: 20px; background: #f0f9ff; border: 2px dashed #3b82f6; border-radius: 8px; text-align: center;">
-      <strong>Receipt Image</strong><br/>
-      <a href="{{ invoice.receipt_url }}" style="color: #3b82f6; word-wrap: break-word;">View Receipt: {{ invoice.receipt_url }}</a>
+    <div style="text-align: center;">
+      <img src="{{ receipt_data_url }}" 
+           alt="Receipt" 
+           style="max-width: 100%; max-height: 400px; border: 1px solid #ddd; border-radius: 8px;" />
+      <p style="margin-top: 5px; font-size: 11px; color: #666; font-style: italic;">Receipt preview (if not visible, use link above)</p>
     </div>
     {% endif %}
   </div>
