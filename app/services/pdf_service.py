@@ -212,6 +212,12 @@ class PDFService:
             if getattr(settings, "PDF_WATERMARK_ENABLED", False)
             else None
         )
+        
+        # Fetch and encode receipt image for expense invoices
+        receipt_data_url = None
+        if invoice.invoice_type == "expense" and invoice.receipt_url:
+            receipt_data_url = self._fetch_receipt_as_data_url(invoice.receipt_url)
+        
         return template.render(
             invoice=invoice,
             bank_details=bank_details,
@@ -219,6 +225,7 @@ class PDFService:
             customer_portal_url=customer_portal_url,
             qr_code=qr_code_data,
             watermark_text=watermark_text,
+            receipt_data_url=receipt_data_url,
         )
 
     # ---------------- Monthly Tax Report PDF -----------------
@@ -331,3 +338,34 @@ class PDFService:
         img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
         
         return f"data:image/png;base64,{img_base64}"
+
+    def _fetch_receipt_as_data_url(self, receipt_url: str) -> str | None:
+        """Fetch receipt image from S3 and convert to base64 data URL.
+        
+        Args:
+            receipt_url: S3 URL of the receipt image
+            
+        Returns:
+            Base64 encoded image as data URI, or None if fetch fails
+        """
+        try:
+            import urllib.request
+            import mimetypes
+            
+            # Fetch the image from S3
+            with urllib.request.urlopen(receipt_url, timeout=10) as response:
+                image_data = response.read()
+                
+            # Determine MIME type from URL or content
+            mime_type = mimetypes.guess_type(receipt_url)[0]
+            if not mime_type:
+                # Default to jpeg if unknown
+                mime_type = "image/jpeg"
+            
+            # Convert to base64
+            img_base64 = base64.b64encode(image_data).decode('utf-8')
+            return f"data:{mime_type};base64,{img_base64}"
+            
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to fetch receipt image from %s: %s", receipt_url, e)
+            return None
