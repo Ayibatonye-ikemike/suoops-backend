@@ -200,7 +200,8 @@ class InvoiceService:
             pdf_url = self.pdf_service.generate_invoice_pdf(
                 invoice, 
                 bank_details=bank_details,
-                logo_url=user.logo_url
+                logo_url=user.logo_url,
+                user_plan=user.plan.value  # Pass plan for VAT visibility
             )
         else:
             # Generate expense receipt PDF (simpler, no bank details needed)
@@ -209,7 +210,8 @@ class InvoiceService:
             pdf_url = self.pdf_service.generate_invoice_pdf(
                 invoice,
                 bank_details=None,  # No bank details for expenses
-                logo_url=user.logo_url
+                logo_url=user.logo_url,
+                user_plan=user.plan.value  # Pass plan for VAT visibility
             )
         
         invoice.pdf_url = pdf_url

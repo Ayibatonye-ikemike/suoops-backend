@@ -38,6 +38,7 @@ class PDFService:
         invoice: Invoice,
         bank_details: dict | None = None,
         logo_url: str | None = None,
+        user_plan: str = "free",  # Default to free plan
     ) -> str:
         """Generate PDF with bank transfer payment instructions and business logo.
         
@@ -45,6 +46,7 @@ class PDFService:
             invoice: Invoice model instance
             bank_details: Dict with bank_name, account_number, account_name
             logo_url: URL to business logo image
+            user_plan: User's subscription plan (free/starter/pro/business)
             
         Returns:
             URL or path to generated PDF
@@ -60,6 +62,7 @@ class PDFService:
                     logo_url,
                     customer_portal_url,
                     qr_code_data,
+                    user_plan,  # Pass plan to template
                 )
                 pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
                 key = f"invoices/{invoice.invoice_id}.pdf"
@@ -202,6 +205,7 @@ class PDFService:
         logo_url: str | None = None,
         customer_portal_url: str | None = None,
         qr_code_data: str | None = None,
+        user_plan: str = "free",
     ) -> str:
         """Render invoice HTML template with bank transfer details and business logo."""
         # Use expense template for expense invoices
@@ -218,6 +222,9 @@ class PDFService:
         if invoice.invoice_type == "expense" and invoice.receipt_url:
             receipt_data_url = self._fetch_receipt_as_data_url(invoice.receipt_url)
         
+        # Check if user is eligible for VAT tracking (BUSINESS plan only)
+        is_vat_eligible = user_plan.lower() == "business"
+        
         return template.render(
             invoice=invoice,
             bank_details=bank_details,
@@ -226,6 +233,8 @@ class PDFService:
             qr_code=qr_code_data,
             watermark_text=watermark_text,
             receipt_data_url=receipt_data_url,
+            user_plan=user_plan.lower(),
+            is_vat_eligible=is_vat_eligible,
         )
 
     # ---------------- Monthly Tax Report PDF -----------------

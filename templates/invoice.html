@@ -166,6 +166,8 @@
   <p class="total" style="font-size: 20px; color: #007bff;">
     Total: ₦{{ "{:,.2f}".format(invoice.amount) }}
   </p>
+  
+  {% if is_vat_eligible %}
   <h3>Tax & Compliance</h3>
   <table style="margin-top:10px;">
     <tr>
@@ -185,6 +187,7 @@
       <td>{{ invoice.fiscal_code or '—' }}</td>
     </tr>
   </table>
+  {% endif %}
   
   {% if qr_code %}
   <div class="qr-section">
