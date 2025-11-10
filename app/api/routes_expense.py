@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_id, get_db
+from app.api.routes_auth import get_current_user_id
+from app.db.session import get_db
 from app.models.expense import Expense
 from app.models.expense_schemas import (
     ExpenseCreate,
