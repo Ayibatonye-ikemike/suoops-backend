@@ -108,6 +108,16 @@ def create_app() -> FastAPI:
     app.include_router(telemetry_router, tags=["telemetry"])
     app.include_router(admin_router)
     app.include_router(health_router)
+    
+    # Register shutdown handler to close Redis pool
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        try:
+            from app.db.redis_client import close_redis_pool
+            close_redis_pool()
+        except Exception:
+            pass
+    
     return app
 
 

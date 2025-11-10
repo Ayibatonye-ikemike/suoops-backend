@@ -25,8 +25,8 @@ def _get_client() -> redis.Redis | None:
     if _redis is not None:
         return _redis
     try:
-        _redis = redis.Redis.from_url(settings.REDIS_URL, socket_timeout=1, socket_connect_timeout=1)
-        _redis.ping()
+        from app.db.redis_client import get_redis_client
+        _redis = get_redis_client()
         return _redis
     except Exception:  # noqa: BLE001
         logger.warning("Cache disabled (Redis unavailable)")

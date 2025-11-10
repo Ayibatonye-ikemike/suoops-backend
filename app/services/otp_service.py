@@ -73,22 +73,29 @@ class RedisStore(BaseKeyValueStore):
     """Redis-backed store for OTP codes and signup sessions."""
 
     def __init__(self, url: str) -> None:
-        options: dict[str, Any] = {"decode_responses": True}
+        # Use centralized Redis client for connection pooling
+        try:
+            from app.db.redis_client import get_redis_client
+            self._client = get_redis_client()
+        except Exception as e:
+            logger.warning("OTP service falling back to direct Redis connection: %s", e)
+            # Fallback to direct connection
+            options: dict[str, Any] = {"decode_responses": True}
 
-        ssl_mode = getattr(settings, "REDIS_SSL_CERT_REQS", None)
-        if ssl_mode:
-            ssl_map = {
-                "required": ssl.CERT_REQUIRED,
-                "optional": ssl.CERT_OPTIONAL,
-                "none": ssl.CERT_NONE,
-            }
-            chosen = ssl_map.get(str(ssl_mode).lower())
-            if chosen is not None:
-                options["ssl_cert_reqs"] = chosen
-        if getattr(settings, "REDIS_SSL_CA_CERTS", None):
-            options["ssl_ca_certs"] = settings.REDIS_SSL_CA_CERTS
+            ssl_mode = getattr(settings, "REDIS_SSL_CERT_REQS", None)
+            if ssl_mode:
+                ssl_map = {
+                    "required": ssl.CERT_REQUIRED,
+                    "optional": ssl.CERT_OPTIONAL,
+                    "none": ssl.CERT_NONE,
+                }
+                chosen = ssl_map.get(str(ssl_mode).lower())
+                if chosen is not None:
+                    options["ssl_cert_reqs"] = chosen
+            if getattr(settings, "REDIS_SSL_CA_CERTS", None):
+                options["ssl_ca_certs"] = settings.REDIS_SSL_CA_CERTS
 
-        self._client = redis.Redis.from_url(url, **options)
+            self._client = redis.Redis.from_url(url, **options)
 
     def set(self, key: str, value: str, ttl_seconds: int) -> None:
         self._client.setex(key, ttl_seconds, value)
