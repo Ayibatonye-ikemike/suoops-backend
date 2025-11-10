@@ -9,6 +9,7 @@ from app.api.rate_limit import limiter, RATE_LIMITS
 from app.core.config import settings
 from app.core.security import TokenExpiredError, TokenValidationError, decode_token
 from app.core.audit import log_audit_event, log_failure
+from app.core.csrf import get_csrf_token, set_csrf_cookie
 from app import metrics
 from app.models import schemas
 from app.services.auth_service import AuthService, TokenBundle, get_auth_service
@@ -40,7 +41,7 @@ def request_signup(request: Request, payload: schemas.SignupStart, svc: AuthServ
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _bundle_to_response(bundle: TokenBundle, include_refresh_cookie: bool = True) -> JSONResponse:
+def _bundle_to_response(bundle: TokenBundle, request: Request | None = None, include_refresh_cookie: bool = True) -> JSONResponse:
     token_out = schemas.TokenOut(
         access_token=bundle.access_token,
         access_expires_at=bundle.access_expires_at,
@@ -49,6 +50,13 @@ def _bundle_to_response(bundle: TokenBundle, include_refresh_cookie: bool = True
     response = JSONResponse(content=jsonable_encoder(token_out))
     if include_refresh_cookie:
         _set_refresh_cookie(response, bundle.refresh_token)
+    
+    # Set CSRF token on successful authentication
+    if request:
+        csrf_token = get_csrf_token(request)
+        secure = settings.ENV.lower() in {"prod", "production"}
+        set_csrf_cookie(response, csrf_token, secure=secure)
+    
     return response
 
 
@@ -87,7 +95,7 @@ def verify_signup(request: Request, payload: schemas.SignupVerify, svc: AuthServ
         bundle = svc.complete_signup(payload)
         metrics.otp_signup_verified()
         log_audit_event("auth.signup.verify", user_id=bundle.user_id)
-        return _bundle_to_response(bundle)
+        return _bundle_to_response(bundle, request=request)
     except ValueError as exc:
         log_failure("auth.signup.verify", user_id=None, error=str(exc))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -119,7 +127,7 @@ def verify_login(request: Request, payload: schemas.LoginVerify, svc: AuthServic
         bundle = svc.verify_login(payload)
         metrics.otp_login_verified()
         log_audit_event("auth.login.verify", user_id=bundle.user_id)
-        return _bundle_to_response(bundle)
+        return _bundle_to_response(bundle, request=request)
     except ValueError as exc:
         log_failure("auth.login.verify", user_id=None, error=str(exc))
         raise HTTPException(status_code=401, detail=str(exc)) from exc
@@ -162,7 +170,7 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
         token_payload = decode_token(bundle.access_token, expected_type=TokenType.ACCESS)
         user_id = int(token_payload["sub"])
         log_audit_event("auth.refresh", user_id=user_id)
-        return _bundle_to_response(bundle)
+        return _bundle_to_response(bundle, request=request)
     except ValueError as exc:
         log_failure("auth.refresh", user_id=None, error=str(exc))
         raise HTTPException(status_code=401, detail=str(exc)) from exc

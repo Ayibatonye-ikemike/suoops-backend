@@ -27,6 +27,7 @@ from app.core.config import settings
 from app.core.logger import init_logging
 from app.core.monitoring import init_monitoring
 from app.core.errors import register_error_handlers
+from app.core.csrf import CSRFMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 import uuid
@@ -88,6 +89,11 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+    
+    # CSRF Protection - Add before CORS to validate tokens early
+    # Only enabled in production for security
+    app.add_middleware(CSRFMiddleware, enabled=is_production)
+    
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ALLOW_ORIGINS,

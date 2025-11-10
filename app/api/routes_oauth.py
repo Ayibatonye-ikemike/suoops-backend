@@ -27,6 +27,7 @@ from app.api.routes_auth import _set_refresh_cookie
 from app.api.rate_limit import limiter, RATE_LIMITS
 from app.metrics import oauth_login_success
 from app.core.config import settings
+from app.core.csrf import get_csrf_token, set_csrf_cookie
 from app.core.security import TokenType, decode_token
 from app.db.session import get_db
 from app.models import schemas
@@ -329,6 +330,12 @@ async def oauth_callback(
 
         response = JSONResponse(content=jsonable_encoder(payload_model))
         _set_refresh_cookie(response, refresh_token)
+        
+        # Set CSRF token on successful OAuth authentication
+        csrf_token = get_csrf_token(request)
+        secure = settings.ENV.lower() in {"prod", "production"}
+        set_csrf_cookie(response, csrf_token, secure=secure)
+        
         logger.info("OAuth callback success | provider=%s", provider)
         oauth_login_success()
         return response
