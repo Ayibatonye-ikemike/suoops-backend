@@ -33,17 +33,18 @@ def get_redis_pool() -> ConnectionPool:
         "health_check_interval": 30,
     }
     
-    # Handle SSL for rediss:// URLs
+        # Handle SSL for rediss:// URLs
     if redis_url.startswith("rediss://"):
         ssl_cert_reqs_str = settings.REDIS_SSL_CERT_REQS or "none"
         
-        # Map string to ssl constant
+        # Heroku Redis SSL config shows REDIS_SSL_CERT_REQS=none
+        # Use CERT_NONE to avoid protocol errors with Heroku's SSL implementation
         if ssl_cert_reqs_str.lower() == "required":
             cert_reqs = ssl.CERT_REQUIRED
         elif ssl_cert_reqs_str.lower() == "optional":
             cert_reqs = ssl.CERT_OPTIONAL
         else:
-            cert_reqs = ssl.CERT_NONE
+            cert_reqs = ssl.CERT_NONE  # Default for Heroku
         
         ca_certs = settings.REDIS_SSL_CA_CERTS or certifi.where()
         
@@ -52,8 +53,9 @@ def get_redis_pool() -> ConnectionPool:
         pool_kwargs["ssl_ca_certs"] = ca_certs
         
         logger.info(
-            "Creating Redis SSL pool with cert_reqs=%s, ca_certs=%s",
+            "Creating Redis SSL pool with cert_reqs=%s (ssl.%s), ca_certs=%s",
             ssl_cert_reqs_str,
+            "CERT_NONE" if cert_reqs == ssl.CERT_NONE else ("CERT_REQUIRED" if cert_reqs == ssl.CERT_REQUIRED else "CERT_OPTIONAL"),
             ca_certs,
         )
     

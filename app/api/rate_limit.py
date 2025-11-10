@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+import logging
 
 import certifi
 from slowapi import Limiter
@@ -12,6 +13,8 @@ except Exception:  # noqa: BLE001
     _PROM_RATE_LIMIT = None
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 def _add_query_param(url: str, key: str, value: str | None) -> str:
     parsed = urlparse(url)
@@ -24,18 +27,26 @@ def _add_query_param(url: str, key: str, value: str | None) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
+# Configure rate limiter storage
 storage_uri = "memory://"
 if settings.ENV.lower() == "prod":
     redis_url = settings.REDIS_URL
     if redis_url and redis_url.startswith("rediss://"):
-        # Use centralized pool for rate limiting too - add pool size params
-        storage_uri = _add_query_param(redis_url, "ssl_cert_reqs", settings.REDIS_SSL_CERT_REQS)
+        # For Heroku Redis with SSL issues, use CERT_NONE to avoid protocol errors
+        # Connection limit protection via max_connections
+        storage_uri = _add_query_param(redis_url, "ssl_cert_reqs", "none")
         ca_path = settings.REDIS_SSL_CA_CERTS or certifi.where()
         storage_uri = _add_query_param(storage_uri, "ssl_ca_certs", ca_path)
         # Limit connections used by rate limiter
         storage_uri = _add_query_param(storage_uri, "max_connections", "5")
+        storage_uri = _add_query_param(storage_uri, "socket_connect_timeout", "3")
+        storage_uri = _add_query_param(storage_uri, "socket_timeout", "3")
+        storage_uri = _add_query_param(storage_uri, "retry_on_timeout", "true")
+        logger.info("Rate limiter using Redis with SSL (cert_reqs=none)")
     else:
         storage_uri = redis_url or "memory://"
+else:
+    logger.info("Rate limiter using in-memory storage (dev/test mode)")
 
 RATE_LIMITS = {
     # Auth flows
