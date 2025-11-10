@@ -193,6 +193,12 @@ class MessageOut(BaseModel):
     detail: str
 
 
+class ReceiptUploadOut(BaseModel):
+    """Response after successfully uploading an expense receipt."""
+    receipt_url: str = Field(description="S3 URL of the uploaded receipt")
+    filename: str = Field(description="Original filename of the uploaded receipt")
+
+
 # ----------------- Bank Details -----------------
 
 class BankDetailsUpdate(BaseModel):

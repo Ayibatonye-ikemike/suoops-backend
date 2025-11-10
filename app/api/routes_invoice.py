@@ -1,7 +1,8 @@
 from typing import Annotated, TypeAlias
 from pathlib import Path
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -10,9 +11,11 @@ from app.db.session import get_db
 from app.models import schemas
 from app.services.invoice_service import build_invoice_service, InvoiceService
 from app.utils.feature_gate import check_invoice_limit, FeatureGate
+from app.storage.s3_client import S3Client
 from datetime import datetime, timezone
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 CurrentUserDep: TypeAlias = Annotated[int, Depends(get_current_user_id)]
 DbDep: TypeAlias = Annotated[Session, Depends(get_db)]
@@ -47,14 +50,74 @@ async def create_invoice(
                 pdf_url=invoice.pdf_url,
             )
             
-            import logging
-            logger = logging.getLogger(__name__)
             logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s, SMS: %s",
                        invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
         
         return invoice
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/upload-receipt", response_model=schemas.ReceiptUploadOut)
+async def upload_expense_receipt(
+    file: UploadFile = File(...),
+    current_user_id: CurrentUserDep = Depends(get_current_user_id),
+):
+    """Upload expense receipt image and return S3 URL for use in invoice creation.
+    
+    This endpoint allows users to upload proof of purchase (receipt photo/PDF)
+    before creating an expense invoice. The returned receipt_url can then be
+    included in the invoice creation request.
+    """
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/bmp", "application/pdf"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed: JPEG, PNG, WebP, BMP, PDF. Got: {file.content_type}"
+        )
+    
+    # Validate file size (max 10MB)
+    max_size = 10 * 1024 * 1024  # 10MB
+    content = await file.read()
+    if len(content) > max_size:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
+    
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="File is empty.")
+    
+    try:
+        # Upload to S3
+        s3_client = S3Client()
+        
+        # Determine file extension
+        ext = "jpg"
+        if file.content_type == "application/pdf":
+            ext = "pdf"
+        elif file.content_type == "image/png":
+            ext = "png"
+        elif file.content_type == "image/webp":
+            ext = "webp"
+        
+        # Create unique filename
+        filename = f"receipts/user_{current_user_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.{ext}"
+        
+        receipt_url = await s3_client.upload_file(
+            content,
+            filename,
+            content_type=file.content_type
+        )
+        
+        logger.info(f"Uploaded expense receipt for user {current_user_id}: {receipt_url}")
+        
+        return schemas.ReceiptUploadOut(
+            receipt_url=receipt_url,
+            filename=file.filename or filename,
+        )
+    
+    except Exception as e:
+        logger.error(f"Failed to upload receipt: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload receipt. Please try again.")
 
 
 @router.get("/quota", response_model=schemas.InvoiceQuotaOut)
