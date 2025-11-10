@@ -159,6 +159,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    # Encrypted email (Fernet) stored separately; plaintext email remains in `email` for now.
+    # Future policy may remove plaintext after full migration & token flows updated.
+    email_enc: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
     phone_verified: Mapped[bool] = mapped_column(default=False, server_default="false")
     last_login: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -189,6 +192,9 @@ class User(Base):
     account_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Role-based access control (RBAC) role; defaults to 'user'.
+    # Values: 'user', 'staff', 'admin'. Additional roles can be added via migration.
+    role: Mapped[str] = mapped_column(String(20), default="user", server_default="user", index=True)
     
     # Tax and compliance relationships
     tax_profile: Mapped[TaxProfile | None] = relationship(

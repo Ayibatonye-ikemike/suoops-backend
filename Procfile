@@ -1,4 +1,5 @@
 release: bash release.sh
-web: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+## Production server: Gunicorn with Uvicorn workers for multi-process concurrency
+web: gunicorn app.api.main:app -k uvicorn.workers.UvicornWorker -w 4 --threads 2 --max-requests 2000 --max-requests-jitter 200 --timeout 60 --bind 0.0.0.0:$PORT
 # Concurrency capped to 1 to mitigate R14 memory spikes; tune via CELERYD_CONCURRENCY env for scaling.
 worker: celery -A app.workers.celery_app worker --loglevel=info --concurrency=${CELERYD_CONCURRENCY:-1}

@@ -77,6 +77,8 @@ class BaseAppSettings(BaseSettings):
     HSTS_SECONDS: int = 31_536_000
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "plain"
+    SENTRY_DSN: str | None = None
+    TELEMETRY_INGEST_KEY: str | None = None  # API key required for telemetry ingestion in prod
     
     # Fiscalization Integration (FIRS - provisional placeholders, external API pending)
     FIRS_API_URL: str | None = None
@@ -105,11 +107,22 @@ class BaseAppSettings(BaseSettings):
             "WHATSAPP_API_KEY",
             "PAYSTACK_SECRET",
             "JWT_SECRET",
+            "BREVO_API_KEY",  # Ensure email capability secrets present
+            "OAUTH_STATE_SECRET",  # State secret must not use default in prod
+            "TELEMETRY_INGEST_KEY",  # Require telemetry ingestion key to prevent spoofing
         )
         if self.ENV.lower() == "prod":
             missing = [name for name in required_in_prod if not getattr(self, name)]
+            # Detect unchanged insecure defaults
+            default_violations: list[str] = []
+            if self.JWT_SECRET == "change_me":
+                default_violations.append("JWT_SECRET uses default placeholder")
+            if self.OAUTH_STATE_SECRET == "change_me_oauth_state":
+                default_violations.append("OAUTH_STATE_SECRET uses default placeholder")
             if missing:
                 raise ValueError(f"Missing required production settings: {', '.join(missing)}")
+            if default_violations:
+                raise ValueError("Insecure default secrets in production: " + ", ".join(default_violations))
         return self
 
 

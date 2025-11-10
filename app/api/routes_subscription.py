@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.core.rbac import staff_or_admin_required
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import models, schemas
@@ -30,6 +31,7 @@ async def initialize_subscription_payment(
     plan: str,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
+    _auth=Depends(staff_or_admin_required),
 ):
     """
     Initialize Paystack payment for subscription upgrade.
@@ -153,6 +155,7 @@ async def verify_subscription_payment(
     reference: str,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
+    _auth=Depends(staff_or_admin_required),
 ):
     """
     Verify Paystack payment status.

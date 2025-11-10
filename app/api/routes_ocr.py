@@ -17,7 +17,7 @@ import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.rate_limit import limiter
+from app.api.rate_limit import limiter, RATE_LIMITS
 from app.db.session import get_db
 from app.models import schemas
 from app.services.ocr_service import OCRService
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/ocr", tags=["ocr"])
 
 
 @router.post("/parse", response_model=schemas.OCRParseOut)
-@limiter.limit("10/minute")  # Rate limit: 10 images per minute
+@limiter.limit(RATE_LIMITS["ocr_parse"])  # Rate limit: 10 images per minute
 async def parse_receipt_image(
     request: Request,
     file: UploadFile = File(...),
@@ -63,10 +63,9 @@ async def parse_receipt_image(
         files = {"file": open("receipt.jpg", "rb")}
         response = requests.post("/ocr/parse", files=files)
         
-        # Review data
-        data = response.json()
-        print(f"Amount: ₦{data['amount']}")
-        print(f"Customer: {data['customer_name']}")
+    # Review data (example – avoid print in production; use logger.debug)
+    data = response.json()
+    # logger.debug("OCR parse preview amount=%s customer=%s", data.get('amount'), data.get('customer_name'))
         
         # If good, create invoice with returned data
         ```
@@ -127,7 +126,7 @@ async def parse_receipt_image(
 
 
 @router.post("/create-invoice", response_model=schemas.InvoiceOut)
-@limiter.limit("10/minute")
+@limiter.limit(RATE_LIMITS["ocr_create_invoice"])
 async def create_invoice_from_image(
     request: Request,
     file: UploadFile = File(...),
@@ -160,9 +159,8 @@ async def create_invoice_from_image(
         data = {"customer_phone": "+2348012345678"}
         response = requests.post("/ocr/create-invoice", files=files, data=data)
         
-        invoice = response.json()
-        print(f"Invoice created: {invoice['invoice_id']}")
-        print(f"PDF: {invoice['pdf_url']}")
+    invoice = response.json()
+    # logger.debug("OCR created invoice_id=%s pdf=%s", invoice.get('invoice_id'), invoice.get('pdf_url'))
         ```
     
     Note: Review the created invoice - OCR may have errors!

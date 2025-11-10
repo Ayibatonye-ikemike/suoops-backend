@@ -15,6 +15,7 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.models import models, schemas
+from app.core.encryption import encrypt_value
 from app.services.otp_service import OTPService
 
 
@@ -86,9 +87,13 @@ class AuthService:
 
         # Guard against race-condition: if user already created after OTP issuance
         if lookup_field == "email":
+            enc_identifier = encrypt_value(identifier)
             existing = (
                 self.db.query(models.User)
-                .filter(models.User.email == identifier)
+                .filter(
+                    (models.User.email == identifier) |
+                    (models.User.email_enc == enc_identifier)
+                )
                 .one_or_none()
             )
         else:
@@ -112,9 +117,13 @@ class AuthService:
         }
         
         if "email" in stored_data:
-            user_data["email"] = stored_data["email"]
-            # For email signups, use email as phone temporarily (or make phone nullable)
-            user_data["phone"] = stored_data["email"]  # Temporary
+            # Dual-write: keep plaintext in `email`, encrypted in `email_enc` if key active.
+            plaintext_email = stored_data["email"].lower().strip()
+            encrypted_email = encrypt_value(plaintext_email)
+            user_data["email"] = plaintext_email
+            user_data["email_enc"] = encrypted_email
+            # Temporary phone fallback mapping retained only if phone absent.
+            user_data["phone"] = stored_data.get("phone") or plaintext_email
         else:
             # Some edge cases observed in tests where stored_data['phone'] persisted as None.
             # Always fall back to normalized identifier to satisfy NOT NULL constraint.
@@ -139,9 +148,13 @@ class AuthService:
         # Support both phone and email for login
         if hasattr(payload, 'email') and payload.email:
             identifier = payload.email.lower().strip()
+            enc_identifier = encrypt_value(identifier)
             user = (
                 self.db.query(models.User)
-                .filter(models.User.email == identifier)
+                .filter(
+                    (models.User.email == identifier) |
+                    (models.User.email_enc == enc_identifier)
+                )
                 .one_or_none()
             )
         else:
@@ -173,9 +186,13 @@ class AuthService:
             raise ValueError("Invalid or expired OTP")
             
         if lookup_field == "email":
+            enc_identifier = encrypt_value(identifier)
             user = (
                 self.db.query(models.User)
-                .filter(models.User.email == identifier)
+                .filter(
+                    (models.User.email == identifier) |
+                    (models.User.email_enc == enc_identifier)
+                )
                 .one_or_none()
             )
         else:

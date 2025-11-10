@@ -84,10 +84,26 @@ Examples (pseudo rules):
 See `deploy/prometheus.yml` for base Prometheus config.
 
 ## Next Steps
-- Implement actual WhatsApp send logic
-- Implement payment provider API calls
-- Flesh out PDF styling
-- Add authentication & dashboard (future sprint)
+
+## Developer Tooling: Pre-Push Git Hook
+
+Automated local guard that runs backend `pytest` and frontend `vitest` before allowing a push.
+
+1. Enable shared hooks path (one time):
+```bash
+git config core.hooksPath .githooks
+chmod +x .githooks/pre-push
+```
+2. Attempt a push; if tests fail the push is blocked with a clear message.
+3. To override (emergencies only):
+```bash
+SKIP_PRE_PUSH=1 git push origin main
+```
+
+Hook location: `.githooks/pre-push` (bash) – safe, idempotent, installs missing deps on first run.
+
+Slack integration was removed (can be re-added later with a webhook secret).
+
 
 ## License
 Proprietary (add appropriate license text).

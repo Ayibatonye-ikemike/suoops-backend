@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import _set_refresh_cookie
-from app.api.rate_limit import limiter
+from app.api.rate_limit import limiter, RATE_LIMITS
 from app.metrics import oauth_login_success
 from app.core.config import settings
 from app.core.security import TokenType, decode_token
@@ -200,7 +200,7 @@ async def list_oauth_providers(db: Annotated[Session, Depends(get_db)]) -> dict:
 
 
 @router.get("/{provider}/login")
-@limiter.limit("30/minute")
+@limiter.limit(RATE_LIMITS["oauth_login"])
 async def oauth_login(
     provider: str,
     request: Request,  # included for rate limiter key_func
@@ -240,7 +240,7 @@ async def oauth_login(
 
 
 @router.get("/{provider}/callback", response_model=schemas.OAuthCallbackOut)
-@limiter.limit("60/minute")
+@limiter.limit(RATE_LIMITS["oauth_callback"])
 async def oauth_callback(
     provider: str,
     request: Request,

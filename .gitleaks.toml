@@ -1,0 +1,18 @@
+title = "Gitleaks config"
+description = "Custom rules for suoops-backend"
+version = 2
+
+# Exclude common false-positive paths
+[[rules.allowlist.paths]]
+description = "Allow test snapshots and docs"
+path = "docs/"
+
+[[rules.allowlist.paths]]
+description = "Allow test files"
+path = "tests/"
+
+[rules.allowlist.regexes]
+description = "Allow UUIDs and generic hex strings"
+regex = '''(?i)^[0-9a-f]{32}$'''
+
+# Keep default rules but you can override later as needed

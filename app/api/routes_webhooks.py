@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.api.rate_limit import limiter
+from app.api.rate_limit import limiter, RATE_LIMITS
 from app.db.session import get_db
 from app.models import models
 from app.queue import whatsapp_queue
@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 @router.get("/whatsapp")
-@limiter.limit("120/minute")
+@limiter.limit(RATE_LIMITS["webhook_whatsapp_verify"])
 async def verify_whatsapp_webhook(
     request: Request,
     hub_mode: str = Query(None, alias="hub.mode"),
@@ -36,7 +36,7 @@ async def verify_whatsapp_webhook(
 
 
 @router.post("/whatsapp")
-@limiter.limit("300/minute")
+@limiter.limit(RATE_LIMITS["webhook_whatsapp_inbound"])
 async def whatsapp_webhook(request: Request):
     """Handle incoming WhatsApp messages.
     
@@ -120,7 +120,7 @@ def _handle_paystack_subscription(payload: dict, db: Session, signature: str | N
 
 
 @router.post("/paystack")
-@limiter.limit("60/minute")
+@limiter.limit(RATE_LIMITS["webhook_paystack"])
 async def paystack_webhook(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
