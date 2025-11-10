@@ -31,6 +31,8 @@ EXEMPT_PATHS = {
     "/metrics",
     "/auth/",              # Auth endpoints use secure tokens (JWT/OAuth)
     "/tax/",               # Tax endpoints use JWT authentication
+    "/invoices/",          # Invoice endpoints use JWT authentication
+    "/expenses/",          # Expense endpoints use JWT authentication
     "/webhooks/whatsapp",  # External webhooks have their own verification
     "/webhooks/paystack",
     "/public/invoices/",   # Public read-only endpoints
