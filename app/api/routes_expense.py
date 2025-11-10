@@ -95,7 +95,7 @@ def create_expense(
     expense = Expense(
         user_id=current_user_id,
         amount=data.amount,
-        date=data.date,
+        date=data.expense_date,
         category=data.category,
         description=data.description,
         merchant=data.merchant,

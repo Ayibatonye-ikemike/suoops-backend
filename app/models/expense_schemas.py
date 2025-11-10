@@ -35,7 +35,7 @@ ChannelType = Literal["whatsapp", "email", "dashboard"]
 class ExpenseBase(BaseModel):
     """Base expense fields"""
     amount: Decimal = Field(..., gt=0, description="Expense amount in Naira")
-    date: date = Field(..., description="Date of expense")
+    expense_date: date = Field(..., description="Date of expense")
     category: ExpenseCategoryType = Field(..., description="Expense category")
     description: str | None = Field(None, max_length=500, description="Expense description")
     merchant: str | None = Field(None, max_length=200, description="Merchant/vendor name")
@@ -57,7 +57,7 @@ class ExpenseCreate(ExpenseBase):
 class ExpenseUpdate(BaseModel):
     """Schema for updating an expense"""
     amount: Decimal | None = Field(None, gt=0)
-    date: date | None = None
+    expense_date: date | None = None
     category: ExpenseCategoryType | None = None
     description: str | None = Field(None, max_length=500)
     merchant: str | None = Field(None, max_length=200)
