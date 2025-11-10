@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Pre-push hook: runs backend & frontend test suites before allowing push.
+# Skip with: SKIP_PRE_PUSH=1 git push origin main
+set -euo pipefail
+
+if [[ "${SKIP_PRE_PUSH:-}" == "1" ]]; then
+  echo "[pre-push] SKIP_PRE_PUSH=1 detected – skipping tests."
+  exit 0
+fi
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+BACKEND_DIR="$ROOT_DIR/suoops-backend"
+FRONTEND_DIR="$ROOT_DIR/suoops-frontend"
+
+fail() { echo "[pre-push] ❌ $1" >&2; exit 1; }
+
+# Backend tests
+if [[ -d "$BACKEND_DIR" ]]; then
+  echo "[pre-push] ▶ Backend pytest"
+  pushd "$BACKEND_DIR" >/dev/null
+  if command -v pytest >/dev/null 2>&1; then
+    pytest -q || fail "Backend tests failed"
+  else
+    echo "[pre-push] pytest not found, installing minimal deps (requirements.txt)"
+    python -m pip install -r requirements.txt || fail "Failed to install backend deps"
+    pytest -q || fail "Backend tests failed after install"
+  fi
+  popd >/dev/null
+else
+  echo "[pre-push] ⚠ Backend directory not found: $BACKEND_DIR"
+fi
+
+# Frontend tests
+if [[ -d "$FRONTEND_DIR" ]]; then
+  echo "[pre-push] ▶ Frontend vitest"
+  pushd "$FRONTEND_DIR" >/dev/null
+  if [[ -f package.json ]]; then
+    if command -v npm >/dev/null 2>&1; then
+      # Use existing node_modules if present; otherwise do a lightweight install.
+      if [[ ! -d node_modules ]]; then
+        echo "[pre-push] Installing frontend dependencies (npm ci || npm install)"
+        (npm ci || npm install) >/dev/null 2>&1 || fail "Frontend dependency install failed"
+      fi
+      npm run test --silent || fail "Frontend tests failed"
+    else
+      echo "[pre-push] ⚠ npm not available; skipping frontend tests"
+    fi
+  fi
+  popd >/dev/null
+else
+  echo "[pre-push] ⚠ Frontend directory not found: $FRONTEND_DIR"
+fi
+
+echo "[pre-push] ✅ All checks passed – proceeding with push"
+exit 0
