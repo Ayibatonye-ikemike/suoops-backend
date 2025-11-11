@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from app.db.session import get_db
 from app.models import models
-from app.models.user import SubscriptionPlan
+from app.models.models import SubscriptionPlan
 from app.core.audit import log_audit_event
 from pydantic import BaseModel
 import datetime as dt
