@@ -291,9 +291,58 @@ def generate_tax_report(
         else:  # year
             period_label = str(year)
         
-        # Check if user is VAT-eligible (BUSINESS plan only)
+        # Check user's subscription plan and generate appropriate alerts
         user = db.query(models.User).filter(models.User.id == current_user_id).first()
-        is_vat_eligible = user and user.plan == models.SubscriptionPlan.BUSINESS
+        user_plan = user.plan.value if user else "free"
+        
+        # Calculate annual revenue estimate (for threshold alerts)
+        annual_revenue_estimate = float(report.assessable_profit or 0) * 12 if report.period_type == "month" else float(report.assessable_profit or 0)
+        
+        # Generate plan-specific alerts
+        alerts = []
+        
+        # VAT threshold alert (₦25M annual turnover)
+        if user_plan in ("free", "starter"):
+            if annual_revenue_estimate >= 25_000_000:
+                alerts.append({
+                    "type": "vat_threshold",
+                    "severity": "warning",
+                    "message": f"Your estimated annual turnover (₦{annual_revenue_estimate:,.0f}) exceeds ₦25M. VAT registration required. Upgrade to PRO or BUSINESS plan for VAT tracking."
+                })
+            elif annual_revenue_estimate >= 20_000_000:
+                alerts.append({
+                    "type": "vat_approaching",
+                    "severity": "info",
+                    "message": f"You're approaching the ₦25M VAT threshold (current: ₦{annual_revenue_estimate:,.0f}). Consider upgrading to PRO plan for tax planning."
+                })
+        
+        # CIT threshold alert (₦50M - large business)
+        if user_plan == "pro":
+            if annual_revenue_estimate >= 50_000_000:
+                alerts.append({
+                    "type": "cit_threshold",
+                    "severity": "warning",
+                    "message": f"Your turnover (₦{annual_revenue_estimate:,.0f}) exceeds ₦50M. Upgrade to BUSINESS plan for full CIT/VAT e-invoice compliant reporting."
+                })
+        
+        # PIT band information (all plans)
+        pit_band_info = None
+        profit = float(report.assessable_profit or 0)
+        if profit <= 800_000:
+            pit_band_info = "0% band (profit ≤₦800K)"
+        elif profit <= 3_000_000:
+            pit_band_info = "15% band (₦800K-₦3M)"
+        elif profit <= 12_000_000:
+            pit_band_info = "18% band (₦3M-₦12M)"
+        elif profit <= 25_000_000:
+            pit_band_info = "21% band (₦12M-₦25M)"
+        elif profit <= 50_000_000:
+            pit_band_info = "23% band (₦25M-₦50M)"
+        else:
+            pit_band_info = "25% band (>₦50M)"
+        
+        # VAT eligibility flag
+        is_vat_eligible = user_plan in ("pro", "business")
         
         return {
             "id": report.id,
@@ -312,7 +361,11 @@ def generate_tax_report(
             "exempt_sales": float(report.exempt_sales or 0),
             "pdf_url": report.pdf_url,
             "basis": basis,
-            "is_vat_eligible": is_vat_eligible,  # BUSINESS plan only
+            "user_plan": user_plan,
+            "is_vat_eligible": is_vat_eligible,
+            "pit_band_info": pit_band_info,
+            "alerts": alerts,
+            "annual_revenue_estimate": annual_revenue_estimate,
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

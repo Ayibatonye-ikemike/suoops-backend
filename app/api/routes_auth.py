@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+import sentry_sdk
 
 from app.api.rate_limit import limiter, RATE_LIMITS
 from app.core.config import settings
@@ -191,7 +192,12 @@ def get_current_user_id(authorization: str = Header(None)) -> int:
     token = authorization.split(" ", 1)[1]
     try:
         payload = decode_token(token)
-        return int(payload["sub"])  # type: ignore
+        user_id = int(payload["sub"])  # type: ignore
+        
+        # Set Sentry user context for better error tracking
+        sentry_sdk.set_user({"id": user_id})
+        
+        return user_id
     except TokenExpiredError as exc:
         log_failure("auth.token.expired", user_id=None, error="expired")
         raise HTTPException(status_code=401, detail="Token expired") from exc

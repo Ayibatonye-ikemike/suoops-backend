@@ -348,18 +348,27 @@ class TaxReportingService:
         )
         levy = self.compute_development_levy(user_id, profit)
         
-        # Calculate Personal Income Tax (PIT) on profit
+        # Calculate Personal Income Tax (PIT) on profit (all plans)
         pit_calc = compute_personal_income_tax(profit)
         pit_amount = pit_calc["pit_amount"]
 
-        # Check if user is on BUSINESS plan (VAT-eligible)
-        # STARTER and PRO plans are for small businesses (<₦50M threshold)
-        # Only BUSINESS plan users track VAT (they meet ₦50M threshold)
+        # Check user's subscription plan for tax reporting features
+        # FREE: Basic PIT summary
+        # STARTER: PIT calculation + VAT eligibility alerts
+        # PRO: PIT + CIT/VAT hybrid (near threshold)
+        # BUSINESS: Full CIT + VAT e-invoice compliant (>₦25M turnover)
         from app.models.models import Invoice, User, SubscriptionPlan
         user = self.db.query(User).filter(User.id == user_id).first()
-        is_vat_eligible = user and user.plan == SubscriptionPlan.BUSINESS
+        user_plan = user.plan if user else SubscriptionPlan.FREE
         
-        # Initialize VAT fields (only calculate for BUSINESS plan)
+        # VAT tracking:
+        # - FREE: No VAT tracking
+        # - STARTER: No VAT tracking (VAT alerts only)
+        # - PRO: VAT tracking if approaching threshold
+        # - BUSINESS: Full VAT tracking (registered companies)
+        is_vat_eligible = user_plan in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS)
+        
+        # Initialize VAT fields
         taxable_sales = Decimal("0")
         zero_rated_sales = Decimal("0")
         exempt_sales = Decimal("0")
@@ -382,7 +391,7 @@ class TaxReportingService:
                 q = q.filter(Invoice.status != "refunded")
             invoices = q.all()
             
-            # Aggregate VAT by category (BUSINESS plan only)
+            # Aggregate VAT by category (PRO and BUSINESS plans)
             for inv in invoices:
                 amount = Decimal(str(inv.amount))
                 if inv.discount_amount:

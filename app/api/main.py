@@ -5,6 +5,11 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
 
 from app.api.rate_limit import limiter, increment_rate_limit_exceeded, rate_limit_stats
 from app.api.routes_auth import router as auth_router
@@ -77,6 +82,23 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 def create_app() -> FastAPI:
     init_logging()
     init_monitoring()
+    
+    # Initialize Sentry for error tracking and performance monitoring
+    if settings.SENTRY_DSN:
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            integrations=[
+                FastApiIntegration(),
+                StarletteIntegration(),
+                SqlalchemyIntegration(),
+                RedisIntegration(),
+            ],
+            environment=settings.ENV,
+            traces_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
+            profiles_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
+            # Set user context for better tracking
+            send_default_pii=True,
+        )
     
     # Disable debug mode and interactive docs in production for security
     is_production = settings.ENV.lower() == "prod"
