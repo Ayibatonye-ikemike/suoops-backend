@@ -99,6 +99,21 @@ def create_app() -> FastAPI:
             # Set user context for better tracking
             send_default_pii=True,
         )
+    else:
+        # Fallback DSN if not set in environment
+        sentry_sdk.init(
+            dsn="https://75cff6070ced11b92a859a75ee2a0846@o4510345511370752.ingest.us.sentry.io/4510345515433984",
+            integrations=[
+                FastApiIntegration(),
+                StarletteIntegration(),
+                SqlalchemyIntegration(),
+                RedisIntegration(),
+            ],
+            environment=settings.ENV,
+            traces_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
+            profiles_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
+            send_default_pii=True,
+        )
     
     # Disable debug mode and interactive docs in production for security
     is_production = settings.ENV.lower() == "prod"

@@ -96,3 +96,10 @@ async def ready(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
         "celery": celery_ok,
         "latency_ms": duration_ms,
     }
+
+
+@router.get("/sentry-debug")
+async def trigger_error():
+    """Test endpoint to verify Sentry integration."""
+    division_by_zero = 1 / 0
+    return {"message": "This should never be reached"}
