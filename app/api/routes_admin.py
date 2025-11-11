@@ -14,6 +14,28 @@ from typing import Any
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+@router.get("/")
+async def admin_root(admin_user=Depends(admin_required)) -> dict:
+    """
+    Admin API root - lists available endpoints.
+    """
+    return {
+        "message": "Admin API",
+        "endpoints": {
+            "GET /admin/users/count": "Get total user count (cached)",
+            "GET /admin/users/stats": "Get comprehensive user statistics",
+            "GET /admin/users": "List all users with filtering (query params: skip, limit, plan, verified_only, search)",
+            "GET /admin/users/{user_id}": "Get detailed user information including activity"
+        },
+        "authenticated_as": {
+            "id": admin_user.id,
+            "name": admin_user.name,
+            "email": admin_user.email,
+            "role": admin_user.role
+        }
+    }
+
+
 class UserListItem(BaseModel):
     id: int
     name: str
