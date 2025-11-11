@@ -100,9 +100,9 @@ def create_app() -> FastAPI:
             send_default_pii=True,
         )
     else:
-        # Fallback DSN if not set in environment
+        # Fallback DSN for performance monitoring
         sentry_sdk.init(
-            dsn="https://75cff6070ced11b92a859a75ee2a0846@o4510345511370752.ingest.us.sentry.io/4510345515433984",
+            dsn="https://837ec1827bde9bb0d83d0d3ec1e562a1@o4510345511370752.ingest.us.sentry.io/4510345542041600",
             integrations=[
                 FastApiIntegration(),
                 StarletteIntegration(),
