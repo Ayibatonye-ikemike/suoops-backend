@@ -190,20 +190,25 @@ class OTPService:
     def _send_email_otp(self, email: str, otp: str, purpose: str) -> None:
         """Send OTP via email using SMTP."""
         try:
-            # Get SMTP configuration
-            smtp_host = getattr(settings, "SMTP_HOST", None)
+            # Get Brevo SMTP configuration (try multiple possible env var names)
+            smtp_host = getattr(settings, "SMTP_HOST", "smtp-relay.brevo.com")
             smtp_port = getattr(settings, "SMTP_PORT", 587)
-            smtp_user = getattr(settings, "SMTP_USER", None)
-            smtp_password = getattr(settings, "SMTP_PASSWORD", None)
-            from_email = getattr(settings, "FROM_EMAIL", smtp_user)
             
-            if not all([smtp_host, smtp_user, smtp_password]):
-                logger.error("SMTP not configured. Cannot send email OTP.")
+            # Try BREVO_SMTP_LOGIN first, fallback to SMTP_USER
+            smtp_user = getattr(settings, "BREVO_SMTP_LOGIN", None) or getattr(settings, "SMTP_USER", None)
+            
+            # Try SMTP_PASSWORD first (actual SMTP credential), fallback to BREVO_API_KEY
+            smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+            
+            from_email = getattr(settings, "FROM_EMAIL", None) or smtp_user
+            
+            if not all([smtp_user, smtp_password]):
+                logger.error("Brevo SMTP not configured. Need SMTP_USER/BREVO_SMTP_LOGIN and SMTP_PASSWORD/BREVO_API_KEY")
                 raise ValueError("Email OTP is not available")
             
             # Create email message
             msg = MIMEMultipart()
-            msg['From'] = from_email
+            msg['From'] = from_email or "noreply@suoops.com"
             msg['To'] = email
             msg['Subject'] = "SuoOps Verification Code"
             
@@ -224,15 +229,23 @@ Powered by SuoOps
             msg.attach(MIMEText(body, 'plain'))
             
             # Send email via SMTP
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
+            logger.info(f"Attempting SMTP connection to {smtp_host}:{smtp_port} as {smtp_user}")
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+                server.set_debuglevel(0)  # Set to 1 for verbose SMTP debugging
                 server.starttls()
                 server.login(smtp_user, smtp_password)
                 server.send_message(msg)
             
-            logger.info("Sent email OTP to %s", email)
+            logger.info("Successfully sent email OTP to %s", email)
             
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP authentication failed for {smtp_user}: {e}")
+            raise ValueError("Email authentication failed. Please contact support.") from e
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error sending OTP to {email}: {e}")
+            raise ValueError(f"Failed to send OTP email: {e}") from e
         except Exception as e:
-            logger.error("Failed to send email OTP: %s", e)
+            logger.error(f"Unexpected error sending email OTP: {type(e).__name__}: {e}")
             raise ValueError(f"Failed to send OTP email: {e}") from e
 
     def request_signup(self, identifier: str, payload: dict[str, Any]) -> None:

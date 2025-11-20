@@ -24,6 +24,12 @@ class BaseAppSettings(BaseSettings):
     EMAIL_PROVIDER: str = "brevo"  # We use Brevo for email and SMS
     FROM_EMAIL: str | None = None
     
+    # SMTP Configuration (Generic - works with Brevo, SES, etc.)
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    
     # Brevo (Sendinblue) - For both Email and SMS
     BREVO_API_KEY: str | None = None  # Get from Brevo dashboard
     BREVO_SMTP_LOGIN: str | None = None  # Brevo SMTP login (e.g., "9a485d001@smtp-brevo.com")
