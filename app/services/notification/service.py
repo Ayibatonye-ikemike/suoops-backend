@@ -47,13 +47,17 @@ class NotificationService:
         if provider == "brevo":
             # Brevo (formerly Sendinblue) SMTP configuration
             # https://developers.brevo.com/docs/send-emails-with-smtp
-            host = "smtp-relay.brevo.com"
-            port = 587
-            user = getattr(settings, "BREVO_SMTP_LOGIN", None)  # Brevo SMTP login (e.g., "9a485d001@smtp-brevo.com")
-            password = getattr(settings, "BREVO_API_KEY", None)  # Brevo SMTP uses API key as password
+            host = getattr(settings, "SMTP_HOST", "smtp-relay.brevo.com")
+            port = getattr(settings, "SMTP_PORT", 587)
+            
+            # Try SMTP_USER first (actual SMTP credential), fallback to BREVO_SMTP_LOGIN
+            user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
+            
+            # Brevo SMTP password is separate from API key - use SMTP_PASSWORD first
+            password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
             
             if not all([user, password]):
-                logger.warning("Brevo email not configured. Set BREVO_SMTP_LOGIN and BREVO_API_KEY")
+                logger.warning("Brevo email not configured. Set SMTP_USER/BREVO_SMTP_LOGIN and SMTP_PASSWORD/BREVO_API_KEY")
                 return None
                 
             logger.info("Using Brevo SMTP for email: %s", host)
