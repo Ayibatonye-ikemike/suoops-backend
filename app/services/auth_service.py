@@ -24,6 +24,7 @@ class TokenBundle:
     access_token: str
     refresh_token: str
     access_expires_at: datetime
+    user_id: int
 
 
 class AuthService:
@@ -220,7 +221,7 @@ class AuthService:
         access = create_access_token(str(user.id))
         new_refresh = create_refresh_token(str(user.id))
         expires_at = self._extract_expiry(access, TokenType.ACCESS)
-        return TokenBundle(access, new_refresh, expires_at)
+        return TokenBundle(access, new_refresh, expires_at, user.id)
 
     def resend_otp(self, payload: schemas.OTPResend) -> None:
         """Resend OTP for phone OR email."""
@@ -244,7 +245,7 @@ class AuthService:
         access = create_access_token(str(user.id))
         refresh = create_refresh_token(str(user.id))
         expires_at = self._extract_expiry(access, TokenType.ACCESS)
-        return TokenBundle(access, refresh, expires_at)
+        return TokenBundle(access, refresh, expires_at, user.id)
 
     @staticmethod
     def _extract_expiry(token: str, token_type: TokenType) -> datetime:
