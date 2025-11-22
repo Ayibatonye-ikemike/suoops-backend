@@ -33,6 +33,7 @@ EXEMPT_PATHS = {
     "/tax/",               # Tax endpoints use JWT authentication
     "/invoices/",          # Invoice endpoints use JWT authentication
     "/expenses/",          # Expense endpoints use JWT authentication
+    "/telemetry/",         # Frontend telemetry without auth
     "/users/",             # User endpoints use JWT authentication
     "/webhooks/whatsapp",  # External webhooks have their own verification
     "/webhooks/paystack",

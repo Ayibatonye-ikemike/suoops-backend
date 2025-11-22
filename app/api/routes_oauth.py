@@ -302,10 +302,10 @@ async def oauth_callback(
             "Invalid or consumed OAuth state (JSON phase): %s | headers accept=%s mode=%s origin=%s referer=%s",
             state, accept_header, sec_fetch_mode, origin, referer
         )
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid or consumed OAuth state during token exchange.",
-        )
+        # Return user-friendly error instead of exposing internal details
+        frontend_url = settings.FRONTEND_URL or "https://suoops.com"
+        error_redirect = f"{frontend_url}/login?error=oauth_expired"
+        return RedirectResponse(url=error_redirect, status_code=302)
 
     try:
         oauth_service = create_oauth_service(db)

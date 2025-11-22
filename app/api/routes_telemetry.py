@@ -51,6 +51,12 @@ def _append_log(event: TelemetryIn) -> None:
         pass
 
 
+@router.options("/frontend")
+async def telemetry_options():
+    """Handle CORS preflight for telemetry endpoint."""
+    return {"status": "ok"}
+
+
 @router.post("/frontend")
 @limiter.limit("120/minute")  # IP-based limit to mitigate abuse
 async def ingest_frontend(event: TelemetryIn, request: Request):  # noqa: D401
