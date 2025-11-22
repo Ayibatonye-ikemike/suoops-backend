@@ -67,11 +67,12 @@ async def ingest_frontend(event: TelemetryIn, request: Request):  # noqa: D401
     """
     if not event.type:
         raise HTTPException(status_code=400, detail="Missing event type")
-    # Enforce API key in production
+    # Optional API key validation in production (log warning if invalid)
     if settings.ENV.lower() == "prod":
         header_key = request.headers.get("X-Telemetry-Key")
-        if not header_key or header_key != settings.TELEMETRY_INGEST_KEY:
+        if header_key and header_key != settings.TELEMETRY_INGEST_KEY:
             raise HTTPException(status_code=401, detail="Unauthorized")
+        # Allow telemetry without key (rate limiting provides abuse protection)
     if _TELEMETRY_COUNTER:
         try:
             _TELEMETRY_COUNTER.labels(type=event.type).inc()

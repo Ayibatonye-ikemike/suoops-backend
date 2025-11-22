@@ -292,11 +292,8 @@ async def oauth_callback(
         )
         return RedirectResponse(url=redirect_with_params)
 
-    # Validate CSRF state and get redirect URI for token exchange
-    redirect_uri = _get_redirect_uri(state, consume=True)
-    if redirect_uri is None:
-        # Defensive second lookup without consuming in case of race conditions.
-        redirect_uri = _get_redirect_uri(state, consume=False)
+    # Validate CSRF state and get redirect URI (without consuming yet)
+    redirect_uri = _get_redirect_uri(state, consume=False)
     if redirect_uri is None:
         logger.warning(
             "Invalid or consumed OAuth state (JSON phase): %s | headers accept=%s mode=%s origin=%s referer=%s",
@@ -335,6 +332,9 @@ async def oauth_callback(
         csrf_token = get_csrf_token(request)
         secure = settings.ENV.lower() in {"prod", "production"}
         set_csrf_cookie(response, csrf_token, secure=secure)
+        
+        # Only consume state after successful authentication
+        _get_redirect_uri(state, consume=True)
         
         logger.info("OAuth callback success | provider=%s", provider)
         oauth_login_success()
