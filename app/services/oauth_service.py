@@ -128,11 +128,13 @@ class OAuthProvider(ABC):
         }
         
         # DEBUG: Log exact parameters being sent to Google
+        code_preview = code[:20] + "..." if len(code) > 20 else code
         logger.info(
             f"Token exchange request | "
             f"client_id={self.client_id} "
             f"redirect_uri={self.redirect_uri} "
-            f"code={code[:20]}... "
+            f"code={code_preview} "
+            f"code_hash={hash(code)} "  # Track if same code used multiple times
             f"token_url={self.token_url}"
         )
 
@@ -140,9 +142,15 @@ class OAuthProvider(ABC):
             try:
                 response = await client.post(self.token_url, data=data, timeout=10.0)
                 response.raise_for_status()
+                logger.info(f"Token exchange SUCCESS | code_hash={hash(code)}")
                 return response.json()
             except httpx.HTTPStatusError as e:
-                logger.error(f"Token exchange failed: {e.response.text}")
+                logger.error(
+                    f"Token exchange failed | "
+                    f"code_hash={hash(code)} "
+                    f"status={e.response.status_code} "
+                    f"response={e.response.text}"
+                )
                 raise OAuthTokenError(f"Token exchange failed: {e.response.status_code}") from e
             except httpx.RequestError as e:
                 logger.error(f"Token exchange request failed: {str(e)}")
