@@ -45,12 +45,22 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('paid_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('failure_reason', sa.Text(), nullable=True),
-        sa.Column('metadata', postgresql.JSON(astext_type=sa.Text()), nullable=True),
+        sa.Column('payment_metadata', postgresql.JSON(astext_type=sa.Text()), nullable=True),
         sa.Column('ip_address', sa.String(length=45), nullable=True),
         sa.Column('user_agent', sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint('id'),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     )
+    
+    # Add foreign key constraint only if users table exists
+    # In production, users table exists but not in migration history
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'users' in inspector.get_table_names():
+        op.create_foreign_key(
+            'fk_payment_transactions_user_id',
+            'payment_transactions', 'users',
+            ['user_id'], ['id']
+        )
     
     # Indexes for performance
     op.create_index('ix_payment_transactions_user_id', 'payment_transactions', ['user_id'])
