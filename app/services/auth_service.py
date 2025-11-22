@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated
@@ -17,6 +18,8 @@ from app.db.session import get_db
 from app.models import models, schemas
 from app.core.encryption import encrypt_value
 from app.services.otp_service import OTPService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
