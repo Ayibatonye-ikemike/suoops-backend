@@ -135,15 +135,16 @@ class OAuthProvider(ABC):
             "redirect_uri": self.redirect_uri,
         }
         
-        # DEBUG: Log exact parameters being sent to Google
+        # DEBUG: Log FULL token exchange payload
         code_preview = code[:20] + "..." if len(code) > 20 else code
-        logger.info(
-            f"Token exchange request | "
-            f"client_id={self.client_id} "
-            f"redirect_uri={self.redirect_uri} "
-            f"code={code_preview} "
-            f"code_hash={hash(code)} "  # Track if same code used multiple times
-            f"token_url={self.token_url}"
+        logger.error(
+            f"[DEBUG] FULL TOKEN EXCHANGE PAYLOAD:\n"
+            f"  URL: {self.token_url}\n"
+            f"  client_id: {self.client_id}\n"
+            f"  client_secret: {self.client_secret[:10]}...{self.client_secret[-5:]}\n"
+            f"  code: {code}\n"
+            f"  grant_type: authorization_code\n"
+            f"  redirect_uri: {self.redirect_uri}"
         )
 
         async with httpx.AsyncClient() as client:
