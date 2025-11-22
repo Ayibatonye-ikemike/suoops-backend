@@ -342,16 +342,16 @@ async def oauth_callback(
 
     except OAuthProviderError as e:
         logger.error("OAuth authentication failed | provider=%s error=%s", provider, e)
-        raise HTTPException(
-            status_code=400,
-            detail=f"OAuth authentication failed: {str(e)}",
-        ) from e
+        # Redirect to login with user-friendly error instead of showing technical details
+        frontend_url = settings.FRONTEND_URL or "https://suoops.com"
+        error_redirect = f"{frontend_url}/login?error=oauth_failed"
+        return RedirectResponse(url=error_redirect, status_code=302)
     except Exception as e:
         logger.exception("OAuth callback unexpected error | provider=%s", provider)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error during authentication",
-        ) from e
+        # Redirect to login with generic error message
+        frontend_url = settings.FRONTEND_URL or "https://suoops.com"
+        error_redirect = f"{frontend_url}/login?error=auth_error"
+        return RedirectResponse(url=error_redirect, status_code=302)
 
 
 @router.post("/{provider}/revoke")
