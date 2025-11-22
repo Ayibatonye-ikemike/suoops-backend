@@ -126,6 +126,15 @@ class OAuthProvider(ABC):
             "grant_type": "authorization_code",
             "redirect_uri": self.redirect_uri,
         }
+        
+        # DEBUG: Log exact parameters being sent to Google
+        logger.info(
+            f"Token exchange request | "
+            f"client_id={self.client_id} "
+            f"redirect_uri={self.redirect_uri} "
+            f"code={code[:20]}... "
+            f"token_url={self.token_url}"
+        )
 
         async with httpx.AsyncClient() as client:
             try:
