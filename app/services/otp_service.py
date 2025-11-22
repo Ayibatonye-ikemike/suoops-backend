@@ -299,15 +299,20 @@ Powered by SuoOps
     def verify_otp(self, identifier: str, otp: str, purpose: str) -> bool:
         key = self._otp_key(identifier, purpose)
         raw_record = self._store.get(key)
+        logger.info(f"OTP verify | key={key} found={bool(raw_record)} otp_input={otp}")
         if not raw_record:
+            logger.warning(f"OTP not found in Redis | key={key}")
             metrics.otp_invalid_attempt()
             return False
         record = OTPRecord.deserialize(raw_record)
+        logger.info(f"OTP record | stored_code={record.code} attempts={record.attempts}")
         if record.attempts >= self.MAX_ATTEMPTS:
+            logger.warning(f"OTP max attempts exceeded | key={key}")
             self._store.delete(key)
             metrics.otp_invalid_attempt()
             return False
         if record.code != otp:
+            logger.warning(f"OTP mismatch | expected={record.code} got={otp}")
             record.attempts += 1
             self._store.set(key, record.serialize(), int(self.OTP_TTL))
             metrics.otp_invalid_attempt()

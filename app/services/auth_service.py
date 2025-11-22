@@ -183,7 +183,13 @@ class AuthService:
         else:
             raise ValueError("Either phone or email is required")
             
-        if not self.otp.verify_otp(identifier, payload.otp, "login"):
+        # Verify OTP with detailed logging
+        otp_valid = self.otp.verify_otp(identifier, payload.otp, "login")
+        logger.info(
+            f"OTP verification | identifier={identifier[:10]}... "
+            f"otp={payload.otp} purpose=login valid={otp_valid}"
+        )
+        if not otp_valid:
             raise ValueError("Invalid or expired OTP")
             
         if lookup_field == "email":
