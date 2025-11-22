@@ -4,26 +4,28 @@
   <meta charset="utf-8" />
   <title>Invoice {{ invoice.invoice_id }}</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    h1 { margin-bottom: 4px; }
-    .header { margin-bottom: 20px; position: relative; }
+    body { font-family: Arial, sans-serif; margin: 24px; background: #E8F5EC; }
+    h1 { margin-bottom: 4px; color: #0B3318; }
+    .header { margin-bottom: 20px; position: relative; background: white; padding: 20px; border-radius: 8px; }
     .logo { 
       position: absolute; 
-      top: 0; 
-      right: 0; 
+      top: 20px; 
+      right: 20px; 
       max-width: 150px; 
       max-height: 80px; 
     }
     .payment-box { 
-      background: #f8f9fa; 
-      border: 2px solid #007bff; 
-      border-radius: 8px; 
-      padding: 16px; 
+      background: white; 
+      border: 2px solid #14B56A; 
+      border-radius: 12px; 
+      padding: 20px; 
       margin: 20px 0; 
+      box-shadow: 0 2px 8px rgba(20, 181, 106, 0.1); 
     }
     .payment-box h3 { 
       margin: 0 0 12px 0; 
-      color: #007bff; 
+      color: #0B3318; 
+      font-size: 18px; 
     }
     .payment-details { 
       font-size: 16px; 
@@ -37,43 +39,50 @@
       margin-top: 16px;
       padding: 14px;
       border-radius: 8px;
-      background: #e7f5ff;
-      border: 1px solid #90caf9;
+      background: #BFF74A20;
+      border: 1px solid #BFF74A;
     }
     .confirm-box a {
-      color: #0b4f9f;
+      color: #0F766E;
       text-decoration: none;
       font-weight: bold;
     }
     .confirm-box a:hover {
+      color: #14B56A;
       text-decoration: underline;
     }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
-    th { background: #f4f4f4; text-align: left; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; background: white; border-radius: 8px; overflow: hidden; }
+    th, td { border: 1px solid #0F766E20; padding: 12px; font-size: 14px; }
+    th { background: #E8F5EC; text-align: left; color: #0B3318; font-weight: 600; }
     .total { 
       text-align: right; 
       font-weight: bold; 
       font-size: 18px; 
       margin-top: 12px; 
+      color: #0B3318; 
     }
     .footer { 
       margin-top: 30px; 
       font-size: 12px; 
-      color: #666; 
+      color: #0F1E17; 
+      background: white; 
+      padding: 20px; 
+      border-radius: 8px; 
     }
     .qr-section {
       margin-top: 30px;
       padding: 20px;
-      border: 2px dashed #007bff;
-      border-radius: 8px;
+      border: 2px dashed #14B56A;
+      border-radius: 12px;
       text-align: center;
-      background: #f8f9fa;
+      background: white;
+      box-shadow: 0 2px 8px rgba(20, 181, 106, 0.1);
     }
     .qr-section h3 {
       margin: 0 0 10px 0;
-      color: #007bff;
-      font-size: 16px;
+      color: #0B3318;
+      font-size: 18px;
+      font-weight: 600;
     }
     .qr-section img {
       width: 150px;
@@ -163,7 +172,7 @@
   <p class="total" style="color: green;">Discount: -₦{{ "{:,.2f}".format(invoice.discount_amount) }}</p>
   {% endif %}
   
-  <p class="total" style="font-size: 20px; color: #007bff;">
+  <p class="total" style="font-size: 20px; color: #14B56A;">
     Total: ₦{{ "{:,.2f}".format(invoice.amount) }}
   </p>
   
