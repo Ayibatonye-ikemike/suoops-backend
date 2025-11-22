@@ -104,6 +104,14 @@ class OAuthProvider(ABC):
             "access_type": "offline",  # Request refresh token
             "prompt": "consent",  # Force consent to get refresh token
         }
+        
+        # DEBUG: Log authorization URL redirect_uri
+        logger.info(
+            f"Authorization URL generated | "
+            f"redirect_uri={self.redirect_uri} "
+            f"state={state[:16]}..."
+        )
+        
         return f"{self.authorization_url}?{urlencode(params)}"
 
     async def exchange_code_for_token(self, code: str) -> dict[str, Any]:
