@@ -1,7 +1,7 @@
 """add performance indexes
 
 Revision ID: 0033_perf_indexes
-Revises: 20251110_03_add_user_role_column
+Revises: add_pit_amount_20251110
 Create Date: 2025-11-21 00:00:00.000000
 
 Adds database indexes for frequently queried columns to improve performance.
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '0033_perf_indexes'
-down_revision = '20251110_03_add_user_role_column'
+down_revision = 'add_pit_amount_20251110'
 branch_labels = None
 depends_on = None
 
