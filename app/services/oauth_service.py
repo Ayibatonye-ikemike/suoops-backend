@@ -12,6 +12,7 @@ Providers:
 - Apple (planned)
 """
 
+import datetime as dt
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -24,6 +25,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token
 from app.models.models import User
+from app.models.oauth_models import OAuthToken
+from app.utils.token_encryption import encrypt_token
 
 logger = logging.getLogger(__name__)
 
@@ -105,13 +108,6 @@ class OAuthProvider(ABC):
             "prompt": "consent",  # Force consent to get refresh token
         }
         
-        # DEBUG: Log authorization URL redirect_uri
-        logger.info(
-            f"Authorization URL generated | "
-            f"redirect_uri={self.redirect_uri} "
-            f"state={state[:16]}..."
-        )
-        
         return f"{self.authorization_url}?{urlencode(params)}"
 
     async def exchange_code_for_token(self, code: str) -> dict[str, Any]:
@@ -135,16 +131,13 @@ class OAuthProvider(ABC):
             "redirect_uri": self.redirect_uri,
         }
         
-        # DEBUG: Log FULL token exchange payload
-        code_preview = code[:20] + "..." if len(code) > 20 else code
-        logger.error(
-            f"[DEBUG] FULL TOKEN EXCHANGE PAYLOAD:\n"
-            f"  URL: {self.token_url}\n"
-            f"  client_id: {self.client_id}\n"
-            f"  client_secret: {self.client_secret[:10]}...{self.client_secret[-5:]}\n"
-            f"  code: {code}\n"
-            f"  grant_type: authorization_code\n"
-            f"  redirect_uri: {self.redirect_uri}"
+        # Log sanitized exchange metadata (no secrets)
+        code_hash = abs(hash(code))
+        logger.info(
+            f"Token exchange attempt | "
+            f"provider=google "
+            f"code_hash={code_hash} "
+            f"client_id_prefix={self.client_id[:20]}..."
         )
 
         async with httpx.AsyncClient() as client:
@@ -223,7 +216,9 @@ class GoogleOAuthProvider(OAuthProvider):
 
     @property
     def scopes(self) -> list[str]:
-        return ["openid", "email", "profile"]
+        # Minimal scopes for authentication per Google best practices
+        # Request additional scopes (e.g., profile) incrementally when needed
+        return ["openid", "email"]
 
     def extract_user_data(self, user_info: dict[str, Any]) -> dict[str, str]:
         """
@@ -292,6 +287,67 @@ class OAuthService:
         if name not in self._providers:
             raise ValueError(f"OAuth provider '{name}' not registered")
         return self._providers[name]
+
+    def _store_oauth_tokens(
+        self,
+        user_id: int,
+        provider: str,
+        access_token: str,
+        refresh_token: str,
+        token_response: dict[str, Any],
+    ) -> None:
+        """
+        Store or update encrypted OAuth tokens for user.
+        
+        Args:
+            user_id: User ID
+            provider: OAuth provider name
+            access_token: OAuth access token to encrypt
+            refresh_token: OAuth refresh token to encrypt
+            token_response: Full token response with metadata
+        """
+        # Calculate token expiration if provided
+        expires_at = None
+        if "expires_in" in token_response:
+            expires_in = token_response["expires_in"]
+            expires_at = datetime.now(timezone.utc) + dt.timedelta(seconds=expires_in)
+        
+        # Extract scopes if provided
+        scopes = None
+        if "scope" in token_response:
+            scopes = token_response["scope"].split() if isinstance(token_response["scope"], str) else token_response["scope"]
+        
+        # Check if token already exists for this user+provider
+        existing_token = self.db.query(OAuthToken).filter(
+            OAuthToken.user_id == user_id,
+            OAuthToken.provider == provider,
+        ).first()
+        
+        if existing_token:
+            # Update existing token
+            existing_token.access_token_encrypted = encrypt_token(access_token)
+            existing_token.refresh_token_encrypted = encrypt_token(refresh_token)
+            existing_token.token_type = token_response.get("token_type", "bearer")
+            existing_token.expires_at = expires_at
+            existing_token.scopes = scopes
+            existing_token.updated_at = datetime.now(timezone.utc)
+            existing_token.revoked_at = None  # Clear revocation if re-authenticating
+            logger.info(f"Updated OAuth tokens for user {user_id} provider {provider}")
+        else:
+            # Create new token entry
+            new_token = OAuthToken(
+                user_id=user_id,
+                provider=provider,
+                access_token_encrypted=encrypt_token(access_token),
+                refresh_token_encrypted=encrypt_token(refresh_token),
+                token_type=token_response.get("token_type", "bearer"),
+                expires_at=expires_at,
+                scopes=scopes,
+            )
+            self.db.add(new_token)
+            logger.info(f"Created OAuth tokens for user {user_id} provider {provider}")
+        
+        self.db.commit()
 
     def _get_or_create_user(self, email: str, name: str, oauth_provider: str) -> User:
         """
@@ -382,6 +438,20 @@ class OAuthService:
             name=user_data.get("name", ""),
             oauth_provider=provider_name,
         )
+
+        # Store OAuth tokens securely (encrypted at rest)
+        oauth_refresh_token = token_response.get("refresh_token")
+        if oauth_refresh_token:
+            self._store_oauth_tokens(
+                user_id=user.id,
+                provider=provider_name,
+                access_token=access_token,
+                refresh_token=oauth_refresh_token,
+                token_response=token_response,
+            )
+            logger.info(f"Stored encrypted OAuth tokens for {provider_name}: {user.email}")
+        else:
+            logger.warning(f"No refresh token from {provider_name} for {user.email}")
 
         # Generate JWT tokens
         access_token_jwt = create_access_token(str(user.id))

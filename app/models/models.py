@@ -13,12 +13,15 @@ from app.db.base_class import Base
 
 if TYPE_CHECKING:
     from app.models.tax_models import FiscalInvoice, TaxProfile, VATReturn
+    from app.models.oauth_models import OAuthToken
 else:
     # Import at runtime for SQLAlchemy relationship resolution
     from app.models import tax_models  # noqa: F401
+    from app.models import oauth_models  # noqa: F401
     FiscalInvoice = "FiscalInvoice"
     TaxProfile = "TaxProfile"
     VATReturn = "VATReturn"
+    OAuthToken = "OAuthToken"
 
 
 def utcnow() -> dt.datetime:
@@ -232,6 +235,13 @@ class User(Base):
         "PaymentTransaction",
         back_populates="user",
         foreign_keys="[PaymentTransaction.user_id]",
+        cascade="all, delete-orphan",
+    )  # type: ignore
+    
+    # OAuth tokens for SSO authentication
+    oauth_tokens: Mapped[list["OAuthToken"]] = relationship(
+        "OAuthToken",
+        back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore
 
