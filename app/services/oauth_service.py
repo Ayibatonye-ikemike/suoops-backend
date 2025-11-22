@@ -137,7 +137,8 @@ class OAuthProvider(ABC):
             f"Token exchange attempt | "
             f"provider=google "
             f"code_hash={code_hash} "
-            f"client_id_prefix={self.client_id[:20]}..."
+            f"client_id={self.client_id} "
+            f"redirect_uri={self.redirect_uri}"
         )
 
         async with httpx.AsyncClient() as client:
