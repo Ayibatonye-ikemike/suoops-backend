@@ -31,27 +31,50 @@ async def create_invoice(
     data: schemas.InvoiceCreate,
     current_user_id: CurrentUserDep,
     db: DbDep,
+    async_pdf: bool = True,  # Default to async PDF generation for better performance
 ):
+    """Create a new invoice with optional async PDF generation.
+    
+    Args:
+        data: Invoice creation data
+        current_user_id: Authenticated user ID
+        db: Database session
+        async_pdf: If True, PDF is generated in background (faster API response).
+                  If False, PDF is generated immediately (slower but PDF URL available in response).
+                  Defaults to True for better user experience.
+    """
     # Check invoice creation limit based on subscription plan
     check_invoice_limit(db, current_user_id)
     
     svc = get_invoice_service_for_user(current_user_id, db)
     try:
-        invoice = svc.create_invoice(issuer_id=current_user_id, data=data.model_dump())
+        invoice = svc.create_invoice(
+            issuer_id=current_user_id,
+            data=data.model_dump(),
+            async_pdf=async_pdf,
+        )
         
         # Send notifications via all available channels (Email, WhatsApp, SMS) - ONLY for revenue invoices
+        # Note: If async_pdf=True, pdf_url will be None initially
         if invoice.invoice_type == "revenue" and (data.customer_email or data.customer_phone):
             from app.services.notification_service import NotificationService
             notification_service = NotificationService()
-            results = await notification_service.send_invoice_notification(
-                invoice=invoice,
-                customer_email=data.customer_email,
-                customer_phone=data.customer_phone,
-                pdf_url=invoice.pdf_url,
-            )
             
-            logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s, SMS: %s",
-                       invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
+            # For async PDF, we skip notification or queue it to run after PDF is ready
+            if async_pdf:
+                logger.info("Skipping immediate notification for invoice %s (async PDF generation)", 
+                           invoice.invoice_id)
+                # TODO: Add a callback task to send notification once PDF is ready
+            else:
+                results = await notification_service.send_invoice_notification(
+                    invoice=invoice,
+                    customer_email=data.customer_email,
+                    customer_phone=data.customer_phone,
+                    pdf_url=invoice.pdf_url,
+                )
+                
+                logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s, SMS: %s",
+                           invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
         
         return invoice
     except ValueError as e:

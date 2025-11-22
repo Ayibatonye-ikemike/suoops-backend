@@ -25,6 +25,152 @@ from app.workers.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
+# ========== PDF GENERATION TASKS ==========
+
+
+@celery_app.task(
+    bind=True,
+    name="pdf.generate_invoice",
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def generate_invoice_pdf_async(
+    self: Task,
+    invoice_id: int,
+    bank_details: dict[str, Any] | None = None,
+    logo_url: str | None = None,
+    user_plan: str = "free",
+) -> dict[str, Any]:
+    """
+    Generate invoice PDF asynchronously and update database.
+    
+    This task runs in the background to avoid blocking the API response.
+    The invoice is created without a PDF URL initially, then this task
+    generates it and updates the database.
+    
+    Args:
+        invoice_id: Primary key of invoice to generate PDF for
+        bank_details: Optional bank details dict
+        logo_url: Optional logo URL
+        user_plan: User's subscription plan
+        
+    Returns:
+        Dict with pdf_url, invoice_id, and status
+        
+    Raises:
+        Exception: If PDF generation fails after retries
+    """
+    logger.info("Starting async PDF generation for invoice %s (plan: %s)", invoice_id, user_plan)
+    
+    try:
+        with session_scope() as db:
+            # Get invoice from database
+            invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+            
+            if not invoice:
+                logger.error("Invoice %s not found in database", invoice_id)
+                raise ValueError(f"Invoice {invoice_id} not found")
+            
+            # Initialize PDF service
+            pdf_service = PDFService(s3_client)
+            
+            # Generate PDF
+            pdf_url = pdf_service.generate_invoice_pdf(
+                invoice=invoice,
+                bank_details=bank_details,
+                logo_url=logo_url,
+                user_plan=user_plan,
+            )
+            
+            # Update invoice with PDF URL
+            invoice.pdf_url = pdf_url
+            db.commit()
+            
+            logger.info("PDF generated successfully for invoice %s: %s", invoice_id, pdf_url)
+            
+            return {
+                "invoice_id": invoice.invoice_id,
+                "pdf_url": pdf_url,
+                "status": "success",
+            }
+            
+    except Exception as e:
+        logger.error("PDF generation failed for invoice %s: %s", invoice_id, e)
+        
+        # Retry logic
+        if self.request.retries < self.max_retries:
+            logger.info("Retrying PDF generation (attempt %s/%s)", self.request.retries + 1, self.max_retries)
+            raise self.retry(exc=e)
+        
+        # All retries exhausted
+        logger.error("PDF generation failed after %s retries for invoice %s", self.max_retries, invoice_id)
+        raise
+
+
+@celery_app.task(
+    bind=True,
+    name="pdf.generate_receipt",
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def generate_receipt_pdf_async(
+    self: Task,
+    invoice_id: int,
+) -> dict[str, Any]:
+    """
+    Generate payment receipt PDF asynchronously.
+    
+    Args:
+        invoice_id: Primary key of invoice to generate receipt for
+        
+    Returns:
+        Dict with receipt_pdf_url, invoice_id, and status
+    """
+    logger.info("Starting async receipt PDF generation for invoice %s", invoice_id)
+    
+    try:
+        with session_scope() as db:
+            # Get invoice from database
+            invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+            
+            if not invoice:
+                logger.error("Invoice %s not found in database", invoice_id)
+                raise ValueError(f"Invoice {invoice_id} not found")
+            
+            # Initialize PDF service
+            pdf_service = PDFService(s3_client)
+            
+            # Generate receipt PDF
+            receipt_url = pdf_service.generate_receipt_pdf(invoice)
+            
+            # Update invoice with receipt URL
+            invoice.receipt_pdf_url = receipt_url
+            db.commit()
+            
+            logger.info("Receipt PDF generated successfully for invoice %s: %s", invoice_id, receipt_url)
+            
+            return {
+                "invoice_id": invoice.invoice_id,
+                "receipt_pdf_url": receipt_url,
+                "status": "success",
+            }
+            
+    except Exception as e:
+        logger.error("Receipt generation failed for invoice %s: %s", invoice_id, e)
+        
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e)
+        
+        raise
+
+
+# ========== WHATSAPP & MESSAGING TASKS ==========
+
+
 @celery_app.task(
     bind=True,
     name="whatsapp.process_inbound",

@@ -41,8 +41,8 @@ def verify_password(password: str, hashed: str) -> bool:
     return pwd_context.verify(password, hashed)
 
 
-def create_access_token(subject: str, expires_minutes: int = 60 * 24) -> str:
-    return _create_token(subject, timedelta(minutes=expires_minutes), TokenType.ACCESS)
+def create_access_token(subject: str, expires_minutes: int = 60 * 24, user_plan: str | None = None) -> str:
+    return _create_token(subject, timedelta(minutes=expires_minutes), TokenType.ACCESS, user_plan)
 
 
 def create_refresh_token(subject: str, expires_days: int = 14) -> str:
@@ -71,7 +71,7 @@ def validate_password_strength(password: str) -> None:
         raise ValueError("Password must include mixed case characters")
 
 
-def _create_token(subject: str, delta: timedelta, token_type: TokenType) -> str:
+def _create_token(subject: str, delta: timedelta, token_type: TokenType, user_plan: str | None = None) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": subject,
@@ -79,4 +79,7 @@ def _create_token(subject: str, delta: timedelta, token_type: TokenType) -> str:
         "exp": now + delta,
         "type": token_type.value,
     }
+    # Add user plan for dynamic rate limiting (Strategy pattern)
+    if user_plan:
+        payload["plan"] = user_plan
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=ALGORITHM)

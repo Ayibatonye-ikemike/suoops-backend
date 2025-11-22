@@ -12,6 +12,7 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 
 from app.api.rate_limit import limiter, increment_rate_limit_exceeded, rate_limit_stats
+from app.api.routes_analytics import router as analytics_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_expense import router as expense_router
 from app.api.routes_health import router as health_router
@@ -34,8 +35,10 @@ from app.core.logger import init_logging
 from app.core.monitoring import init_monitoring
 from app.core.errors import register_error_handlers
 from app.core.csrf import CSRFMiddleware
+from app.core.exceptions import SuoOpsException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.requests import Request
 import uuid
 import logging
 
@@ -43,6 +46,14 @@ import logging
 async def _rate_limit_handler(request, exc: RateLimitExceeded):
     increment_rate_limit_exceeded()
     return JSONResponse(status_code=429, content={"detail": "Too many requests"})
+
+
+async def _suoops_exception_handler(request: Request, exc: SuoOpsException):
+    """Global handler for custom SuoOps exceptions with structured error responses."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict(),
+    )
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -127,6 +138,7 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+    app.add_exception_handler(SuoOpsException, _suoops_exception_handler)
     
     # CSRF Protection - Add before CORS to validate tokens early
     # Only enabled in production for security
@@ -144,6 +156,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestSizeLimitMiddleware)
     register_error_handlers(app)
+    app.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
     app.include_router(auth_router, prefix="/auth", tags=["auth"])
     app.include_router(oauth_router, tags=["oauth"])
     app.include_router(webhook_router, prefix="/webhooks", tags=["webhooks"])

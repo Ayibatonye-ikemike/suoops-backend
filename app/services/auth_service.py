@@ -242,7 +242,7 @@ class AuthService:
             raise ValueError(str(exc)) from exc
 
     def _issue_tokens(self, user: models.User) -> TokenBundle:
-        access = create_access_token(str(user.id))
+        access = create_access_token(str(user.id), user_plan=user.plan.value)
         refresh = create_refresh_token(str(user.id))
         expires_at = self._extract_expiry(access, TokenType.ACCESS)
         return TokenBundle(access, refresh, expires_at, user.id)

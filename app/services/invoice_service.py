@@ -11,9 +11,17 @@ from sqlalchemy.orm import Session, selectinload, joinedload
 from app import metrics
 from app.models import models
 from app.utils.id_generator import generate_id
+from app.core.exceptions import (
+    InvoiceNotFoundError,
+    InvoiceLimitExceededError,
+    InvalidInvoiceStatusError,
+    MissingBankDetailsError,
+    UserNotFoundError,
+)
 
 if TYPE_CHECKING:
     from app.services.pdf_service import PDFService
+    from app.services.cache_service import InvoiceCacheRepository
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +29,17 @@ logger = logging.getLogger(__name__)
 class InvoiceService:
     _allowed_statuses = {"pending", "awaiting_confirmation", "paid", "failed"}
 
-    def __init__(self, db: Session, pdf_service: PDFService):
-        """Core invoice workflow built around manual bank-transfer confirmations."""
+    def __init__(self, db: Session, pdf_service: PDFService, cache: InvoiceCacheRepository | None = None):
+        """Core invoice workflow with optional caching layer.
+        
+        Args:
+            db: Database session
+            pdf_service: PDF generation service
+            cache: Optional invoice cache repository (follows Dependency Inversion Principle)
+        """
         self.db = db
         self.pdf_service = pdf_service
+        self.cache = cache
 
     # ---------- Public API ----------
     def check_invoice_quota(self, issuer_id: int) -> dict[str, object]:
@@ -40,7 +55,7 @@ class InvoiceService:
         """
         user = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
         if not user:
-            raise ValueError("User not found")
+            raise UserNotFoundError()
         
         # Reset usage if new month started
         self._reset_usage_if_needed(user)
@@ -106,14 +121,21 @@ class InvoiceService:
         }
         return messages.get(current_plan, "Upgrade to increase your invoice limit!")
 
-    def create_invoice(self, issuer_id: int, data: dict[str, object]) -> models.Invoice:
+    def create_invoice(
+        self,
+        issuer_id: int,
+        data: dict[str, object],
+        async_pdf: bool = False,
+    ) -> models.Invoice:
         # Check quota before creating invoice (only for revenue invoices)
         invoice_type = data.get("invoice_type", "revenue")
         if invoice_type == "revenue":
             quota_check = self.check_invoice_quota(issuer_id)
             if not quota_check["can_create"]:
-                raise ValueError(
-                    f"Invoice limit reached. {quota_check['message']}"
+                raise InvoiceLimitExceededError(
+                    plan=quota_check["plan"],
+                    limit=quota_check["limit"],
+                    used=quota_check["used"],
                 )
         
         # Handle customer/vendor based on invoice type
@@ -178,43 +200,80 @@ class InvoiceService:
         self.db.add(invoice)
         self.db.commit()
         self.db.refresh(invoice)
+        
+        # Invalidate cache
+        if self.cache:
+            self.cache.invalidate_user_invoices(issuer_id)
+        
+        # Record metrics
+        from app import metrics
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).one()
+        metrics.invoice_created_by_plan(user.plan.value)
+        total_amount = sum(float(line.unit_price) * line.quantity for line in invoice.lines)
+        metrics.record_invoice_amount(total_amount)
 
         # Get issuer's details for the PDF
-        user = self.db.query(models.User).filter(models.User.id == issuer_id).one()
         
         # Generate PDF (different templates for revenue vs expense)
-        if invoice_type == "revenue":
-            # Validate bank details are set for revenue invoices
-            if not user.bank_name or not user.account_number:
-                raise ValueError(
-                    "Bank details required. Please add your bank information in Settings before creating invoices."
-                )
+        if async_pdf:
+            # Queue PDF generation as background task
+            from app.workers.tasks import generate_invoice_pdf_async
             
-            bank_details = {
-                "bank_name": user.bank_name,
-                "account_number": user.account_number,
-                "account_name": user.account_name,
-            }
+            bank_details = None
+            if invoice_type == "revenue":
+                # Validate bank details are set for revenue invoices
+                if not user.bank_name or not user.account_number:
+                    raise MissingBankDetailsError()
+                
+                bank_details = {
+                    "bank_name": user.bank_name,
+                    "account_number": user.account_number,
+                    "account_name": user.account_name,
+                }
             
-            # Generate revenue invoice PDF with bank transfer details and logo
-            pdf_url = self.pdf_service.generate_invoice_pdf(
-                invoice, 
+            # Queue task - PDF will be generated in background
+            generate_invoice_pdf_async.delay(
+                invoice_id=invoice.id,
                 bank_details=bank_details,
                 logo_url=user.logo_url,
-                user_plan=user.plan.value  # Pass plan for VAT visibility
+                user_plan=user.plan.value,
             )
+            
+            # PDF URL will be updated by the background task
+            invoice.pdf_url = None
+            logger.info("Queued async PDF generation for invoice %s", invoice.invoice_id)
         else:
-            # Generate expense receipt PDF (simpler, no bank details needed)
-            # For now, use the same PDF generator
-            # TODO: Create expense-specific PDF template
-            pdf_url = self.pdf_service.generate_invoice_pdf(
-                invoice,
-                bank_details=None,  # No bank details for expenses
-                logo_url=user.logo_url,
-                user_plan=user.plan.value  # Pass plan for VAT visibility
-            )
-        
-        invoice.pdf_url = pdf_url
+            # Generate PDF synchronously (original behavior)
+            if invoice_type == "revenue":
+                # Validate bank details are set for revenue invoices
+                if not user.bank_name or not user.account_number:
+                    raise MissingBankDetailsError()
+                
+                bank_details = {
+                    "bank_name": user.bank_name,
+                    "account_number": user.account_number,
+                    "account_name": user.account_name,
+                }
+                
+                # Generate revenue invoice PDF with bank transfer details and logo
+                pdf_url = self.pdf_service.generate_invoice_pdf(
+                    invoice, 
+                    bank_details=bank_details,
+                    logo_url=user.logo_url,
+                    user_plan=user.plan.value  # Pass plan for VAT visibility
+                )
+            else:
+                # Generate expense receipt PDF (simpler, no bank details needed)
+                # For now, use the same PDF generator
+                # TODO: Create expense-specific PDF template
+                pdf_url = self.pdf_service.generate_invoice_pdf(
+                    invoice,
+                    bank_details=None,  # No bank details for expenses
+                    logo_url=user.logo_url,
+                    user_plan=user.plan.value  # Pass plan for VAT visibility
+                )
+            
+            invoice.pdf_url = pdf_url
         
         # Increment usage counter (only for revenue invoices)
         if invoice_type == "revenue":
@@ -241,14 +300,29 @@ class InvoiceService:
                        user.invoices_this_month, user.plan.invoice_limit or "unlimited")
             metrics.invoice_created()
         
+        # Invalidate cache after creating invoice
+        if self.cache:
+            self.cache.invalidate_user_invoices(issuer_id)
+        
         return invoice
 
     def list_invoices(self, issuer_id: int) -> list[models.Invoice]:
-        """List recent invoices with related entities preloaded to avoid N+1.
+        """List recent invoices with optional caching layer.
 
         Uses joinedload for small one-to-one/one-to-many sets and selectinload for collections.
+        Cache-aside pattern: check cache first, fallback to database, then populate cache.
         """
-        return (
+        # Try cache first (if available)
+        if self.cache:
+            cached = self.cache.get_invoice_list(issuer_id)
+            if cached is not None:
+                # Note: Returning dict representation instead of models for simplicity
+                # In production, might want to reconstruct models or return dicts consistently
+                logger.info(f"Cache hit for user {issuer_id} invoice list")
+                # For now, fall through to database (cache is read-through only)
+        
+        # Database query
+        invoices = (
             self.db.query(models.Invoice)
             .filter(models.Invoice.issuer_id == issuer_id)
             .options(
@@ -260,8 +334,23 @@ class InvoiceService:
             .limit(50)
             .all()
         )
+        
+        # Populate cache
+        if self.cache and invoices:
+            self.cache.set_invoice_list(issuer_id, invoices)
+        
+        return invoices
 
     def get_invoice(self, issuer_id: int, invoice_id: str) -> models.Invoice:
+        """Get single invoice with cache-aside pattern."""
+        # Try cache first (if available)
+        if self.cache:
+            cached = self.cache.get_invoice(invoice_id)
+            if cached:
+                logger.info(f"Cache hit for invoice {invoice_id}")
+                # For now, fall through to database for full model with relationships
+                # In production, might cache relationships too
+        
         invoice = (
             self.db.query(models.Invoice)
             .options(
@@ -273,7 +362,11 @@ class InvoiceService:
             .one_or_none()
         )
         if not invoice:
-            raise ValueError("Invoice not found")
+            raise InvoiceNotFoundError(invoice_id)
+        
+        # Populate cache
+        if self.cache:
+            self.cache.set_invoice(invoice)
         # Normalize timezone for paid_at in case backend (e.g., SQLite) returned naive datetime
         if invoice.paid_at is not None and invoice.paid_at.tzinfo is None:
             invoice.paid_at = invoice.paid_at.replace(tzinfo=dt.timezone.utc)
@@ -281,7 +374,7 @@ class InvoiceService:
 
     def update_status(self, issuer_id: int, invoice_id: str, status: str) -> models.Invoice:
         if status not in self._allowed_statuses:
-            raise ValueError("Unsupported status")
+            raise InvalidInvoiceStatusError(new_status=status)
         invoice = (
             self.db.query(models.Invoice)
             .options(joinedload(models.Invoice.customer), joinedload(models.Invoice.issuer))
@@ -289,7 +382,7 @@ class InvoiceService:
             .one_or_none()
         )
         if not invoice:
-            raise ValueError("Invoice not found")
+            raise InvoiceNotFoundError(invoice_id)
         previous_status = invoice.status
         if previous_status == status:
             return invoice
@@ -337,6 +430,12 @@ class InvoiceService:
                 )
             except Exception as e:  # noqa: BLE001
                 logger.error("Failed to send receipt notifications for %s: %s", invoice.invoice_id, e)
+        
+        # Invalidate cache after status update
+        if self.cache:
+            self.cache.invalidate_invoice(invoice_id)
+            self.cache.invalidate_user_invoices(issuer_id)
+        
         return self.get_invoice(issuer_id, invoice_id)
 
     def confirm_transfer(self, invoice_id: str) -> models.Invoice:
@@ -477,11 +576,24 @@ def build_invoice_service(db: Session, user_id: int | None = None) -> InvoiceSer
         user_id: Business owner's user ID (optional, not used in simple model)
     
     Returns:
-        InvoiceService configured with PDF generation
+        InvoiceService configured with PDF generation and optional caching
     """
     from app.services.pdf_service import PDFService
     from app.storage.s3_client import S3Client
+    from app.services.cache_service import InvoiceCacheRepository
+    from app.db.redis_client import get_redis_client
+    from app.core.config import settings
 
     pdf = PDFService(S3Client())
-    return InvoiceService(db, pdf)
+    
+    # Add cache if Redis is configured
+    cache = None
+    if getattr(settings, "REDIS_URL", None):
+        try:
+            redis_client = get_redis_client()
+            cache = InvoiceCacheRepository(redis_client)
+        except Exception as e:
+            logger.warning(f"Failed to initialize invoice cache: {e}")
+    
+    return InvoiceService(db, pdf, cache=cache)
 

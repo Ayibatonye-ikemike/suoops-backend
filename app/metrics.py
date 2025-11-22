@@ -74,10 +74,31 @@ try:  # pragma: no cover - import guard
         "otp_resend_success_conversion_total",
         "Successful OTP verifications that followed at least one resend",
     )
+    # Subscription metrics
+    _SUBSCRIPTION_PAYMENT_INITIATED = Counter(
+        "subscription_payment_initiated_total", "Subscription payment initiations", ["plan"]
+    )
+    _SUBSCRIPTION_PAYMENT_SUCCESS = Counter(
+        "subscription_payment_success_total", "Successful subscription payments", ["plan"]
+    )
+    _SUBSCRIPTION_PAYMENT_FAILED = Counter(
+        "subscription_payment_failed_total", "Failed subscription payments", ["plan", "reason"]
+    )
+    _SUBSCRIPTION_UPGRADES = Counter(
+        "subscription_upgrades_total", "Subscription plan upgrades", ["from_plan", "to_plan"]
+    )
+    _INVOICE_CREATED_BY_PLAN = Counter(
+        "invoice_created_by_plan_total", "Invoices created by subscription plan", ["plan"]
+    )
+    _AVERAGE_INVOICE_VALUE = Histogram(
+        "invoice_amount_naira",
+        "Invoice amounts in Naira",
+        buckets=(100, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000),
+    )
     _ENABLED = True
 except Exception:  # noqa: BLE001
     _ENABLED = False
-    _INVOICE_CREATED = _INVOICE_PAID = _WHATSAPP_PARSE_UNKNOWN = _PAYMENT_CONFIRM_LATENCY = _OAUTH_LOGINS = _TAX_PROFILE_UPDATES = _VAT_CALCULATIONS = _COMPLIANCE_CHECKS = _OTP_SIGNUP_REQUESTS = _OTP_SIGNUP_VERIFICATIONS = _OTP_LOGIN_REQUESTS = _OTP_LOGIN_VERIFICATIONS = _OTP_RESENDS = _OTP_RESEND_BLOCKED = _OTP_INVALID_ATTEMPTS = _OTP_SIGNUP_VERIFY_LATENCY = _OTP_LOGIN_VERIFY_LATENCY = _OTP_WHATSAPP_DELIVERY_SUCCESS = _OTP_WHATSAPP_DELIVERY_FAILURE = _OTP_EMAIL_DELIVERY_SUCCESS = _OTP_EMAIL_DELIVERY_FAILURE = _OTP_RESEND_SUCCESS_CONVERSION = None  # type: ignore
+    _INVOICE_CREATED = _INVOICE_PAID = _WHATSAPP_PARSE_UNKNOWN = _PAYMENT_CONFIRM_LATENCY = _OAUTH_LOGINS = _TAX_PROFILE_UPDATES = _VAT_CALCULATIONS = _COMPLIANCE_CHECKS = _OTP_SIGNUP_REQUESTS = _OTP_SIGNUP_VERIFICATIONS = _OTP_LOGIN_REQUESTS = _OTP_LOGIN_VERIFICATIONS = _OTP_RESENDS = _OTP_RESEND_BLOCKED = _OTP_INVALID_ATTEMPTS = _OTP_SIGNUP_VERIFY_LATENCY = _OTP_LOGIN_VERIFY_LATENCY = _OTP_WHATSAPP_DELIVERY_SUCCESS = _OTP_WHATSAPP_DELIVERY_FAILURE = _OTP_EMAIL_DELIVERY_SUCCESS = _OTP_EMAIL_DELIVERY_FAILURE = _OTP_RESEND_SUCCESS_CONVERSION = _SUBSCRIPTION_PAYMENT_INITIATED = _SUBSCRIPTION_PAYMENT_SUCCESS = _SUBSCRIPTION_PAYMENT_FAILED = _SUBSCRIPTION_UPGRADES = _INVOICE_CREATED_BY_PLAN = _AVERAGE_INVOICE_VALUE = None  # type: ignore
     logger.warning("Prometheus client not available; metrics will be log-only")
 
 
@@ -233,6 +254,55 @@ def otp_resend_success_conversion():
         logger.debug("metric otp_resend_success_conversion_total += 1")
 
 
+# ---------------- Subscription metrics helpers -----------------
+def subscription_payment_initiated(plan: str):
+    """Record subscription payment initiation."""
+    if _ENABLED:
+        _SUBSCRIPTION_PAYMENT_INITIATED.labels(plan=plan).inc()  # type: ignore[union-attr]
+    else:
+        logger.debug(f"metric subscription_payment_initiated_total[plan={plan}] += 1")
+
+
+def subscription_payment_success(plan: str):
+    """Record successful subscription payment."""
+    if _ENABLED:
+        _SUBSCRIPTION_PAYMENT_SUCCESS.labels(plan=plan).inc()  # type: ignore[union-attr]
+    else:
+        logger.debug(f"metric subscription_payment_success_total[plan={plan}] += 1")
+
+
+def subscription_payment_failed(plan: str, reason: str = "unknown"):
+    """Record failed subscription payment."""
+    if _ENABLED:
+        _SUBSCRIPTION_PAYMENT_FAILED.labels(plan=plan, reason=reason).inc()  # type: ignore[union-attr]
+    else:
+        logger.debug(f"metric subscription_payment_failed_total[plan={plan}, reason={reason}] += 1")
+
+
+def subscription_upgrade(from_plan: str, to_plan: str):
+    """Record subscription plan upgrade."""
+    if _ENABLED:
+        _SUBSCRIPTION_UPGRADES.labels(from_plan=from_plan, to_plan=to_plan).inc()  # type: ignore[union-attr]
+    else:
+        logger.debug(f"metric subscription_upgrades_total[from={from_plan}, to={to_plan}] += 1")
+
+
+def invoice_created_by_plan(plan: str):
+    """Record invoice creation by subscription plan."""
+    if _ENABLED:
+        _INVOICE_CREATED_BY_PLAN.labels(plan=plan).inc()  # type: ignore[union-attr]
+    else:
+        logger.debug(f"metric invoice_created_by_plan_total[plan={plan}] += 1")
+
+
+def record_invoice_amount(amount_naira: float):
+    """Record invoice amount for average value tracking."""
+    if _ENABLED:
+        _AVERAGE_INVOICE_VALUE.observe(amount_naira)  # type: ignore[union-attr]
+    else:
+        logger.debug(f"observe invoice_amount_naira={amount_naira}")
+
+
 class PaymentLatencyTimer:
     def __init__(self):
         self.start = time.perf_counter()
@@ -266,4 +336,11 @@ __all__ = [
     "otp_email_delivery_success",
     "otp_email_delivery_failure",
     "otp_resend_success_conversion",
+    # Subscription
+    "subscription_payment_initiated",
+    "subscription_payment_success",
+    "subscription_payment_failed",
+    "subscription_upgrade",
+    "invoice_created_by_plan",
+    "record_invoice_amount",
 ]

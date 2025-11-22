@@ -13,9 +13,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 from typing import Any, Protocol
 
 import redis
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app import metrics
 from app.bot.whatsapp_client import WhatsAppClient
@@ -188,7 +190,7 @@ class OTPService:
         return "whatsapp"
     
     def _send_email_otp(self, email: str, otp: str, purpose: str) -> None:
-        """Send OTP via email using SMTP."""
+        """Send OTP via email using SMTP with HTML template."""
         try:
             # Get Brevo SMTP configuration (try multiple possible env var names)
             smtp_host = getattr(settings, "SMTP_HOST", "smtp-relay.brevo.com")
@@ -206,14 +208,24 @@ class OTPService:
                 logger.error("Brevo SMTP not configured. Need SMTP_USER/BREVO_SMTP_LOGIN and SMTP_PASSWORD/BREVO_API_KEY")
                 raise ValueError("Email OTP is not available")
             
-            # Create email message
-            msg = MIMEMultipart()
-            msg['From'] = from_email or "noreply@suoops.com"
-            msg['To'] = email
-            msg['Subject'] = "SuoOps Verification Code"
+            # Setup Jinja2 template environment
+            template_dir = Path(__file__).parent.parent.parent / "templates" / "email"
+            jinja_env = Environment(
+                loader=FileSystemLoader(str(template_dir)),
+                autoescape=select_autoescape(['html', 'xml'])
+            )
             
+            # Render HTML template
+            template = jinja_env.get_template('otp_verification.html')
+            html_body = template.render(
+                otp_code=otp,
+                purpose=purpose,
+                current_year=datetime.now(timezone.utc).year
+            )
+            
+            # Create plain text fallback
             action = "complete your signup" if purpose == "signup" else "login securely"
-            body = f"""
+            plain_body = f"""
 SuoOps Verification Code
 
 Your OTP is {otp}.
@@ -226,7 +238,16 @@ If you did not request this code, please ignore this message.
 ---
 Powered by SuoOps
 """
-            msg.attach(MIMEText(body, 'plain'))
+            
+            # Create email message
+            msg = MIMEMultipart('alternative')
+            msg['From'] = from_email or "noreply@suoops.com"
+            msg['To'] = email
+            msg['Subject'] = "SuoOps Verification Code"
+            
+            # Attach plain text and HTML versions
+            msg.attach(MIMEText(plain_body, 'plain'))
+            msg.attach(MIMEText(html_body, 'html'))
             
             # Send email via SMTP
             logger.info(f"Attempting SMTP connection to {smtp_host}:{smtp_port} as {smtp_user}")

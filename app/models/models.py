@@ -226,6 +226,13 @@ class User(Base):
     )  # type: ignore
     # Note: Expenses are now tracked as invoices with invoice_type='expense'
     # The separate Expense table is deprecated but kept for backward compatibility
+    
+    # Payment transactions for subscription billing
+    payment_transactions: Mapped[list["PaymentTransaction"]] = relationship(
+        "PaymentTransaction",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
 
 
 class WebhookEvent(Base):
