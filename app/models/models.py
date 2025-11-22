@@ -231,6 +231,7 @@ class User(Base):
     payment_transactions: Mapped[list["PaymentTransaction"]] = relationship(
         "PaymentTransaction",
         back_populates="user",
+        foreign_keys="[PaymentTransaction.user_id]",
         cascade="all, delete-orphan",
     )  # type: ignore
 
