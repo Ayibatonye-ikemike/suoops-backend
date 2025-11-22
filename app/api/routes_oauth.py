@@ -299,10 +299,11 @@ async def oauth_callback(
             "Invalid or consumed OAuth state (JSON phase): %s | headers accept=%s mode=%s origin=%s referer=%s",
             state, accept_header, sec_fetch_mode, origin, referer
         )
-        # Return user-friendly error instead of exposing internal details
-        frontend_url = settings.FRONTEND_URL or "https://suoops.com"
-        error_redirect = f"{frontend_url}/login?error=oauth_expired"
-        return RedirectResponse(url=error_redirect, status_code=302)
+        # Return JSON error for fetch requests to avoid CORS issues with redirects
+        raise HTTPException(
+            status_code=401,
+            detail="OAuth state expired or invalid. Please try logging in again."
+        )
 
     try:
         oauth_service = create_oauth_service(db)
@@ -342,16 +343,18 @@ async def oauth_callback(
 
     except OAuthProviderError as e:
         logger.error("OAuth authentication failed | provider=%s error=%s", provider, e)
-        # Redirect to login with user-friendly error instead of showing technical details
-        frontend_url = settings.FRONTEND_URL or "https://suoops.com"
-        error_redirect = f"{frontend_url}/login?error=oauth_failed"
-        return RedirectResponse(url=error_redirect, status_code=302)
+        # Return JSON error for fetch requests to avoid CORS issues
+        raise HTTPException(
+            status_code=400,
+            detail="Authentication failed. The login code may have expired. Please try again."
+        )
     except Exception as e:
         logger.exception("OAuth callback unexpected error | provider=%s", provider)
-        # Redirect to login with generic error message
-        frontend_url = settings.FRONTEND_URL or "https://suoops.com"
-        error_redirect = f"{frontend_url}/login?error=auth_error"
-        return RedirectResponse(url=error_redirect, status_code=302)
+        # Return JSON error for unexpected errors
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred during authentication. Please try again."
+        )
 
 
 @router.post("/{provider}/revoke")
