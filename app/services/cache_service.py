@@ -73,19 +73,36 @@ class InvoiceCacheRepository:
         Returns:
             JSON string representation
         """
+        # Extract customer info from relationship if available
+        customer_name = None
+        customer_email = None
+        customer_phone = None
+        
+        if hasattr(invoice, 'customer') and invoice.customer:
+            customer_name = invoice.customer.name
+            customer_email = invoice.customer.email
+            customer_phone = invoice.customer.phone
+        
         data = {
             "id": invoice.id,
+            "invoice_id": invoice.invoice_id,
             "issuer_id": invoice.issuer_id,
-            "customer_name": invoice.customer_name,
-            "customer_email": invoice.customer_email,
-            "customer_phone": invoice.customer_phone,
+            "customer_id": invoice.customer_id,
+            "customer_name": customer_name,
+            "customer_email": customer_email,
+            "customer_phone": customer_phone,
+            "amount": str(invoice.amount),
             "status": invoice.status,
-            "total": str(invoice.total),
-            "issued_at": invoice.issued_at.isoformat() if invoice.issued_at else None,
             "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
             "created_at": invoice.created_at.isoformat(),
+            "paid_at": invoice.paid_at.isoformat() if invoice.paid_at else None,
+            "pdf_url": invoice.pdf_url,
+            "receipt_pdf_url": invoice.receipt_pdf_url,
+            "invoice_type": invoice.invoice_type,
+            "category": invoice.category,
+            "vendor_name": invoice.vendor_name,
+            "channel": invoice.channel,
             "notes": invoice.notes,
-            "payment_instructions": invoice.payment_instructions,
         }
         return json.dumps(data)
 
