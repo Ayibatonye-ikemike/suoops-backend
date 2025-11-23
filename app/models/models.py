@@ -14,10 +14,12 @@ from app.db.base_class import Base
 if TYPE_CHECKING:
     from app.models.tax_models import FiscalInvoice, TaxProfile, VATReturn
     from app.models.oauth_models import OAuthToken
+    from app.models.payment_models import PaymentTransaction
 else:
     # Import at runtime for SQLAlchemy relationship resolution
     from app.models import tax_models  # noqa: F401
     from app.models import oauth_models  # noqa: F401
+    from app.models import payment_models  # noqa: F401
     FiscalInvoice = "FiscalInvoice"
     TaxProfile = "TaxProfile"
     VATReturn = "VATReturn"
