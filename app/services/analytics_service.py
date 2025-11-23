@@ -51,7 +51,7 @@ def calculate_revenue_metrics(
         if inv.status == "paid":
             paid_revenue += amount
         elif inv.status == "pending":
-            if inv.due_date and inv.due_date < end_date:
+            if inv.due_date and inv.due_date.date() < end_date:
                 overdue_revenue += amount
             else:
                 pending_revenue += amount
@@ -219,7 +219,7 @@ def calculate_aging_report(
             current += inv.amount
             continue
         
-        days_overdue = (reference_date - inv.due_date).days
+        days_overdue = (reference_date - inv.due_date.date()).days
         amount = inv.amount / conversion_rate
         
         if days_overdue < 0 or days_overdue <= 30:

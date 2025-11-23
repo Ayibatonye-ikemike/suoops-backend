@@ -1,5 +1,5 @@
 """Tests for VAT service."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base_class import Base
 from app.models.models import User
+from app.models.tax_models import TaxProfile, VATReturn
 from app.services.vat_service import VATService
 
 
@@ -39,6 +40,24 @@ def test_user(db_session, request):
     return user
 
 
+@pytest.fixture
+def tax_profile_factory(db_session):
+    """Factory to create tax profiles for tests."""
+    def _create(user, **overrides):
+        data = {
+            "user_id": user.id,
+            "vat_registered": True,
+            "vat_registration_number": "VAT-TEST-123",
+            "tin": "TIN-TEST-123",
+        }
+        data.update(overrides)
+        profile = TaxProfile(**data)
+        db_session.add(profile)
+        db_session.commit()
+        return profile
+    return _create
+
+
 def test_vat_service_initialization(db_session):
     """Test VAT service can be initialized."""
     service = VATService(db_session)
@@ -66,5 +85,44 @@ def test_get_vat_summary(db_session, test_user):
     
     # Should return dict with summary fields
     assert isinstance(summary, dict)
-    assert "compliance_status" in summary or "error" in summary
+    assert summary["registered"] is False
+    assert "message" in summary
+
+
+def test_get_vat_summary_registered_user(db_session, test_user, tax_profile_factory):
+    """VAT summary should include compliance data for registered users."""
+    profile = tax_profile_factory(test_user, vat_registration_number="VAT-12345")
+    service = VATService(db_session)
+    now = datetime.now(timezone.utc)
+    last_month_end = now.replace(day=1) - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+    tax_period = f"{last_month_end.year:04d}-{last_month_end.month:02d}"
+    vat_return = VATReturn(
+        user_id=test_user.id,
+        tax_period=tax_period,
+        start_date=last_month_start,
+        end_date=last_month_end,
+        output_vat=Decimal("1000"),
+        input_vat=Decimal("200"),
+        net_vat=Decimal("800"),
+        zero_rated_sales=Decimal("0"),
+        exempt_sales=Decimal("0"),
+        total_invoices=5,
+        fiscalized_invoices=2,
+        status="submitted",
+        submitted_at=now,
+    )
+    db_session.add(vat_return)
+    db_session.commit()
+
+    summary = service.get_vat_summary(test_user.id)
+
+    assert summary["registered"] is True
+    assert summary["vat_number"] == profile.vat_registration_number
+    assert summary["compliance_status"] == "compliant"
+    assert summary["next_action"] == "Up to date - no action needed"
+    assert summary["recent_returns"][0]["period"] == tax_period
+    assert summary["recent_returns"][0]["status"] == "submitted"
+    assert summary["current_month"]["tax_period"]
+    assert "net_vat" in summary["current_month"]
 

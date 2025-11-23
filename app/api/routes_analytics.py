@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 async def get_analytics_dashboard(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
-    period: str = Query("30d", regex="^(7d|30d|90d|1y|all)$"),
-    currency: str = Query("NGN", regex="^(NGN|USD)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
+    currency: str = Query("NGN", pattern="^(NGN|USD)$"),
 ) -> AnalyticsDashboard:
     """
     Get comprehensive analytics dashboard with revenue, invoices, customers, and aging.
@@ -89,7 +89,7 @@ async def get_analytics_dashboard(
 async def get_revenue_by_customer(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
-    period: str = Query("30d", regex="^(7d|30d|90d|1y|all)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
     limit: int = Query(10, ge=1, le=100),
 ):
     """Get top customers by revenue."""
@@ -133,7 +133,7 @@ async def get_revenue_by_customer(
 async def get_conversion_funnel(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
-    period: str = Query("30d", regex="^(7d|30d|90d|1y|all)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
 ):
     """Get invoice conversion funnel (created → paid)."""
     

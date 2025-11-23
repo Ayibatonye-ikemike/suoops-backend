@@ -54,7 +54,6 @@ def test_is_free_tier(db_session, test_user):
 def test_is_paid_tier(db_session):
     """Test is_paid_tier check for paid plan."""
     user = User(
-        id=2,
         phone="+2349876543210",
         name="PaidUser",
         email="paid@example.com",

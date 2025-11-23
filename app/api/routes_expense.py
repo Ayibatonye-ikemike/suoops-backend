@@ -214,7 +214,7 @@ def delete_expense(
 def expense_summary(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
-    period_type: str = Query("month", regex="^(day|week|month|year)$"),
+    period_type: str = Query("month", pattern="^(day|week|month|year)$"),
     year: int | None = Query(None, description="Year (required for week/month/year)"),
     month: int | None = Query(None, ge=1, le=12, description="Month (1-12, for month period)"),
     day: int | None = Query(None, ge=1, le=31, description="Day (for day period)"),
@@ -263,7 +263,7 @@ def expense_summary(
 def expense_stats(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
-    period_type: str = Query("month", regex="^(day|week|month|year)$"),
+    period_type: str = Query("month", pattern="^(day|week|month|year)$"),
     year: int | None = Query(None),
     month: int | None = Query(None, ge=1, le=12),
     day: int | None = Query(None, ge=1, le=31),
