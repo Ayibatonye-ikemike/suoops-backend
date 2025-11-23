@@ -36,13 +36,15 @@ def get_ca_cert_path() -> str:
 
 
 def normalize_cert_reqs(value: str | None = None) -> str:
-    """Normalize ssl_cert_reqs string with production safety overrides."""
-    candidate = (value or settings.REDIS_SSL_CERT_REQS or "required").lower()
+    """Normalize ssl_cert_reqs string while preserving host requirements.
+
+    Heroku Redis instances commonly require ``ssl_cert_reqs=none`` to finish the
+    TLS handshake. Enforce stronger verification by setting
+    ``REDIS_SSL_CERT_REQS`` explicitly in the environment.
+    """
+    candidate = (value or settings.REDIS_SSL_CERT_REQS or "none").lower()
     if candidate not in _ALLOWED_CERT_REQS:
-        candidate = "required"
-    if settings.ENV.lower() == "prod" and candidate == "none":
-        # Force verification in production to avoid MITM and TLS downgrades
-        return "required"
+        candidate = "none"
     return candidate
 
 
