@@ -60,6 +60,7 @@ def add_invoice(
         status="paid",
         due_date=created,
         created_at=created,
+        invoice_type="revenue",  # Must be revenue for tax report aggregation
         vat_category=category,
         vat_amount=Decimal(str(vat_amount)) if vat_amount is not None else None,
     )

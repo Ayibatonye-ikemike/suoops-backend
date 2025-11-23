@@ -25,7 +25,17 @@ def _signup_and_get_token(client: TestClient):
     )
     assert verify.status_code == 200, verify.text
     token = verify.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}"}
+    # Seed bank details so invoice creation passes
+    bank_payload = {
+        "business_name": "Smoke Biz",
+        "bank_name": "SmokeBank",
+        "account_number": "1234567890",
+        "account_name": "Smoke Biz",
+    }
+    bd = client.patch("/users/me/bank-details", json=bank_payload, headers=headers)
+    assert bd.status_code == 200, bd.text
+    return headers
 
 
 def test_create_list_invoice_auth_flow():

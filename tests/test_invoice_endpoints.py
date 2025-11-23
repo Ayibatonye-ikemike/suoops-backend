@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock, patch
+
 from fastapi.testclient import TestClient
 
 from app.api.main import app
@@ -39,6 +41,7 @@ def _auth_headers(token: str):
     return {"Authorization": f"Bearer {token}"}
 
 
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
 def test_create_and_verify_invoice_flow():
     token = _signup_and_get_token()
     headers = _auth_headers(token)
@@ -71,6 +74,7 @@ def test_create_and_verify_invoice_flow():
     assert vj["customer_name"].startswith("A")  # masked
 
 
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
 def test_update_invoice_status():
     token = _signup_and_get_token()
     headers = _auth_headers(token)

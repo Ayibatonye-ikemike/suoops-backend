@@ -19,7 +19,7 @@ from app.models import models
 class _DummyPDF(PDFService):  # type: ignore[misc]
     def __init__(self):
         self.client = S3Client()
-    def generate_invoice_pdf(self, invoice, bank_details=None, logo_url=None):  # noqa: D401
+    def generate_invoice_pdf(self, invoice, bank_details=None, logo_url=None, user_plan=None):  # noqa: D401
         return f"http://pdf.local/invoice/{invoice.invoice_id}.pdf"
     def generate_receipt_pdf(self, invoice):  # noqa: D401
         return f"http://pdf.local/receipt/{invoice.invoice_id}.pdf"
