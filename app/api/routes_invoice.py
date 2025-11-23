@@ -55,26 +55,31 @@ async def create_invoice(
         )
         
         # Send notifications via all available channels (Email, WhatsApp, SMS) - ONLY for revenue invoices
-        # Note: If async_pdf=True, pdf_url will be None initially
+        # Note: If async_pdf=True, pdf_url may be None initially but we still send notifications without attachment
         if invoice.invoice_type == "revenue" and (data.customer_email or data.customer_phone):
             from app.services.notification_service import NotificationService
             notification_service = NotificationService()
-            
-            # For async PDF, we skip notification or queue it to run after PDF is ready
-            if async_pdf:
-                logger.info("Skipping immediate notification for invoice %s (async PDF generation)", 
-                           invoice.invoice_id)
-                # TODO: Add a callback task to send notification once PDF is ready
-            else:
-                results = await notification_service.send_invoice_notification(
-                    invoice=invoice,
-                    customer_email=data.customer_email,
-                    customer_phone=data.customer_phone,
-                    pdf_url=invoice.pdf_url,
+
+            results = await notification_service.send_invoice_notification(
+                invoice=invoice,
+                customer_email=data.customer_email,
+                customer_phone=data.customer_phone,
+                pdf_url=invoice.pdf_url,
+            )
+
+            if async_pdf and not invoice.pdf_url:
+                logger.info(
+                    "Invoice %s notifications sent without PDF attachment (async PDF generation in progress)",
+                    invoice.invoice_id,
                 )
-                
-                logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s, SMS: %s",
-                           invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
+
+            logger.info(
+                "Invoice %s notifications - Email: %s, WhatsApp: %s, SMS: %s",
+                invoice.invoice_id,
+                results["email"],
+                results["whatsapp"],
+                results["sms"],
+            )
         
         return invoice
     except ValueError as e:

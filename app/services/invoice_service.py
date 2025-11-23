@@ -183,16 +183,18 @@ class InvoiceService:
             notes=data.get("notes"),
         )
         
+        default_description = (data.get("description") or "Item").strip() or "Item"
         lines_data = data.get("lines") or [
             {
-                "description": data.get("description", "Item"),
+                "description": default_description,
                 "quantity": 1,
                 "unit_price": invoice.amount,
             }
         ]
         for line_data in lines_data:
+            description = (line_data.get("description") or default_description).strip() or default_description
             line = models.InvoiceLine(
-                description=line_data["description"],
+                description=description,
                 quantity=line_data.get("quantity", 1),
                 unit_price=Decimal(str(line_data["unit_price"])),
             )

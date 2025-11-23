@@ -120,9 +120,10 @@ class AuthService:
             "phone_verified": True,
         }
         
-        if "email" in stored_data:
+        email_value = stored_data.get("email")
+        if email_value:
             # Dual-write: keep plaintext in `email`, encrypted in `email_enc` if key active.
-            plaintext_email = stored_data["email"].lower().strip()
+            plaintext_email = email_value.lower().strip()
             encrypted_email = encrypt_value(plaintext_email)
             user_data["email"] = plaintext_email
             user_data["email_enc"] = encrypted_email

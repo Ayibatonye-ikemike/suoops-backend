@@ -19,7 +19,20 @@ def _signup_and_get_token():
     code = json.loads(raw)["code"]
     v = client.post("/auth/signup/verify", json={"phone": phone, "otp": code})
     assert v.status_code == 200, v.text
-    return v.json()["access_token"]
+    token = v.json()["access_token"]
+
+    # Ensure bank details exist so revenue invoices pass validation
+    headers = _auth_headers(token)
+    bank_payload = {
+        "business_name": "Test Biz",
+        "bank_name": "SuoOps Bank",
+        "account_number": "0001234567",
+        "account_name": "Test Biz",
+    }
+    bd = client.patch("/users/me/bank-details", json=bank_payload, headers=headers)
+    assert bd.status_code == 200, bd.text
+
+    return token
 
 
 def _auth_headers(token: str):
