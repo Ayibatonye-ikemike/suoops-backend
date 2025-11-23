@@ -40,18 +40,28 @@ async def create_invoice(
         current_user_id: Authenticated user ID
         db: Database session
         async_pdf: If True, PDF is generated in background (faster API response).
-                  If False, PDF is generated immediately (slower but PDF URL available in response).
-                  Defaults to True for better user experience.
+              If False, PDF is generated immediately (slower but PDF URL available in response).
+              Defaults to True for better user experience. When an invoice email is requested,
+              the system automatically forces synchronous generation so the attachment is present.
     """
     # Check invoice creation limit based on subscription plan
     check_invoice_limit(db, current_user_id)
     
     svc = get_invoice_service_for_user(current_user_id, db)
+
+    # Ensure PDF exists before sending email so attachment is present
+    effective_async = async_pdf
+    if async_pdf and data.customer_email:
+        effective_async = False
+        logger.info(
+            "Forcing synchronous PDF generation for invoice email attachment | user=%s",
+            current_user_id,
+        )
     try:
         invoice = svc.create_invoice(
             issuer_id=current_user_id,
             data=data.model_dump(),
-            async_pdf=async_pdf,
+            async_pdf=effective_async,
         )
         
         # Send notifications via all available channels (Email, WhatsApp, SMS) - ONLY for revenue invoices
