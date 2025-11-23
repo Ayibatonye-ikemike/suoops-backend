@@ -27,7 +27,7 @@ def test_user(db_session):
     user = User(
         phone="+2341234567890",
         name="TestUser",
-        email="test@example.com",
+        email="featuregate-test@example.com",
         plan=SubscriptionPlan.FREE,
     )
     db_session.add(user)

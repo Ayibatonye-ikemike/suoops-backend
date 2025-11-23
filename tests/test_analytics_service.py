@@ -35,7 +35,7 @@ def test_user(db_session):
     user = User(
         phone="+2341234567890",
         name="TestUser",
-        email="test@example.com",
+        email="analytics-test@example.com",
     )
     db_session.add(user)
     db_session.commit()
@@ -48,7 +48,7 @@ def test_customer(db_session):
     customer = Customer(
         name="TestCustomer",
         phone="+2349876543210",
-        email="customer@example.com",
+        email="analytics-customer@example.com",
     )
     db_session.add(customer)
     db_session.commit()

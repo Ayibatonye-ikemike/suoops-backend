@@ -28,9 +28,9 @@ def db_session():
 def test_user(db_session):
     """Create a test user."""
     user = User(
-        phone="+2341234567890",
+        phone="+2341234567891",
         name="VATTestUser",
-        email="vat@example.com",
+        email="vat-test@example.com",
     )
     db_session.add(user)
     db_session.commit()
