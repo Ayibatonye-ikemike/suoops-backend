@@ -28,7 +28,7 @@ def db_session():
 def test_user(db_session):
     """Create a test user."""
     user = User(
-        phone="+2341234567891",
+        phone="+2341234567803",
         name="VATTestUser",
         email="vat-test@example.com",
     )

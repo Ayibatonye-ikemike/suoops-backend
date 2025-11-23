@@ -25,7 +25,7 @@ def db_session():
 def test_user(db_session):
     """Create a test user."""
     user = User(
-        phone="+2341234567890",
+        phone="+2341234567802",
         name="TestUser",
         email="featuregate-test@example.com",
         plan=SubscriptionPlan.FREE,
