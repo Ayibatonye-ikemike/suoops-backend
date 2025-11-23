@@ -1,4 +1,5 @@
 import secrets
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -38,6 +39,7 @@ def _signup_and_get_token(client: TestClient):
     return headers
 
 
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
 def test_create_list_invoice_auth_flow():
     client = TestClient(app)
     headers = _signup_and_get_token(client)
@@ -57,6 +59,7 @@ def test_create_list_invoice_auth_flow():
     assert any(inv["invoice_id"] == invoice_id for inv in resp2.json())
 
 
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
 def test_invoice_detail_status_flow():
     client = TestClient(app)
     headers = _signup_and_get_token(client)
@@ -97,6 +100,7 @@ def test_invoice_detail_status_flow():
     # Events endpoint removed because invoices rely on manual confirmation
 
 
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
 def test_public_invoice_confirmation_flow():
     client = TestClient(app)
     headers = _signup_and_get_token(client)

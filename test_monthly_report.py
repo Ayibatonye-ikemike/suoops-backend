@@ -22,11 +22,14 @@ def seed_user(session, user_id: int = 1):
 
     Ensures uniqueness across test invocations.
     """
+    from app.models.models import SubscriptionPlan
+    
     u = User(
         id=user_id,
         phone=f"+234{user_id:09d}",
         name="ReportUser",
         email=f"ru{user_id}@example.com",
+        plan=SubscriptionPlan.PRO,  # VAT tracking requires PRO or BUSINESS plan
     )
     c = Customer(
         id=user_id,
