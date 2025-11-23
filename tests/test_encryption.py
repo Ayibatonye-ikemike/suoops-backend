@@ -16,7 +16,7 @@ def clear_cipher_cache():
 
 def test_encrypt_decrypt_with_valid_key():
     """Test encryption and decryption with a valid key."""
-    with patch.dict(os.environ, {"ENCRYPTION_KEY": "test_key_that_is_32_bytes_long"}):
+    with patch.dict(os.environ, {"ENCRYPTION_KEY": "12345678901234567890123456789012"}):  # Exactly 32 bytes
         _get_cipher.cache_clear()
         plaintext = "sensitive_data"
         encrypted = encrypt_value(plaintext)

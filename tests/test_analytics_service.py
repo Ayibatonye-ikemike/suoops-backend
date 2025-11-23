@@ -33,7 +33,6 @@ def db_session():
 def test_user(db_session):
     """Create a test user."""
     user = User(
-        id=1,
         phone="+2341234567890",
         name="TestUser",
         email="test@example.com",
@@ -47,7 +46,6 @@ def test_user(db_session):
 def test_customer(db_session):
     """Create a test customer."""
     customer = Customer(
-        id=1,
         name="TestCustomer",
         phone="+2349876543210",
         email="customer@example.com",
