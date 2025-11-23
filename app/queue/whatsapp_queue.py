@@ -8,39 +8,20 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import redis
-import certifi
 
 from app.core.config import settings
+from app.core.redis_utils import prepare_redis_url
 from app.workers.tasks import process_whatsapp_inbound
 
 logger = logging.getLogger(__name__)
 
 _fallback_buffer: list[dict[str, Any]] = []
 
-def _add_query_param(url: str, key: str, value: str | None) -> str:
-    parsed = urlparse(url)
-    query = parse_qs(parsed.query, keep_blank_values=True)
-    if value is None:
-        query.pop(key, None)
-    else:
-        query[key] = [value]
-    new_query = urlencode(query, doseq=True)
-    return urlunparse(parsed._replace(query=new_query))
-
-
-def _prepare_redis_url(url: str) -> str:
-    if url and url.startswith("rediss://"):
-        url = _add_query_param(url, "ssl_cert_reqs", settings.REDIS_SSL_CERT_REQS)
-        ca_path = settings.REDIS_SSL_CA_CERTS or certifi.where()
-        url = _add_query_param(url, "ssl_ca_certs", ca_path)
-    return url
-
 
 try:  # pragma: no cover - connection attempt
-    redis_url = _prepare_redis_url(settings.REDIS_URL)
+    redis_url = prepare_redis_url(settings.REDIS_URL)
     _redis = redis.Redis.from_url(redis_url, socket_timeout=0.5)
     _redis.ping()
     _ENABLED = True
@@ -52,10 +33,26 @@ except Exception:  # noqa: BLE001
 KEY = "whatsapp:inbound"
 
 
+def _flush_fallback_queue() -> None:
+    if not _fallback_buffer:
+        return
+    pending = list(_fallback_buffer)
+    _fallback_buffer.clear()
+    for idx, entry in enumerate(pending):
+        try:
+            process_whatsapp_inbound.delay(entry)
+        except Exception:  # noqa: BLE001
+            # Push remaining back for later retry
+            _fallback_buffer.extend(pending[idx:])
+            logger.warning("Celery still unavailable; %s WhatsApp payloads pending", len(_fallback_buffer))
+            break
+
+
 def enqueue_message(payload: dict[str, Any]) -> None:
     # Prefer asynchronous Celery worker
     try:
         process_whatsapp_inbound.delay(payload)
+        _flush_fallback_queue()
         return
     except Exception:  # noqa: BLE001
         logger.exception("Celery dispatch failed; falling back to local processing path")

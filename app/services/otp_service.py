@@ -6,7 +6,6 @@ import json
 import logging
 import random
 import smtplib
-import ssl
 import string
 import time
 from dataclasses import dataclass
@@ -22,6 +21,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from app import metrics
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
+from app.core.redis_utils import get_ca_cert_path, map_cert_reqs, prepare_redis_url
 
 logger = logging.getLogger(__name__)
 
@@ -83,21 +83,12 @@ class RedisStore(BaseKeyValueStore):
             logger.warning("OTP service falling back to direct Redis connection: %s", e)
             # Fallback to direct connection
             options: dict[str, Any] = {"decode_responses": True}
+            tls_url = prepare_redis_url(url) or url
+            if tls_url and tls_url.startswith("rediss://"):
+                options["ssl_cert_reqs"] = map_cert_reqs()
+                options["ssl_ca_certs"] = get_ca_cert_path()
 
-            ssl_mode = getattr(settings, "REDIS_SSL_CERT_REQS", None)
-            if ssl_mode:
-                ssl_map = {
-                    "required": ssl.CERT_REQUIRED,
-                    "optional": ssl.CERT_OPTIONAL,
-                    "none": ssl.CERT_NONE,
-                }
-                chosen = ssl_map.get(str(ssl_mode).lower())
-                if chosen is not None:
-                    options["ssl_cert_reqs"] = chosen
-            if getattr(settings, "REDIS_SSL_CA_CERTS", None):
-                options["ssl_ca_certs"] = settings.REDIS_SSL_CA_CERTS
-
-            self._client = redis.Redis.from_url(url, **options)
+            self._client = redis.Redis.from_url(tls_url, **options)
 
     def set(self, key: str, value: str, ttl_seconds: int) -> None:
         self._client.setex(key, ttl_seconds, value)

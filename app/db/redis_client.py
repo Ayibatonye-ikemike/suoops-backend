@@ -3,12 +3,11 @@ Centralized Redis client manager with connection pooling.
 Prevents connection limit issues by reusing a single connection pool.
 """
 import logging
-import ssl
-import certifi
 import redis
 from redis.connection import ConnectionPool
 
 from app.core.config import settings
+from app.core.redis_utils import get_ca_cert_path, map_cert_reqs, prepare_redis_url
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,9 @@ def get_redis_pool() -> ConnectionPool:
     if _pool is not None:
         return _pool
     
-    redis_url = settings.REDIS_URL
+    redis_url = prepare_redis_url(settings.REDIS_URL)
+    if not redis_url:
+        raise RuntimeError("REDIS_URL is not configured")
     
     # Parse connection parameters
     pool_kwargs = {
@@ -36,27 +37,14 @@ def get_redis_pool() -> ConnectionPool:
     
         # Handle SSL for rediss:// URLs
     if redis_url.startswith("rediss://"):
-        ssl_cert_reqs_str = settings.REDIS_SSL_CERT_REQS or "none"
-        
-        # Heroku Redis SSL config shows REDIS_SSL_CERT_REQS=none
-        # Use CERT_NONE to avoid protocol errors with Heroku's SSL implementation
-        if ssl_cert_reqs_str.lower() == "required":
-            cert_reqs = ssl.CERT_REQUIRED
-        elif ssl_cert_reqs_str.lower() == "optional":
-            cert_reqs = ssl.CERT_OPTIONAL
-        else:
-            cert_reqs = ssl.CERT_NONE  # Default for Heroku
-        
-        ca_certs = settings.REDIS_SSL_CA_CERTS or certifi.where()
-        
+        cert_reqs = map_cert_reqs()
+        ca_certs = get_ca_cert_path()
         pool_kwargs["connection_class"] = redis.connection.SSLConnection
         pool_kwargs["ssl_cert_reqs"] = cert_reqs
         pool_kwargs["ssl_ca_certs"] = ca_certs
-        
         logger.info(
-            "Creating Redis SSL pool with cert_reqs=%s (ssl.%s), ca_certs=%s",
-            ssl_cert_reqs_str,
-            "CERT_NONE" if cert_reqs == ssl.CERT_NONE else ("CERT_REQUIRED" if cert_reqs == ssl.CERT_REQUIRED else "CERT_OPTIONAL"),
+            "Creating Redis SSL pool with cert_reqs=%s, ca_certs=%s",
+            cert_reqs,
             ca_certs,
         )
     
