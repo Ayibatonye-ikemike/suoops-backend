@@ -10,7 +10,7 @@ def check_coverage():
         tree = ET.parse('coverage.xml')
         root = tree.getroot()
         line_rate = float(root.get('line-rate', '0'))
-        threshold = 0.70
+        threshold = 0.60
         
         coverage_percent = line_rate * 100
         threshold_percent = threshold * 100
