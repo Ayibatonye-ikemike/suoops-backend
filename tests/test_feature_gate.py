@@ -27,7 +27,7 @@ def test_user(db_session, request):
     # Generate unique email/phone per test using test node name hash
     test_hash = str(hash(request.node.name) % 100000).zfill(5)
     user = User(
-        phone=f"+23412345679{test_hash[:2]}",
+        phone=f"+234123{test_hash}",
         name="TestUser",
         email=f"featuregate-test-{test_hash}@example.com",
         plan=SubscriptionPlan.FREE,
