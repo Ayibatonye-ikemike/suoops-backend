@@ -154,6 +154,8 @@ class ProdSettings(BaseAppSettings):
         "https://www.suoops.com",
         "https://suoops-frontend.vercel.app",
         "https://suoops-frontend-ikemike.vercel.app",
+        "http://localhost:3000",  # Local development
+        "http://127.0.0.1:3000",  # Local development (alt)
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
     LOG_FORMAT: str = "json"
