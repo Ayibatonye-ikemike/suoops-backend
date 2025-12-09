@@ -1,7 +1,7 @@
 """Add inventory management tables
 
 Revision ID: 20251209_add_inventory
-Revises: 20251110_03_add_user_role_column
+Revises: 0035_oauth_tokens
 Create Date: 2025-12-09
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20251209_add_inventory'
-down_revision = '20251110_03_add_user_role_column'
+down_revision = '0035_oauth_tokens'
 branch_labels = None
 depends_on = None
 
