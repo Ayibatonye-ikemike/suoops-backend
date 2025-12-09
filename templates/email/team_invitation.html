@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Invitation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #0B3318 0%, #0F766E 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 10px;
+            letter-spacing: -0.5px;
+        }
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: #ffffff;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tagline {
+            color: #E8F5EC;
+            font-size: 14px;
+            margin: 0;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .greeting {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a202c;
+            margin-bottom: 20px;
+        }
+        .message {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #4a5568;
+            margin-bottom: 30px;
+        }
+        .team-info {
+            background: linear-gradient(135deg, #E8F5EC 0%, #f0fdf4 100%);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 30px 0;
+            border: 1px solid #14B56A30;
+        }
+        .team-name {
+            font-size: 22px;
+            font-weight: 700;
+            color: #0B3318;
+            margin-bottom: 8px;
+        }
+        .inviter-name {
+            font-size: 14px;
+            color: #0F766E;
+        }
+        .cta-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #14B56A 0%, #0F766E 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 16px 40px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(20, 181, 106, 0.3);
+            transition: all 0.2s ease;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(20, 181, 106, 0.4);
+        }
+        .benefits-box {
+            background-color: #f8fafc;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 25px 0;
+        }
+        .benefits-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #0B3318;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+        .benefit-icon {
+            color: #14B56A;
+        }
+        .expiry-notice {
+            font-size: 13px;
+            color: #718096;
+            text-align: center;
+            margin-top: 20px;
+            padding: 12px;
+            background-color: #fff7ed;
+            border-radius: 8px;
+            border: 1px solid #fed7aa;
+        }
+        .fallback-link {
+            font-size: 12px;
+            color: #718096;
+            text-align: center;
+            margin-top: 20px;
+            word-break: break-all;
+        }
+        .fallback-link a {
+            color: #14B56A;
+        }
+        .footer {
+            background-color: #E8F5EC;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #0F766E20;
+        }
+        .footer-text {
+            font-size: 14px;
+            color: #0F1E17;
+            margin-bottom: 15px;
+        }
+        .social-links {
+            margin: 20px 0;
+        }
+        .social-link {
+            display: inline-block;
+            margin: 0 10px;
+            color: #14B56A;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .social-link:hover {
+            color: #0F766E;
+        }
+        .copyright {
+            font-size: 12px;
+            color: #0F1E1780;
+            margin-top: 20px;
+        }
+        @media only screen and (max-width: 600px) {
+            .email-container {
+                margin: 0;
+                border-radius: 0;
+            }
+            .header {
+                padding: 30px 20px;
+            }
+            .content {
+                padding: 30px 20px;
+            }
+            .cta-button {
+                padding: 14px 30px;
+                font-size: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <span class="logo-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 12h6M9 16h6M9 8h6M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="#0B3318" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M16 4v4M8 4v4" stroke="#14B56A" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </span>
+                SuoOps
+            </div>
+            <p class="tagline">Professional Invoicing & Expense Management</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <div class="greeting">You're Invited! 🎉</div>
+            
+            <p class="message">
+                <strong>{{ inviter_name }}</strong> has invited you to join their team on SuoOps. 
+                Accept this invitation to start collaborating on invoices, expenses, and business management.
+            </p>
+
+            <!-- Team Info Box -->
+            <div class="team-info">
+                <div class="team-name">{{ team_name }}</div>
+                <div class="inviter-name">Invited by {{ inviter_name }}</div>
+            </div>
+
+            <!-- CTA Button -->
+            <div class="cta-container">
+                <a href="{{ accept_url }}" class="cta-button">Accept Invitation</a>
+            </div>
+
+            <!-- Benefits -->
+            <div class="benefits-box">
+                <div class="benefits-title">As a team member, you'll be able to:</div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">✓</span>
+                    <span>View and create invoices for the team</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">✓</span>
+                    <span>Track shared expenses and receipts</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">✓</span>
+                    <span>Access team analytics and reports</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">✓</span>
+                    <span>Collaborate in real-time with your team</span>
+                </div>
+            </div>
+
+            <!-- Expiry Notice -->
+            <div class="expiry-notice">
+                ⏰ This invitation expires in 7 days. Accept it before <strong>{{ expires_at }}</strong>
+            </div>
+
+            <!-- Fallback Link -->
+            <p class="fallback-link">
+                If the button doesn't work, copy and paste this link into your browser:<br>
+                <a href="{{ accept_url }}">{{ accept_url }}</a>
+            </p>
+
+            <p class="message" style="margin-top: 30px;">
+                If you don't know {{ inviter_name }} or weren't expecting this invitation, 
+                you can safely ignore this email.
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p class="footer-text">
+                Need help? Contact our support team at 
+                <a href="mailto:support@suoops.com" style="color: #667eea; text-decoration: none;">support@suoops.com</a>
+            </p>
+            
+            <div class="social-links">
+                <a href="https://suoops.com" class="social-link">🌐 Website</a>
+                <a href="https://twitter.com/suoops" class="social-link">🐦 Twitter</a>
+                <a href="https://instagram.com/suoops" class="social-link">📸 Instagram</a>
+            </div>
+
+            <p class="copyright">
+                © {{ current_year }} SuoOps. All rights reserved.<br>
+                Professional Invoicing & Expense Management Platform
+            </p>
+        </div>
+    </div>
+</body>
+</html>

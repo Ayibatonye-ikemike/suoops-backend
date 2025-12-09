@@ -1,11 +1,18 @@
 """Team management service for multi-user account access."""
+import logging
+import smtplib
 from datetime import datetime, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.models import User
 from app.models.team_models import (
@@ -274,8 +281,8 @@ class TeamService:
         self.db.commit()
         self.db.refresh(invitation)
         
-        # TODO: Send invitation email
-        # self._send_invitation_email(invitation)
+        # Send invitation email
+        self._send_invitation_email(invitation, team)
         
         return invitation
     
@@ -301,6 +308,92 @@ class TeamService:
         self.db.commit()
         self.db.refresh(invitation)
         return invitation
+    
+    def _send_invitation_email(self, invitation: TeamInvitation, team: Team) -> None:
+        """Send team invitation email via SMTP."""
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Get SMTP configuration
+            smtp_host = getattr(settings, "SMTP_HOST", "smtp-relay.brevo.com")
+            smtp_port = getattr(settings, "SMTP_PORT", 587)
+            smtp_user = getattr(settings, "BREVO_SMTP_LOGIN", None) or getattr(settings, "SMTP_USER", None)
+            smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+            from_email = getattr(settings, "FROM_EMAIL", None) or smtp_user
+            
+            if not all([smtp_user, smtp_password]):
+                logger.warning("SMTP not configured. Team invitation email not sent.")
+                return
+            
+            # Build the acceptance URL
+            frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+            accept_url = f"{frontend_url}/team/accept?token={invitation.token}"
+            
+            # Format expiry date
+            expires_at = invitation.expires_at.strftime("%B %d, %Y at %H:%M UTC") if invitation.expires_at else "7 days"
+            
+            # Setup Jinja2 template environment
+            template_dir = Path(__file__).parent.parent.parent / "templates" / "email"
+            jinja_env = Environment(
+                loader=FileSystemLoader(str(template_dir)),
+                autoescape=select_autoescape(['html', 'xml'])
+            )
+            
+            # Render HTML template
+            template = jinja_env.get_template('team_invitation.html')
+            html_body = template.render(
+                team_name=team.name,
+                inviter_name=self.user.name,
+                accept_url=accept_url,
+                expires_at=expires_at,
+                current_year=datetime.now(timezone.utc).year,
+            )
+            
+            # Create plain text fallback
+            plain_body = f"""
+Team Invitation from {self.user.name}
+
+You've been invited to join {team.name} on SuoOps!
+
+{self.user.name} has invited you to collaborate on invoices, expenses, and business management.
+
+Accept your invitation here:
+{accept_url}
+
+This invitation expires on {expires_at}.
+
+If you don't know {self.user.name} or weren't expecting this invitation, you can safely ignore this email.
+
+---
+Powered by SuoOps
+Professional Invoicing & Expense Management
+"""
+            
+            # Create email message
+            msg = MIMEMultipart('alternative')
+            msg['From'] = from_email or "noreply@suoops.com"
+            msg['To'] = invitation.email
+            msg['Subject'] = f"You're invited to join {team.name} on SuoOps"
+            
+            # Attach plain text and HTML versions
+            msg.attach(MIMEText(plain_body, 'plain'))
+            msg.attach(MIMEText(html_body, 'html'))
+            
+            # Send email via SMTP
+            logger.info(f"Sending team invitation email to {invitation.email}")
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+            
+            logger.info(f"Successfully sent team invitation email to {invitation.email}")
+            
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error sending team invitation to {invitation.email}: {e}")
+            # Don't raise - invitation is still created, just email failed
+        except Exception as e:
+            logger.error(f"Error sending team invitation email: {type(e).__name__}: {e}")
+            # Don't raise - invitation is still created, just email failed
     
     def validate_invitation(self, token: str) -> InvitationValidation:
         """Validate an invitation token (public, for preview)."""
