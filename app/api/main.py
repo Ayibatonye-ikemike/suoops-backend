@@ -142,10 +142,8 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
     app.add_exception_handler(SuoOpsException, _suoops_exception_handler)
     
-    # CSRF Protection - Add before CORS to validate tokens early
-    # Only enabled in production for security
-    app.add_middleware(CSRFMiddleware, enabled=is_production)
-    
+    # CORS must be added AFTER CSRF (Starlette processes middleware in reverse order)
+    # This ensures CORS headers are set even when CSRF fails
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ALLOW_ORIGINS,
@@ -153,6 +151,9 @@ def create_app() -> FastAPI:
         allow_methods=settings.CORS_ALLOW_METHODS,
         allow_headers=settings.CORS_ALLOW_HEADERS,
     )
+    
+    # CSRF Protection - Only enabled in production for security
+    app.add_middleware(CSRFMiddleware, enabled=is_production)
     if settings.ENV.lower() == "prod":
         app.add_middleware(HTTPSRedirectMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
