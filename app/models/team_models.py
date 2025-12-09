@@ -113,7 +113,12 @@ class TeamMember(Base):
     )
     
     role: Mapped[TeamRole] = mapped_column(
-        Enum(TeamRole),
+        Enum(
+            TeamRole,
+            values_callable=lambda x: [e.value for e in x],
+            name="teamrole",
+            create_constraint=False,
+        ),
         default=TeamRole.MEMBER,
         server_default="member",
         nullable=False
@@ -160,7 +165,12 @@ class TeamInvitation(Base):
     )
     
     status: Mapped[InvitationStatus] = mapped_column(
-        Enum(InvitationStatus),
+        Enum(
+            InvitationStatus,
+            values_callable=lambda x: [e.value for e in x],
+            name="invitationstatus",
+            create_constraint=False,
+        ),
         default=InvitationStatus.PENDING,
         server_default="pending",
         nullable=False

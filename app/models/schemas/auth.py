@@ -56,6 +56,8 @@ class UserOut(BaseModel):
     plan: str  # FREE, STARTER, PRO, BUSINESS
     invoices_this_month: int
     logo_url: str | None = None
+    subscription_expires_at: dt.datetime | None = None
+    subscription_started_at: dt.datetime | None = None
 
 
 class TokenOut(BaseModel):
