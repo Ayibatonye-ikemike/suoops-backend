@@ -35,6 +35,9 @@ EXEMPT_PATHS = {
     "/expenses/",          # Expense endpoints use JWT authentication
     "/telemetry/",         # Frontend telemetry without auth
     "/users/",             # User endpoints use JWT authentication
+    "/subscriptions/",     # Subscription endpoints use JWT authentication
+    "/teams/",             # Team endpoints use JWT authentication
+    "/inventory/",         # Inventory endpoints use JWT authentication
     "/webhooks/whatsapp",  # External webhooks have their own verification
     "/webhooks/paystack",
     "/public/invoices/",   # Public read-only endpoints
