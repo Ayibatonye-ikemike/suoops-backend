@@ -25,9 +25,15 @@ def get_profile(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return current user's core profile and subscription details."""
+    from app.utils.feature_gate import FeatureGate
+    
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Use FeatureGate for accurate monthly count (auto-resets each month)
+    gate = FeatureGate(db, current_user_id)
+    monthly_invoice_count = gate.get_monthly_invoice_count()
 
     # If pilot encryption stored encrypted email, attempt decrypt
     email_plain = decrypt_value(user.email) if user.email else None
@@ -37,7 +43,7 @@ def get_profile(
         email=email_plain,
         name=user.name,
         plan=user.plan.value,
-        invoices_this_month=user.invoices_this_month,
+        invoices_this_month=monthly_invoice_count,  # Use accurate count, not stored field
         logo_url=user.logo_url,
     )
 
