@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.api.dependencies import AdminUserDep
 from app.db.session import get_db
 from app.models import models, schemas
 from app.storage.s3_client import s3_client
@@ -17,12 +18,12 @@ router = APIRouter(tags=["users"])
 @router.post("/me/logo", response_model=schemas.MessageOut)
 async def upload_logo(
     file: UploadFile = File(...),
-    current_user_id: Annotated[int, Depends(get_current_user_id)] = None,
+    current_user_id: AdminUserDep = None,
     db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Upload custom logo (Pro+ feature)."""
     try:
-        # Check if user has Pro, Business, or Enterprise plan
+        # Check if user has Pro or Business plan
         require_plan_feature(db, current_user_id, "custom_branding", "Custom Logo Branding")
         
         if not file.content_type or not file.content_type.startswith("image/"):
@@ -56,7 +57,7 @@ async def upload_logo(
 
 @router.delete("/me/logo", response_model=schemas.MessageOut)
 def delete_logo(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
 ):
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()

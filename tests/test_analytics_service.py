@@ -32,12 +32,13 @@ def db_session():
 @pytest.fixture
 def test_user(db_session, request):
     """Create a test user."""
-    # Generate unique email/phone per test using test node name hash
-    test_hash = str(hash(request.node.name) % 100000).zfill(5)
+    # Generate unique email/phone per test using test node name hash with more uniqueness
+    import uuid
+    unique_id = str(uuid.uuid4().hex)[:8]
     user = User(
-        phone=f"+23412345678{test_hash[:2]}",
+        phone=f"+234{unique_id}",
         name="TestUser",
-        email=f"analytics-test-{test_hash}@example.com",
+        email=f"analytics-test-{unique_id}@example.com",
     )
     db_session.add(user)
     db_session.commit()

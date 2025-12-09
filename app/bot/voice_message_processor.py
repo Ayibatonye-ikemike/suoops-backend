@@ -29,11 +29,10 @@ class VoiceMessageProcessor:
 
     def _check_user_has_business_plan(self, sender: str) -> tuple[bool, models.User | None]:
         """
-        Check if user has Business or Enterprise plan for voice/OCR features.
+        Check if user has Business plan for voice/OCR features.
         
-        Voice and OCR are now exclusive to Business+ plans.
-        Business plan: 5% quota (15 voice+OCR invoices per month)
-        Enterprise: Unlimited
+        Voice and OCR are exclusive to Business plan.
+        Business plan: 15 voice+OCR invoices per month quota.
         
         Returns:
             (has_access: bool, user: User | None)
@@ -62,19 +61,19 @@ class VoiceMessageProcessor:
         if not user:
             return False, None
         
-        # Check if Business or Enterprise plan
-        has_access = user.plan in (models.SubscriptionPlan.BUSINESS, models.SubscriptionPlan.ENTERPRISE)
+        # Check if Business plan
+        has_access = user.plan == models.SubscriptionPlan.BUSINESS
         return has_access, user
 
     async def process(self, sender: str, media_id: str, payload: dict[str, Any]) -> None:
         try:
-            # Check if user has Business/Enterprise plan (voice is premium feature)
+            # Check if user has Business plan (voice is premium feature)
             has_access, user = self._check_user_has_business_plan(sender)
             if not has_access:
                 self.client.send_text(
                     sender,
                     "🔒 Voice Invoice Feature\n\n"
-                    "Voice message invoices are only available on Business and Enterprise plans.\n\n"
+                    "Voice message invoices are only available on the Business plan.\n\n"
                     "📊 Current Plans:\n"
                     "• Starter (₦4,500/mo): 100 invoices + Tax reports\n"
                     "• Pro (₦8,000/mo): 200 invoices + Custom branding\n"
@@ -83,8 +82,8 @@ class VoiceMessageProcessor:
                 )
                 return
             
-            # TODO: Check Business plan quota (5% = 15 voice+OCR per month)
-            # For now, allow all Business/Enterprise users
+            # TODO: Check Business plan quota (15 voice+OCR per month)
+            # For now, allow all Business users
             
             self.client.send_text(sender, "🎙️ Processing your voice message...")
             media_url = await self.client.get_media_url(media_id)

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from app.models.tax_models import FiscalInvoice, TaxProfile, VATReturn
     from app.models.oauth_models import OAuthToken
     from app.models.payment_models import PaymentTransaction
-    from app.models.inventory_models import Product, ProductCategory, StockMovement, Supplier
+    from app.models.inventory_models import Product, ProductCategory, StockMovement, Supplier, PurchaseOrder
 else:
     # Import at runtime for SQLAlchemy relationship resolution
     from app.models import tax_models  # noqa: F401
@@ -30,6 +30,7 @@ else:
     ProductCategory = "ProductCategory"
     StockMovement = "StockMovement"
     Supplier = "Supplier"
+    PurchaseOrder = "PurchaseOrder"
 
 
 def utcnow() -> dt.datetime:
@@ -42,17 +43,15 @@ class SubscriptionPlan(str, enum.Enum):
     STARTER = "starter"
     PRO = "pro"
     BUSINESS = "business"
-    ENTERPRISE = "enterprise"
 
     @property
-    def invoice_limit(self) -> int | None:
-        """Monthly invoice limit for each plan. None = unlimited."""
+    def invoice_limit(self) -> int:
+        """Monthly invoice limit for each plan."""
         limits = {
             SubscriptionPlan.FREE: 5,
             SubscriptionPlan.STARTER: 100,
             SubscriptionPlan.PRO: 200,
             SubscriptionPlan.BUSINESS: 300,
-            SubscriptionPlan.ENTERPRISE: None,  # Unlimited
         }
         return limits[self]
 
@@ -64,7 +63,6 @@ class SubscriptionPlan(str, enum.Enum):
             SubscriptionPlan.STARTER: 4500,
             SubscriptionPlan.PRO: 8000,
             SubscriptionPlan.BUSINESS: 16000,
-            SubscriptionPlan.ENTERPRISE: 50000,
         }
         return prices[self]
     
@@ -81,9 +79,8 @@ class SubscriptionPlan(str, enum.Enum):
         Feature gates:
         - FREE: Manual invoices only (5/month)
         - STARTER: + Tax reports & automation
-        - PRO: + Custom logo branding  
-        - BUSINESS: + Voice invoices (5% quota) + Photo OCR (5% quota)
-        - ENTERPRISE: Unlimited everything
+        - PRO: + Custom logo branding + Priority support + Inventory + Team Management
+        - BUSINESS: + Voice invoices (15/mo) + Photo OCR (15/mo) + API access
         """
         return {
             "invoices_per_month": self.invoice_limit,
@@ -92,18 +89,22 @@ class SubscriptionPlan(str, enum.Enum):
             "pdf_generation": True,  # Available to all
             "qr_verification": True,  # Available to all
             # Tax features: Starter+
-            "tax_automation": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
-            "tax_reports": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
+            "tax_automation": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
+            "tax_reports": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
             # Custom branding: Pro+
-            "custom_branding": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
-            # Voice & OCR: Business+ only (with 5% quota for Business, unlimited for Enterprise)
-            "voice_invoice": self in (SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
-            "photo_invoice_ocr": self in (SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
-            # Business plan has 5% quota (15 invoices for 300 total)
-            "voice_ocr_quota_percent": 5 if self == SubscriptionPlan.BUSINESS else None,
-            # Enterprise perks
-            "priority_support": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
-            "api_access": self in (SubscriptionPlan.BUSINESS, SubscriptionPlan.ENTERPRISE),
+            "custom_branding": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
+            # Inventory management: Pro+
+            "inventory": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
+            # Team management: Pro+ (invite up to 3 team members)
+            "team_management": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
+            # Priority support: Pro+
+            "priority_support": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
+            # Voice & OCR: Business only (15/mo quota)
+            "voice_invoice": self == SubscriptionPlan.BUSINESS,
+            "photo_invoice_ocr": self == SubscriptionPlan.BUSINESS,
+            "voice_ocr_quota": 15 if self == SubscriptionPlan.BUSINESS else 0,
+            # API access: Business only
+            "api_access": self == SubscriptionPlan.BUSINESS,
         }
 
 
@@ -277,6 +278,12 @@ class User(Base):
     
     suppliers: Mapped[list["Supplier"]] = relationship(
         "Supplier",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
+    
+    purchase_orders: Mapped[list["PurchaseOrder"]] = relationship(
+        "PurchaseOrder",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore

@@ -27,15 +27,6 @@ class InvoiceQuotaMixin:
         self._reset_usage_if_needed(user)
         plan_limit = user.plan.invoice_limit
 
-        if plan_limit is None:
-            return {
-                "can_create": True,
-                "plan": user.plan.value,
-                "used": user.invoices_this_month,
-                "limit": None,
-                "message": "Unlimited invoices on Enterprise plan",
-            }
-
         if user.invoices_this_month >= plan_limit:
             upgrade_message = self._get_upgrade_message(user.plan)
             return {
@@ -84,10 +75,9 @@ class InvoiceQuotaMixin:
     @staticmethod
     def _get_upgrade_message(current_plan: models.SubscriptionPlan) -> str:
         messages = {
-            models.SubscriptionPlan.FREE: "Upgrade to Starter (₦2,500/month) for 100 invoices!",
-            models.SubscriptionPlan.STARTER: "Upgrade to Pro (₦7,500/month) for 1,000 invoices!",
-            models.SubscriptionPlan.PRO: "Upgrade to Business (₦15,000/month) for 3,000 invoices!",
-            models.SubscriptionPlan.BUSINESS: "Contact sales for Enterprise (unlimited invoices)!",
-            models.SubscriptionPlan.ENTERPRISE: "",
+            models.SubscriptionPlan.FREE: "Upgrade to Starter (₦4,500/month) for 100 invoices!",
+            models.SubscriptionPlan.STARTER: "Upgrade to Pro (₦8,000/month) for 200 invoices!",
+            models.SubscriptionPlan.PRO: "Upgrade to Business (₦16,000/month) for 300 invoices!",
+            models.SubscriptionPlan.BUSINESS: "You're on the highest plan with 300 invoices/month.",
         }
         return messages.get(current_plan, "Upgrade to increase your invoice limit!")

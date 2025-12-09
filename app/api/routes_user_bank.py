@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.api.dependencies import AdminUserDep
 from app.db.session import get_db
 from app.models import models, schemas
 
@@ -33,7 +34,7 @@ def get_bank_details(
 @router.patch("/me/bank-details", response_model=schemas.BankDetailsOut)
 def update_bank_details(
     data: schemas.BankDetailsUpdate,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
 ):
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
@@ -64,7 +65,7 @@ def update_bank_details(
 @router.post("/me/bank-details", response_model=schemas.BankDetailsOut)
 def create_bank_details(
     data: schemas.BankDetailsUpdate,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
 ):
     return update_bank_details(data, current_user_id, db)
@@ -72,7 +73,7 @@ def create_bank_details(
 
 @router.delete("/me/bank-details", response_model=schemas.MessageOut)
 def delete_bank_details(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
 ):
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()

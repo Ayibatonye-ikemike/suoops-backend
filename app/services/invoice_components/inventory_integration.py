@@ -46,7 +46,7 @@ class InventoryIntegrationMixin:
             invoice: The created invoice object
             lines_data: Original line item data (with product_id if linked)
         """
-        from app.services.inventory_service import build_inventory_service
+        from app.services.inventory import build_inventory_service
         
         # Check if any lines have product_id
         has_inventory_items = any(line.get("product_id") for line in lines_data)
@@ -102,7 +102,7 @@ class InventoryIntegrationMixin:
         Args:
             invoice: The invoice being cancelled
         """
-        from app.services.inventory_service import build_inventory_service
+        from app.services.inventory import build_inventory_service
         from app.models.inventory_models import StockMovement, StockMovementType
         
         try:

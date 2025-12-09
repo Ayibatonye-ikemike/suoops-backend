@@ -93,6 +93,13 @@ class InvoiceStatusMixin:
 
     def _handle_manual_payment(self, invoice: models.Invoice) -> None:
         metrics.invoice_paid()
+        
+        # Process inventory deduction for revenue invoices when paid
+        self._process_inventory_on_payment(invoice)
+        
+        # Check for low stock and send alerts
+        self._check_and_send_low_stock_alerts(invoice)
+        
         try:
             if not invoice.receipt_pdf_url:
                 invoice.receipt_pdf_url = self.pdf_service.generate_receipt_pdf(invoice)
@@ -176,3 +183,180 @@ class InvoiceStatusMixin:
             asyncio.run(_run())
         except Exception as exc:  # noqa: BLE001
             logger.error("Notification dispatch failed for invoice %s: %s", invoice.invoice_id, exc)
+
+    def _process_inventory_on_payment(self, invoice: models.Invoice) -> None:
+        """
+        Process inventory deduction when a revenue invoice is marked as paid.
+        
+        This is the key automation point:
+        - Deducts stock for all line items linked to products
+        - Records stock movements for audit trail
+        - Updates COGS for tax reporting
+        
+        For expense invoices, inventory is added at creation time (purchases).
+        For revenue invoices, inventory is deducted at payment time (sales).
+        """
+        if invoice.invoice_type != "revenue":
+            return  # Only process revenue invoices on payment
+        
+        try:
+            from app.services.inventory import build_inventory_service
+            from decimal import Decimal
+            
+            # Check if any lines have products linked
+            has_inventory_items = any(
+                line.product_id for line in invoice.lines
+            )
+            if not has_inventory_items:
+                return
+            
+            inventory_service = build_inventory_service(self.db, invoice.issuer_id)
+            
+            # Process each line item
+            for line in invoice.lines:
+                if not line.product_id:
+                    continue
+                    
+                try:
+                    inventory_service.record_sale(
+                        product_id=line.product_id,
+                        quantity=line.quantity,
+                        unit_price=Decimal(str(line.unit_price)),
+                        invoice_line_id=line.id,
+                        reference_id=invoice.invoice_id,
+                    )
+                    logger.info(
+                        f"Stock deducted for product {line.product_id}: "
+                        f"{line.quantity} units via invoice {invoice.invoice_id}"
+                    )
+                except ValueError as e:
+                    # Log insufficient stock but don't block payment
+                    logger.warning(
+                        f"Insufficient stock for product {line.product_id} "
+                        f"on invoice {invoice.invoice_id}: {e}"
+                    )
+                    
+        except Exception as e:
+            logger.error(f"Inventory processing failed for invoice {invoice.invoice_id}: {e}")
+
+    def _check_and_send_low_stock_alerts(self, invoice: models.Invoice) -> None:
+        """
+        Check for low stock items after a sale and send alerts.
+        
+        This implements the alert workflow:
+        - After inventory is deducted, check all affected products
+        - If any product is at or below reorder level, send alert
+        - Optionally generate draft purchase order suggestions
+        """
+        if invoice.invoice_type != "revenue":
+            return
+        
+        try:
+            from app.services.inventory import build_inventory_service
+            from app.models.inventory_models import Product
+            
+            # Get products that were just affected
+            affected_product_ids = [
+                line.product_id for line in invoice.lines 
+                if line.product_id
+            ]
+            
+            if not affected_product_ids:
+                return
+            
+            # Check which products are now low stock
+            low_stock_products = self.db.query(Product).filter(
+                Product.id.in_(affected_product_ids),
+                Product.track_stock == True,
+                Product.quantity_in_stock <= Product.reorder_level,
+            ).all()
+            
+            if not low_stock_products:
+                return
+            
+            # Build alert message
+            alert_items = []
+            for product in low_stock_products:
+                status = "OUT OF STOCK" if product.quantity_in_stock <= 0 else "LOW STOCK"
+                alert_items.append(
+                    f"• {product.name} ({product.sku}): {product.quantity_in_stock} {product.unit} "
+                    f"[Reorder: {product.reorder_quantity}] - {status}"
+                )
+            
+            # Generate draft purchase order for low stock products
+            purchase_order = None
+            try:
+                from app.services.inventory import build_inventory_service
+                inventory_service = build_inventory_service(self.db, invoice.issuer_id)
+                product_ids = [p.id for p in low_stock_products]
+                purchase_order = inventory_service.generate_draft_purchase_order(
+                    product_ids=product_ids,
+                    trigger_invoice_id=invoice.invoice_id,
+                )
+                if purchase_order:
+                    logger.info(
+                        f"Draft purchase order {purchase_order.order_number} generated for "
+                        f"{len(low_stock_products)} low stock products"
+                    )
+            except Exception as e:
+                logger.warning(f"Could not generate purchase order: {e}")
+            
+            po_message = ""
+            if purchase_order:
+                po_message = f"\n\n📋 Draft Purchase Order #{purchase_order.id} has been created for your review."
+            
+            message = (
+                f"⚠️ Stock Alert after Invoice {invoice.invoice_id}\n\n"
+                f"The following products need reordering:\n\n"
+                + "\n".join(alert_items)
+                + po_message
+                + "\n\nPlease review and place orders with suppliers."
+            )
+            
+            # Send notification to business owner
+            po_id = purchase_order.id if purchase_order else None
+            self._send_low_stock_notification(invoice.issuer_id, message, low_stock_products, po_id)
+            
+            logger.info(
+                f"Low stock alert sent for {len(low_stock_products)} products "
+                f"after invoice {invoice.invoice_id}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Low stock check failed for invoice {invoice.invoice_id}: {e}")
+
+    def _send_low_stock_notification(
+        self, 
+        user_id: int, 
+        message: str, 
+        products: list,
+        purchase_order_id: int | None = None
+    ) -> None:
+        """Send low stock alert to business owner via email/SMS."""
+        try:
+            user = self.db.query(models.User).filter(models.User.id == user_id).one_or_none()
+            if not user:
+                return
+            
+            from app.services.notification.service import NotificationService
+            
+            service = NotificationService()
+            
+            po_suffix = f" - PO #{purchase_order_id}" if purchase_order_id else ""
+            
+            async def _run():
+                if user.email:
+                    try:
+                        await service.send_email(
+                            to_email=user.email,
+                            subject=f"⚠️ Low Stock Alert - {len(products)} products need reordering{po_suffix}",
+                            body=message,
+                        )
+                    except Exception as exc:
+                        logger.error(f"Failed to send low stock email: {exc}")
+            
+            asyncio.run(_run())
+            
+        except Exception as e:
+            logger.error(f"Low stock notification failed: {e}")
+

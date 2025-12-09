@@ -12,7 +12,6 @@ Rate limits by plan:
 - STARTER: 30 requests/minute
 - PRO: 60 requests/minute  
 - BUSINESS: 100 requests/minute
-- ENTERPRISE: 200 requests/minute (generous for high-volume users)
 """
 
 from __future__ import annotations
@@ -84,19 +83,6 @@ class BusinessPlanRateLimitStrategy:
         return 100
 
 
-class EnterprisePlanRateLimitStrategy:
-    """Rate limit strategy for ENTERPRISE tier users.
-    
-    Very high limits for large organizations with intensive usage.
-    """
-    
-    def get_limit(self) -> str:
-        return "200/minute"
-    
-    def get_requests_per_minute(self) -> int:
-        return 200
-
-
 def get_rate_limit_strategy(plan: str) -> RateLimitStrategy:
     """Factory function to get rate limit strategy for a subscription plan.
     
@@ -105,7 +91,7 @@ def get_rate_limit_strategy(plan: str) -> RateLimitStrategy:
     - Closed for modification: Existing strategies don't change
     
     Args:
-        plan: Subscription plan name (free, starter, pro, business, enterprise)
+        plan: Subscription plan name (free, starter, pro, business)
         
     Returns:
         RateLimitStrategy implementation for the plan
@@ -120,7 +106,6 @@ def get_rate_limit_strategy(plan: str) -> RateLimitStrategy:
         "starter": StarterPlanRateLimitStrategy,
         "pro": ProPlanRateLimitStrategy,
         "business": BusinessPlanRateLimitStrategy,
-        "enterprise": EnterprisePlanRateLimitStrategy,
     }
     
     strategy_class = strategies.get(plan.lower(), FreeplanRateLimitStrategy)

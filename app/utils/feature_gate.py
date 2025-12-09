@@ -1,11 +1,11 @@
 """
 Feature gating utilities for subscription-based access control.
 
-Tier structure (profitable pricing):
+Tier structure:
 - Free: 5 invoices/month, manual only
 - Starter (₦4,500): 100 invoices/month + tax reports
-- Pro (₦8,000): 200 invoices/month + custom branding
-- Business (₦16,000): 300 invoices/month + voice (15 max) + OCR (15 max) [5% quota]
+- Pro (₦8,000): 200 invoices/month + custom branding + inventory
+- Business (₦16,000): 300 invoices/month + voice (15 max) + OCR (15 max)
 """
 import datetime as dt
 from fastapi import HTTPException
@@ -66,10 +66,6 @@ class FeatureGate:
         """
         plan = self.user.plan
         limit = plan.invoice_limit
-        
-        # Unlimited for enterprise
-        if limit is None:
-            return True, None
         
         current_count = self.get_monthly_invoice_count()
         
@@ -157,24 +153,20 @@ class FeatureGate:
         # Check if plan has voice/OCR access at all
         if not features.get("voice_invoice") or not features.get("photo_invoice_ocr"):
             return False, (
-                "Voice invoices and Photo OCR are only available on Business and Enterprise plans. "
+                "Voice invoices and Photo OCR are only available on the Business plan. "
                 "Upgrade to unlock these premium features."
             )
         
-        # Enterprise has unlimited
-        if plan == models.SubscriptionPlan.ENTERPRISE:
-            return True, None
-        
-        # Business plan: check 5% quota (15 out of 300)
+        # Business plan: check quota (15 out of 300)
         if plan == models.SubscriptionPlan.BUSINESS:
-            quota = int(plan.invoice_limit * 0.05)  # 5% of 300 = 15
+            quota = features.get("voice_ocr_quota", 15)  # 15 premium invoices
             current_count = self.get_monthly_voice_ocr_count()
             
             if current_count >= quota:
                 return False, (
-                    f"You've reached your Business plan voice/OCR quota of {quota} premium invoices per month "
-                    f"({quota}/{plan.invoice_limit} = 5%). You can still create {plan.invoice_limit - self.get_monthly_invoice_count()} "
-                    "manual invoices this month, or upgrade to Enterprise for unlimited premium features."
+                    f"You've reached your Business plan voice/OCR quota of {quota} premium invoices per month. "
+                    f"You can still create {plan.invoice_limit - self.get_monthly_invoice_count()} "
+                    "manual invoices this month."
                 )
             
             return True, None

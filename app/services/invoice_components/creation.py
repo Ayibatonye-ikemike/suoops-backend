@@ -84,8 +84,10 @@ class InvoiceCreationMixin:
         self.db.commit()
         self.db.refresh(invoice)
 
-        # Process inventory updates (auto stock deduction/addition)
-        if hasattr(self, 'process_inventory_for_invoice'):
+        # Process inventory updates ONLY for expense invoices at creation time
+        # Revenue invoices have inventory deducted when marked as PAID (see status.py)
+        # This ensures proper workflow: Invoice Created -> Payment Received -> Stock Deducted
+        if invoice_type == "expense" and hasattr(self, 'process_inventory_for_invoice'):
             self.process_inventory_for_invoice(invoice, lines_data)
 
         if self.cache:

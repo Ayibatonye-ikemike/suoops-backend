@@ -72,7 +72,7 @@ async def parse_receipt_image(
     
     Speed: ~5-10 seconds
     """
-    # Check if user has Business/Enterprise plan with available quota
+    # Check if user has Business plan with available quota
     check_voice_ocr_quota(db, current_user_id)
     
     # Validate file type (fast check before reading bytes)
@@ -165,7 +165,7 @@ async def create_invoice_from_image(
     
     Note: Review the created invoice - OCR may have errors!
     """
-    # Check if user has Business/Enterprise plan with available quota
+    # Check if user has Business plan with available quota
     check_voice_ocr_quota(db, current_user_id)
     
     # Check invoice creation limit

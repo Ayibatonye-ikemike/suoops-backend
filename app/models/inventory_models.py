@@ -296,3 +296,97 @@ class Supplier(Base):
 
     def __repr__(self) -> str:
         return f"<Supplier(id={self.id}, name='{self.name}')>"
+
+
+class PurchaseOrderStatus(str, enum.Enum):
+    """Status of a purchase order."""
+    DRAFT = "draft"               # Auto-generated, needs review
+    PENDING = "pending"           # Submitted, awaiting supplier
+    CONFIRMED = "confirmed"       # Supplier confirmed
+    RECEIVED = "received"         # Goods received, stock updated
+    CANCELLED = "cancelled"       # Order cancelled
+
+
+class PurchaseOrder(Base):
+    """
+    Purchase order for restocking inventory.
+    
+    Can be auto-generated when stock falls below reorder level,
+    or manually created. When received, updates inventory automatically.
+    """
+    __tablename__ = "purchase_order"
+    __table_args__ = (
+        Index("ix_purchase_order_user_status", "user_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False, index=True)
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("supplier.id"), nullable=True, index=True)
+    
+    # Order identification
+    order_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    status: Mapped[PurchaseOrderStatus] = mapped_column(
+        Enum(PurchaseOrderStatus),
+        default=PurchaseOrderStatus.DRAFT,
+        server_default="draft",
+        index=True,
+    )
+    
+    # Financial
+    total_amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    
+    # Auto-generation tracking
+    auto_generated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    trigger_invoice_id: Mapped[str | None] = mapped_column(String(50), nullable=True)  # Invoice that triggered this PO
+    
+    # Dates
+    order_date: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
+    expected_date: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_date: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="purchase_orders")
+    supplier: Mapped["Supplier | None"] = relationship("Supplier")
+    lines: Mapped[list["PurchaseOrderLine"]] = relationship(
+        "PurchaseOrderLine",
+        back_populates="purchase_order",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return f"<PurchaseOrder(id={self.id}, order_number='{self.order_number}', status={self.status})>"
+
+
+class PurchaseOrderLine(Base):
+    """Line item in a purchase order."""
+    __tablename__ = "purchase_order_line"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    purchase_order_id: Mapped[int] = mapped_column(ForeignKey("purchase_order.id"), nullable=False, index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("product.id"), nullable=False, index=True)
+    
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    total_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    
+    # Track quantities received (for partial deliveries)
+    quantity_received: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    
+    # Relationships
+    purchase_order: Mapped["PurchaseOrder"] = relationship("PurchaseOrder", back_populates="lines")
+    product: Mapped["Product"] = relationship("Product")
+
+    def __repr__(self) -> str:
+        return f"<PurchaseOrderLine(id={self.id}, product_id={self.product_id}, qty={self.quantity})>"
