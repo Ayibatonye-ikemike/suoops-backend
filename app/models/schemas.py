@@ -26,6 +26,7 @@ class InvoiceLineIn(BaseModel):
     description: str
     quantity: int = 1
     unit_price: Decimal
+    product_id: int | None = None  # Link to inventory product for automatic stock tracking
 
 
 class InvoiceCreate(BaseModel):

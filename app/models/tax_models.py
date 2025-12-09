@@ -209,6 +209,7 @@ class MonthlyTaxReport(Base):
     Stores:
     - Assessable profit & development levy
     - VAT breakdown (taxable, zero-rated, exempt)
+    - Inventory COGS (Cost of Goods Sold) for accurate profit calculation
     - Generated PDF URL
     - Period type: day, week, month, year
     - Date range: start_date to end_date
@@ -238,6 +239,12 @@ class MonthlyTaxReport(Base):
     taxable_sales = Column(Numeric(15, 2), default=0)
     zero_rated_sales = Column(Numeric(15, 2), default=0)
     exempt_sales = Column(Numeric(15, 2), default=0)
+    
+    # Inventory/COGS fields for accurate profit calculation
+    cogs_amount = Column(Numeric(15, 2), default=0, nullable=True)  # Cost of Goods Sold
+    inventory_purchases = Column(Numeric(15, 2), default=0, nullable=True)  # Purchases in period
+    inventory_value = Column(Numeric(15, 2), default=0, nullable=True)  # Ending inventory value
+    
     pdf_url = Column(String(500), nullable=True)
     generated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

@@ -15,15 +15,21 @@ if TYPE_CHECKING:
     from app.models.tax_models import FiscalInvoice, TaxProfile, VATReturn
     from app.models.oauth_models import OAuthToken
     from app.models.payment_models import PaymentTransaction
+    from app.models.inventory_models import Product, ProductCategory, StockMovement, Supplier
 else:
     # Import at runtime for SQLAlchemy relationship resolution
     from app.models import tax_models  # noqa: F401
     from app.models import oauth_models  # noqa: F401
     from app.models import payment_models  # noqa: F401
+    from app.models import inventory_models  # noqa: F401
     FiscalInvoice = "FiscalInvoice"
     TaxProfile = "TaxProfile"
     VATReturn = "VATReturn"
     OAuthToken = "OAuthToken"
+    Product = "Product"
+    ProductCategory = "ProductCategory"
+    StockMovement = "StockMovement"
+    Supplier = "Supplier"
 
 
 def utcnow() -> dt.datetime:
@@ -169,7 +175,10 @@ class InvoiceLine(Base):
     description: Mapped[str]
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(scale=2))
+    # Link to inventory product for automatic stock tracking
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("product.id"), nullable=True, index=True)
     invoice: Mapped[Invoice] = relationship("Invoice", back_populates="lines")  # type: ignore
+    product: Mapped["Product | None"] = relationship("Product", foreign_keys=[product_id])  # type: ignore
 
 
 class User(Base):
@@ -243,6 +252,31 @@ class User(Base):
     # OAuth tokens for SSO authentication
     oauth_tokens: Mapped[list["OAuthToken"]] = relationship(
         "OAuthToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
+    
+    # Inventory management relationships
+    products: Mapped[list["Product"]] = relationship(
+        "Product",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
+    
+    product_categories: Mapped[list["ProductCategory"]] = relationship(
+        "ProductCategory",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
+    
+    stock_movements: Mapped[list["StockMovement"]] = relationship(
+        "StockMovement",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
+    
+    suppliers: Mapped[list["Supplier"]] = relationship(
+        "Supplier",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore

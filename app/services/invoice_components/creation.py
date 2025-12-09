@@ -76,12 +76,17 @@ class InvoiceCreationMixin:
                     description=description,
                     quantity=line_data.get("quantity", 1),
                     unit_price=Decimal(str(line_data["unit_price"])),
+                    product_id=line_data.get("product_id"),  # Link to inventory product
                 )
             )
 
         self.db.add(invoice)
         self.db.commit()
         self.db.refresh(invoice)
+
+        # Process inventory updates (auto stock deduction/addition)
+        if hasattr(self, 'process_inventory_for_invoice'):
+            self.process_inventory_for_invoice(invoice, lines_data)
 
         if self.cache:
             self.cache.invalidate_user_invoices(issuer_id)

@@ -222,6 +222,50 @@ class TaxReportingService:
     # Wrapper to maintain backward compatibility for tests expecting update_profile on this service
     def update_profile(self, user_id: int, **kwargs):
         return self.profile_service.update_profile(user_id, **kwargs)
+
+    # -------- Inventory COGS Integration --------
+    def _get_inventory_cogs(
+        self,
+        user_id: int,
+        start_date: date,
+        end_date: date,
+    ) -> dict:
+        """
+        Get Cost of Goods Sold (COGS) data from inventory for a period.
+        
+        This integrates inventory tracking with tax reporting for accurate
+        profit calculations. COGS = Beginning Inventory + Purchases - Ending Inventory
+        
+        Args:
+            user_id: User ID
+            start_date: Start of the period
+            end_date: End of the period
+            
+        Returns:
+            dict with cogs_amount, purchases_amount, current_inventory_value
+        """
+        try:
+            from app.services.inventory_service import build_inventory_service
+            
+            # Convert dates to datetime with timezone for inventory service
+            start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+            
+            inventory_service = build_inventory_service(self.db, user_id)
+            cogs_data = inventory_service.get_cogs_for_period(start_dt, end_dt)
+            
+            return {
+                "cogs_amount": Decimal(str(cogs_data.get("cogs_amount", 0))),
+                "purchases_amount": Decimal(str(cogs_data.get("purchases_amount", 0))),
+                "current_inventory_value": Decimal(str(cogs_data.get("current_inventory_value", 0))),
+            }
+        except Exception as e:
+            logger.warning(f"Could not get inventory COGS for user {user_id}: {e}")
+            return {
+                "cogs_amount": Decimal(0),
+                "purchases_amount": Decimal(0),
+                "current_inventory_value": Decimal(0),
+            }
     
     # -------- Period Date Range Calculation --------
     def _calculate_period_range(
@@ -409,6 +453,9 @@ class TaxReportingService:
                     taxable_sales += amount
 
         # Create or update report
+        # Get COGS data from inventory
+        cogs_data = self._get_inventory_cogs(user_id, start_date, end_date)
+        
         if not existing:
             report = MonthlyTaxReport(
                 user_id=user_id,
@@ -424,6 +471,9 @@ class TaxReportingService:
                 taxable_sales=taxable_sales,
                 zero_rated_sales=zero_rated_sales,
                 exempt_sales=exempt_sales,
+                cogs_amount=cogs_data.get("cogs_amount", Decimal(0)),
+                inventory_purchases=cogs_data.get("purchases_amount", Decimal(0)),
+                inventory_value=cogs_data.get("current_inventory_value", Decimal(0)),
                 pdf_url=None,
             )
             self.db.add(report)
@@ -436,6 +486,9 @@ class TaxReportingService:
             report.taxable_sales = taxable_sales
             report.zero_rated_sales = zero_rated_sales
             report.exempt_sales = exempt_sales
+            report.cogs_amount = cogs_data.get("cogs_amount", Decimal(0))
+            report.inventory_purchases = cogs_data.get("purchases_amount", Decimal(0))
+            report.inventory_value = cogs_data.get("current_inventory_value", Decimal(0))
         
         self.db.commit()
         self.db.refresh(report)

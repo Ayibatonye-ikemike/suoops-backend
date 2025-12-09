@@ -10,6 +10,7 @@ from app.services.invoice_components import (
     InvoiceQueryMixin,
     InvoiceQuotaMixin,
     InvoiceStatusMixin,
+    InventoryIntegrationMixin,
 )
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ class InvoiceService(
     InvoiceCreationMixin,
     InvoiceQueryMixin,
     InvoiceStatusMixin,
+    InventoryIntegrationMixin,
 ):
     """Facade that wires mixins with shared dependencies."""
 
