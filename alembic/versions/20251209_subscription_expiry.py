@@ -27,6 +27,16 @@ def upgrade() -> None:
             comment='When the current paid subscription expires. NULL for free tier.'
         )
     )
+    # Add subscription_started_at column to track when paid plan started
+    op.add_column(
+        'user',
+        sa.Column(
+            'subscription_started_at',
+            sa.DateTime(timezone=True),
+            nullable=True,
+            comment='When the current paid subscription started. For billing cycle calculations.'
+        )
+    )
     # Add index for efficient expiry checks
     op.create_index(
         'ix_user_subscription_expires_at',
@@ -38,4 +48,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index('ix_user_subscription_expires_at', table_name='user')
+    op.drop_column('user', 'subscription_started_at')
     op.drop_column('user', 'subscription_expires_at')
