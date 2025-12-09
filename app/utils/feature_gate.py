@@ -8,11 +8,15 @@ Tier structure:
 - Business (₦16,000): 300 invoices/month + voice (15 max) + OCR (15 max)
 """
 import datetime as dt
+import logging
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
+from sqlalchemy import func
 
 from app.models import models
+
+
+logger = logging.getLogger(__name__)
 
 
 class FeatureGate:
@@ -25,12 +29,46 @@ class FeatureGate:
     
     @property
     def user(self) -> models.User:
-        """Lazy load user from database."""
+        """Lazy load user from database and check subscription expiry."""
         if self._user is None:
             self._user = self.db.query(models.User).filter(models.User.id == self.user_id).first()
             if not self._user:
                 raise HTTPException(status_code=404, detail="User not found")
+            # Check if paid subscription has expired
+            self._check_subscription_expiry()
         return self._user
+    
+    def _check_subscription_expiry(self) -> None:
+        """
+        Check if user's paid subscription has expired and downgrade to FREE if so.
+        
+        This ensures users are automatically returned to FREE tier when their
+        subscription period ends, rather than resetting on calendar month.
+        """
+        user = self._user
+        if user.plan == models.SubscriptionPlan.FREE:
+            return  # Already on free tier, nothing to check
+        
+        if user.subscription_expires_at is None:
+            return  # No expiry set (legacy data), don't auto-downgrade
+        
+        now = dt.datetime.now(dt.timezone.utc)
+        expiry = user.subscription_expires_at
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=dt.timezone.utc)
+        
+        if now > expiry:
+            # Subscription has expired, downgrade to FREE
+            old_plan = user.plan.value
+            user.plan = models.SubscriptionPlan.FREE
+            user.subscription_expires_at = None
+            user.invoices_this_month = 0  # Reset usage
+            user.usage_reset_at = now
+            self.db.commit()
+            logger.info(
+                "Subscription expired for user %s: downgraded from %s to FREE",
+                user.id, old_plan
+            )
     
     def is_free_tier(self) -> bool:
         """Check if user is on free tier."""
@@ -40,18 +78,42 @@ class FeatureGate:
         """Check if user has any paid subscription."""
         return self.user.plan != models.SubscriptionPlan.FREE
     
-    def get_monthly_invoice_count(self) -> int:
-        """Get number of invoices created this month."""
+    def get_billing_cycle_start(self) -> dt.datetime:
+        """
+        Get the start of the current billing cycle.
+        
+        For paid users: 30 days before subscription_expires_at
+        For free users: use usage_reset_at or beginning of current month
+        """
+        user = self.user
         now = dt.datetime.now(dt.timezone.utc)
-        current_month = now.month
-        current_year = now.year
+        
+        if user.subscription_expires_at:
+            # For paid plans, billing cycle started 30 days before expiry
+            expiry = user.subscription_expires_at
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=dt.timezone.utc)
+            return expiry - dt.timedelta(days=30)
+        
+        # For free tier, use usage_reset_at or fall back to month start
+        if user.usage_reset_at:
+            reset = user.usage_reset_at
+            if reset.tzinfo is None:
+                reset = reset.replace(tzinfo=dt.timezone.utc)
+            return reset
+        
+        # Fallback: beginning of current month
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    def get_monthly_invoice_count(self) -> int:
+        """Get number of invoices created in current billing cycle."""
+        billing_start = self.get_billing_cycle_start()
         
         count = (
             self.db.query(func.count(models.Invoice.id))
             .filter(
                 models.Invoice.issuer_id == self.user_id,
-                extract('month', models.Invoice.created_at) == current_month,
-                extract('year', models.Invoice.created_at) == current_year,
+                models.Invoice.created_at >= billing_start,
             )
             .scalar()
         )
@@ -59,7 +121,7 @@ class FeatureGate:
     
     def can_create_invoice(self) -> tuple[bool, str | None]:
         """
-        Check if user can create another invoice this month.
+        Check if user can create another invoice in current billing cycle.
         
         Returns:
             (can_create: bool, error_message: str | None)

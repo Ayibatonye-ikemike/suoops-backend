@@ -204,9 +204,15 @@ class User(Base):
         server_default="free",
         nullable=False,
     )
-    # Track monthly invoice usage (resets on 1st of each month)
+    # When the current paid subscription expires (NULL for free tier)
+    subscription_expires_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    # Track monthly invoice usage (resets based on subscription start, not calendar month)
     invoices_this_month: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    # Track when usage was last reset (for monthly cycle)
+    # Track when usage was last reset (for billing cycle)
     usage_reset_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,

@@ -84,10 +84,17 @@ async def verify_subscription_payment(
             old_plan = user.plan.value
             user.plan = models.SubscriptionPlan[plan]
             
+            # Set subscription expiry to 30 days from now
+            now = datetime.now(dt.timezone.utc)
+            user.subscription_expires_at = now + dt.timedelta(days=30)
+            # Reset usage counter for new billing cycle
+            user.invoices_this_month = 0
+            user.usage_reset_at = now
+            
             # Update payment transaction
             if payment_transaction:
                 payment_transaction.status = PaymentStatus.SUCCESS
-                payment_transaction.paid_at = datetime.utcnow()
+                payment_transaction.paid_at = now
                 payment_transaction.paystack_transaction_id = payment.get("id")
                 payment_transaction.payment_method = payment.get("channel")
                 
@@ -99,8 +106,8 @@ async def verify_subscription_payment(
                     payment_transaction.bank_name = authorization.get("bank")
                 
                 # Set billing period (30 days from now)
-                payment_transaction.billing_start_date = datetime.utcnow()
-                payment_transaction.billing_end_date = datetime.utcnow() + dt.timedelta(days=30)
+                payment_transaction.billing_start_date = now
+                payment_transaction.billing_end_date = now + dt.timedelta(days=30)
                 payment_transaction.payment_metadata = payment.get("metadata")
             
             db.commit()
