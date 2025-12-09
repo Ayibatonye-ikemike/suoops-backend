@@ -256,19 +256,32 @@ class TeamService:
                 detail="Cannot invite yourself"
             )
         
-        # Check if there's already a pending invitation
+        # Check if there's already an invitation (any status)
         existing_invitation = self.db.scalar(
             select(TeamInvitation).where(
                 TeamInvitation.team_id == team.id,
                 TeamInvitation.email == data.email,
-                TeamInvitation.status == InvitationStatus.PENDING,
             )
         )
-        if existing_invitation and existing_invitation.is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Pending invitation already exists for this email"
-            )
+        
+        if existing_invitation:
+            if existing_invitation.status == InvitationStatus.PENDING and existing_invitation.is_valid:
+                # Resend email for existing valid pending invitation
+                self._send_invitation_email(existing_invitation, team)
+                return existing_invitation
+            else:
+                # Reactivate expired/revoked invitation with new token
+                from datetime import timedelta
+                existing_invitation.token = generate_invite_token()
+                existing_invitation.status = InvitationStatus.PENDING
+                existing_invitation.created_at = datetime.now(timezone.utc)
+                existing_invitation.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+                existing_invitation.responded_at = None
+                existing_invitation.invited_by_user_id = self.user_id
+                self.db.commit()
+                self.db.refresh(existing_invitation)
+                self._send_invitation_email(existing_invitation, team)
+                return existing_invitation
         
         # Create new invitation
         invitation = TeamInvitation(
