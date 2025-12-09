@@ -218,7 +218,7 @@ class StockMovement(Base):
     
     # Movement details
     movement_type: Mapped[StockMovementType] = mapped_column(
-        Enum(StockMovementType),
+        Enum(StockMovementType, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         index=True,
     )

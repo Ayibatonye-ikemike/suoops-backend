@@ -134,6 +134,7 @@ class InventoryService:
         include_inactive: bool = False,
         search: str | None = None,
         low_stock_only: bool = False,
+        out_of_stock_only: bool = False,
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[Sequence[Product], int]:
@@ -143,6 +144,7 @@ class InventoryService:
             include_inactive=include_inactive,
             search=search,
             low_stock_only=low_stock_only,
+            out_of_stock_only=out_of_stock_only,
             page=page,
             page_size=page_size,
         )
