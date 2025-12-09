@@ -210,6 +210,11 @@ class User(Base):
         nullable=True,
         index=True,
     )
+    # When the current paid subscription started (for billing cycle calculations)
+    subscription_started_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     # Track monthly invoice usage (resets based on subscription start, not calendar month)
     invoices_this_month: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Track when usage was last reset (for billing cycle)
