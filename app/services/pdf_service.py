@@ -138,6 +138,9 @@ class PDFService:
         else:
             paid_at_display = "(time not recorded)"
 
+        # Generate QR code for receipt verification
+        qr_code_data = self._generate_qr_code(invoice.invoice_id)
+        
         if settings.HTML_PDF_ENABLED and _WEASY_AVAILABLE:
             try:
                 # If a dedicated receipt template exists use it; otherwise reuse invoice.html
@@ -163,7 +166,7 @@ class PDFService:
                     bank_details=None,
                     logo_url=None,
                     customer_portal_url=None,
-                    qr_code=None,
+                    qr_code=qr_code_data,
                     watermark_text=watermark_text,
                     paid_at_display=paid_at_display,
                     is_receipt=True,

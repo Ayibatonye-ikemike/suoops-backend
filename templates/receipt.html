@@ -16,6 +16,31 @@
     .total { text-align:right; font-weight:bold; font-size:16px; margin-top:10px; }
     .watermark { position:fixed; top:35%; left:5%; right:5%; text-align:center; opacity:0.08; font-size:72px; transform:rotate(-25deg); pointer-events:none; z-index:-1; color:#0b8245; }
     .footer { margin-top:32px; font-size:11px; color:#666; line-height:1.4; }
+    .qr-section {
+      margin-top: 30px;
+      padding: 20px;
+      border: 2px dashed #14B56A;
+      border-radius: 12px;
+      text-align: center;
+      background: white;
+      box-shadow: 0 2px 8px rgba(20, 181, 106, 0.1);
+    }
+    .qr-section h3 {
+      margin: 0 0 10px 0;
+      color: #0B3318;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .qr-section img {
+      width: 150px;
+      height: 150px;
+      margin: 10px 0;
+    }
+    .qr-section p {
+      margin: 5px 0;
+      font-size: 12px;
+      color: #666;
+    }
   </style>
 </head>
 <body>
@@ -52,6 +77,16 @@
     </table>
     <p class="total">Total Paid: ₦{{ "{:,.2f}".format(invoice.amount) }}</p>
   </div>
+  
+  {% if qr_code %}
+  <div class="qr-section">
+    <h3>🔐 Verify Authenticity</h3>
+    <img src="{{ qr_code }}" alt="Scan to verify receipt" />
+    <p><strong>Scan QR code to verify this receipt is genuine</strong></p>
+    <p>Confirm payment status and invoice authenticity instantly</p>
+  </div>
+  {% endif %}
+  
   <div class="footer">
     <p>This document serves as official confirmation that the above invoice has been settled in full.</p>
     <p>Keep this receipt for your records. For any disputes or inquiries, contact the issuing business.</p>
