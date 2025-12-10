@@ -77,17 +77,30 @@ class InvoiceOut(BaseModel):
     created_by_user_id: int | None = None
     created_by_name: str | None = None
     
+    # Status updater tracking (who marked as paid/cancelled)
+    status_updated_by_user_id: int | None = None
+    status_updated_by_name: str | None = None
+    status_updated_at: dt.datetime | None = None
+    
     @model_validator(mode="before")
     @classmethod
-    def populate_created_by_name(cls, data: Any) -> Any:
-        """Extract created_by_name from the created_by relationship."""
+    def populate_user_names(cls, data: Any) -> Any:
+        """Extract user names from relationships."""
+        if not hasattr(data, "created_by"):
+            return data
+        
+        result = {k: getattr(data, k, None) for k in cls.model_fields.keys() 
+                  if k not in {"created_by_name", "status_updated_by_name"}}
+        
+        # Populate created_by_name
         if hasattr(data, "created_by") and data.created_by is not None:
-            # SQLAlchemy model with relationship
-            return {
-                **{k: getattr(data, k, None) for k in cls.model_fields.keys() if k != "created_by_name"},
-                "created_by_name": data.created_by.name,
-            }
-        return data
+            result["created_by_name"] = data.created_by.name
+        
+        # Populate status_updated_by_name
+        if hasattr(data, "status_updated_by") and data.status_updated_by is not None:
+            result["status_updated_by_name"] = data.status_updated_by.name
+        
+        return result
 
 
 class InvoiceLineOut(BaseModel):

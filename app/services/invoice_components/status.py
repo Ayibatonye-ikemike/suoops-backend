@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class InvoiceStatusMixin:
     db: Session
 
-    def update_status(self, issuer_id: int, invoice_id: str, status: str) -> models.Invoice:
+    def update_status(self, issuer_id: int, invoice_id: str, status: str, updated_by_user_id: int | None = None) -> models.Invoice:
         if status not in {"pending", "awaiting_confirmation", "paid", "cancelled"}:
             raise InvalidInvoiceStatusError(new_status=status)
 
@@ -46,6 +46,12 @@ class InvoiceStatusMixin:
             )
 
         invoice.status = status
+        
+        # Track who updated the status and when
+        if updated_by_user_id and status in {"paid", "cancelled"}:
+            invoice.status_updated_by_user_id = updated_by_user_id
+            invoice.status_updated_at = dt.datetime.now(dt.timezone.utc)
+        
         if status == "paid" and invoice.paid_at is None:
             invoice.paid_at = dt.datetime.now(dt.timezone.utc)
         self.db.commit()

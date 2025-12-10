@@ -159,9 +159,14 @@ class Invoice(Base):
     # Track which user actually created the invoice (for team scenarios - allows confirmation only by creator)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True, index=True)
     
+    # Track which user last updated the invoice status (paid/cancelled)
+    status_updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True, index=True)
+    status_updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    
     customer: Mapped[Customer] = relationship("Customer", back_populates="invoices")  # type: ignore
     issuer: Mapped[User] = relationship("User", back_populates="issued_invoices", foreign_keys=[issuer_id])  # type: ignore
     created_by: Mapped[User | None] = relationship("User", foreign_keys=[created_by_user_id])  # type: ignore
+    status_updated_by: Mapped[User | None] = relationship("User", foreign_keys=[status_updated_by_user_id])  # type: ignore
     lines: Mapped[list[InvoiceLine]] = relationship(
         "InvoiceLine",
         back_populates="invoice",
