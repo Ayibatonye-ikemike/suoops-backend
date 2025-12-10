@@ -67,7 +67,6 @@ class InvoiceStatusMixin:
             self.db.refresh(invoice)
             # Explicitly load the status_updated_by relationship if we just set it
             if invoice.status_updated_by_user_id and not invoice.status_updated_by:
-                from sqlalchemy.orm import joinedload
                 invoice = (
                     self.db.query(models.Invoice)
                     .options(
