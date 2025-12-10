@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20251210_add_invoice_created_by'
-down_revision = None  # Will be set automatically when merging
+down_revision = '20251209_sub_started'
 branch_labels = None
 depends_on = None
 
