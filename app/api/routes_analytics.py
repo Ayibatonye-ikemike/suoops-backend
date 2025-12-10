@@ -11,6 +11,7 @@ from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.api.dependencies import get_data_owner_id
 from app.db.session import get_db
 from app.models import models
 from app.models.schemas import AnalyticsDashboard
@@ -27,11 +28,17 @@ from app.services.analytics_service import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Type aliases for dependency injection
+CurrentUserDep = Annotated[int, Depends(get_current_user_id)]
+DataOwnerDep = Annotated[int, Depends(get_data_owner_id)]
+DbDep = Annotated[Session, Depends(get_db)]
+
 
 @router.get("/dashboard", response_model=AnalyticsDashboard)
 async def get_analytics_dashboard(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
     period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
     currency: str = Query("NGN", pattern="^(NGN|USD)$"),
 ) -> AnalyticsDashboard:
@@ -40,36 +47,37 @@ async def get_analytics_dashboard(
     
     Args:
         current_user_id: Authenticated user ID
+        data_owner_id: Data owner ID (team admin for members)
         db: Database session
         period: Time period (7d, 30d, 90d, 1y, all)
         currency: Display currency (NGN or USD)
         
     Returns:
-        Complete analytics dashboard data
+        Complete analytics dashboard data (team data for team members)
     """
     # Calculate date range and conversion rate
     start_date, end_date = get_date_range(period)
     conversion_rate = get_conversion_rate(currency)
     
-    # Calculate all metrics
+    # Calculate all metrics using data_owner_id for team context
     revenue_metrics = calculate_revenue_metrics(
-        db, current_user_id, start_date, end_date, conversion_rate
+        db, data_owner_id, start_date, end_date, conversion_rate
     )
     
     invoice_metrics = calculate_invoice_metrics(
-        db, current_user_id, start_date, end_date
+        db, data_owner_id, start_date, end_date
     )
     
     customer_metrics = calculate_customer_metrics(
-        db, current_user_id, start_date, end_date
+        db, data_owner_id, start_date, end_date
     )
     
     aging_report = calculate_aging_report(
-        db, current_user_id, end_date, conversion_rate
+        db, data_owner_id, end_date, conversion_rate
     )
     
     monthly_trends = calculate_monthly_trends(
-        db, current_user_id, end_date, conversion_rate
+        db, data_owner_id, end_date, conversion_rate
     )
     
     return AnalyticsDashboard(
@@ -87,16 +95,17 @@ async def get_analytics_dashboard(
 
 @router.get("/revenue-by-customer")
 async def get_revenue_by_customer(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
     period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
     limit: int = Query(10, ge=1, le=100),
 ):
-    """Get top customers by revenue."""
+    """Get top customers by revenue (team data for team members)."""
     
     start_date, _ = get_date_range(period)
     
-    # Query top customers
+    # Query top customers using data_owner_id
     top_customers = (
         db.query(
             models.Customer.name,
@@ -105,7 +114,7 @@ async def get_revenue_by_customer(
         )
         .join(models.Invoice, models.Invoice.customer_id == models.Customer.id)
         .filter(
-            models.Invoice.issuer_id == current_user_id,
+            models.Invoice.issuer_id == data_owner_id,
             models.Invoice.invoice_type == "revenue",
             models.Invoice.status == "paid",
             models.Invoice.created_at >= datetime.combine(start_date, datetime.min.time()),
@@ -131,15 +140,16 @@ async def get_revenue_by_customer(
 
 @router.get("/conversion-funnel")
 async def get_conversion_funnel(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
     period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
 ):
-    """Get invoice conversion funnel (created → paid)."""
+    """Get invoice conversion funnel (created → paid). Returns team data for team members."""
     
     start_date, _ = get_date_range(period)
     
-    # Count invoices by status
+    # Count invoices by status using data_owner_id
     stats = (
         db.query(
             func.count(models.Invoice.id).label("total"),
@@ -149,7 +159,7 @@ async def get_conversion_funnel(
             func.sum(case((models.Invoice.status == "failed", 1), else_=0)).label("failed"),
         )
         .filter(
-            models.Invoice.issuer_id == current_user_id,
+            models.Invoice.issuer_id == data_owner_id,
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= datetime.combine(start_date, datetime.min.time()),
         )

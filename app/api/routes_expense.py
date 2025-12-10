@@ -12,6 +12,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.api.dependencies import get_data_owner_id
 from app.db.session import get_db
 from app.models.expense import Expense
 from app.models.expense_schemas import (
@@ -23,6 +24,11 @@ from app.models.expense_schemas import (
 )
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
+
+# Type aliases for dependency injection
+CurrentUserDep = Annotated[int, Depends(get_current_user_id)]
+DataOwnerDep = Annotated[int, Depends(get_data_owner_id)]
+DbDep = Annotated[Session, Depends(get_db)]
 
 
 def _calculate_period_range(
@@ -84,16 +90,18 @@ def _calculate_period_range(
 @router.post("/", response_model=ExpenseOut, status_code=201)
 def create_expense(
     data: ExpenseCreate,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
 ):
     """
     Create a new expense manually from dashboard.
     
     For WhatsApp/email expenses, use the bot message handler.
+    Expense is created under the data owner (team admin for members).
     """
     expense = Expense(
-        user_id=current_user_id,
+        user_id=data_owner_id,
         amount=data.amount,
         date=data.expense_date,
         category=data.category,
@@ -114,8 +122,9 @@ def create_expense(
 
 @router.get("/", response_model=list[ExpenseOut])
 def list_expenses(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
     start_date: date | None = Query(None, description="Filter by start date (inclusive)"),
     end_date: date | None = Query(None, description="Filter by end date (inclusive)"),
     category: str | None = Query(None, description="Filter by category"),
@@ -126,8 +135,9 @@ def list_expenses(
     List expenses with optional filters.
     
     Returns expenses sorted by date (most recent first).
+    For team members, returns the team admin's expenses.
     """
-    q = db.query(Expense).filter(Expense.user_id == current_user_id)
+    q = db.query(Expense).filter(Expense.user_id == data_owner_id)
     
     if start_date:
         q = q.filter(Expense.date >= start_date)
@@ -145,13 +155,14 @@ def list_expenses(
 @router.get("/{expense_id}", response_model=ExpenseOut)
 def get_expense(
     expense_id: int,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
 ):
     """Get a specific expense by ID"""
     expense = db.query(Expense).filter(
         Expense.id == expense_id,
-        Expense.user_id == current_user_id,
+        Expense.user_id == data_owner_id,
     ).first()
     
     if not expense:
@@ -164,13 +175,14 @@ def get_expense(
 def update_expense(
     expense_id: int,
     data: ExpenseUpdate,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
 ):
     """Update an existing expense"""
     expense = db.query(Expense).filter(
         Expense.id == expense_id,
-        Expense.user_id == current_user_id,
+        Expense.user_id == data_owner_id,
     ).first()
     
     if not expense:
@@ -192,13 +204,14 @@ def update_expense(
 @router.delete("/{expense_id}", status_code=204)
 def delete_expense(
     expense_id: int,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
 ):
     """Delete an expense"""
     expense = db.query(Expense).filter(
         Expense.id == expense_id,
-        Expense.user_id == current_user_id,
+        Expense.user_id == data_owner_id,
     ).first()
     
     if not expense:
@@ -212,8 +225,9 @@ def delete_expense(
 
 @router.get("/summary/by-period", response_model=ExpenseSummary)
 def expense_summary(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
     period_type: str = Query("month", pattern="^(day|week|month|year)$"),
     year: int | None = Query(None, description="Year (required for week/month/year)"),
     month: int | None = Query(None, ge=1, le=12, description="Month (1-12, for month period)"),
@@ -233,9 +247,9 @@ def expense_summary(
     # Calculate date range
     start_date, end_date = _calculate_period_range(period_type, year, month, day, week)
     
-    # Query expenses in period
+    # Query expenses in period (use data_owner_id for team context)
     expenses = db.query(Expense).filter(
-        Expense.user_id == current_user_id,
+        Expense.user_id == data_owner_id,
         Expense.date >= start_date,
         Expense.date <= end_date,
     ).all()
@@ -261,8 +275,9 @@ def expense_summary(
 
 @router.get("/stats/overview", response_model=ExpenseStats)
 def expense_stats(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
     period_type: str = Query("month", pattern="^(day|week|month|year)$"),
     year: int | None = Query(None),
     month: int | None = Query(None, ge=1, le=12),
@@ -284,9 +299,9 @@ def expense_stats(
     # Calculate date range
     start_date, end_date = _calculate_period_range(period_type, year, month, day, week)
     
-    # Get expenses
+    # Get expenses (use data_owner_id for team context)
     expenses = db.query(Expense).filter(
-        Expense.user_id == current_user_id,
+        Expense.user_id == data_owner_id,
         Expense.date >= start_date,
         Expense.date <= end_date,
     ).all()
@@ -294,10 +309,10 @@ def expense_stats(
     # Calculate totals
     total_expenses = sum(expense.amount for expense in expenses)
     
-    # Get revenue from invoices
+    # Get revenue from invoices (use data_owner_id for team context)
     total_revenue = compute_revenue_by_date_range(
         db=db,
-        user_id=current_user_id,
+        user_id=data_owner_id,
         start_date=start_date,
         end_date=end_date,
         basis="paid",  # Use paid basis for actual cash flow

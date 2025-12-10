@@ -6,11 +6,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.api.dependencies import get_data_owner_id
 from app.db.session import get_db
 from app.services.inventory import build_inventory_service, InventoryService
 from app.utils.feature_gate import FeatureGate
 
 CurrentUserDep: TypeAlias = Annotated[int, Depends(get_current_user_id)]
+DataOwnerDep: TypeAlias = Annotated[int, Depends(get_data_owner_id)]
 DbDep: TypeAlias = Annotated[Session, Depends(get_db)]
 
 
@@ -77,14 +79,20 @@ def require_inventory_admin(current_user_id: InventoryAccessDep, db: DbDep) -> i
 InventoryAdminDep: TypeAlias = Annotated[int, Depends(require_inventory_admin)]
 
 
-def get_inventory_service(current_user_id: InventoryAccessDep, db: DbDep) -> InventoryService:
-    """Get InventoryService for user with verified Pro/Business access (read)."""
-    return build_inventory_service(db, user_id=current_user_id)
+def get_inventory_service(current_user_id: InventoryAccessDep, data_owner_id: DataOwnerDep, db: DbDep) -> InventoryService:
+    """Get InventoryService for user with verified Pro/Business access (read).
+    
+    Uses data_owner_id to access the team admin's data for team members.
+    """
+    return build_inventory_service(db, user_id=data_owner_id)
 
 
-def get_inventory_service_admin(current_user_id: InventoryAdminDep, db: DbDep) -> InventoryService:
-    """Get InventoryService for user with verified admin access (write)."""
-    return build_inventory_service(db, user_id=current_user_id)
+def get_inventory_service_admin(current_user_id: InventoryAdminDep, data_owner_id: DataOwnerDep, db: DbDep) -> InventoryService:
+    """Get InventoryService for user with verified admin access (write).
+    
+    Uses data_owner_id which should be the same as current_user_id for admins.
+    """
+    return build_inventory_service(db, user_id=data_owner_id)
 
 
 InventoryServiceDep: TypeAlias = Annotated[InventoryService, Depends(get_inventory_service)]

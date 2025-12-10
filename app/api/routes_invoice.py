@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.api.dependencies import get_data_owner_id
 from app.db.session import get_db
 from app.models import schemas
 from app.services.invoice_service import build_invoice_service, InvoiceService
@@ -18,18 +19,20 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 CurrentUserDep: TypeAlias = Annotated[int, Depends(get_current_user_id)]
+DataOwnerDep: TypeAlias = Annotated[int, Depends(get_data_owner_id)]
 DbDep: TypeAlias = Annotated[Session, Depends(get_db)]
 
 
-def get_invoice_service_for_user(current_user_id: CurrentUserDep, db: DbDep) -> InvoiceService:
-    """Get InvoiceService for the requesting business."""
-    return build_invoice_service(db, user_id=current_user_id)
+def get_invoice_service_for_user(data_owner_id: DataOwnerDep, db: DbDep) -> InvoiceService:
+    """Get InvoiceService for the data owner (team admin for members, self for solo/admin)."""
+    return build_invoice_service(db, user_id=data_owner_id)
 
 
 @router.post("/", response_model=schemas.InvoiceOut)
 async def create_invoice(
     data: schemas.InvoiceCreate,
     current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
     db: DbDep,
     async_pdf: bool = True,  # Default to async PDF generation for better performance
 ):
@@ -38,28 +41,30 @@ async def create_invoice(
     Args:
         data: Invoice creation data
         current_user_id: Authenticated user ID
+        data_owner_id: The user ID whose data we're accessing (team admin for members)
         db: Database session
         async_pdf: If True, PDF is generated in background (faster API response).
               If False, PDF is generated immediately (slower but PDF URL available in response).
               Defaults to True for better user experience. When an invoice email is requested,
               the system automatically forces synchronous generation so the attachment is present.
     """
-    # Check invoice creation limit based on subscription plan
-    check_invoice_limit(db, current_user_id)
+    # Check invoice creation limit based on data owner's subscription plan
+    check_invoice_limit(db, data_owner_id)
     
-    svc = get_invoice_service_for_user(current_user_id, db)
+    svc = get_invoice_service_for_user(data_owner_id, db)
 
     # Ensure PDF exists before sending email so attachment is present
     effective_async = async_pdf
     if async_pdf and data.customer_email:
         effective_async = False
         logger.info(
-            "Forcing synchronous PDF generation for invoice email attachment | user=%s",
+            "Forcing synchronous PDF generation for invoice email attachment | user=%s data_owner=%s",
             current_user_id,
+            data_owner_id,
         )
     try:
         invoice = svc.create_invoice(
-            issuer_id=current_user_id,
+            issuer_id=data_owner_id,
             data=data.model_dump(),
             async_pdf=effective_async,
         )
@@ -99,6 +104,7 @@ async def create_invoice(
 @router.post("/upload-receipt", response_model=schemas.ReceiptUploadOut)
 async def upload_expense_receipt(
     current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
     file: UploadFile = File(...),
 ):
     """Upload expense receipt image and return S3 URL for use in invoice creation.
@@ -137,8 +143,8 @@ async def upload_expense_receipt(
         elif file.content_type == "image/webp":
             ext = "webp"
         
-        # Create unique filename
-        filename = f"receipts/user_{current_user_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.{ext}"
+        # Create unique filename (use data_owner_id for team context)
+        filename = f"receipts/user_{data_owner_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.{ext}"
         
         receipt_url = await s3_client.upload_file(
             content,
@@ -146,7 +152,7 @@ async def upload_expense_receipt(
             content_type=file.content_type
         )
         
-        logger.info(f"Uploaded expense receipt for user {current_user_id}: {receipt_url}")
+        logger.info(f"Uploaded expense receipt for data_owner {data_owner_id} by user {current_user_id}: {receipt_url}")
         
         return schemas.ReceiptUploadOut(
             receipt_url=receipt_url,
@@ -159,12 +165,13 @@ async def upload_expense_receipt(
 
 
 @router.get("/quota", response_model=schemas.InvoiceQuotaOut)
-def get_invoice_quota(current_user_id: CurrentUserDep, db: DbDep):
-    """Return current monthly invoice usage and limit for the authenticated user.
+def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerDep, db: DbDep):
+    """Return current monthly invoice usage and limit for the data owner.
 
     Enables frontend preflight checks to disable creation when limit reached.
+    For team members, this returns the team admin's quota.
     """
-    gate = FeatureGate(db, current_user_id)
+    gate = FeatureGate(db, data_owner_id)
     current_count = gate.get_monthly_invoice_count()
     plan = gate.user.plan
     limit = plan.invoice_limit  # None means unlimited
@@ -181,12 +188,13 @@ def get_invoice_quota(current_user_id: CurrentUserDep, db: DbDep):
 
 @router.get("/", response_model=list[schemas.InvoiceOut])
 def list_invoices(
-    current_user_id: CurrentUserDep, 
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep, 
     db: DbDep,
     invoice_type: str | None = None,  # Optional filter: "revenue", "expense", or None for all
 ):
-    svc = get_invoice_service_for_user(current_user_id, db)
-    invoices = svc.list_invoices(current_user_id)
+    svc = get_invoice_service_for_user(data_owner_id, db)
+    invoices = svc.list_invoices(data_owner_id)
     
     # Filter by invoice_type if specified
     if invoice_type:
@@ -196,10 +204,10 @@ def list_invoices(
 
 
 @router.get("/{invoice_id}", response_model=schemas.InvoiceOutDetailed)
-def get_invoice(invoice_id: str, current_user_id: CurrentUserDep, db: DbDep):
-    svc = get_invoice_service_for_user(current_user_id, db)
+def get_invoice(invoice_id: str, current_user_id: CurrentUserDep, data_owner_id: DataOwnerDep, db: DbDep):
+    svc = get_invoice_service_for_user(data_owner_id, db)
     try:
-        return svc.get_invoice(current_user_id, invoice_id)
+        return svc.get_invoice(data_owner_id, invoice_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -209,11 +217,12 @@ def update_invoice_status(
     invoice_id: str,
     payload: schemas.InvoiceStatusUpdate,
     current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
     db: DbDep,
 ):
-    svc = get_invoice_service_for_user(current_user_id, db)
+    svc = get_invoice_service_for_user(data_owner_id, db)
     try:
-        return svc.update_status(current_user_id, invoice_id, payload.status)
+        return svc.update_status(data_owner_id, invoice_id, payload.status)
     except ValueError as exc:
         detail = str(exc)
         status_code = 404 if detail == "Invoice not found" else 400
@@ -221,11 +230,11 @@ def update_invoice_status(
 
 
 @router.get("/{invoice_id}/pdf")
-def download_invoice_pdf(invoice_id: str, current_user_id: CurrentUserDep, db: DbDep):
+def download_invoice_pdf(invoice_id: str, current_user_id: CurrentUserDep, data_owner_id: DataOwnerDep, db: DbDep):
     """Download PDF for an invoice. Serves local files when S3 is not configured."""
-    svc = get_invoice_service_for_user(current_user_id, db)
+    svc = get_invoice_service_for_user(data_owner_id, db)
     try:
-        invoice = svc.get_invoice(current_user_id, invoice_id)
+        invoice = svc.get_invoice(data_owner_id, invoice_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     
