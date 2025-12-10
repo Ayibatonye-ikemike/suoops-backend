@@ -27,6 +27,12 @@
     <p class="meta"><strong>Amount Paid:</strong> ₦{{ "{:,.2f}".format(invoice.amount) }}</p>
     <p class="meta"><strong>Payment Date:</strong> {{ paid_at_display }}</p>
     <p class="meta"><strong>Status:</strong> PAID</p>
+    {% if created_by_name %}
+    <p class="meta"><strong>Invoice Created by:</strong> {{ created_by_name }}</p>
+    {% endif %}
+    {% if confirmed_by_name %}
+    <p class="meta"><strong>Payment Confirmed by:</strong> {{ confirmed_by_name }}</p>
+    {% endif %}
   </div>
   <div class="box">
     <h3>Summary</h3>
@@ -37,6 +43,12 @@
       <tr><th>Payment Method</th><td>Bank Transfer</td></tr>
       <tr><th>Confirmed Status</th><td>PAID</td></tr>
       <tr><th>Timestamp</th><td>{{ paid_at_display }}</td></tr>
+      {% if created_by_name %}
+      <tr><th>Invoice Created by</th><td>{{ created_by_name }}</td></tr>
+      {% endif %}
+      {% if confirmed_by_name %}
+      <tr><th>Payment Confirmed by</th><td>{{ confirmed_by_name }}</td></tr>
+      {% endif %}
     </table>
     <p class="total">Total Paid: ₦{{ "{:,.2f}".format(invoice.amount) }}</p>
   </div>

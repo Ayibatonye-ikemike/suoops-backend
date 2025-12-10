@@ -113,6 +113,9 @@
     {% endif %}
     <p><strong>Date:</strong> {{ invoice.created_at.strftime('%B %d, %Y') }}</p>
     <p><strong>Status:</strong> {{ invoice.status.upper() }}</p>
+    {% if created_by_name %}
+    <p><strong>Created by:</strong> {{ created_by_name }}</p>
+    {% endif %}
   </div>
   
   {% if bank_details and (bank_details.bank_name or bank_details.account_number) %}

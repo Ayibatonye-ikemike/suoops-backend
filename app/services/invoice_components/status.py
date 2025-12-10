@@ -26,6 +26,8 @@ class InvoiceStatusMixin:
             .options(
                 joinedload(models.Invoice.customer),
                 joinedload(models.Invoice.issuer),
+                joinedload(models.Invoice.created_by),  # Load creator for PDF
+                joinedload(models.Invoice.status_updated_by),  # Load confirmer for PDF
                 selectinload(models.Invoice.lines),  # Load lines for inventory processing
             )
             .filter(models.Invoice.invoice_id == invoice_id, models.Invoice.issuer_id == issuer_id)
@@ -61,6 +63,22 @@ class InvoiceStatusMixin:
             self.db.commit()
 
         if status == "paid" and previous_status != "paid":
+            # Refresh invoice to load updated relationships (created_by, status_updated_by)
+            self.db.refresh(invoice)
+            # Explicitly load the status_updated_by relationship if we just set it
+            if invoice.status_updated_by_user_id and not invoice.status_updated_by:
+                from sqlalchemy.orm import joinedload
+                invoice = (
+                    self.db.query(models.Invoice)
+                    .options(
+                        joinedload(models.Invoice.customer),
+                        joinedload(models.Invoice.created_by),
+                        joinedload(models.Invoice.status_updated_by),
+                        selectinload(models.Invoice.lines),
+                    )
+                    .filter(models.Invoice.invoice_id == invoice_id)
+                    .one()
+                )
             self._handle_manual_payment(invoice)
 
         if self.cache:

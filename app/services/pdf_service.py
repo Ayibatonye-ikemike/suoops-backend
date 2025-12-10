@@ -147,6 +147,17 @@ class PDFService:
                 except Exception:  # noqa: BLE001
                     template = self.jinja.get_template("invoice.html")
                 watermark_text = "PAID"  # force PAID watermark on receipt
+                
+                # Get creator name if available
+                created_by_name = None
+                if hasattr(invoice, 'created_by') and invoice.created_by:
+                    created_by_name = invoice.created_by.name
+                
+                # Get confirmer name if available
+                confirmed_by_name = None
+                if hasattr(invoice, 'status_updated_by') and invoice.status_updated_by:
+                    confirmed_by_name = invoice.status_updated_by.name
+                
                 html_str = template.render(
                     invoice=invoice,
                     bank_details=None,
@@ -156,6 +167,8 @@ class PDFService:
                     watermark_text=watermark_text,
                     paid_at_display=paid_at_display,
                     is_receipt=True,
+                    created_by_name=created_by_name,
+                    confirmed_by_name=confirmed_by_name,
                 )
                 from weasyprint import HTML  # type: ignore
                 pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
@@ -172,14 +185,29 @@ class PDFService:
         c.setFont("Helvetica-Bold", 18)
         c.drawString(40, 800, f"Payment Receipt {invoice.invoice_id}")
         c.setFont("Helvetica", 11)
-        c.drawString(40, 775, f"Customer: {getattr(invoice.customer, 'name', 'Customer')}")
-        c.drawString(40, 760, f"Amount Paid: ₦{invoice.amount:,.2f}")
-        c.drawString(40, 745, "Status: PAID")
-        c.drawString(40, 730, f"Payment Date: {paid_at_display}")
+        y = 775
+        c.drawString(40, y, f"Customer: {getattr(invoice.customer, 'name', 'Customer')}")
+        y -= 15
+        c.drawString(40, y, f"Amount Paid: ₦{invoice.amount:,.2f}")
+        y -= 15
+        c.drawString(40, y, "Status: PAID")
+        y -= 15
+        c.drawString(40, y, f"Payment Date: {paid_at_display}")
+        y -= 15
+        
+        # Add creator and confirmer info
+        if hasattr(invoice, 'created_by') and invoice.created_by:
+            c.drawString(40, y, f"Invoice Created by: {invoice.created_by.name}")
+            y -= 15
+        if hasattr(invoice, 'status_updated_by') and invoice.status_updated_by:
+            c.drawString(40, y, f"Payment Confirmed by: {invoice.status_updated_by.name}")
+            y -= 15
+        
+        y -= 10
         c.setFont("Helvetica", 9)
         c.drawString(
             40,
-            705,
+            y,
             "Thank you for your payment. This receipt confirms full settlement of this invoice.",
         )
         # PAID watermark
@@ -225,6 +253,11 @@ class PDFService:
         # Check if user is eligible for VAT tracking (BUSINESS plan only)
         is_vat_eligible = user_plan.lower() == "business"
         
+        # Get creator name if available
+        created_by_name = None
+        if hasattr(invoice, 'created_by') and invoice.created_by:
+            created_by_name = invoice.created_by.name
+        
         return template.render(
             invoice=invoice,
             bank_details=bank_details,
@@ -235,6 +268,7 @@ class PDFService:
             receipt_data_url=receipt_data_url,
             user_plan=user_plan.lower(),
             is_vat_eligible=is_vat_eligible,
+            created_by_name=created_by_name,
         )
 
     # ---------------- Monthly Tax Report PDF -----------------
