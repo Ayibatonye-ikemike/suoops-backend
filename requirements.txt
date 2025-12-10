@@ -22,7 +22,7 @@ qrcode==7.4.2
 alembic==1.13.2
 passlib[bcrypt]==1.7.4
 python-dotenv==1.0.1
-weasyprint==62.3
+weasyprint==66.0
 prometheus-client==0.20.0
 bcrypt==3.2.2
 slowapi==0.1.9
