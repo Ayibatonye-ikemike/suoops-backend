@@ -25,6 +25,7 @@ class InvoiceCreationMixin:
         issuer_id: int,
         data: dict[str, object],
         async_pdf: bool = False,
+        created_by_user_id: int | None = None,
     ) -> models.Invoice:
         invoice_type = data.get("invoice_type", "revenue")
         self.enforce_quota(issuer_id, invoice_type)
@@ -47,6 +48,7 @@ class InvoiceCreationMixin:
         invoice = models.Invoice(
             invoice_id=generate_id("INV" if invoice_type == "revenue" else "EXP"),
             issuer_id=issuer_id,
+            created_by_user_id=created_by_user_id or issuer_id,  # Track actual creator
             customer=customer,
             amount=Decimal(str(data.get("amount"))),
             discount_amount=discount_amount,

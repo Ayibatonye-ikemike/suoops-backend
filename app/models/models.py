@@ -156,8 +156,12 @@ class Invoice(Base):
     verified: Mapped[bool | None] = mapped_column(default=False, nullable=True)  # For expense verification
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Additional notes
     
+    # Track which user actually created the invoice (for team scenarios - allows confirmation only by creator)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True, index=True)
+    
     customer: Mapped[Customer] = relationship("Customer", back_populates="invoices")  # type: ignore
-    issuer: Mapped[User] = relationship("User", back_populates="issued_invoices")  # type: ignore
+    issuer: Mapped[User] = relationship("User", back_populates="issued_invoices", foreign_keys=[issuer_id])  # type: ignore
+    created_by: Mapped[User | None] = relationship("User", foreign_keys=[created_by_user_id])  # type: ignore
     lines: Mapped[list[InvoiceLine]] = relationship(
         "InvoiceLine",
         back_populates="invoice",

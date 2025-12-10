@@ -67,6 +67,7 @@ async def create_invoice(
             issuer_id=data_owner_id,
             data=data.model_dump(),
             async_pdf=effective_async,
+            created_by_user_id=current_user_id,  # Track actual creator for confirmation permissions
         )
         
         # Send notifications via all available channels (Email, WhatsApp, SMS) - ONLY for revenue invoices
@@ -220,6 +221,24 @@ def update_invoice_status(
     data_owner_id: DataOwnerDep,
     db: DbDep,
 ):
+    """Update invoice status. Only the user who created the invoice can confirm/update it."""
+    from app.models.models import Invoice
+    
+    # Check if user is allowed to update this invoice
+    # Only the creator (created_by_user_id) or the issuer can update the status
+    invoice = db.query(Invoice).filter(Invoice.invoice_id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Allow update if: user is the creator, OR user is the issuer (for backwards compatibility)
+    # created_by_user_id may be NULL for old invoices, in which case issuer_id is the owner
+    allowed_user_id = invoice.created_by_user_id or invoice.issuer_id
+    if current_user_id != allowed_user_id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Only the user who created this invoice can update its status"
+        )
+    
     svc = get_invoice_service_for_user(data_owner_id, db)
     try:
         return svc.update_status(data_owner_id, invoice_id, payload.status)

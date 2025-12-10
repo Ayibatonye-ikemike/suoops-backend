@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from .utils import format_amount
 
@@ -72,6 +72,22 @@ class InvoiceOut(BaseModel):
     merchant: str | None = None
     verified: bool | None = None
     notes: str | None = None
+    
+    # Creator tracking for team scenarios
+    created_by_user_id: int | None = None
+    created_by_name: str | None = None
+    
+    @model_validator(mode="before")
+    @classmethod
+    def populate_created_by_name(cls, data: Any) -> Any:
+        """Extract created_by_name from the created_by relationship."""
+        if hasattr(data, "created_by") and data.created_by is not None:
+            # SQLAlchemy model with relationship
+            return {
+                **{k: getattr(data, k, None) for k in cls.model_fields.keys() if k != "created_by_name"},
+                "created_by_name": data.created_by.name,
+            }
+        return data
 
 
 class InvoiceLineOut(BaseModel):

@@ -28,6 +28,7 @@ class InvoiceQueryMixin:
                 joinedload(models.Invoice.customer),
                 selectinload(models.Invoice.lines),
                 joinedload(models.Invoice.issuer),
+                joinedload(models.Invoice.created_by),  # Load creator for name display
             )
             .order_by(models.Invoice.id.desc())
             .limit(50)
@@ -50,6 +51,7 @@ class InvoiceQueryMixin:
                 selectinload(models.Invoice.lines),
                 joinedload(models.Invoice.customer),
                 joinedload(models.Invoice.issuer),
+                joinedload(models.Invoice.created_by),  # Load creator for name display
             )
             .filter(models.Invoice.invoice_id == invoice_id, models.Invoice.issuer_id == issuer_id)
             .one_or_none()
