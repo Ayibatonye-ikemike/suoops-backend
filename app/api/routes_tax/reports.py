@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from io import StringIO
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -25,16 +25,15 @@ router = APIRouter()
 
 @router.post("/reports/generate", response_model=dict)
 def generate_tax_report(
-    period_type: str = Query(
+    period_type: Literal["day", "week", "month", "year"] = Query(
         "month",
-        pattern="^(day|week|month|year)$",
         description="Period type: day, week, month, or year",
     ),
     year: int = Query(..., ge=2020, le=2100, description="Year"),
     month: Optional[int] = Query(None, ge=1, le=12, description="Month"),
     day: Optional[int] = Query(None, ge=1, le=31, description="Day"),
     week: Optional[int] = Query(None, ge=1, le=53, description="ISO week number"),
-    basis: str = Query("paid", pattern="^(paid|all)$", description="Basis"),
+    basis: Literal["paid", "all"] = Query("paid", description="Basis"),
     force: bool = Query(False, description="Force regeneration"),
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
