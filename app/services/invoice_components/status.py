@@ -38,6 +38,13 @@ class InvoiceStatusMixin:
         if previous_status == status:
             return invoice
 
+        # Enforce workflow: can only mark as "paid" if status is "awaiting_confirmation"
+        if status == "paid" and previous_status != "awaiting_confirmation":
+            raise ValueError(
+                "Invoice must be in 'awaiting_confirmation' status before marking as paid. "
+                "Customer must confirm payment first."
+            )
+
         invoice.status = status
         if status == "paid" and invoice.paid_at is None:
             invoice.paid_at = dt.datetime.now(dt.timezone.utc)
