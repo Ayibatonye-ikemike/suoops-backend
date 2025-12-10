@@ -114,13 +114,27 @@ class TaxReportingService:
         if existing and not force_regenerate:
             return existing
 
-        # Compute profit and levy for the period
-        profit = self.compute_assessable_profit_by_date_range(
+        # Get COGS data from inventory FIRST (needed for profit calculation)
+        cogs_data = self._get_inventory_cogs(user_id, start_date, end_date)
+        cogs_amount = cogs_data.get("cogs_amount", Decimal("0"))
+
+        # Compute profit: Revenue - Expenses - COGS
+        base_profit = self.compute_assessable_profit_by_date_range(
             user_id=user_id,
             start_date=start_date,
             end_date=end_date,
             basis=basis,
         )
+        # Deduct inventory COGS from profit
+        profit = base_profit - cogs_amount
+        if profit < Decimal("0"):
+            profit = Decimal("0")  # Profit can't be negative for tax purposes
+        
+        logger.info(
+            f"Tax profit calculation for user {user_id}: "
+            f"Base profit (Rev-Exp)={base_profit}, COGS={cogs_amount}, Final profit={profit}"
+        )
+        
         levy = self.compute_development_levy(user_id, profit)
         
         # Calculate Personal Income Tax (PIT) on profit
@@ -129,9 +143,6 @@ class TaxReportingService:
 
         # Get VAT data
         vat_data = self._compute_vat_data(user_id, start_date, end_date, basis)
-        
-        # Get COGS data from inventory
-        cogs_data = self._get_inventory_cogs(user_id, start_date, end_date)
         
         # Create or update report
         if not existing:
