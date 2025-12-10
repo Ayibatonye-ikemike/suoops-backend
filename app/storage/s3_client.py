@@ -118,6 +118,52 @@ class S3Client:
             logger.info("Using filesystem storage fallback at %s", root)
         return self._filesystem_root
 
+    def get_presigned_url(self, key: str, expires_in: int | None = None) -> str | None:
+        """Generate a fresh presigned URL for an existing S3 object.
+        
+        Args:
+            key: The S3 object key (e.g., 'logos/user_34.png')
+            expires_in: Optional TTL in seconds, defaults to S3_PRESIGN_TTL
+            
+        Returns:
+            Presigned URL or None if S3 client is not available
+        """
+        if self._client is None:
+            return None
+        try:
+            ttl = expires_in or self._presign_ttl
+            url = self._client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket, "Key": key},
+                ExpiresIn=ttl,
+            )
+            return url
+        except (BotoCoreError, ClientError) as exc:
+            logger.warning("Failed to generate presigned URL for %s: %s", key, exc)
+            return None
+
+    def extract_key_from_url(self, url: str) -> str | None:
+        """Extract S3 key from a presigned URL or stored URL.
+        
+        Args:
+            url: The full S3 URL (presigned or otherwise)
+            
+        Returns:
+            The S3 key (e.g., 'logos/user_34.png') or None if cannot parse
+        """
+        if not url:
+            return None
+        try:
+            # Handle presigned URLs: https://bucket.s3.region.amazonaws.com/key?X-Amz-...
+            # or https://bucket.s3.amazonaws.com/key?X-Amz-...
+            from urllib.parse import urlparse, unquote
+            parsed = urlparse(url)
+            # The path starts with /, so remove it
+            key = unquote(parsed.path.lstrip("/"))
+            return key if key else None
+        except Exception:  # noqa: BLE001
+            return None
+
 
 # Singleton instance for application use
 s3_client = S3Client()

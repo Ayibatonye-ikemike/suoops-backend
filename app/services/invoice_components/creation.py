@@ -141,26 +141,48 @@ class InvoiceCreationMixin:
 
     def _queue_pdf_generation(self, invoice: models.Invoice, invoice_type: str, user: models.User) -> None:
         from app.workers.tasks import generate_invoice_pdf_async
+        from app.storage.s3_client import s3_client
 
         bank_details = None
         if invoice_type == "revenue":
             bank_details = self._ensure_bank_details(user)
 
+        # Generate fresh presigned URL for logo
+        logo_url = None
+        if user.logo_url:
+            logo_key = s3_client.extract_key_from_url(user.logo_url)
+            if logo_key:
+                logo_url = s3_client.get_presigned_url(logo_key, expires_in=3600)
+            if not logo_url:
+                logo_url = user.logo_url  # Fallback to stored URL
+
         generate_invoice_pdf_async.delay(
             invoice_id=invoice.id,
             bank_details=bank_details,
-            logo_url=user.logo_url,
+            logo_url=logo_url,
             user_plan=user.plan.value,
         )
         invoice.pdf_url = None
         logger.info("Queued async PDF generation for invoice %s", invoice.invoice_id)
 
     def _generate_pdf(self, invoice: models.Invoice, invoice_type: str, user: models.User) -> str | None:
+        from app.storage.s3_client import s3_client
+        
         bank_details = self._ensure_bank_details(user) if invoice_type == "revenue" else None
+        
+        # Generate fresh presigned URL for logo
+        logo_url = None
+        if user.logo_url:
+            logo_key = s3_client.extract_key_from_url(user.logo_url)
+            if logo_key:
+                logo_url = s3_client.get_presigned_url(logo_key, expires_in=3600)
+            if not logo_url:
+                logo_url = user.logo_url  # Fallback to stored URL
+        
         return self.pdf_service.generate_invoice_pdf(
             invoice,
             bank_details=bank_details,
-            logo_url=user.logo_url,
+            logo_url=logo_url,
             user_plan=user.plan.value,
         )
 

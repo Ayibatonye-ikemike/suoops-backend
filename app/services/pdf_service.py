@@ -141,6 +141,21 @@ class PDFService:
         # Generate QR code for receipt verification
         qr_code_data = self._generate_qr_code(invoice.invoice_id)
         
+        # Get business info (logo and name) from issuer
+        logo_url = None
+        business_name = None
+        if hasattr(invoice, 'issuer') and invoice.issuer:
+            business_name = getattr(invoice.issuer, 'business_name', None)
+            # Generate fresh presigned URL for logo if stored
+            stored_logo_url = getattr(invoice.issuer, 'logo_url', None)
+            if stored_logo_url:
+                logo_key = self.s3.extract_key_from_url(stored_logo_url)
+                if logo_key:
+                    logo_url = self.s3.get_presigned_url(logo_key, expires_in=3600)
+                if not logo_url:
+                    # Fallback to stored URL if key extraction fails
+                    logo_url = stored_logo_url
+        
         if settings.HTML_PDF_ENABLED and _WEASY_AVAILABLE:
             try:
                 # If a dedicated receipt template exists use it; otherwise reuse invoice.html
@@ -164,7 +179,8 @@ class PDFService:
                 html_str = template.render(
                     invoice=invoice,
                     bank_details=None,
-                    logo_url=None,
+                    logo_url=logo_url,
+                    business_name=business_name,
                     customer_portal_url=None,
                     qr_code=qr_code_data,
                     watermark_text=watermark_text,

@@ -7,6 +7,10 @@
     body { font-family: Arial, sans-serif; margin: 26px; }
     h1 { margin: 0 0 6px 0; font-size: 26px; }
     .header { position: relative; margin-bottom: 22px; }
+    .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .business-info { flex: 1; }
+    .business-name { font-size: 20px; font-weight: bold; color: #0B3318; margin: 0 0 4px 0; }
+    .logo { max-width: 120px; max-height: 60px; margin-left: 20px; }
     .meta { font-size: 13px; color: #555; margin: 4px 0; }
     .box { background:#f9fafb; border:1px solid #d0d7de; border-radius:8px; padding:16px; margin:20px 0; }
     .box h3 { margin:0 0 12px 0; font-size:16px; color:#0b4f9f; }
@@ -45,7 +49,17 @@
 </head>
 <body>
   <div class="header">
-    <h1>Payment Receipt</h1>
+    <div class="header-top">
+      <div class="business-info">
+        <h1>Payment Receipt</h1>
+        {% if business_name %}
+        <p class="business-name">{{ business_name }}</p>
+        {% endif %}
+      </div>
+      {% if logo_url %}
+      <img src="{{ logo_url }}" alt="Business Logo" class="logo" />
+      {% endif %}
+    </div>
     {% if watermark_text %}<div class="watermark">{{ watermark_text }}</div>{% else %}<div class="watermark">PAID</div>{% endif %}
     <p class="meta"><strong>Invoice:</strong> {{ invoice.invoice_id }}</p>
     <p class="meta"><strong>Customer:</strong> {{ invoice.customer.name if invoice.customer else 'Customer' }}</p>
