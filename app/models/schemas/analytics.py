@@ -22,7 +22,7 @@ class InvoiceMetrics(BaseModel):
     paid_invoices: int
     pending_invoices: int
     awaiting_confirmation: int
-    failed_invoices: int
+    cancelled_invoices: int
     conversion_rate: float  # Percentage of paid invoices
 
 

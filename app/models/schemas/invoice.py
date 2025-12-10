@@ -109,7 +109,7 @@ class InvoiceOutDetailed(InvoiceOut):
 
 class InvoiceStatusUpdate(BaseModel):
     # Added "refunded" to support post-payment refund handling
-    status: Literal["pending", "awaiting_confirmation", "paid", "failed", "refunded"]
+    status: Literal["pending", "awaiting_confirmation", "paid", "cancelled", "refunded"]
 
 
 class InvoicePublicOut(BaseModel):

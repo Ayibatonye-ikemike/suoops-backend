@@ -106,7 +106,7 @@ def calculate_invoice_metrics(
             func.sum(case((models.Invoice.status == "paid", 1), else_=0)).label("paid"),
             func.sum(case((models.Invoice.status == "pending", 1), else_=0)).label("pending"),
             func.sum(case((models.Invoice.status == "awaiting_confirmation", 1), else_=0)).label("awaiting"),
-            func.sum(case((models.Invoice.status == "failed", 1), else_=0)).label("failed"),
+            func.sum(case((models.Invoice.status == "cancelled", 1), else_=0)).label("cancelled"),
         )
         .filter(
             models.Invoice.issuer_id == user_id,
@@ -121,7 +121,7 @@ def calculate_invoice_metrics(
     paid = invoices.paid or 0
     pending = invoices.pending or 0
     awaiting = invoices.awaiting or 0
-    failed = invoices.failed or 0
+    cancelled = invoices.cancelled or 0
     
     # Calculate conversion rate (paid / total)
     conversion_rate = (paid / total * 100) if total > 0 else 0.0
@@ -131,7 +131,7 @@ def calculate_invoice_metrics(
         paid_invoices=paid,
         pending_invoices=pending,
         awaiting_confirmation=awaiting,
-        failed_invoices=failed,
+        cancelled_invoices=cancelled,
         conversion_rate=conversion_rate,
     )
 

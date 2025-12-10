@@ -156,7 +156,7 @@ async def get_conversion_funnel(
             func.sum(case((models.Invoice.status == "paid", 1), else_=0)).label("paid"),
             func.sum(case((models.Invoice.status == "awaiting_confirmation", 1), else_=0)).label("awaiting"),
             func.sum(case((models.Invoice.status == "pending", 1), else_=0)).label("pending"),
-            func.sum(case((models.Invoice.status == "failed", 1), else_=0)).label("failed"),
+            func.sum(case((models.Invoice.status == "cancelled", 1), else_=0)).label("cancelled"),
         )
         .filter(
             models.Invoice.issuer_id == data_owner_id,
@@ -170,7 +170,7 @@ async def get_conversion_funnel(
     paid = stats.paid or 0
     awaiting = stats.awaiting or 0
     pending = stats.pending or 0
-    failed = stats.failed or 0
+    cancelled = stats.cancelled or 0
     
     return {
         "period": period,
@@ -180,7 +180,7 @@ async def get_conversion_funnel(
             "viewed": awaiting + paid,  # Assuming viewed if status changed
             "awaiting_confirmation": awaiting,
             "paid": paid,
-            "failed": failed,
+            "cancelled": cancelled,
         },
         "conversion_rates": {
             "sent_to_viewed": ((awaiting + paid) / total * 100) if total > 0 else 0,

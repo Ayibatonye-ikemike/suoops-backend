@@ -18,7 +18,7 @@ class InvoiceStatusMixin:
     db: Session
 
     def update_status(self, issuer_id: int, invoice_id: str, status: str) -> models.Invoice:
-        if status not in {"pending", "awaiting_confirmation", "paid", "failed"}:
+        if status not in {"pending", "awaiting_confirmation", "paid", "cancelled"}:
             raise InvalidInvoiceStatusError(new_status=status)
 
         invoice = (
