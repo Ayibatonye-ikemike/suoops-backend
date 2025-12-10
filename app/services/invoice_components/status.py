@@ -23,7 +23,11 @@ class InvoiceStatusMixin:
 
         invoice = (
             self.db.query(models.Invoice)
-            .options(joinedload(models.Invoice.customer), joinedload(models.Invoice.issuer))
+            .options(
+                joinedload(models.Invoice.customer),
+                joinedload(models.Invoice.issuer),
+                selectinload(models.Invoice.lines),  # Load lines for inventory processing
+            )
             .filter(models.Invoice.invoice_id == invoice_id, models.Invoice.issuer_id == issuer_id)
             .one_or_none()
         )
