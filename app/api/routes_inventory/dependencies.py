@@ -16,14 +16,18 @@ DataOwnerDep: TypeAlias = Annotated[int, Depends(get_data_owner_id)]
 DbDep: TypeAlias = Annotated[Session, Depends(get_db)]
 
 
-def require_inventory_access(current_user_id: CurrentUserDep, db: DbDep) -> int:
+def require_inventory_access(current_user_id: CurrentUserDep, data_owner_id: DataOwnerDep, db: DbDep) -> int:
     """
     Verify user has access to inventory features (Pro or Business plan).
     
-    Raises HTTPException 403 if user doesn't have required plan.
-    Returns the user_id if access is granted.
+    For team members, checks the team admin's (data_owner's) plan.
+    For solo users, checks their own plan.
+    
+    Raises HTTPException 403 if the data owner doesn't have required plan.
+    Returns the current_user_id if access is granted.
     """
-    gate = FeatureGate(db, current_user_id)
+    # Check the DATA OWNER's plan (team admin for members, self for solo)
+    gate = FeatureGate(db, data_owner_id)
     if not gate.user.plan.features.get("inventory", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
