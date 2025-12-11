@@ -71,6 +71,7 @@ class InvoiceStatusMixin:
                     self.db.query(models.Invoice)
                     .options(
                         joinedload(models.Invoice.customer),
+                        joinedload(models.Invoice.issuer),  # Load issuer for logo/business name
                         joinedload(models.Invoice.created_by),
                         joinedload(models.Invoice.status_updated_by),
                         selectinload(models.Invoice.lines),
