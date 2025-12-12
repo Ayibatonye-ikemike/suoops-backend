@@ -129,20 +129,22 @@ class InvoiceStatusMixin:
     def _handle_manual_payment(self, invoice: models.Invoice) -> None:
         metrics.invoice_paid()
         
+        # Capture invoice_id early to avoid DB access issues after potential errors
+        invoice_id = invoice.invoice_id
+        
         # Process inventory deduction for revenue invoices when paid
         self._process_inventory_on_payment(invoice)
         
-        # Check for low stock and send alerts
-        self._check_and_send_low_stock_alerts(invoice)
-        
+        # Generate receipt PDF first
         try:
             if not invoice.receipt_pdf_url:
                 invoice.receipt_pdf_url = self.pdf_service.generate_receipt_pdf(invoice)
                 self.db.commit()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to generate receipt PDF for %s: %s", invoice.invoice_id, exc)
+            logger.warning("Failed to generate receipt PDF for %s: %s", invoice_id, exc)
 
-        logger.info("Invoice %s manually marked as paid, sending receipt", invoice.invoice_id)
+        # Send receipt notification (do this BEFORE low stock check to ensure receipt is sent)
+        logger.info("Invoice %s manually marked as paid, sending receipt", invoice_id)
         try:
             from app.services.notification.service import NotificationService
 
@@ -161,13 +163,16 @@ class InvoiceStatusMixin:
             results = asyncio.run(_run())
             logger.info(
                 "Receipt sent for invoice %s - Email: %s, WhatsApp: %s, SMS: %s",
-                invoice.invoice_id,
+                invoice_id,
                 results["email"],
                 results["whatsapp"],
                 results["sms"],
             )
         except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to send receipt notifications for %s: %s", invoice.invoice_id, exc)
+            logger.error("Failed to send receipt notifications for %s: %s", invoice_id, exc)
+        
+        # Check for low stock and send alerts (non-critical, done after receipt is sent)
+        self._check_and_send_low_stock_alerts(invoice)
 
     def _notify_business_of_transfer(self, invoice: models.Invoice) -> None:
         try:
@@ -286,8 +291,11 @@ class InvoiceStatusMixin:
         if invoice.invoice_type != "revenue":
             return
         
+        # Capture values upfront to avoid DB access after potential errors
+        invoice_id = invoice.invoice_id
+        issuer_id = invoice.issuer_id
+        
         try:
-            from app.services.inventory import build_inventory_service
             from app.models.inventory_models import Product
             
             # Get products that were just affected
@@ -319,14 +327,15 @@ class InvoiceStatusMixin:
                 )
             
             # Generate draft purchase order for low stock products
+            # Note: This may fail if purchase_order table doesn't exist yet - that's OK
             purchase_order = None
             try:
                 from app.services.inventory import build_inventory_service
-                inventory_service = build_inventory_service(self.db, invoice.issuer_id)
+                inventory_service = build_inventory_service(self.db, issuer_id)
                 product_ids = [p.id for p in low_stock_products]
                 purchase_order = inventory_service.generate_draft_purchase_order(
                     product_ids=product_ids,
-                    trigger_invoice_id=invoice.invoice_id,
+                    trigger_invoice_id=invoice_id,
                 )
                 if purchase_order:
                     logger.info(
@@ -334,6 +343,8 @@ class InvoiceStatusMixin:
                         f"{len(low_stock_products)} low stock products"
                     )
             except Exception as e:
+                # Rollback to clear any pending rollback state from failed PO creation
+                self.db.rollback()
                 logger.warning(f"Could not generate purchase order: {e}")
             
             po_message = ""
@@ -341,7 +352,7 @@ class InvoiceStatusMixin:
                 po_message = f"\n\n📋 Draft Purchase Order #{purchase_order.id} has been created for your review."
             
             message = (
-                f"⚠️ Stock Alert after Invoice {invoice.invoice_id}\n\n"
+                f"⚠️ Stock Alert after Invoice {invoice_id}\n\n"
                 f"The following products need reordering:\n\n"
                 + "\n".join(alert_items)
                 + po_message
@@ -350,15 +361,20 @@ class InvoiceStatusMixin:
             
             # Send notification to business owner
             po_id = purchase_order.id if purchase_order else None
-            self._send_low_stock_notification(invoice.issuer_id, message, low_stock_products, po_id)
+            self._send_low_stock_notification(issuer_id, message, low_stock_products, po_id)
             
             logger.info(
                 f"Low stock alert sent for {len(low_stock_products)} products "
-                f"after invoice {invoice.invoice_id}"
+                f"after invoice {invoice_id}"
             )
             
         except Exception as e:
-            logger.error(f"Low stock check failed for invoice {invoice.invoice_id}: {e}")
+            # Rollback to prevent cascading errors
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+            logger.error(f"Low stock check failed for invoice {invoice_id}: {e}")
 
     def _send_low_stock_notification(
         self, 
