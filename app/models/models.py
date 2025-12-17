@@ -200,6 +200,8 @@ class User(Base):
     email_enc: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
     phone_verified: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # OTP for phone verification (temporary, cleared after verification)
+    phone_otp: Mapped[str | None] = mapped_column(String(6), nullable=True)
     last_login: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
