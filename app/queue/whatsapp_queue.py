@@ -1,11 +1,10 @@
 """Simple WhatsApp message queue abstraction.
 
-For MVP this attempts to push messages into Redis list; if Redis is unavailable,
-falls back to an in-memory buffer. A background worker can later poll this.
+For MVP this attempts to use Celery for async processing; if Celery is unavailable,
+processes messages synchronously for immediate response.
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -13,7 +12,6 @@ import redis
 
 from app.core.config import settings
 from app.core.redis_utils import prepare_redis_url
-from app.workers.tasks import process_whatsapp_inbound
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +31,25 @@ except Exception:  # noqa: BLE001
 KEY = "whatsapp:inbound"
 
 
+def _process_synchronously(payload: dict[str, Any]) -> None:
+    """Process WhatsApp message synchronously when Celery is unavailable."""
+    # Import here to avoid circular imports
+    from app.bot.whatsapp_adapter import WhatsAppHandler
+    
+    try:
+        handler = WhatsAppHandler()
+        handler.handle_webhook(payload)
+        logger.info("WhatsApp message processed synchronously")
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to process WhatsApp message synchronously")
+
+
 def _flush_fallback_queue() -> None:
     if not _fallback_buffer:
         return
+    # Import task here to avoid circular imports
+    from app.workers.tasks import process_whatsapp_inbound
+    
     pending = list(_fallback_buffer)
     _fallback_buffer.clear()
     for idx, entry in enumerate(pending):
@@ -49,23 +63,19 @@ def _flush_fallback_queue() -> None:
 
 
 def enqueue_message(payload: dict[str, Any]) -> None:
+    # Import task here to avoid circular imports
+    from app.workers.tasks import process_whatsapp_inbound
+    
     # Prefer asynchronous Celery worker
     try:
         process_whatsapp_inbound.delay(payload)
         _flush_fallback_queue()
         return
     except Exception:  # noqa: BLE001
-        logger.exception("Celery dispatch failed; falling back to local processing path")
-        logger.warning("Persisting WhatsApp payload for later processing")
+        logger.warning("Celery dispatch failed; processing synchronously instead")
 
-    data = json.dumps(payload)
-    if _ENABLED and _redis is not None:
-        try:
-            _redis.rpush(KEY, data)
-            return
-        except Exception:  # noqa: BLE001
-            logger.exception("Failed pushing WhatsApp message to Redis; fallback buffer used")
-    _fallback_buffer.append(payload)
+    # Celery unavailable - process synchronously for immediate response
+    _process_synchronously(payload)
 
 
 def drain_fallback() -> list[dict]:  # utility for tests
