@@ -7,7 +7,7 @@ import redis
 from redis.connection import ConnectionPool
 
 from app.core.config import settings
-from app.core.redis_utils import get_ca_cert_path, map_cert_reqs, prepare_redis_url
+from app.core.redis_utils import prepare_redis_url
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +35,8 @@ def get_redis_pool() -> ConnectionPool:
         "decode_responses": True,  # Return strings instead of bytes
     }
     
-        # Handle SSL for rediss:// URLs
-    if redis_url.startswith("rediss://"):
-        cert_reqs = map_cert_reqs()
-        ca_certs = get_ca_cert_path()
-        pool_kwargs["connection_class"] = redis.connection.SSLConnection
-        pool_kwargs["ssl_cert_reqs"] = cert_reqs
-        pool_kwargs["ssl_ca_certs"] = ca_certs
-        logger.info(
-            "Creating Redis SSL pool with cert_reqs=%s, ca_certs=%s",
-            cert_reqs,
-            ca_certs,
-        )
+    # Note: prepare_redis_url already adds ssl_cert_reqs and ssl_ca_certs as query params
+    # No need to add them again in pool_kwargs - this can cause conflicts
     
     _pool = ConnectionPool.from_url(redis_url, **pool_kwargs)
     logger.info("Redis connection pool created (max_connections=5)")

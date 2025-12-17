@@ -69,12 +69,36 @@ def prepare_redis_url(url: str | None) -> str | None:
     return url
 
 
-def get_ssl_options() -> dict[str, Any] | None:
-    """Return ssl options dict for redis/ Celery when using TLS."""
+def get_ssl_context() -> ssl.SSLContext | None:
+    """Return a properly configured SSL context for Heroku Redis."""
     url = settings.REDIS_URL
     if not url or not url.startswith("rediss://"):
         return None
+    
+    # Create SSL context
+    context = ssl.create_default_context()
+    cert_reqs = map_cert_reqs()
+    context.check_hostname = cert_reqs != ssl.CERT_NONE
+    context.verify_mode = cert_reqs
+    
+    if cert_reqs != ssl.CERT_NONE:
+        ca_certs = get_ca_cert_path()
+        context.load_verify_locations(ca_certs)
+    
+    return context
+
+
+def get_ssl_options() -> dict[str, Any] | None:
+    """Return ssl options dict for redis/Celery when using TLS.
+    
+    For Heroku Redis with Python 3.12+, we need ssl_cert_reqs=CERT_NONE
+    due to self-signed certificates.
+    """
+    url = settings.REDIS_URL
+    if not url or not url.startswith("rediss://"):
+        return None
+    
+    # Kombu/Celery expects these specific keys
     return {
-        "ssl_cert_reqs": map_cert_reqs(),
-        "ssl_ca_certs": get_ca_cert_path(),
+        "ssl_cert_reqs": ssl.CERT_NONE,  # Heroku Redis uses self-signed certs
     }

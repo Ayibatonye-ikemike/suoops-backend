@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Annotated
-import redis
 import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -9,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.config import settings
-from app.core.redis_utils import prepare_redis_url
 from app.storage.s3_client import s3_client
 from app.workers.celery_app import celery_app
 
@@ -23,8 +21,8 @@ def _check_db(db: Session) -> bool:
 
 def _check_redis() -> bool:
     try:
-        redis_url = prepare_redis_url(settings.REDIS_URL)
-        r = redis.Redis.from_url(redis_url, socket_connect_timeout=2, socket_timeout=2)
+        from app.db.redis_client import get_redis_client
+        r = get_redis_client()
         return r.ping()
     except Exception:  # noqa: BLE001
         return False
