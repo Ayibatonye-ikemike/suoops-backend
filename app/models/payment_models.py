@@ -115,8 +115,8 @@ class PaymentTransaction(Base):
     customer_email: Mapped[str] = mapped_column(String(255), nullable=False)
     """Email used for payment (may differ from current user email)"""
     
-    customer_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    """Phone number at time of payment"""
+    customer_phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    """Phone number at time of payment (supports OAuth synthetic phones)"""
     
     # Billing period
     billing_start_date: Mapped[Optional[dt.datetime]] = mapped_column(

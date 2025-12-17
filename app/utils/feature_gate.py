@@ -41,18 +41,23 @@ class FeatureGate:
     def _check_subscription_expiry(self) -> None:
         """
         Check if user's paid subscription has expired and downgrade to FREE if so.
+        Also resets free tier usage every 30 days.
         
         This ensures users are automatically returned to FREE tier when their
-        subscription period ends, rather than resetting on calendar month.
+        subscription period ends, and free users get their invoice count reset
+        every 30 days from their usage_reset_at date.
         """
         user = self._user
+        now = dt.datetime.now(dt.timezone.utc)
+        
         if user.plan == models.SubscriptionPlan.FREE:
-            return  # Already on free tier, nothing to check
+            # For free tier, check if 30 days have passed since last reset
+            self._check_free_tier_reset(now)
+            return
         
         if user.subscription_expires_at is None:
             return  # No expiry set (legacy data), don't auto-downgrade
         
-        now = dt.datetime.now(dt.timezone.utc)
         expiry = user.subscription_expires_at
         if expiry.tzinfo is None:
             expiry = expiry.replace(tzinfo=dt.timezone.utc)
@@ -69,6 +74,35 @@ class FeatureGate:
                 "Subscription expired for user %s: downgraded from %s to FREE",
                 user.id, old_plan
             )
+
+    def _check_free_tier_reset(self, now: dt.datetime) -> None:
+        """
+        Check if free tier user's 30-day billing cycle has elapsed and reset usage.
+        
+        Free tier users get 5 invoices per 30-day cycle, not per calendar month.
+        """
+        user = self._user
+        
+        if user.usage_reset_at is None:
+            # No reset date set, initialize it now
+            user.usage_reset_at = now
+            user.invoices_this_month = 0
+            self.db.commit()
+            return
+        
+        reset_at = user.usage_reset_at
+        if reset_at.tzinfo is None:
+            reset_at = reset_at.replace(tzinfo=dt.timezone.utc)
+        
+        # Check if 30 days have passed since last reset
+        if now >= reset_at + dt.timedelta(days=30):
+            user.invoices_this_month = 0
+            user.usage_reset_at = now
+            self.db.commit()
+            logger.info(
+                "Free tier 30-day cycle reset for user %s: invoice count reset to 0",
+                user.id
+            )
     
     def is_free_tier(self) -> bool:
         """Check if user is on free tier."""
@@ -83,7 +117,7 @@ class FeatureGate:
         Get the start of the current billing cycle.
         
         For paid users: 30 days before subscription_expires_at
-        For free users: use usage_reset_at or beginning of current month
+        For free users: use usage_reset_at (30-day cycles)
         """
         user = self.user
         now = dt.datetime.now(dt.timezone.utc)
@@ -95,15 +129,15 @@ class FeatureGate:
                 expiry = expiry.replace(tzinfo=dt.timezone.utc)
             return expiry - dt.timedelta(days=30)
         
-        # For free tier, use usage_reset_at or fall back to month start
+        # For free tier, use usage_reset_at (this marks start of 30-day cycle)
         if user.usage_reset_at:
             reset = user.usage_reset_at
             if reset.tzinfo is None:
                 reset = reset.replace(tzinfo=dt.timezone.utc)
             return reset
         
-        # Fallback: beginning of current month
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # Fallback: use current time as start (will be set properly on first access)
+        return now
     
     def get_monthly_invoice_count(self) -> int:
         """Get number of invoices created in current billing cycle."""
