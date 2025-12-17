@@ -1,34 +1,153 @@
+# =============================================================================
+# Python
+# =============================================================================
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# =============================================================================
+# Virtual Environments
+# =============================================================================
+.venv/
+venv/
+ENV/
+env/
+
+# =============================================================================
+# Testing
+# =============================================================================
 .pytest_cache/
-.mypy_cache/
-.env
-*.pyc
-*.pyo
-*.pyd
-*.DS_Store
-*.log
-/.venv
-/dist
-/build
-/.coverage
+.coverage
 coverage.xml
 htmlcov/
-*.sqlite3
-/.idea
-/.vscode
-frontend/src/api/types.generated.ts
+.tox/
+.nox/
 
-# Frontend
+# =============================================================================
+# Type Checking
+# =============================================================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# =============================================================================
+# IDE / Editor
+# =============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# =============================================================================
+# OS Generated
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =============================================================================
+# Environment & Secrets
+# =============================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# =============================================================================
+# Database
+# =============================================================================
+*.sqlite3
+*.db
+
+# =============================================================================
+# Logs
+# =============================================================================
+*.log
+logs/
+
+# =============================================================================
+# Local Storage
+# =============================================================================
+storage/whatsinvoice/
+storage/suoops-s3-bucket/
+storage/uploads/
+
+# =============================================================================
+# Build Artifacts & Reports
+# =============================================================================
+npm-audit-report.json
+pip-audit-report.json
+
+# =============================================================================
+# Ad-hoc Test Scripts (keep tests/ directory, ignore root test scripts)
+# =============================================================================
+/test_*.py
+/test_*.sh
+/test-*.sh
+
+# =============================================================================
+# Documentation Notes (internal/temporary - keep docs/ directory)
+# =============================================================================
+/*_SUMMARY*.md
+/*_STATUS*.md
+/*_VERIFICATION*.md
+/*_CORRECTIONS*.md
+/*_GUIDE*.md
+/*_SUCCESS*.md
+/*_IMPLEMENTATION*.md
+/IMPLEMENTATION_*.md
+/DEPLOYMENT_*.md
+/LANDING_PAGE_*.md
+/OAUTH_*.md
+/OCR_*.md
+/VOICE_*.md
+/SECURITY-*.md
+
+# Quick reference notes (internal)
+/*_QUICK_REFERENCE.txt
+/NAMECHEAP_*.txt
+/SES_*.txt
+/VERCEL_*.txt
+/TERMII_*.txt
+
+# =============================================================================
+# Frontend (when in monorepo)
+# =============================================================================
 frontend/node_modules/
 frontend/.next/
 frontend/.env.local
 frontend/.env.production
 frontend/.vercel/
-# Allow tracking of frontend source; keep specific ignores
-# frontend/
+frontend/src/api/types.generated.ts
 
-# Storage (local files)
-storage/whatsinvoice/
-storage/suoops-s3-bucket/
+# =============================================================================
+# Vercel
+# =============================================================================
 .vercel
-npm-audit-report.json
