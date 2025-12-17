@@ -1,4 +1,6 @@
 """Pydantic schemas for team management."""
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
 
@@ -91,6 +93,24 @@ class InvitationOut(BaseModel):
 class InvitationAccept(BaseModel):
     """Schema for accepting an invitation."""
     token: str = Field(..., min_length=32, description="Invitation token from email link")
+
+
+class InvitationAcceptDirect(BaseModel):
+    """Schema for accepting an invitation without authentication.
+    
+    This creates a new user account automatically if one doesn't exist.
+    """
+    token: str = Field(..., min_length=32, description="Invitation token from email link")
+    name: str = Field(..., min_length=2, max_length=120, description="Full name for new account")
+
+
+class InvitationAcceptResponse(BaseModel):
+    """Response when accepting invitation directly (includes JWT tokens)."""
+    member: "TeamMemberOut"
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    is_new_user: bool  # True if account was just created
 
 
 class InvitationRevoke(BaseModel):

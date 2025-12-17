@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.core.auth import create_access_token, create_refresh_token
 from app.db.session import get_db
 from app.models.models import User
 from app.models.team_schemas import (
@@ -19,6 +20,8 @@ from app.models.team_schemas import (
     TeamWithMembersOut,
     UserTeamRole,
     InvitationAccept,
+    InvitationAcceptDirect,
+    InvitationAcceptResponse,
 )
 from app.models.team_models import InvitationStatus
 from app.services.team_service import TeamService
@@ -237,6 +240,123 @@ def accept_invitation(data: InvitationAccept, current_user_id: CurrentUserDep, d
         user_email=user.email if user else None,
         role=membership.role,
         joined_at=membership.joined_at,
+    )
+
+
+@router.post("/invitations/accept-direct", response_model=InvitationAcceptResponse)
+def accept_invitation_direct(data: InvitationAcceptDirect, db: DbDep):
+    """
+    Accept an invitation without requiring authentication.
+    
+    This endpoint allows invited users to join a team without first creating
+    a SuoOps account. It will:
+    1. Validate the invitation token
+    2. Create a new user account with the invitation email (if doesn't exist)
+    3. Add the user to the team as a MEMBER
+    4. Return JWT tokens so the user is immediately logged in
+    
+    The new user will have limited permissions (MEMBER role, not ADMIN).
+    """
+    from app.services.team_service import TeamService
+    from app.models.team_models import TeamInvitation, TeamMember, TeamRole, InvitationStatus as InvStatus
+    from app.models.models import User, SubscriptionPlan
+    from sqlalchemy.orm import joinedload
+    from sqlalchemy import select
+    from app.db.session import utcnow
+    
+    # Validate invitation
+    invitation = db.scalar(
+        select(TeamInvitation)
+        .options(joinedload(TeamInvitation.team), joinedload(TeamInvitation.invited_by))
+        .where(TeamInvitation.token == data.token)
+    )
+    
+    if not invitation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid invitation"
+        )
+    
+    if not invitation.is_valid:
+        error = "expired" if invitation.is_expired else invitation.status.value
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invitation is {error}"
+        )
+    
+    # Check team capacity
+    team = invitation.team
+    if len(team.members) >= team.max_members:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Team has reached maximum capacity"
+        )
+    
+    # Check if user with this email already exists
+    existing_user = db.scalar(
+        select(User).where(User.email == invitation.email)
+    )
+    
+    is_new_user = existing_user is None
+    
+    if existing_user:
+        user = existing_user
+        # Check if this user is already in a team
+        existing_membership = db.scalar(
+            select(TeamMember).where(TeamMember.user_id == user.id)
+        )
+        if existing_membership:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You are already a member of a team. Please log in to switch teams."
+            )
+    else:
+        # Create new user with invitation email
+        # Generate a synthetic phone for the user (required field)
+        import secrets
+        synthetic_phone = f"invite_{secrets.token_hex(8)}"
+        
+        user = User(
+            phone=synthetic_phone,
+            email=invitation.email,
+            name=data.name,
+            business_name=data.name,  # Use their name as business name initially
+            plan=SubscriptionPlan.FREE,  # New users start on free plan
+        )
+        db.add(user)
+        db.flush()  # Get the user ID
+    
+    # Create team membership
+    membership = TeamMember(
+        team_id=team.id,
+        user_id=user.id,
+        role=TeamRole.MEMBER,  # Always MEMBER, never ADMIN
+    )
+    db.add(membership)
+    
+    # Update invitation status
+    invitation.status = InvStatus.ACCEPTED
+    invitation.responded_at = utcnow()
+    
+    db.commit()
+    
+    # Generate JWT tokens
+    access_token = create_access_token(str(user.id))
+    refresh_token = create_refresh_token(str(user.id))
+    
+    return InvitationAcceptResponse(
+        member=TeamMemberOut(
+            id=membership.id,
+            user_id=user.id,
+            user_name=user.name,
+            user_email=user.email,
+            role=membership.role,
+            joined_at=membership.joined_at,
+        ),
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        is_new_user=is_new_user,
     )
 
 
