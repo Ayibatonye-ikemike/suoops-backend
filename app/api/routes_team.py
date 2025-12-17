@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
-from app.core.auth import create_access_token, create_refresh_token
+from app.core.security import create_access_token, create_refresh_token
 from app.db.session import get_db
 from app.models.models import User
 from app.models.team_schemas import (
