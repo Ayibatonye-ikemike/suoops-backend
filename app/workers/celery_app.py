@@ -8,7 +8,8 @@ from app.core.redis_utils import get_ssl_options, prepare_redis_url
 
 
 def _create_celery() -> Celery:
-    redis_url = prepare_redis_url(settings.REDIS_URL)
+    # For Celery, don't add SSL params to URL - use broker_use_ssl instead
+    redis_url = prepare_redis_url(settings.REDIS_URL, add_ssl_params=False)
     ssl_options = get_ssl_options()
     celery = Celery(
         "whatsinvoice",

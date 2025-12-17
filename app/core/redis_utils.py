@@ -59,13 +59,19 @@ def map_cert_reqs(value: str | None = None) -> int:
     return mapping[normalized]
 
 
-def prepare_redis_url(url: str | None) -> str | None:
-    """Append TLS query params to Redis URL when using rediss."""
+def prepare_redis_url(url: str | None, add_ssl_params: bool = True) -> str | None:
+    """Append TLS query params to Redis URL when using rediss.
+    
+    Args:
+        url: The Redis URL
+        add_ssl_params: If True, add ssl_cert_reqs to URL. Set False for Celery
+                       which uses broker_use_ssl config instead.
+    """
     if not url:
         return url
-    if url.startswith("rediss://"):
+    if url.startswith("rediss://") and add_ssl_params:
+        # Only add ssl_cert_reqs, not ssl_ca_certs (which can cause issues)
         url = _add_query_param(url, "ssl_cert_reqs", normalize_cert_reqs())
-        url = _add_query_param(url, "ssl_ca_certs", get_ca_cert_path())
     return url
 
 
@@ -98,7 +104,14 @@ def get_ssl_options() -> dict[str, Any] | None:
     if not url or not url.startswith("rediss://"):
         return None
     
-    # Kombu/Celery expects these specific keys
+    # Create a minimal SSL context that doesn't verify certificates
+    # This is required for Heroku Redis which uses self-signed certs
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    
+    # Kombu/Celery expects an ssl_context or specific keys
     return {
-        "ssl_cert_reqs": ssl.CERT_NONE,  # Heroku Redis uses self-signed certs
+        "ssl_cert_reqs": ssl.CERT_NONE,
+        "ssl_context": context,
     }
