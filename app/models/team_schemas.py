@@ -109,6 +109,7 @@ class InvitationAcceptResponse(BaseModel):
     member: "TeamMemberOut"
     access_token: str
     refresh_token: str
+    access_expires_at: str  # ISO timestamp for token expiry
     token_type: str = "bearer"
     is_new_user: bool  # True if account was just created
 

@@ -344,6 +344,10 @@ def accept_invitation_direct(data: InvitationAcceptDirect, db: DbDep):
     access_token = create_access_token(str(user.id))
     refresh_token = create_refresh_token(str(user.id))
     
+    # Calculate expiry (24 hours from now)
+    from datetime import datetime, timezone, timedelta
+    access_expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    
     return InvitationAcceptResponse(
         member=TeamMemberOut(
             id=membership.id,
@@ -355,6 +359,7 @@ def accept_invitation_direct(data: InvitationAcceptDirect, db: DbDep):
         ),
         access_token=access_token,
         refresh_token=refresh_token,
+        access_expires_at=access_expires_at,
         token_type="bearer",
         is_new_user=is_new_user,
     )
