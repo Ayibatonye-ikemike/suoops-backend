@@ -45,6 +45,7 @@ EXEMPT_PATHS = {
     "/ocr/",               # OCR endpoints use JWT authentication
     "/referrals/",         # Referral endpoints use JWT authentication
     "/support/",           # Support contact form (public endpoint)
+    "/admin/auth/",        # Admin auth endpoints use JWT authentication
 }
 
 

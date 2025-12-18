@@ -34,6 +34,7 @@ from app.api.routes_inventory import router as inventory_router
 from app.api.routes_team import router as team_router
 from app.api.routes_referral import router as referral_router
 from app.api.routes_support import router as support_router
+from app.api.routes_admin_auth import router as admin_auth_router
 from app.core.config import settings
 from app.core.logger import init_logging
 from app.core.monitoring import init_monitoring
@@ -182,8 +183,15 @@ def create_app() -> FastAPI:
     app.include_router(team_router, tags=["team"])
     app.include_router(referral_router, tags=["referrals"])
     app.include_router(support_router, tags=["support"])
+    app.include_router(admin_auth_router, tags=["admin-auth"])
     app.include_router(admin_router)
     app.include_router(health_router)
+    
+    # Initialize default admin on startup
+    @app.on_event("startup")
+    async def startup_event():
+        from app.api.routes_admin_auth import init_default_admin
+        init_default_admin()
     
     # Register shutdown handler to close Redis pool
     @app.on_event("shutdown")
