@@ -3,6 +3,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
@@ -12,6 +13,7 @@ from app.models import models, schemas
 from app.core.encryption import decrypt_value
 from app.services.otp_service import OTPService
 from app.storage.s3_client import s3_client
+from app.services.account_deletion_service import AccountDeletionService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -95,6 +97,108 @@ async def get_feature_access(
         }
     # Cache per-user feature access for 20s to reduce DB pressure during polling
     return await cached(f"user:{current_user_id}:features", 20, _produce)
+
+
+class DeleteAccountRequest(BaseModel):
+    """Request to delete user account."""
+    confirmation: str  # Must be "DELETE MY ACCOUNT" to confirm
+
+
+class DeleteAccountResponse(BaseModel):
+    """Response after account deletion."""
+    success: bool
+    message: str
+    deleted_items: dict | None = None
+
+
+@router.delete("/me", response_model=DeleteAccountResponse)
+def delete_own_account(
+    request: DeleteAccountRequest,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Delete the current user's account and all associated data.
+    
+    This action is IRREVERSIBLE. All data including invoices, customers,
+    inventory, and settings will be permanently deleted.
+    
+    Requires confirmation text "DELETE MY ACCOUNT" to proceed.
+    """
+    # Require explicit confirmation
+    if request.confirmation != "DELETE MY ACCOUNT":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid confirmation. Type 'DELETE MY ACCOUNT' to confirm deletion."
+        )
+    
+    try:
+        service = AccountDeletionService(db)
+        result = service.delete_account(
+            user_id=current_user_id,
+            deleted_by_user_id=current_user_id
+        )
+        
+        return DeleteAccountResponse(
+            success=True,
+            message="Your account has been permanently deleted.",
+            deleted_items=result.get("deleted_items")
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Account deletion failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete account. Please contact support."
+        )
+
+
+@router.delete("/admin/{user_id}", response_model=DeleteAccountResponse)
+def admin_delete_account(
+    user_id: int,
+    request: DeleteAccountRequest,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Admin endpoint to delete any user account.
+    
+    Requires admin role and confirmation text "DELETE MY ACCOUNT".
+    """
+    # Check admin permission
+    service = AccountDeletionService(db)
+    can_delete, reason = service.can_delete_account(current_user_id, user_id)
+    
+    if not can_delete:
+        raise HTTPException(status_code=403, detail=reason)
+    
+    # Require explicit confirmation
+    if request.confirmation != "DELETE MY ACCOUNT":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid confirmation. Type 'DELETE MY ACCOUNT' to confirm deletion."
+        )
+    
+    try:
+        result = service.delete_account(
+            user_id=user_id,
+            deleted_by_user_id=current_user_id
+        )
+        
+        return DeleteAccountResponse(
+            success=True,
+            message=f"Account {user_id} has been permanently deleted.",
+            deleted_items=result.get("deleted_items")
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Admin account deletion failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete account. Please check logs."
+        )
 
 
 """Logo, phone, and bank endpoints moved to dedicated modules.
