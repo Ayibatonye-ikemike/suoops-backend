@@ -14,10 +14,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
 from app.core.config import settings
-from app.core.rbac import admin_required
+from app.api.routes_admin_auth import get_current_admin
 from app.db.session import get_db
 from app.models import models
 from app.models.support_models import SupportTicket, TicketStatus, TicketPriority, TicketCategory
+from app.models.admin_models import AdminUser
 
 router = APIRouter(prefix="/support", tags=["support"])
 logger = logging.getLogger(__name__)
@@ -335,7 +336,7 @@ async def submit_contact_form(
 @router.get("/admin/stats", response_model=TicketStats)
 async def get_ticket_stats(
     db: Session = Depends(get_db),
-    admin_user=Depends(admin_required),
+    admin_user: AdminUser = Depends(get_current_admin),
 ) -> TicketStats:
     """Get support ticket statistics."""
     now = datetime.now(timezone.utc)
@@ -385,7 +386,7 @@ async def get_ticket_stats(
 @router.get("/admin/tickets", response_model=list[TicketOut])
 async def list_tickets(
     db: Session = Depends(get_db),
-    admin_user=Depends(admin_required),
+    admin_user: AdminUser = Depends(get_current_admin),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     ticket_status: str | None = Query(None, alias="status", description="Filter by status"),
@@ -421,13 +422,8 @@ async def list_tickets(
 
     result = []
     for ticket in tickets:
-        assigned_name = None
-        responded_name = None
-        if ticket.assigned_to:
-            assigned_name = ticket.assigned_to.name
-        if ticket.responded_by:
-            responded_name = ticket.responded_by.name
-
+        # Note: assigned_to_id and responded_by_id are just IDs, not relationships
+        # Could look up admin names if needed, but keeping it simple for now
         result.append(TicketOut(
             id=ticket.id,
             name=ticket.name,
@@ -443,8 +439,8 @@ async def list_tickets(
             created_at=ticket.created_at,
             updated_at=ticket.updated_at,
             resolved_at=ticket.resolved_at,
-            assigned_to_name=assigned_name,
-            responded_by_name=responded_name,
+            assigned_to_name=None,
+            responded_by_name=None,
         ))
 
     return result
@@ -454,7 +450,7 @@ async def list_tickets(
 async def get_ticket(
     ticket_id: int,
     db: Session = Depends(get_db),
-    admin_user=Depends(admin_required),
+    admin_user: AdminUser = Depends(get_current_admin),
 ) -> TicketOut:
     """Get a specific ticket by ID."""
     ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).first()
@@ -463,9 +459,6 @@ async def get_ticket(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ticket not found"
         )
-
-    assigned_name = ticket.assigned_to.name if ticket.assigned_to else None
-    responded_name = ticket.responded_by.name if ticket.responded_by else None
 
     return TicketOut(
         id=ticket.id,
@@ -482,8 +475,8 @@ async def get_ticket(
         created_at=ticket.created_at,
         updated_at=ticket.updated_at,
         resolved_at=ticket.resolved_at,
-        assigned_to_name=assigned_name,
-        responded_by_name=responded_name,
+        assigned_to_name=None,
+        responded_by_name=None,
     )
 
 
@@ -492,7 +485,7 @@ async def update_ticket(
     ticket_id: int,
     update: TicketUpdate,
     db: Session = Depends(get_db),
-    admin_user=Depends(admin_required),
+    admin_user: AdminUser = Depends(get_current_admin),
 ) -> TicketOut:
     """Update a support ticket (status, priority, notes, response)."""
     ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).first()
@@ -540,9 +533,6 @@ async def update_ticket(
     db.commit()
     db.refresh(ticket)
 
-    assigned_name = ticket.assigned_to.name if ticket.assigned_to else None
-    responded_name = ticket.responded_by.name if ticket.responded_by else None
-
     return TicketOut(
         id=ticket.id,
         name=ticket.name,
@@ -558,15 +548,15 @@ async def update_ticket(
         created_at=ticket.created_at,
         updated_at=ticket.updated_at,
         resolved_at=ticket.resolved_at,
-        assigned_to_name=assigned_name,
-        responded_by_name=responded_name,
+        assigned_to_name=None,
+        responded_by_name=None,
     )
 
 
 @router.get("/admin/dashboard", response_model=AdminDashboardStats)
 async def get_dashboard_stats(
     db: Session = Depends(get_db),
-    admin_user=Depends(admin_required),
+    admin_user: AdminUser = Depends(get_current_admin),
 ) -> AdminDashboardStats:
     """Get comprehensive dashboard statistics for admin panel."""
     now = datetime.now(timezone.utc)

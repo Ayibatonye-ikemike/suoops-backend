@@ -84,56 +84,56 @@ class ChangePasswordRequest(BaseModel):
 
 
 # ============================================================================
-# Helper Functions
+# Authentication Dependencies
 # ============================================================================
 
-def get_current_admin(
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.core.security import decode_token, TokenType
+
+security = HTTPBearer()
+
+
+async def get_current_admin(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> AdminUser:
     """Dependency to get current admin from token.
     
-    Note: This is called after token validation in the middleware.
-    The token's subject contains the admin user ID prefixed with 'admin:'.
+    Admin tokens have 'admin:' prefix in the subject.
     """
-    from fastapi import Request
-    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-    from app.core.security import decode_token, TokenType
-    
-    security = HTTPBearer()
-    
-    async def _get_admin(
-        credentials: HTTPAuthorizationCredentials = Depends(security),
-        db: Session = Depends(get_db),
-    ) -> AdminUser:
-        try:
-            payload = decode_token(credentials.credentials, TokenType.ACCESS)
-            subject = payload.get("sub", "")
-            
-            # Admin tokens have 'admin:' prefix
-            if not subject.startswith("admin:"):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not an admin token",
-                )
-            
-            admin_id = int(subject.replace("admin:", ""))
-            admin = db.query(AdminUser).filter(AdminUser.id == admin_id).first()
-            
-            if not admin or not admin.is_active:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Admin not found or inactive",
-                )
-            
-            return admin
-        except Exception as e:
-            logger.error(f"Admin auth error: {e}")
+    try:
+        payload = decode_token(credentials.credentials, TokenType.ACCESS)
+        subject = payload.get("sub", "")
+        
+        # Admin tokens have 'admin:' prefix
+        if not subject.startswith("admin:"):
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not an admin token",
             )
-    
-    return _get_admin
+        
+        admin_id = int(subject.replace("admin:", ""))
+        admin = db.query(AdminUser).filter(AdminUser.id == admin_id).first()
+        
+        if not admin or not admin.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin not found or inactive",
+            )
+        
+        return admin
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin auth error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication",
+        )
+
+
+# ============================================================================
+# Helper Functions
 
 
 def create_default_admin(db: Session) -> AdminUser | None:
