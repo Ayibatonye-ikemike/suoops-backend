@@ -210,17 +210,17 @@ class InvoiceIntentProcessor:
             logger.warning("No customer phone for invoice %s", invoice.invoice_id)
             return False
 
-        # Check if customer has opted in to WhatsApp messages
-        customer = invoice.customer
-        has_opted_in = getattr(customer, "whatsapp_opted_in", False) if customer else False
-        
-        if not has_opted_in:
-            # Customer hasn't messaged us before - send opt-in prompt and mark invoice as pending
-            self._send_optin_prompt(customer_phone, invoice, issuer_id)
-            return True  # Delivery is pending
-
-        # Customer has opted in - send the invoice directly
+        # Always try to send the invoice directly first
+        # WhatsApp templates CAN be sent to anyone - non-template messages require opt-in
+        # We'll use templates for the initial message and only regular messages for follow-ups
         self._send_invoice_to_customer(invoice, customer_phone, issuer_id)
+        
+        # Mark customer as opted in after first successful delivery attempt
+        customer = invoice.customer
+        if customer and not getattr(customer, "whatsapp_opted_in", False):
+            customer.whatsapp_opted_in = True
+            self.db.commit()
+        
         return False  # Delivery completed
 
     def _send_optin_prompt(self, customer_phone: str, invoice, issuer_id: int) -> None:
