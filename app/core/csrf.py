@@ -43,7 +43,7 @@ EXEMPT_PATHS = {
     "/public/invoices/",   # Public read-only endpoints
     "/analytics/",         # Analytics endpoints use JWT authentication
     "/ocr/",               # OCR endpoints use JWT authentication
-    "/referrals/validate", # Public referral code validation (no auth needed)
+    "/referrals/",         # Referral endpoints use JWT authentication
 }
 
 
