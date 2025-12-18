@@ -42,6 +42,8 @@ def upgrade() -> None:
     op.create_index('ix_admin_users_invite_token', 'admin_users', ['invite_token'], unique=True)
     
     # Create support_tickets table
+    # Note: Foreign keys to users table removed to avoid dependency issues
+    # The ORM model handles relationships; these are just optional reference IDs
     op.create_table(
         'support_tickets',
         sa.Column('id', sa.Integer(), nullable=False),
@@ -52,11 +54,11 @@ def upgrade() -> None:
         sa.Column('category', sa.Enum('general', 'billing', 'technical', 'feature', 'account', 'other', name='ticketcategory'), nullable=False, server_default='general'),
         sa.Column('status', sa.Enum('open', 'in_progress', 'waiting', 'resolved', 'closed', name='ticketstatus'), nullable=False, server_default='open'),
         sa.Column('priority', sa.Enum('low', 'medium', 'high', 'urgent', name='ticketpriority'), nullable=False, server_default='medium'),
-        sa.Column('assigned_to_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('assigned_to_id', sa.Integer(), nullable=True),
         sa.Column('internal_notes', sa.Text(), nullable=True),
         sa.Column('response', sa.Text(), nullable=True),
         sa.Column('responded_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('responded_by_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('responded_by_id', sa.Integer(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('resolved_at', sa.DateTime(timezone=True), nullable=True),

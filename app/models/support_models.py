@@ -4,8 +4,8 @@ from __future__ import annotations
 import datetime as dt
 import enum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import DateTime, Enum, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.base_class import Base
@@ -71,10 +71,9 @@ class SupportTicket(Base):
         default=TicketPriority.MEDIUM,
     )
     
-    # Assigned admin (optional)
+    # Assigned admin (optional - just stores user ID, no FK constraint)
     assigned_to_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
     
@@ -89,7 +88,6 @@ class SupportTicket(Base):
     )
     responded_by_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
     
@@ -109,10 +107,6 @@ class SupportTicket(Base):
         DateTime(timezone=True),
         nullable=True,
     )
-    
-    # Relationships
-    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
-    responded_by = relationship("User", foreign_keys=[responded_by_id])
 
     def __repr__(self) -> str:
         return f"<SupportTicket {self.id}: {self.subject[:30]}...>"
