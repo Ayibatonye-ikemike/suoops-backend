@@ -74,6 +74,15 @@ class WhatsAppHandler:
             logger.info("Received empty text message from %s", sender)
             return
 
+        # Check if this is an opt-in response from a customer
+        # Common affirmative replies that indicate opt-in
+        optin_keywords = {"ok", "yes", "hi", "hello", "hey", "sure", "yea", "yeah", "yep", "👍", "okay"}
+        if text.lower() in optin_keywords:
+            # Try to handle as customer opt-in (send pending invoices)
+            if self.invoice_processor.handle_customer_optin(sender):
+                logger.info("Handled opt-in from customer %s", sender)
+                return  # Successfully sent pending invoices, don't process further
+
         parse = self.nlp.parse_text(text, is_speech=False)
         
         # Try expense processor first (checks if expense-related)

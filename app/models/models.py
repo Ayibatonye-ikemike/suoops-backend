@@ -114,6 +114,8 @@ class Customer(Base):
     phone: Mapped[str | None]
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     extra: Mapped[dict] = mapped_column(JSON, default=dict)
+    # WhatsApp opt-in: True if customer has replied to our bot (can receive messages)
+    whatsapp_opted_in: Mapped[bool] = mapped_column(default=False)
     invoices: Mapped[list[Invoice]] = relationship("Invoice", back_populates="customer")  # type: ignore
 
 
@@ -123,6 +125,8 @@ class Invoice(Base):
     issuer_id: Mapped[int] = mapped_column(ForeignKey("user.id"))  # type: ignore
     customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"))  # type: ignore
     amount: Mapped[Decimal] = mapped_column(Numeric(scale=2))
+    # WhatsApp delivery pending: True if waiting for customer to opt-in before sending
+    whatsapp_delivery_pending: Mapped[bool] = mapped_column(default=False, index=True)
     discount_amount: Mapped[Decimal | None] = mapped_column(Numeric(scale=2), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="pending")
     due_date: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

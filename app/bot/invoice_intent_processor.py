@@ -156,15 +156,16 @@ class InvoiceIntentProcessor:
             except Exception as exc:
                 logger.error("Failed to send invoice email: %s", exc)
 
-        self._notify_business(sender, invoice, customer_email, results)
-        self._notify_customer(invoice, data, issuer_id)
+        whatsapp_pending = self._notify_customer(invoice, data, issuer_id)
+        self._notify_business(sender, invoice, customer_email, results, whatsapp_pending)
 
     def _notify_business(
         self,
         sender: str,
         invoice,
         customer_email: str | None = None,
-        notification_results: dict[str, bool] | None = None
+        notification_results: dict[str, bool] | None = None,
+        whatsapp_pending: bool = False
     ) -> None:
         customer_name = getattr(invoice.customer, "name", "N/A") if invoice.customer else "N/A"
         business_message = (
@@ -175,7 +176,12 @@ class InvoiceIntentProcessor:
         )
         
         # Show notification status
-        if notification_results:
+        if whatsapp_pending:
+            business_message += (
+                "\n⏳ WhatsApp: Waiting for customer to reply\n"
+                "📲 Invoice will be sent automatically when they respond"
+            )
+        elif notification_results:
             sent_channels = []
             if notification_results.get("email"):
                 sent_channels.append("📧 Email")
@@ -193,13 +199,52 @@ class InvoiceIntentProcessor:
         
         self.client.send_text(sender, business_message)
 
-    def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> None:
+    def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> bool:
+        """
+        Notify customer about their invoice.
+        Returns True if delivery is pending (customer needs to opt-in first).
+        """
         customer_phone = data.get("customer_phone")
         logger.info("[NOTIFY] customer_phone from data: %s, invoice: %s", customer_phone, invoice.invoice_id)
         if not customer_phone:
             logger.warning("No customer phone for invoice %s", invoice.invoice_id)
-            return
+            return False
 
+        # Check if customer has opted in to WhatsApp messages
+        customer = invoice.customer
+        has_opted_in = getattr(customer, "whatsapp_opted_in", False) if customer else False
+        
+        if not has_opted_in:
+            # Customer hasn't messaged us before - send opt-in prompt and mark invoice as pending
+            self._send_optin_prompt(customer_phone, invoice, issuer_id)
+            return True  # Delivery is pending
+
+        # Customer has opted in - send the invoice directly
+        self._send_invoice_to_customer(invoice, customer_phone, issuer_id)
+        return False  # Delivery completed
+
+    def _send_optin_prompt(self, customer_phone: str, invoice, issuer_id: int) -> None:
+        """Send opt-in prompt to customer and mark invoice for pending delivery."""
+        issuer = self._load_issuer(issuer_id)
+        business_name = getattr(issuer, "business_name", None) or getattr(issuer, "email", "A business") or "A business"
+        
+        # Mark invoice as pending WhatsApp delivery
+        invoice.whatsapp_delivery_pending = True
+        self.db.commit()
+        
+        # Send opt-in prompt using template (templates can be sent to anyone)
+        optin_message = (
+            f"👋 Hi! {business_name} wants to send you an invoice on WhatsApp.\n\n"
+            f"📄 Invoice: {invoice.invoice_id}\n"
+            f"💰 Amount: ₦{invoice.amount:,.2f}\n\n"
+            "📲 Reply 'OK' to receive this invoice and future updates via WhatsApp."
+        )
+        
+        self.client.send_text(customer_phone, optin_message)
+        logger.info("[OPTIN] Sent opt-in prompt to %s for invoice %s", customer_phone, invoice.invoice_id)
+
+    def _send_invoice_to_customer(self, invoice, customer_phone: str, issuer_id: int) -> None:
+        """Send invoice to customer who has opted in."""
         issuer = self._load_issuer(issuer_id)
         customer_name = getattr(invoice.customer, "name", "valued customer") if invoice.customer else "valued customer"
         amount_text = f"₦{invoice.amount:,.2f}"
@@ -224,6 +269,75 @@ class InvoiceIntentProcessor:
                 f"Invoice_{invoice.invoice_id}.pdf",
                 f"Invoice {invoice.invoice_id} - {amount_text}",
             )
+        
+        # Clear pending flag if it was set
+        if invoice.whatsapp_delivery_pending:
+            invoice.whatsapp_delivery_pending = False
+            self.db.commit()
+
+    def handle_customer_optin(self, customer_phone: str) -> bool:
+        """
+        Handle when a customer replies to opt-in for WhatsApp messages.
+        Marks customer as opted-in and sends any pending invoices.
+        
+        Returns True if pending invoices were found and sent.
+        """
+        from app.models import models
+        
+        # Normalize phone number for lookup
+        clean_digits = "".join(ch for ch in customer_phone if ch.isdigit())
+        candidates = {customer_phone}
+        if customer_phone.startswith("+"):
+            candidates.add(customer_phone[1:])
+        if clean_digits:
+            candidates.add(clean_digits)
+            if clean_digits.startswith("234"):
+                candidates.add(f"+{clean_digits}")
+        
+        # Find customer by phone
+        customer = (
+            self.db.query(models.Customer)
+            .filter(models.Customer.phone.in_(list(candidates)))
+            .first()
+        )
+        
+        if not customer:
+            logger.info("[OPTIN] No customer found for phone %s", customer_phone)
+            return False
+        
+        # Mark customer as opted in
+        if not customer.whatsapp_opted_in:
+            customer.whatsapp_opted_in = True
+            self.db.commit()
+            logger.info("[OPTIN] Customer %s opted in to WhatsApp", customer_phone)
+        
+        # Find and send pending invoices
+        pending_invoices = (
+            self.db.query(models.Invoice)
+            .filter(
+                models.Invoice.customer_id == customer.id,
+                models.Invoice.whatsapp_delivery_pending == True,
+                models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
+            )
+            .all()
+        )
+        
+        if not pending_invoices:
+            logger.info("[OPTIN] No pending invoices for customer %s", customer_phone)
+            return False
+        
+        # Send confirmation message
+        self.client.send_text(
+            customer_phone,
+            f"✅ Great! You're now set to receive invoices via WhatsApp.\n\n"
+            f"📄 Sending {len(pending_invoices)} pending invoice(s)..."
+        )
+        
+        # Send each pending invoice
+        for invoice in pending_invoices:
+            self._send_invoice_to_customer(invoice, customer_phone, invoice.issuer_id)
+        
+        return True
 
     def _load_issuer(self, issuer_id: int):
         from app.models import models
