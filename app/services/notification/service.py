@@ -154,7 +154,7 @@ class NotificationService:
                 invoice.receipt_pdf_url or pdf_url,
             )
         if customer_phone:
-            results["whatsapp"] = await self.send_receipt_whatsapp(invoice, customer_phone, pdf_url)
+            results["whatsapp"] = await self.send_receipt_whatsapp(invoice, customer_phone, invoice.receipt_pdf_url or pdf_url)
             results["sms"] = await self.send_receipt_sms(invoice, customer_phone)
         logger.info(
             "Receipt notification sent - Email: %s, WhatsApp: %s, SMS: %s",
