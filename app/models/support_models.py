@@ -56,18 +56,18 @@ class SupportTicket(Base):
     subject: Mapped[str] = mapped_column(String(500))
     message: Mapped[str] = mapped_column(Text)
     category: Mapped[TicketCategory] = mapped_column(
-        Enum(TicketCategory),
+        Enum(TicketCategory, values_callable=lambda x: [e.value for e in x]),
         default=TicketCategory.GENERAL,
     )
     
     # Ticket management
     status: Mapped[TicketStatus] = mapped_column(
-        Enum(TicketStatus),
+        Enum(TicketStatus, values_callable=lambda x: [e.value for e in x]),
         default=TicketStatus.OPEN,
         index=True,
     )
     priority: Mapped[TicketPriority] = mapped_column(
-        Enum(TicketPriority),
+        Enum(TicketPriority, values_callable=lambda x: [e.value for e in x]),
         default=TicketPriority.MEDIUM,
     )
     
