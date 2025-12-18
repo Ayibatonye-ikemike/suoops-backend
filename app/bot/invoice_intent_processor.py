@@ -231,9 +231,12 @@ class InvoiceIntentProcessor:
         customer_name = getattr(invoice.customer, "name", "valued customer") if invoice.customer else "valued customer"
         amount_text = f"₦{invoice.amount:,.2f}"
         items_text = self._build_items_text(invoice)
+        
+        # Add call-to-action for new customers to reply
+        items_with_cta = f"{items_text}. Reply 'Hi' to get payment details"
 
         logger.info("[TEMPLATE] Sending template ONLY to new customer %s for invoice %s", customer_phone, invoice.invoice_id)
-        template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, items_text)
+        template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, items_with_cta)
         
         if template_sent:
             # Mark invoice as pending follow-up delivery
