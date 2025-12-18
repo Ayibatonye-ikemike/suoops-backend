@@ -250,26 +250,26 @@ class InvoiceIntentProcessor:
         """Send full invoice with payment details to opted-in customers.
         
         Sends only 2 messages:
-        1. Invoice template (formal notification)
-        2. Payment link with bank details
+        1. Payment link with bank details
+        2. Invoice PDF document
         """
         issuer = self._load_issuer(issuer_id)
-        customer_name = getattr(invoice.customer, "name", "valued customer") if invoice.customer else "valued customer"
         amount_text = f"₦{invoice.amount:,.2f}"
-        items_text = self._build_items_text(invoice)
 
         logger.info("[NOTIFY] Sending full invoice to %s for invoice %s", customer_phone, invoice.invoice_id)
         
-        # Message 1: Invoice template
-        template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, items_text)
-        logger.info("[NOTIFY] Template sent result: %s", template_sent)
-
-        if not template_sent:
-            self.client.send_text(customer_phone, self._build_fallback_message(invoice, issuer))
-
-        # Message 2: Payment link with bank details
+        # Message 1: Payment link with bank details
         payment_link = self._build_payment_link_message(invoice, issuer)
         self.client.send_text(customer_phone, payment_link)
+        
+        # Message 2: Invoice PDF document
+        if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+            self.client.send_document(
+                customer_phone,
+                invoice.pdf_url,
+                f"Invoice_{invoice.invoice_id}.pdf",
+                f"Invoice {invoice.invoice_id} - {amount_text}",
+            )
         
         # Clear pending flag if it was set
         if invoice.whatsapp_delivery_pending:
