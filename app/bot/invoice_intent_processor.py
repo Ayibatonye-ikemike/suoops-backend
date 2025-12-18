@@ -247,34 +247,29 @@ class InvoiceIntentProcessor:
             logger.warning("[TEMPLATE] Failed to send template to %s", customer_phone)
 
     def _send_full_invoice(self, invoice, customer_phone: str, issuer_id: int) -> None:
-        """Send full invoice with payment details to opted-in customers."""
+        """Send full invoice with payment details to opted-in customers.
+        
+        Sends only 2 messages:
+        1. Invoice template (formal notification)
+        2. Payment link with bank details
+        """
         issuer = self._load_issuer(issuer_id)
         customer_name = getattr(invoice.customer, "name", "valued customer") if invoice.customer else "valued customer"
         amount_text = f"₦{invoice.amount:,.2f}"
         items_text = self._build_items_text(invoice)
 
         logger.info("[NOTIFY] Sending full invoice to %s for invoice %s", customer_phone, invoice.invoice_id)
+        
+        # Message 1: Invoice template
         template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, items_text)
         logger.info("[NOTIFY] Template sent result: %s", template_sent)
 
         if not template_sent:
             self.client.send_text(customer_phone, self._build_fallback_message(invoice, issuer))
 
-        # Send payment link message
+        # Message 2: Payment link with bank details
         payment_link = self._build_payment_link_message(invoice, issuer)
         self.client.send_text(customer_phone, payment_link)
-
-        # Send PDF document
-        if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-            self.client.send_document(
-                customer_phone,
-                invoice.pdf_url,
-                f"Invoice_{invoice.invoice_id}.pdf",
-                f"Invoice {invoice.invoice_id} - {amount_text}",
-            )
-        
-        # Send "I've Paid" button for easy confirmation
-        self._send_paid_button(customer_phone, invoice.invoice_id, amount_text)
         
         # Clear pending flag if it was set
         if invoice.whatsapp_delivery_pending:
@@ -349,7 +344,7 @@ class InvoiceIntentProcessor:
             f"📄 Here are your pending invoice(s):"
         )
         
-        # Send each invoice's payment details
+        # Send each invoice's payment details (just payment link, no PDF spam)
         for invoice in recent_invoices:
             issuer = self._load_issuer(invoice.issuer_id)
             amount_text = f"₦{invoice.amount:,.2f}"
@@ -357,18 +352,6 @@ class InvoiceIntentProcessor:
             # Send payment link and bank details
             payment_msg = self._build_payment_link_message(invoice, issuer)
             self.client.send_text(customer_phone, f"📄 {invoice.invoice_id} - {amount_text}\n\n{payment_msg}")
-            
-            # Send PDF if available
-            if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-                self.client.send_document(
-                    customer_phone,
-                    invoice.pdf_url,
-                    f"Invoice_{invoice.invoice_id}.pdf",
-                    f"Invoice {invoice.invoice_id}",
-                )
-            
-            # Send "I've Paid" button for easy confirmation
-            self._send_paid_button(customer_phone, invoice.invoice_id, amount_text)
             
             # Clear pending flag
             if invoice.whatsapp_delivery_pending:
@@ -511,18 +494,17 @@ class InvoiceIntentProcessor:
         frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
         payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
         
-        message = f"🔗 View & Pay Online:\n{payment_link}\n"
+        message = f"🔗 View & Pay Online:\n{payment_link}"
         
         # Add bank transfer details if available
         if issuer and issuer.bank_name and issuer.account_number:
             message += (
-                f"\n💳 Or pay via Bank Transfer:\n"
+                f"\n\n💳 Or pay via Bank Transfer:\n"
                 f"Bank: {issuer.bank_name}\n"
-                f"Account: {issuer.account_number}\n"
+                f"Account: {issuer.account_number}"
             )
             if getattr(issuer, "account_name", None):
-                message += f"Name: {issuer.account_name}\n"
-            message += "\n📝 Tap 'I've Paid' below after making payment."
+                message += f"\nName: {issuer.account_name}"
         
         return message
 
