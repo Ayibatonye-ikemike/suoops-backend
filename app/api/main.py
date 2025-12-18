@@ -32,6 +32,7 @@ from app.api.routes_webhooks import router as webhook_router
 from app.api.routes_telemetry import router as telemetry_router
 from app.api.routes_inventory import router as inventory_router
 from app.api.routes_team import router as team_router
+from app.api.routes_referral import router as referral_router
 from app.core.config import settings
 from app.core.logger import init_logging
 from app.core.monitoring import init_monitoring
@@ -178,6 +179,7 @@ def create_app() -> FastAPI:
     app.include_router(telemetry_router, tags=["telemetry"])
     app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
     app.include_router(team_router, tags=["team"])
+    app.include_router(referral_router, tags=["referrals"])
     app.include_router(admin_router)
     app.include_router(health_router)
     

@@ -16,12 +16,14 @@ if TYPE_CHECKING:
     from app.models.oauth_models import OAuthToken
     from app.models.payment_models import PaymentTransaction
     from app.models.inventory_models import Product, ProductCategory, StockMovement, Supplier, PurchaseOrder
+    from app.models.referral_models import ReferralCode, ReferralReward
 else:
     # Import at runtime for SQLAlchemy relationship resolution
     from app.models import tax_models  # noqa: F401
     from app.models import oauth_models  # noqa: F401
     from app.models import payment_models  # noqa: F401
     from app.models import inventory_models  # noqa: F401
+    from app.models import referral_models  # noqa: F401
     FiscalInvoice = "FiscalInvoice"
     TaxProfile = "TaxProfile"
     VATReturn = "VATReturn"
@@ -31,6 +33,8 @@ else:
     StockMovement = "StockMovement"
     Supplier = "Supplier"
     PurchaseOrder = "PurchaseOrder"
+    ReferralCode = "ReferralCode"
+    ReferralReward = "ReferralReward"
 
 
 def utcnow() -> dt.datetime:
@@ -310,6 +314,20 @@ class User(Base):
     
     purchase_orders: Mapped[list["PurchaseOrder"]] = relationship(
         "PurchaseOrder",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
+    
+    # Referral system relationships
+    referral_code: Mapped["ReferralCode | None"] = relationship(
+        "ReferralCode",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )  # type: ignore
+    
+    referral_rewards: Mapped[list["ReferralReward"]] = relationship(
+        "ReferralReward",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore

@@ -22,6 +22,7 @@ class SignupStart(BaseModel):
     email: str | None = None
     name: str
     business_name: str | None = None
+    referral_code: str | None = Field(None, min_length=6, max_length=20, description="Referral code from another user")
 
 
 class SignupVerify(BaseModel):

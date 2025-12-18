@@ -143,6 +143,24 @@ class AuthService:
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
+        
+        # Record referral if a referral code was provided
+        referral_code = stored_data.get("referral_code")
+        if referral_code:
+            try:
+                from app.services.referral_service import ReferralService
+                from app.models.referral_models import ReferralType
+                referral_service = ReferralService(self.db)
+                referral_service.record_referral(
+                    code=referral_code,
+                    referred_user_id=user.id,
+                    referral_type=ReferralType.FREE_SIGNUP,
+                )
+                # Complete the referral immediately since signup is verified
+                referral_service.complete_referral(user.id)
+            except Exception as e:
+                logger.warning(f"Failed to record referral: {e}")
+        
         return self._issue_tokens(user)
 
     # ----------------------------- Login -----------------------------
