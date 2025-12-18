@@ -1,7 +1,7 @@
 """Add WhatsApp opt-in tracking fields.
 
 Revision ID: 20251218_whatsapp_optin
-Revises: 20251217_phone_otp
+Revises: fix_customer_phone_len
 Create Date: 2025-12-18
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "20251218_whatsapp_optin"
-down_revision = "20251217_phone_otp"
+down_revision = "fix_customer_phone_len"
 branch_labels = None
 depends_on = None
 
