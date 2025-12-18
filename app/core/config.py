@@ -154,8 +154,10 @@ class ProdSettings(BaseAppSettings):
     CORS_ALLOW_ORIGINS: list[str] = [
         "https://suoops.com",
         "https://www.suoops.com",
+        "https://support.suoops.com",
         "https://suoops-frontend.vercel.app",
         "https://suoops-frontend-ikemike.vercel.app",
+        "https://suoops-support.vercel.app",
         "http://localhost:3000",  # Local development
         "http://127.0.0.1:3000",  # Local development (alt)
     ]
