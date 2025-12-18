@@ -67,6 +67,17 @@ class VoiceMessageProcessor:
 
     async def process(self, sender: str, media_id: str, payload: dict[str, Any]) -> None:
         try:
+            # Check if voice feature is globally enabled
+            if not settings.FEATURE_VOICE_ENABLED:
+                self.client.send_text(
+                    sender,
+                    "🎙️ Voice invoices are currently unavailable.\n\n"
+                    "Please send a text message instead:\n"
+                    '"Invoice [Customer] [Amount] for [Description]"\n\n'
+                    "Example: \"Invoice Jane 50000 for logo design\""
+                )
+                return
+
             # Check if user has Business plan (voice is premium feature)
             has_access, user = self._check_user_has_business_plan(sender)
             if not has_access:
@@ -77,7 +88,7 @@ class VoiceMessageProcessor:
                     "📊 Current Plans:\n"
                     "• Starter (₦4,500/mo): 100 invoices + Tax reports\n"
                     "• Pro (₦8,000/mo): 200 invoices + Custom branding\n"
-                    "• Business (₦16,000/mo): 300 invoices + Voice + Photo OCR (15 premium/mo)\n\n"
+                    "• Business (₦16,000/mo): 300 invoices + Photo OCR (15 premium/mo)\n\n"
                     "Visit suoops.com/dashboard/subscription to upgrade!"
                 )
                 return

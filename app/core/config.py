@@ -101,6 +101,8 @@ class BaseAppSettings(BaseSettings):
     # Feature flags / premium gating
     # When False, voice note invoice feature is available to all users regardless of plan.
     FEATURE_VOICE_REQUIRES_PAID: bool = True
+    # Master switch for voice feature - when False, voice invoices are completely disabled
+    FEATURE_VOICE_ENABLED: bool = False
 
     @model_validator(mode="after")
     def _validate_required_fields(self) -> BaseAppSettings:
