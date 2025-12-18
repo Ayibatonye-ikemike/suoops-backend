@@ -216,6 +216,8 @@ class InvoiceStatusMixin:
                         whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
                         if whatsapp_key:
                             client = WhatsAppClient(whatsapp_key)
+                            frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+                            verify_link = f"{frontend_url.rstrip('/')}/dashboard/invoices/{invoice.invoice_id}"
                             whatsapp_message = (
                                 f"💰 Payment Notification!\n\n"
                                 f"Customer reported a bank transfer for:\n\n"
@@ -225,7 +227,8 @@ class InvoiceStatusMixin:
                             if invoice.customer:
                                 whatsapp_message += f"👤 Customer: {invoice.customer.name}\n"
                             whatsapp_message += (
-                                f"\n✅ Please verify the funds in your bank account "
+                                f"\n🔗 Verify & Mark as Paid:\n{verify_link}\n\n"
+                                f"✅ Please verify the funds in your bank account "
                                 f"and mark the invoice as PAID to send the customer their receipt."
                             )
                             client.send_text(user.phone, whatsapp_message)
