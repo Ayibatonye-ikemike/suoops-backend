@@ -376,21 +376,25 @@ class InvoiceIntentProcessor:
         Handle when a customer replies 'PAID' to confirm payment.
         Changes invoice status to awaiting_confirmation and notifies business.
         
-        Returns True if a pending invoice was found and updated.
+        Returns True if handled (even if no invoice found - to prevent other processors).
         """
         from app.models import models
         from app.services.invoice_components.status import InvoiceStatusComponent
         import datetime as dt
         
-        # Normalize phone number for lookup
+        # Normalize phone number for lookup - build all possible formats
         clean_digits = "".join(ch for ch in customer_phone if ch.isdigit())
-        candidates = {customer_phone}
+        candidates: set[str] = {customer_phone}
         if customer_phone.startswith("+"):
             candidates.add(customer_phone[1:])
         if clean_digits:
             candidates.add(clean_digits)
             if clean_digits.startswith("234"):
                 candidates.add(f"+{clean_digits}")
+                # Also add 0-prefixed local format
+                candidates.add("0" + clean_digits[3:])
+        
+        logger.info("[PAID] Looking for customer with phone variants: %s", candidates)
         
         # Find customer by phone
         customer = (
@@ -401,7 +405,14 @@ class InvoiceIntentProcessor:
         
         if not customer:
             logger.info("[PAID] No customer found for phone %s", customer_phone)
-            return False
+            # Send helpful message and return True to prevent other processors
+            self.client.send_text(
+                customer_phone,
+                "ℹ️ I couldn't find any invoices associated with your number.\n\n"
+                "If you received an invoice, please use the payment link provided, "
+                "or contact the business directly."
+            )
+            return True  # Return True to stop other processors
         
         # Find the most recent pending invoice for this customer
         pending_invoice = (
