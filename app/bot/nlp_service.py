@@ -180,13 +180,20 @@ class NLPService:
 
         # Extract amount, preferring values that are not the phone digits
         amount_raw = "0"
-        phone_digits = None
+        
+        # Build a set of phone-related digit strings to skip
+        phone_variants: set[str] = set()
         if phone:
             phone_digits = phone.replace("+", "")
+            phone_variants.add(phone_digits)  # e.g. 2348078557662
+            phone_variants.add(phone_digits.lstrip("234"))  # e.g. 8078557662
+            # Also add the original 0-prefixed format (common in Nigeria)
+            if phone_digits.startswith("234"):
+                phone_variants.add("0" + phone_digits[3:])  # e.g. 08078557662
 
         for match in self.AMOUNT_PATTERN.finditer(text):
             candidate = match.group(1).replace(",", "")
-            if phone_digits and (candidate == phone_digits or candidate == phone_digits.lstrip("234")):
+            if candidate in phone_variants:
                 continue
             amount_raw = candidate
             break
