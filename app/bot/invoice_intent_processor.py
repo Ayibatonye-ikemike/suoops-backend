@@ -208,6 +208,11 @@ class InvoiceIntentProcessor:
         if not template_sent:
             self.client.send_text(customer_phone, self._build_fallback_message(invoice, issuer))
 
+        # Send payment link message
+        payment_link = self._build_payment_link_message(invoice, issuer)
+        self.client.send_text(customer_phone, payment_link)
+
+        # Send PDF document
         if invoice.pdf_url and invoice.pdf_url.startswith("http"):
             self.client.send_document(
                 customer_phone,
@@ -241,6 +246,26 @@ class InvoiceIntentProcessor:
             items.append(f"...and {len(invoice.lines) - 3} more")
         
         return ", ".join(items)
+
+    def _build_payment_link_message(self, invoice, issuer) -> str:
+        """Build a message with payment link and bank details for customer."""
+        frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+        payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
+        
+        message = f"🔗 View & Pay Online:\n{payment_link}\n"
+        
+        # Add bank transfer details if available
+        if issuer and issuer.bank_name and issuer.account_number:
+            message += (
+                f"\n💳 Or pay via Bank Transfer:\n"
+                f"Bank: {issuer.bank_name}\n"
+                f"Account: {issuer.account_number}\n"
+            )
+            if getattr(issuer, "account_name", None):
+                message += f"Name: {issuer.account_name}\n"
+            message += "\n📝 Reply 'PAID' after payment to confirm."
+        
+        return message
 
     def _build_payment_hint(self, issuer) -> str:
         if not issuer or not issuer.bank_name or not issuer.account_number:
