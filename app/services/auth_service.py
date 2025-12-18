@@ -67,6 +67,7 @@ class AuthService:
                 raise ValueError("Phone number already registered")
         
         data = payload.model_dump()
+        logger.info(f"start_signup: payload data keys={list(data.keys())}, referral_code={data.get('referral_code')}")
         if payload.email:
             data["email"] = identifier
         else:
@@ -146,20 +147,25 @@ class AuthService:
         
         # Record referral if a referral code was provided
         referral_code = stored_data.get("referral_code")
+        logger.info(f"Signup complete for user {user.id}, referral_code in stored_data: {referral_code}, stored_data keys: {list(stored_data.keys())}")
         if referral_code:
             try:
                 from app.services.referral_service import ReferralService
                 from app.models.referral_models import ReferralType
                 referral_service = ReferralService(self.db)
-                referral_service.record_referral(
+                referral = referral_service.record_referral(
                     code=referral_code,
                     referred_user_id=user.id,
                     referral_type=ReferralType.FREE_SIGNUP,
                 )
-                # Complete the referral immediately since signup is verified
-                referral_service.complete_referral(user.id)
+                if referral:
+                    # Complete the referral immediately since signup is verified
+                    referral_service.complete_referral(user.id)
+                    logger.info(f"Successfully recorded and completed referral for user {user.id} with code {referral_code}")
+                else:
+                    logger.warning(f"record_referral returned None for user {user.id} with code {referral_code}")
             except Exception as e:
-                logger.warning(f"Failed to record referral: {e}")
+                logger.warning(f"Failed to record referral: {e}", exc_info=True)
         
         return self._issue_tokens(user)
 
