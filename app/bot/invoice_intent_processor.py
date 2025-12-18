@@ -493,8 +493,9 @@ class InvoiceIntentProcessor:
         """Build a message with payment link and bank details for customer."""
         frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
         payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
+        amount_text = f"₦{invoice.amount:,.2f}"
         
-        message = f"🔗 View & Pay Online:\n{payment_link}"
+        message = f"📄 Your invoice for {amount_text} is ready!\n\n🔗 View & Pay Online:\n{payment_link}"
         
         # Add bank transfer details if available
         if issuer and issuer.bank_name and issuer.account_number:
