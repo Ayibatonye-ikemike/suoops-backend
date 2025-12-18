@@ -191,6 +191,7 @@ class InvoiceIntentProcessor:
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> None:
         customer_phone = data.get("customer_phone")
+        logger.info("[NOTIFY] customer_phone from data: %s, invoice: %s", customer_phone, invoice.invoice_id)
         if not customer_phone:
             logger.warning("No customer phone for invoice %s", invoice.invoice_id)
             return
@@ -198,9 +199,11 @@ class InvoiceIntentProcessor:
         issuer = self._load_issuer(issuer_id)
         customer_name = getattr(invoice.customer, "name", "valued customer") if invoice.customer else "valued customer"
         amount_text = f"₦{invoice.amount:,.2f}"
-        payment_hint = self._build_payment_hint(issuer)
+        items_text = self._build_items_text(invoice)
 
-        template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, payment_hint)
+        logger.info("[NOTIFY] Sending template to %s for invoice %s", customer_phone, invoice.invoice_id)
+        template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, items_text)
+        logger.info("[NOTIFY] Template sent result: %s", template_sent)
 
         if not template_sent:
             self.client.send_text(customer_phone, self._build_fallback_message(invoice, issuer))
@@ -218,6 +221,27 @@ class InvoiceIntentProcessor:
 
         return self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
 
+    def _build_items_text(self, invoice) -> str:
+        """Build a text summary of invoice line items for WhatsApp template."""
+        if not invoice.lines:
+            # Fallback if no lines - use customer name or generic
+            customer_name = getattr(invoice.customer, "name", "Service") if invoice.customer else "Service"
+            return f"Service for {customer_name}"
+        
+        # Build items list (limit to avoid WhatsApp character limits)
+        items = []
+        for line in invoice.lines[:3]:  # Max 3 items to keep message short
+            desc = line.description[:30] if len(line.description) > 30 else line.description
+            if line.quantity > 1:
+                items.append(f"{line.quantity}x {desc}")
+            else:
+                items.append(desc)
+        
+        if len(invoice.lines) > 3:
+            items.append(f"...and {len(invoice.lines) - 3} more")
+        
+        return ", ".join(items)
+
     def _build_payment_hint(self, issuer) -> str:
         if not issuer or not issuer.bank_name or not issuer.account_number:
             return "Please contact the business for payment details."
@@ -233,10 +257,12 @@ class InvoiceIntentProcessor:
         invoice_id: str,
         customer_name: str,
         amount_text: str,
-        payment_hint: str,
+        items_text: str,
     ) -> bool:
         template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
+        logger.info("[TEMPLATE] template_name=%s, language=%s", template_name, getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en_US"))
         if not template_name:
+            logger.warning("[TEMPLATE] No template configured, skipping")
             return False
 
         components = [
@@ -246,7 +272,7 @@ class InvoiceIntentProcessor:
                     {"type": "text", "text": customer_name},
                     {"type": "text", "text": invoice_id},
                     {"type": "text", "text": amount_text},
-                    {"type": "text", "text": payment_hint},
+                    {"type": "text", "text": items_text},
                 ],
             }
         ]

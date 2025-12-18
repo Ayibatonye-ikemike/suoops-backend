@@ -117,6 +117,7 @@ class WhatsAppClient:
             payload["template"]["components"] = components
 
         try:
+            logger.info("[WHATSAPP TEMPLATE] Sending to %s, template=%s, payload=%s", to, template_name, payload)
             response = requests.post(
                 self.base_url,
                 headers={
@@ -126,9 +127,14 @@ class WhatsAppClient:
                 json=payload,
                 timeout=10,
             )
+            logger.info("[WHATSAPP TEMPLATE] Response status=%s, body=%s", response.status_code, response.text[:500] if response.text else "empty")
             response.raise_for_status()
             logger.info("[WHATSAPP TEMPLATE] ✓ Sent to %s with %s", to, template_name)
             return True
+        except requests.HTTPError as exc:
+            detail = exc.response.text if exc.response is not None else "(no body)"
+            logger.error("[WHATSAPP TEMPLATE] HTTP Error to %s: %s | Response: %s", to, exc, detail)
+            return False
         except Exception as exc:  # noqa: BLE001
             logger.error("[WHATSAPP TEMPLATE] Failed to send to %s: %s", to, exc)
             return False
