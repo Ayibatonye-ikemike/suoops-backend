@@ -73,7 +73,7 @@ def notify_business_of_customer_confirmation(db: Session, invoice: models.Invoic
     service = NotificationService()
 
     async def _run():  # pragma: no cover - network IO
-        results = {"email": False, "sms": False}
+        results = {"email": False, "sms": False, "whatsapp": False}
         if user.email:
             try:
                 results["email"] = await service.send_email(
@@ -85,14 +85,38 @@ def notify_business_of_customer_confirmation(db: Session, invoice: models.Invoic
                 logger.error("Failed email notify business %s: %s", invoice.invoice_id, exc)
         if user.phone:
             try:
+                # Send WhatsApp notification to business
+                from app.bot.whatsapp_client import WhatsAppClient
+                from app.core.config import settings
+                whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
+                if whatsapp_key:
+                    client = WhatsAppClient(whatsapp_key)
+                    whatsapp_message = (
+                        f"💰 Payment Notification!\n\n"
+                        f"Customer reported a bank transfer for:\n\n"
+                        f"📄 Invoice: {invoice.invoice_id}\n"
+                        f"💵 Amount: ₦{invoice.amount:,.2f}\n"
+                    )
+                    if invoice.customer:
+                        whatsapp_message += f"👤 Customer: {invoice.customer.name}\n"
+                    whatsapp_message += (
+                        f"\n✅ Please verify the funds in your bank account "
+                        f"and mark the invoice as PAID to send the customer their receipt."
+                    )
+                    client.send_text(user.phone, whatsapp_message)
+                    results["whatsapp"] = True
+            except Exception as exc:  # pragma: no cover
+                logger.error("Failed WhatsApp notify business %s: %s", invoice.invoice_id, exc)
+            try:
                 # Reuse SMS channel (if configured) rather than private method.
                 results["sms"] = await service.send_receipt_sms(invoice, user.phone)
             except Exception as exc:  # pragma: no cover
                 logger.error("Failed SMS notify business %s: %s", invoice.invoice_id, exc)
         logger.info(
-            "Business notification for invoice %s - Email: %s, SMS: %s",
+            "Business notification for invoice %s - Email: %s, WhatsApp: %s, SMS: %s",
             invoice.invoice_id,
             results["email"],
+            results["whatsapp"],
             results["sms"],
         )
 
