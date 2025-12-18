@@ -142,15 +142,19 @@ class InvoiceIntentProcessor:
                 self.client.send_text(sender, f"Error: {exc}")
             return
 
-        # Send notifications via all channels (Email, WhatsApp, SMS)
+        # Send notifications via all channels (Email only - WhatsApp handled separately by _notify_customer)
         customer_email = data.get("customer_email")
         customer_phone = data.get("customer_phone")
         
-        results = await self._send_invoice_notifications(
-            invoice,
-            customer_email=customer_email,
-            customer_phone=customer_phone
-        )
+        # Only send email notification here - WhatsApp is handled by _notify_customer to avoid duplicates
+        results = {"email": False, "whatsapp": False, "sms": False}
+        if customer_email:
+            try:
+                from app.services.notification.service import NotificationService
+                service = NotificationService()
+                results["email"] = await service.send_invoice_email(invoice, customer_email, invoice.pdf_url)
+            except Exception as exc:
+                logger.error("Failed to send invoice email: %s", exc)
 
         self._notify_business(sender, invoice, customer_email, results)
         self._notify_customer(invoice, data, issuer_id)

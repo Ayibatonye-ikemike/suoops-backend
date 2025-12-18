@@ -217,7 +217,7 @@ class InvoiceStatusMixin:
                         if whatsapp_key:
                             client = WhatsAppClient(whatsapp_key)
                             frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
-                            verify_link = f"{frontend_url.rstrip('/')}/dashboard/invoices/{invoice.invoice_id}"
+                            verify_link = f"{frontend_url.rstrip('/')}/dashboard?invoice={invoice.invoice_id}"
                             whatsapp_message = (
                                 f"💰 Payment Notification!\n\n"
                                 f"Customer reported a bank transfer for:\n\n"
