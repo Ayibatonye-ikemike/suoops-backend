@@ -39,6 +39,17 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any] | None:
             extracted["text"] = message.get("text", {}).get("body", "")
         elif msg_type == "audio":
             extracted["audio_id"] = message.get("audio", {}).get("id")
+        elif msg_type == "interactive":
+            # Handle interactive button replies
+            interactive = message.get("interactive", {})
+            interactive_type = interactive.get("type")
+            if interactive_type == "button_reply":
+                # Button was clicked - extract button ID and title
+                button_reply = interactive.get("button_reply", {})
+                extracted["button_id"] = button_reply.get("id")
+                extracted["button_title"] = button_reply.get("title")
+                logger.info("[EXTRACT] Button clicked: id=%s, title=%s", 
+                           extracted.get("button_id"), extracted.get("button_title"))
 
         contacts = value.get("contacts", [])
         if contacts:

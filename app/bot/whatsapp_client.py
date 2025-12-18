@@ -165,3 +165,73 @@ class WhatsAppClient:
             response.raise_for_status()
             logger.info("[WHATSAPP] Downloaded %d bytes", len(response.content))
             return response.content
+
+    def send_interactive_buttons(
+        self,
+        to: str,
+        body: str,
+        buttons: list[dict[str, str]],
+        header: str | None = None,
+        footer: str | None = None,
+    ) -> bool:
+        """
+        Send an interactive message with reply buttons.
+        
+        Args:
+            to: Recipient phone number
+            body: Message body text
+            buttons: List of buttons, each with 'id' and 'title' (max 3 buttons, title max 20 chars)
+            header: Optional header text
+            footer: Optional footer text
+        
+        Returns:
+            True if sent successfully
+        """
+        if not self.phone_number_id or not self.api_key:
+            logger.warning("[WHATSAPP BUTTONS] Not configured, would send to %s", to)
+            return False
+
+        # Build button rows (max 3 buttons allowed by WhatsApp)
+        button_rows = [
+            {"type": "reply", "reply": {"id": btn["id"], "title": btn["title"][:20]}}
+            for btn in buttons[:3]
+        ]
+
+        interactive: dict[str, Any] = {
+            "type": "button",
+            "body": {"text": body},
+            "action": {"buttons": button_rows},
+        }
+
+        if header:
+            interactive["header"] = {"type": "text", "text": header}
+        if footer:
+            interactive["footer"] = {"text": footer}
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to.replace("+", ""),
+            "type": "interactive",
+            "interactive": interactive,
+        }
+
+        try:
+            response = requests.post(
+                self.base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=10,
+            )
+            response.raise_for_status()
+            logger.info("[WHATSAPP BUTTONS] ✓ Sent to %s with %d buttons", to, len(buttons))
+            return True
+        except requests.HTTPError as exc:
+            detail = exc.response.text if exc.response is not None else "(no body)"
+            logger.error("[WHATSAPP BUTTONS] HTTP Error to %s: %s | Response: %s", to, exc, detail)
+            return False
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[WHATSAPP BUTTONS] Failed to send to %s: %s", to, exc)
+            return False

@@ -273,6 +273,9 @@ class InvoiceIntentProcessor:
                 f"Invoice {invoice.invoice_id} - {amount_text}",
             )
         
+        # Send "I've Paid" button for easy confirmation
+        self._send_paid_button(customer_phone, invoice.invoice_id, amount_text)
+        
         # Clear pending flag if it was set
         if invoice.whatsapp_delivery_pending:
             invoice.whatsapp_delivery_pending = False
@@ -363,6 +366,9 @@ class InvoiceIntentProcessor:
                     f"Invoice_{invoice.invoice_id}.pdf",
                     f"Invoice {invoice.invoice_id}",
                 )
+            
+            # Send "I've Paid" button for easy confirmation
+            self._send_paid_button(customer_phone, invoice.invoice_id, amount_text)
             
             # Clear pending flag
             if invoice.whatsapp_delivery_pending:
@@ -516,9 +522,27 @@ class InvoiceIntentProcessor:
             )
             if getattr(issuer, "account_name", None):
                 message += f"Name: {issuer.account_name}\n"
-            message += "\n📝 Reply 'PAID' after payment to confirm."
+            message += "\n📝 Tap 'I've Paid' below after making payment."
         
         return message
+
+    def _send_paid_button(self, customer_phone: str, invoice_id: str, amount_text: str) -> bool:
+        """Send an interactive button message for payment confirmation."""
+        body = (
+            f"💳 After making payment for {amount_text}, tap the button below to notify the business.\n\n"
+            "This will send your payment confirmation instantly!"
+        )
+        
+        buttons = [
+            {"id": "confirm_paid", "title": "✅ I've Paid"},
+        ]
+        
+        return self.client.send_interactive_buttons(
+            to=customer_phone,
+            body=body,
+            buttons=buttons,
+            footer=f"Invoice: {invoice_id}",
+        )
 
     def _build_payment_hint(self, issuer) -> str:
         if not issuer or not issuer.bank_name or not issuer.account_number:

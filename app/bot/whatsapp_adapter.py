@@ -51,6 +51,11 @@ class WhatsAppHandler:
         if msg_type == "text":
             await self._handle_text_message(sender, message)
             return
+        
+        if msg_type == "interactive":
+            # Handle button clicks
+            await self._handle_interactive_message(sender, message)
+            return
 
         if msg_type == "audio":
             media_id = message.get("audio_id")
@@ -99,6 +104,27 @@ class WhatsAppHandler:
         
         # Then try invoice processor
         await self.invoice_processor.handle(sender, parse, message)
+    
+    async def _handle_interactive_message(self, sender: str, message: dict[str, Any]) -> None:
+        """Handle interactive button clicks from WhatsApp."""
+        button_id = message.get("button_id", "")
+        button_title = message.get("button_title", "")
+        
+        logger.info("[BUTTON] Received button click from %s: id=%s, title=%s", sender, button_id, button_title)
+        
+        # Handle "I've Paid" button click
+        if button_id == "confirm_paid" or button_id.startswith("paid_"):
+            if self.invoice_processor.handle_customer_paid(sender):
+                logger.info("Handled payment confirmation button from customer %s", sender)
+                return
+        
+        # Handle other buttons as opt-in (Hi, Get Details, etc.)
+        if button_id in ("opt_in", "get_details", "hi"):
+            if self.invoice_processor.handle_customer_optin(sender):
+                logger.info("Handled opt-in button from customer %s", sender)
+                return
+        
+        logger.warning("[BUTTON] Unhandled button: id=%s", button_id)
     
     async def _handle_image_message(self, sender: str, message: dict[str, Any]) -> None:
         """Handle image messages (receipt photos)"""
