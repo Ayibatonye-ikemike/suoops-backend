@@ -25,7 +25,7 @@ CSRF_HEADER_NAME = "x-csrf-token"
 # Safe HTTP methods that don't require CSRF protection
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 
-# Paths exempt from CSRF protection
+# Paths exempt from CSRF protection (matched with 'in' for flexibility with API prefixes)
 EXEMPT_PATHS = {
     "/health",
     "/metrics",
@@ -117,9 +117,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if request.method in SAFE_METHODS:
             return await call_next(request)
         
-        # Skip CSRF check for exempt paths
+        # Skip CSRF check for exempt paths (using 'in' to handle API prefixes like /api/v1/)
         path = request.url.path
-        if any(path.startswith(exempt) for exempt in EXEMPT_PATHS):
+        if any(exempt in path for exempt in EXEMPT_PATHS):
             return await call_next(request)
         
         # Verify CSRF token
