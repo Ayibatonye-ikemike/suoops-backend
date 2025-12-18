@@ -505,7 +505,7 @@ class InvoiceIntentProcessor:
             )
             if getattr(issuer, "account_name", None):
                 message += f"\nName: {issuer.account_name}"
-            message += "\n\n📝 After transfer, tap the link above and click 'I've Paid'."
+            message += "\n\n📝 After transfer, tap the link above and click 'I've sent the transfer'."
         
         return message
 
