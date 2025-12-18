@@ -371,6 +371,98 @@ class InvoiceIntentProcessor:
         self.db.commit()
         return True
 
+    def handle_customer_paid(self, customer_phone: str) -> bool:
+        """
+        Handle when a customer replies 'PAID' to confirm payment.
+        Changes invoice status to awaiting_confirmation and notifies business.
+        
+        Returns True if a pending invoice was found and updated.
+        """
+        from app.models import models
+        from app.services.invoice_components.status import InvoiceStatusComponent
+        import datetime as dt
+        
+        # Normalize phone number for lookup
+        clean_digits = "".join(ch for ch in customer_phone if ch.isdigit())
+        candidates = {customer_phone}
+        if customer_phone.startswith("+"):
+            candidates.add(customer_phone[1:])
+        if clean_digits:
+            candidates.add(clean_digits)
+            if clean_digits.startswith("234"):
+                candidates.add(f"+{clean_digits}")
+        
+        # Find customer by phone
+        customer = (
+            self.db.query(models.Customer)
+            .filter(models.Customer.phone.in_(list(candidates)))
+            .first()
+        )
+        
+        if not customer:
+            logger.info("[PAID] No customer found for phone %s", customer_phone)
+            return False
+        
+        # Find the most recent pending invoice for this customer
+        pending_invoice = (
+            self.db.query(models.Invoice)
+            .filter(
+                models.Invoice.customer_id == customer.id,
+                models.Invoice.status == "pending",
+            )
+            .order_by(models.Invoice.created_at.desc())
+            .first()
+        )
+        
+        if not pending_invoice:
+            # Check if they have an awaiting_confirmation invoice already
+            awaiting = (
+                self.db.query(models.Invoice)
+                .filter(
+                    models.Invoice.customer_id == customer.id,
+                    models.Invoice.status == "awaiting_confirmation",
+                )
+                .order_by(models.Invoice.created_at.desc())
+                .first()
+            )
+            
+            if awaiting:
+                self.client.send_text(
+                    customer_phone,
+                    f"✅ Your payment for invoice {awaiting.invoice_id} is already being verified.\n\n"
+                    "The business will confirm and send your receipt shortly."
+                )
+                return True
+            
+            self.client.send_text(
+                customer_phone,
+                "ℹ️ You don't have any pending invoices at the moment.\n\n"
+                "If you just made a payment, please wait for the business to send an invoice."
+            )
+            return True
+        
+        # Use the status component to confirm transfer (same as clicking the button)
+        status_component = InvoiceStatusComponent(self.db)
+        try:
+            status_component.confirm_transfer(pending_invoice.invoice_id)
+            
+            self.client.send_text(
+                customer_phone,
+                f"✅ Thank you! Your payment confirmation for invoice {pending_invoice.invoice_id} "
+                f"(₦{pending_invoice.amount:,.2f}) has been sent to the business.\n\n"
+                "📧 You'll receive your receipt once they verify the payment."
+            )
+            logger.info("[PAID] Customer %s confirmed payment for invoice %s", customer_phone, pending_invoice.invoice_id)
+            return True
+            
+        except Exception as exc:
+            logger.error("[PAID] Failed to confirm transfer: %s", exc)
+            self.client.send_text(
+                customer_phone,
+                "❌ Sorry, there was an error processing your payment confirmation. Please try again or contact the business."
+            )
+            return True
+
     def _load_issuer(self, issuer_id: int):
         from app.models import models
 

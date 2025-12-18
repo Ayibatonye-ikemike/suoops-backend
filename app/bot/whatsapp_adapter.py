@@ -74,10 +74,19 @@ class WhatsAppHandler:
             logger.info("Received empty text message from %s", sender)
             return
 
+        text_lower = text.lower()
+        
+        # Check if customer is confirming payment
+        paid_keywords = {"paid", "i paid", "i've paid", "ive paid", "payment done", "sent", "transferred", "done"}
+        if text_lower in paid_keywords:
+            if self.invoice_processor.handle_customer_paid(sender):
+                logger.info("Handled payment confirmation from customer %s", sender)
+                return
+
         # Check if this is an opt-in response from a customer
         # Common affirmative replies that indicate opt-in
         optin_keywords = {"ok", "yes", "hi", "hello", "hey", "sure", "yea", "yeah", "yep", "👍", "okay"}
-        if text.lower() in optin_keywords:
+        if text_lower in optin_keywords:
             # Try to handle as customer opt-in (send pending invoices)
             if self.invoice_processor.handle_customer_optin(sender):
                 logger.info("Handled opt-in from customer %s", sender)
