@@ -399,7 +399,7 @@ async def initialize_invoice_pack_purchase(
             resp = await client.post(
                 "https://api.paystack.co/transaction/initialize",
                 headers={
-                    "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+                    "Authorization": f"Bearer {settings.PAYSTACK_SECRET}",
                     "Content-Type": "application/json",
                 },
                 json={
