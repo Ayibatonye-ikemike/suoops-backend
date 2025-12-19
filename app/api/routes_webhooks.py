@@ -166,6 +166,18 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
         db.commit()
         return {"status": "error", "message": "User not found"}
 
+    # Auto-upgrade FREE users to STARTER when they buy invoice packs
+    # STARTER unlocks tax features and has no monthly subscription
+    old_plan = user.plan.value
+    upgraded_to_starter = False
+    if user.plan == models.SubscriptionPlan.FREE:
+        user.plan = models.SubscriptionPlan.STARTER
+        upgraded_to_starter = True
+        logger.info(
+            "Auto-upgraded user %s from FREE to STARTER (invoice pack purchase)",
+            user_id,
+        )
+
     # Add invoices to balance (with safe access)
     old_balance = getattr(user, 'invoice_balance', 5)
     if hasattr(user, 'invoice_balance'):
@@ -185,20 +197,28 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
 
     new_balance = getattr(user, 'invoice_balance', old_balance + invoices_to_add)
     logger.info(
-        "✅ Invoice pack purchased: user %s added %d invoices (balance: %d → %d) ref: %s",
+        "✅ Invoice pack purchased: user %s added %d invoices (balance: %d → %d) ref: %s%s",
         user_id,
         invoices_to_add,
         old_balance,
         new_balance,
         reference,
+        " [upgraded to STARTER]" if upgraded_to_starter else "",
     )
 
-    return {
+    result = {
         "status": "success",
         "invoices_added": invoices_to_add,
         "new_balance": new_balance,
         "reference": reference,
     }
+    
+    if upgraded_to_starter:
+        result["upgraded_to_starter"] = True
+        result["old_plan"] = old_plan
+        result["new_plan"] = "STARTER"
+    
+    return result
 
 
 @router.post("/paystack")
