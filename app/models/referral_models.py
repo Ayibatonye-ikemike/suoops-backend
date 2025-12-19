@@ -1,11 +1,11 @@
 """
 Referral system models for tracking referral codes, referrals, and rewards.
 
-Budget: ₦500,000
-- Free signup referrals: 8 signups → 1 month Starter free (costs ₦2,500 from budget)
-- Paid signup referrals: 2 signups → 1 month Starter free (self-funding from referred user payments)
+NEW BILLING MODEL:
+- Free signup referrals: 8 signups → 100 free invoices (₦2,500 value)
+- Paid signup referrals: 2 signups → 100 free invoices (₦2,500 value)
 
-Maximum budget impact: ~200 rewards from free referrals = 1,600 potential new users
+Budget: ₦500,000 = ~200 rewards from free referrals = 1,600 potential new users
 """
 from __future__ import annotations
 
@@ -174,15 +174,18 @@ class ReferralReward(Base):
 
 
 # Referral thresholds (configurable)
+# NEW BILLING MODEL: Rewards give invoice packs instead of subscription time
 REFERRAL_THRESHOLDS = {
     "free_signup": {
         "required": 8,  # 8 free signups = 1 reward
-        "reward_type": "free_month_starter",
-        "reward_description": "1 month free Starter plan",
+        "reward_type": "invoice_pack",
+        "reward_description": "100 free invoices (₦2,500 value)",
+        "invoices_reward": 100,
     },
     "paid_signup": {
         "required": 2,  # 2 paid signups = 1 reward
-        "reward_type": "free_month_starter",
-        "reward_description": "1 month free Starter plan",
+        "reward_type": "invoice_pack",
+        "reward_description": "100 free invoices (₦2,500 value)",
+        "invoices_reward": 100,
     },
 }

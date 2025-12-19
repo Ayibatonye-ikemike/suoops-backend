@@ -3,8 +3,8 @@ Referral service for managing referral codes, tracking referrals, and distributi
 
 Business rules:
 - Each user gets a unique 8-character referral code
-- Free signup referrals: 8 signups → 1 month Starter free
-- Paid signup referrals: 2 signups → 1 month Starter free
+- Free signup referrals: 8 signups → 100 free invoices (₦2,500 value)
+- Paid signup referrals: 2 signups → 100 free invoices (₦2,500 value)
 - Rewards expire after 90 days if not applied
 """
 from __future__ import annotations
@@ -279,6 +279,7 @@ class ReferralService:
     def apply_reward(self, user_id: int, reward_id: int) -> tuple[bool, str]:
         """
         Apply a pending reward to user's account.
+        NEW BILLING MODEL: Rewards add invoices to balance instead of subscription time.
         Returns (success, message).
         """
         reward = self.db.execute(
@@ -297,27 +298,22 @@ class ReferralService:
             self.db.commit()
             return False, "Reward has expired"
 
-        # Apply the reward - extend subscription by 1 month
+        # Get user
         user = self.db.execute(
             select(User).where(User.id == user_id)
         ).scalar_one()
 
         now = dt.datetime.now(dt.timezone.utc)
 
-        # Determine new subscription end date
-        if user.subscription_expires_at and user.subscription_expires_at > now:
-            # Extend existing subscription
-            new_expiry = user.subscription_expires_at + dt.timedelta(days=30)
+        # NEW BILLING MODEL: Add invoices to balance instead of subscription time
+        invoices_to_add = REFERRAL_THRESHOLDS["free_signup"].get("invoices_reward", 100)
+        old_balance = getattr(user, 'invoice_balance', 5)
+        
+        if hasattr(user, 'invoice_balance'):
+            user.invoice_balance += invoices_to_add
+            new_balance = user.invoice_balance
         else:
-            # Start new subscription period
-            new_expiry = now + dt.timedelta(days=30)
-            user.subscription_started_at = now
-
-        # Upgrade to starter if on free plan
-        if user.plan == SubscriptionPlan.FREE:
-            user.plan = SubscriptionPlan.STARTER
-
-        user.subscription_expires_at = new_expiry
+            new_balance = old_balance + invoices_to_add
 
         # Mark reward as applied
         reward.status = RewardStatus.APPLIED
@@ -326,11 +322,11 @@ class ReferralService:
         self.db.commit()
 
         logger.info(
-            f"Applied reward {reward_id} for user {user_id}: "
-            f"subscription extended to {new_expiry}"
+            f"Applied referral reward {reward_id} for user {user_id}: "
+            f"+{invoices_to_add} invoices (balance: {old_balance} → {new_balance})"
         )
 
-        return True, f"Reward applied! Your Starter plan is now active until {new_expiry.strftime('%B %d, %Y')}"
+        return True, f"Reward applied! You received {invoices_to_add} free invoices. Your new balance is {new_balance} invoices."
 
     # ==================== STATISTICS ====================
 
