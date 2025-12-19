@@ -43,6 +43,10 @@ def get_profile(
 
     # If pilot encryption stored encrypted email, attempt decrypt
     email_plain = decrypt_value(user.email) if user.email else None
+    
+    # Safely get invoice_balance (may not exist if migration hasn't run)
+    invoice_balance = getattr(user, 'invoice_balance', 5)  # Default 5 for FREE users
+    
     return schemas.UserOut(
         id=user.id,
         phone=user.phone,
@@ -50,7 +54,7 @@ def get_profile(
         email=email_plain,
         name=user.name,
         plan=user.plan.value,
-        invoice_balance=user.invoice_balance,  # New billing model: available invoices
+        invoice_balance=invoice_balance,  # New billing model: available invoices
         invoices_this_month=monthly_invoice_count,  # Deprecated, kept for backward compat
         logo_url=user.logo_url,
         subscription_expires_at=user.subscription_expires_at,

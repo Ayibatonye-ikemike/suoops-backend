@@ -132,7 +132,7 @@ class InvoiceCreationMixin:
             self.db.refresh(user)
             logger.info(
                 "Revenue invoice - remaining balance: %d",
-                user.invoice_balance,
+                getattr(user, 'invoice_balance', 0),
             )
             metrics.invoice_created()
 

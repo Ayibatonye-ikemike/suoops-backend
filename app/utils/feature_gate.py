@@ -78,7 +78,7 @@ class FeatureGate:
             self.db.commit()
             logger.info(
                 "Subscription expired for user %s: downgraded from %s to STARTER (invoice balance: %d)",
-                user.id, old_plan, user.invoice_balance
+                user.id, old_plan, getattr(user, 'invoice_balance', 0)
             )
     
     def is_free_tier(self) -> bool:
@@ -89,9 +89,18 @@ class FeatureGate:
         """Check if user has any paid subscription (not FREE)."""
         return self.user.plan != models.SubscriptionPlan.FREE
     
+    def _get_invoice_balance_safe(self) -> int:
+        """Safely get invoice_balance, defaulting to 5 if column doesn't exist yet."""
+        return getattr(self.user, 'invoice_balance', 5)
+    
+    def _set_invoice_balance_safe(self, value: int) -> None:
+        """Safely set invoice_balance if column exists."""
+        if hasattr(self.user, 'invoice_balance'):
+            self.user.invoice_balance = value
+    
     def get_invoice_balance(self) -> int:
         """Get user's current invoice balance."""
-        return self.user.invoice_balance
+        return self._get_invoice_balance_safe()
     
     def can_create_invoice(self) -> tuple[bool, str | None]:
         """
@@ -103,7 +112,7 @@ class FeatureGate:
         Returns:
             (can_create: bool, error_message: str | None)
         """
-        balance = self.user.invoice_balance
+        balance = self._get_invoice_balance_safe()
         
         if balance <= 0:
             return False, (
@@ -119,12 +128,13 @@ class FeatureGate:
         
         Should be called after successfully creating a revenue invoice.
         """
-        if self.user.invoice_balance > 0:
-            self.user.invoice_balance -= 1
+        balance = self._get_invoice_balance_safe()
+        if balance > 0:
+            self._set_invoice_balance_safe(balance - 1)
             self.db.commit()
             logger.info(
                 "Deducted 1 invoice from user %s balance (remaining: %d)",
-                self.user_id, self.user.invoice_balance
+                self.user_id, self._get_invoice_balance_safe()
             )
     
     def add_invoice_pack(self, quantity: int = 1) -> int:
@@ -138,13 +148,15 @@ class FeatureGate:
             New invoice balance
         """
         invoices_to_add = INVOICE_PACK_SIZE * quantity
-        self.user.invoice_balance += invoices_to_add
+        current_balance = self._get_invoice_balance_safe()
+        self._set_invoice_balance_safe(current_balance + invoices_to_add)
         self.db.commit()
+        new_balance = self._get_invoice_balance_safe()
         logger.info(
             "Added %d invoices (%d packs) to user %s balance (new balance: %d)",
-            invoices_to_add, quantity, self.user_id, self.user.invoice_balance
+            invoices_to_add, quantity, self.user_id, new_balance
         )
-        return self.user.invoice_balance
+        return new_balance
     
     def require_paid_plan(self, feature_name: str = "This feature") -> None:
         """
@@ -183,7 +195,7 @@ class FeatureGate:
                 detail={
                     "error": "invoice_balance_exhausted",
                     "message": error_msg,
-                    "invoice_balance": self.user.invoice_balance,
+                    "invoice_balance": self._get_invoice_balance_safe(),
                     "pack_price": INVOICE_PACK_PRICE,
                     "pack_size": INVOICE_PACK_SIZE,
                     "current_plan": self.user.plan.value,

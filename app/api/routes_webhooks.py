@@ -100,16 +100,16 @@ def _handle_paystack_subscription(payload: dict, db: Session, signature: str | N
         return {"status": "error", "message": "Invalid plan"}
 
     old_plan = user.plan.value
-    old_balance = user.invoice_balance
+    old_balance = getattr(user, 'invoice_balance', 5)
     user.plan = new_plan
     
     # Pro and Business plans include 100 invoices with subscription
     invoices_added = new_plan.invoices_included
-    if invoices_added > 0:
+    if invoices_added > 0 and hasattr(user, 'invoice_balance'):
         user.invoice_balance += invoices_added
         logger.info(
             "Adding %d invoices to user %s balance (now %d)",
-            invoices_added, user_id, user.invoice_balance
+            invoices_added, user_id, getattr(user, 'invoice_balance', 0)
         )
     
     db.commit()
@@ -128,7 +128,7 @@ def _handle_paystack_subscription(payload: dict, db: Session, signature: str | N
         "old_plan": old_plan,
         "new_plan": new_plan.value,
         "invoices_added": invoices_added,
-        "invoice_balance": user.invoice_balance,
+        "invoice_balance": getattr(user, 'invoice_balance', old_balance),
         "reference": reference,
     }
 
@@ -166,9 +166,10 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
         db.commit()
         return {"status": "error", "message": "User not found"}
 
-    # Add invoices to balance
-    old_balance = user.invoice_balance
-    user.invoice_balance += invoices_to_add
+    # Add invoices to balance (with safe access)
+    old_balance = getattr(user, 'invoice_balance', 5)
+    if hasattr(user, 'invoice_balance'):
+        user.invoice_balance += invoices_to_add
     
     # Update payment transaction if exists
     from app.models.payment_models import PaymentTransaction, PaymentStatus
@@ -182,19 +183,20 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
     
     db.commit()
 
+    new_balance = getattr(user, 'invoice_balance', old_balance + invoices_to_add)
     logger.info(
         "✅ Invoice pack purchased: user %s added %d invoices (balance: %d → %d) ref: %s",
         user_id,
         invoices_to_add,
         old_balance,
-        user.invoice_balance,
+        new_balance,
         reference,
     )
 
     return {
         "status": "success",
         "invoices_added": invoices_to_add,
-        "new_balance": user.invoice_balance,
+        "new_balance": new_balance,
         "reference": reference,
     }
 

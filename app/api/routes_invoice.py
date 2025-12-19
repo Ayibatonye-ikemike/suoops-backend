@@ -176,7 +176,7 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
     
     gate = FeatureGate(db, data_owner_id)
     plan = gate.user.plan
-    invoice_balance = gate.user.invoice_balance
+    invoice_balance = gate.get_invoice_balance()  # Safe access
     can_create, _ = gate.can_create_invoice()
     purchase_url = "/invoices/purchase-pack" if not can_create else None
     

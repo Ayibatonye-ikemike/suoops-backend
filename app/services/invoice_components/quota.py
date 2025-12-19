@@ -26,6 +26,10 @@ class InvoiceQuotaMixin:
     """Provides invoice balance utilities for invoice flows."""
 
     db: "Session"
+    
+    def _get_invoice_balance_safe(self, user) -> int:
+        """Safely get invoice_balance, defaulting to 5 if column doesn't exist yet."""
+        return getattr(user, 'invoice_balance', 5)
 
     def check_invoice_quota(self, issuer_id: int) -> dict[str, object]:
         """Check user's invoice balance and return quota info."""
@@ -33,7 +37,7 @@ class InvoiceQuotaMixin:
         if not user:
             raise UserNotFoundError()
 
-        balance = user.invoice_balance
+        balance = self._get_invoice_balance_safe(user)
 
         if balance <= 0:
             return {
@@ -74,10 +78,10 @@ class InvoiceQuotaMixin:
     def deduct_invoice_balance(self, issuer_id: int) -> None:
         """Deduct one invoice from user's balance after creating revenue invoice."""
         user = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
-        if user and user.invoice_balance > 0:
+        if user and hasattr(user, 'invoice_balance') and user.invoice_balance > 0:
             user.invoice_balance -= 1
             self.db.commit()
             logger.info(
                 "Deducted 1 invoice from user %s balance (remaining: %d)",
-                issuer_id, user.invoice_balance
+                issuer_id, self._get_invoice_balance_safe(user)
             )
