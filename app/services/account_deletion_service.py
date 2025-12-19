@@ -15,6 +15,8 @@ from sqlalchemy import delete, select
 
 from app.models.models import User, Invoice, InvoiceLine, Customer
 from app.models.referral_models import ReferralCode, Referral, ReferralReward
+from app.models.team_models import Team, TeamMember, TeamInvitation
+from app.models.expense import Expense
 from app.core.audit import log_audit_event
 
 logger = logging.getLogger(__name__)
@@ -77,22 +79,23 @@ class AccountDeletionService:
             deletion_summary["deleted_items"]["invoices"] = invoices_deleted
             
             # 3. Delete referral-related data
-            # Get referral code ID
-            referral_code = self.db.query(ReferralCode).filter(ReferralCode.user_id == user_id).first()
-            if referral_code:
-                # Delete referrals where user is referrer
-                referrals_as_referrer = self.db.execute(
-                    delete(Referral).where(Referral.referrer_id == user_id)
-                ).rowcount
-                deletion_summary["deleted_items"]["referrals_given"] = referrals_as_referrer
-                
-                # Delete referrals where user was referred
-                referrals_as_referred = self.db.execute(
-                    delete(Referral).where(Referral.referred_id == user_id)
-                ).rowcount
-                deletion_summary["deleted_items"]["referrals_received"] = referrals_as_referred
-                
-                # Referral code will be cascade deleted with user
+            # Delete referrals where user is referrer (regardless of whether they have a referral code)
+            referrals_as_referrer = self.db.execute(
+                delete(Referral).where(Referral.referrer_id == user_id)
+            ).rowcount
+            deletion_summary["deleted_items"]["referrals_given"] = referrals_as_referrer
+            
+            # Delete referrals where user was referred
+            referrals_as_referred = self.db.execute(
+                delete(Referral).where(Referral.referred_id == user_id)
+            ).rowcount
+            deletion_summary["deleted_items"]["referrals_received"] = referrals_as_referred
+            
+            # Delete referral code explicitly (foreign key constraint)
+            referral_codes_deleted = self.db.execute(
+                delete(ReferralCode).where(ReferralCode.user_id == user_id)
+            ).rowcount
+            deletion_summary["deleted_items"]["referral_codes"] = referral_codes_deleted
             
             # 4. Delete referral rewards (cascade should handle, but explicit for safety)
             rewards_deleted = self.db.execute(
@@ -100,15 +103,37 @@ class AccountDeletionService:
             ).rowcount
             deletion_summary["deleted_items"]["referral_rewards"] = rewards_deleted
             
-            # 5. The following are cascade deleted via User relationships:
+            # 5. Delete team-related data
+            # First delete team memberships where user is a member
+            team_memberships_deleted = self.db.execute(
+                delete(TeamMember).where(TeamMember.user_id == user_id)
+            ).rowcount
+            deletion_summary["deleted_items"]["team_memberships"] = team_memberships_deleted
+            
+            # Delete teams owned by user (cascade will handle members and invitations)
+            teams_deleted = self.db.execute(
+                delete(Team).where(Team.admin_user_id == user_id)
+            ).rowcount
+            deletion_summary["deleted_items"]["teams_owned"] = teams_deleted
+            
+            # 6. Delete expenses (legacy table, explicit for safety)
+            try:
+                expenses_deleted = self.db.execute(
+                    delete(Expense).where(Expense.user_id == user_id)
+                ).rowcount
+                deletion_summary["deleted_items"]["expenses"] = expenses_deleted
+            except Exception as e:
+                # Expense table might not exist in some environments
+                logger.debug(f"Expense table deletion skipped: {e}")
+            
+            # 7. The following are cascade deleted via User relationships:
             # - OAuth tokens
             # - Payment transactions
             # - Products, categories, stock movements
             # - Suppliers, purchase orders
             # - Tax profile, VAT returns
-            # - Referral code
             
-            # 6. Delete the user (cascades remaining relationships)
+            # 8. Delete the user (cascades remaining relationships)
             self.db.delete(user)
             self.db.commit()
             
