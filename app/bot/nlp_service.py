@@ -173,13 +173,11 @@ class NLPService:
         
         Supported formats:
             Single item:
-                "invoice Joy 12000 for wigs"
-                "invoice 07065730703 12000 wigs"
+                "invoice Joy 08012345678, 12000 wig"
             
-            Multiple items (comma or space separated):
-                "invoice 07065730703 wig 1000, shoe 3000"
-                "invoice 07065730703 wig 1000 shoe 3000 bag 5000"
-                "invoice Joy 07065730703 wigs 12000, shoes 5000"
+            Multiple items (comma separated, amount before item):
+                "invoice Joy 08012345678, 2000 boxers, 5000 hair"
+                "invoice Joy 08012345678, 1000 wig, 2000 shoe, 4000 belt"
         """
         tokens = text.split()
         name = tokens[1] if len(tokens) > 1 else "Customer"

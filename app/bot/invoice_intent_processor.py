@@ -24,7 +24,8 @@ class InvoiceIntentProcessor:
             self.client.send_text(
                 sender,
                 "Sorry, I didn't understand. Try:\n"
-                "• Text: \"Invoice Joy 12000 for wigs due tomorrow\"\n"
+                "• Single item: \"Invoice Joy 08012345678, 12000 wig\"\n"
+                "• Multiple items: \"Invoice Joy 08012345678, 2000 boxers, 5000 hair\"\n"
                 "• Voice: Send a voice note with invoice details",
             )
             return
@@ -35,7 +36,7 @@ class InvoiceIntentProcessor:
             self.client.send_text(
                 sender,
                 "⚠️ Please include the customer's phone number in your message.\n\n"
-                "Example: Invoice Jane +2348087654321 50000 for logo design",
+                "Example: Invoice Joy 08012345678, 2000 boxers, 5000 hair",
             )
             return
 
