@@ -42,33 +42,44 @@ def utcnow() -> dt.datetime:
 
 
 class SubscriptionPlan(str, enum.Enum):
-    """Subscription tiers with invoice limits."""
+    """Subscription tiers for feature access.
+    
+    NEW BILLING MODEL:
+    - Invoice Packs: 100 invoices for ₦2,500 (one-time, doesn't expire)
+    - FREE: 5 free invoices, then must purchase packs
+    - STARTER: No monthly fee - just purchase invoice packs as needed
+    - PRO: ₦8,000/month for premium features (invoices purchased separately)
+    - BUSINESS: ₦16,000/month for all features (invoices purchased separately)
+    """
     FREE = "free"
     STARTER = "starter"
     PRO = "pro"
     BUSINESS = "business"
 
     @property
-    def invoice_limit(self) -> int:
-        """Monthly invoice limit for each plan."""
-        limits = {
-            SubscriptionPlan.FREE: 5,
-            SubscriptionPlan.STARTER: 100,
-            SubscriptionPlan.PRO: 200,
-            SubscriptionPlan.BUSINESS: 300,
-        }
-        return limits[self]
-
-    @property
-    def price(self) -> int:
-        """Monthly price in Naira."""
+    def monthly_price(self) -> int:
+        """Monthly subscription price in Naira (for features, not invoices).
+        
+        Starter has no monthly fee - users just buy invoice packs.
+        Pro/Business pay monthly for premium features.
+        """
         prices = {
             SubscriptionPlan.FREE: 0,
-            SubscriptionPlan.STARTER: 4500,
+            SubscriptionPlan.STARTER: 0,  # No monthly fee, pay per invoice pack
             SubscriptionPlan.PRO: 8000,
             SubscriptionPlan.BUSINESS: 16000,
         }
         return prices[self]
+    
+    @property
+    def price(self) -> int:
+        """Alias for monthly_price for backward compatibility."""
+        return self.monthly_price
+
+    @property
+    def has_monthly_subscription(self) -> bool:
+        """Check if plan requires monthly subscription payment."""
+        return self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS)
     
     @property
     def has_premium_features(self) -> bool:
@@ -80,14 +91,16 @@ class SubscriptionPlan(str, enum.Enum):
         """
         Get feature access for this plan.
         
-        Feature gates:
-        - FREE: Manual invoices only (5/month)
-        - STARTER: + Tax reports & automation
-        - PRO: + Custom logo branding + Priority support + Inventory + Team Management
-        - BUSINESS: + Voice invoices (15/mo) + Photo OCR (15/mo) + API access
+        NEW BILLING MODEL:
+        - All plans use invoice packs (100 invoices = ₦2,500)
+        - FREE: 5 free invoices to start, basic features
+        - STARTER: Tax reports & automation (no monthly fee, just buy invoice packs)
+        - PRO: + Custom branding + Inventory + Team Management (₦8,000/month for features)
+        - BUSINESS: + Voice invoices + Photo OCR + API access (₦16,000/month for features)
         """
         return {
-            "invoices_per_month": self.invoice_limit,
+            "invoice_pack_price": 2500,  # ₦2,500 per 100 invoices
+            "invoice_pack_size": 100,  # 100 invoices per pack
             "whatsapp_bot": True,  # Available to all
             "email_notifications": True,  # Available to all
             "pdf_generation": True,  # Available to all
@@ -234,6 +247,10 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    # Invoice balance: purchased invoices available to use (100 invoices = ₦2,500 pack)
+    # Decremented when creating revenue invoices. Users buy packs to replenish.
+    invoice_balance: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    # Legacy field - kept for backward compatibility, will be deprecated
     # Track monthly invoice usage (resets based on subscription start, not calendar month)
     invoices_this_month: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Track when usage was last reset (for billing cycle)

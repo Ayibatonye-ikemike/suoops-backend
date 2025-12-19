@@ -119,6 +119,72 @@ def _handle_paystack_subscription(payload: dict, db: Session, signature: str | N
     }
 
 
+def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | None) -> dict:
+    """Handle invoice pack purchase payment confirmation."""
+    event_type = (payload.get("event") or "").lower()
+    data = payload.get("data") or {}
+    reference = data.get("reference")
+
+    if not reference or not reference.startswith("INVPACK-"):
+        return {"status": "ignored", "reason": "not invoice pack"}
+
+    duplicate = _record_webhook(db, "paystack:invoice_pack", reference, signature)
+    if duplicate:
+        logger.info("Paystack invoice pack webhook duplicate for %s", reference)
+        return {"status": "duplicate", "reference": reference}
+
+    if event_type != "charge.success":
+        db.commit()
+        return {"status": "ignored", "event": event_type}
+
+    metadata = data.get("metadata") or {}
+    user_id = metadata.get("user_id")
+    invoices_to_add = metadata.get("invoices_to_add", 100)
+
+    if not user_id:
+        logger.error("Paystack invoice pack webhook missing user_id: %s", metadata)
+        db.commit()
+        return {"status": "error", "message": "Missing user_id"}
+
+    user = db.query(models.User).filter(models.User.id == user_id).one_or_none()
+    if not user:
+        logger.error("Paystack invoice pack webhook user %s not found", user_id)
+        db.commit()
+        return {"status": "error", "message": "User not found"}
+
+    # Add invoices to balance
+    old_balance = user.invoice_balance
+    user.invoice_balance += invoices_to_add
+    
+    # Update payment transaction if exists
+    from app.models.payment_models import PaymentTransaction, PaymentStatus
+    transaction = (
+        db.query(PaymentTransaction)
+        .filter(PaymentTransaction.reference == reference)
+        .one_or_none()
+    )
+    if transaction:
+        transaction.status = PaymentStatus.SUCCESS
+    
+    db.commit()
+
+    logger.info(
+        "✅ Invoice pack purchased: user %s added %d invoices (balance: %d → %d) ref: %s",
+        user_id,
+        invoices_to_add,
+        old_balance,
+        user.invoice_balance,
+        reference,
+    )
+
+    return {
+        "status": "success",
+        "invoices_added": invoices_to_add,
+        "new_balance": user.invoice_balance,
+        "reference": reference,
+    }
+
+
 @router.post("/paystack")
 @limiter.limit(RATE_LIMITS["webhook_paystack"])
 async def paystack_webhook(
@@ -152,4 +218,11 @@ async def paystack_webhook(
         logger.info("Paystack webhook without event payload received; ignoring")
         return {"status": "ignored", "reason": "missing event"}
 
-    return _handle_paystack_subscription(payload, db, signature)
+    # Check reference to determine payment type
+    data = payload.get("data") or {}
+    reference = data.get("reference") or ""
+    
+    if reference.startswith("INVPACK-"):
+        return _handle_paystack_invoice_pack(payload, db, signature)
+    else:
+        return _handle_paystack_subscription(payload, db, signature)

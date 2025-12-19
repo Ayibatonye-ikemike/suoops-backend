@@ -105,8 +105,9 @@ class InvoiceCreationMixin:
         else:
             invoice.pdf_url = self._generate_pdf(invoice, invoice_type, user)
 
+        # Deduct from invoice_balance for revenue invoices (new billing model)
         if invoice_type == "revenue":
-            user.invoices_this_month += 1
+            self.deduct_invoice_balance(issuer_id)
 
         self.db.commit()
         self.db.refresh(invoice)
@@ -127,10 +128,11 @@ class InvoiceCreationMixin:
             issuer_id,
         )
         if invoice_type == "revenue":
+            # Refresh user to get updated balance
+            self.db.refresh(user)
             logger.info(
-                "Revenue invoice usage: %s/%s",
-                user.invoices_this_month,
-                user.plan.invoice_limit or "unlimited",
+                "Revenue invoice - remaining balance: %d",
+                user.invoice_balance,
             )
             metrics.invoice_created()
 

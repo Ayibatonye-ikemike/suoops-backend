@@ -82,7 +82,11 @@ class InvoiceNotFoundError(InvoiceError):
 
 
 class InvoiceLimitExceededError(InvoiceError):
-    """User has exceeded their monthly invoice quota."""
+    """DEPRECATED: User has exceeded their monthly invoice quota.
+    
+    This error is kept for backward compatibility.
+    New code should use InvoiceBalanceExhaustedError instead.
+    """
     
     def __init__(self, plan: str, limit: int, used: int):
         message = (
@@ -96,6 +100,27 @@ class InvoiceLimitExceededError(InvoiceError):
             code="INV002",
             status_code=403,
             details={"plan": plan, "limit": limit, "used": used},
+        )
+
+
+class InvoiceBalanceExhaustedError(InvoiceError):
+    """User has no invoice balance remaining - needs to purchase a pack."""
+    
+    def __init__(self, balance: int, pack_price: int, pack_size: int):
+        message = (
+            f"Your invoice balance is exhausted! "
+            f"Purchase an invoice pack (₦{pack_price:,} for {pack_size} invoices) to continue."
+        )
+        super().__init__(
+            message=message,
+            code="INV005",
+            status_code=403,
+            details={
+                "invoice_balance": balance,
+                "pack_price": pack_price,
+                "pack_size": pack_size,
+                "purchase_url": "/invoices/purchase-pack",
+            },
         )
 
 

@@ -161,15 +161,27 @@ class InvoiceVerificationOut(BaseModel):
 
 
 class InvoiceQuotaOut(BaseModel):
-    """Invoice quota information for the authenticated user."""
-    current_count: int = Field(description="Number of invoices created this month")
-    limit: int | None = Field(description="Monthly invoice limit (None means unlimited)")
+    """Invoice quota information for the authenticated user.
+    
+    NEW BILLING MODEL: Uses invoice_balance (purchased invoices) instead of monthly limits.
+    """
+    invoice_balance: int = Field(description="Remaining invoices available to create")
     current_plan: str = Field(description="Current subscription plan code")
-    can_create: bool = Field(description="Whether user can still create invoices this month")
-    upgrade_url: str | None = Field(default=None, description="URL to upgrade subscription plan")
+    can_create: bool = Field(description="Whether user has invoice balance to create invoices")
+    pack_price: int = Field(default=2500, description="Price for an invoice pack in Naira")
+    pack_size: int = Field(default=100, description="Number of invoices per pack")
+    purchase_url: str | None = Field(default=None, description="URL to purchase more invoice packs")
 
 
 class ReceiptUploadOut(BaseModel):
     """Response after successfully uploading an expense receipt."""
     receipt_url: str = Field(description="S3 URL of the uploaded receipt")
     filename: str = Field(description="Original filename of the uploaded receipt")
+
+
+class InvoicePackPurchaseInitOut(BaseModel):
+    """Response after initializing invoice pack purchase payment."""
+    authorization_url: str = Field(description="Paystack checkout URL for payment")
+    reference: str = Field(description="Payment reference for tracking")
+    amount: int = Field(description="Total amount in Naira")
+    invoices_to_add: int = Field(description="Number of invoices that will be added after payment")

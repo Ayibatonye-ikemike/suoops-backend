@@ -1,12 +1,20 @@
-"""Quota/plan helpers extracted from InvoiceService."""
+"""Quota/plan helpers extracted from InvoiceService.
+
+NEW BILLING MODEL:
+- Invoice balance based (not monthly limits)
+- 100 invoices = ₦2,500 per pack
+- All plans can purchase packs
+- Balance is decremented on revenue invoice creation
+"""
 from __future__ import annotations
 
 import datetime as dt
 import logging
 from typing import TYPE_CHECKING
 
-from app.core.exceptions import InvoiceLimitExceededError, UserNotFoundError
+from app.core.exceptions import InvoiceBalanceExhaustedError, UserNotFoundError
 from app.models import models
+from app.utils.feature_gate import INVOICE_PACK_PRICE, INVOICE_PACK_SIZE
 
 if TYPE_CHECKING:  # pragma: no cover
     from sqlalchemy.orm import Session
@@ -15,69 +23,61 @@ logger = logging.getLogger(__name__)
 
 
 class InvoiceQuotaMixin:
-    """Provides plan/quota related utilities for invoice flows."""
+    """Provides invoice balance utilities for invoice flows."""
 
     db: "Session"
 
     def check_invoice_quota(self, issuer_id: int) -> dict[str, object]:
+        """Check user's invoice balance and return quota info."""
         user = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
         if not user:
             raise UserNotFoundError()
 
-        self._reset_usage_if_needed(user)
-        plan_limit = user.plan.invoice_limit
+        balance = user.invoice_balance
 
-        if user.invoices_this_month >= plan_limit:
-            upgrade_message = self._get_upgrade_message(user.plan)
+        if balance <= 0:
             return {
                 "can_create": False,
                 "plan": user.plan.value,
-                "used": user.invoices_this_month,
-                "limit": plan_limit,
-                "message": upgrade_message,
+                "invoice_balance": 0,
+                "pack_price": INVOICE_PACK_PRICE,
+                "pack_size": INVOICE_PACK_SIZE,
+                "message": f"No invoices remaining. Purchase a pack (₦{INVOICE_PACK_PRICE:,} for {INVOICE_PACK_SIZE} invoices).",
             }
 
-        remaining = plan_limit - user.invoices_this_month
-        message = f"{remaining} invoices remaining this month"
-        if remaining <= 5:
-            upgrade_message = self._get_upgrade_message(user.plan)
-            message = f"⚠️ Only {remaining} invoices left! {upgrade_message}"
+        message = f"{balance} invoices remaining"
+        if balance <= 10:
+            message = f"⚠️ Only {balance} invoices left! Purchase a pack to top up."
 
         return {
             "can_create": True,
             "plan": user.plan.value,
-            "used": user.invoices_this_month,
-            "limit": plan_limit,
+            "invoice_balance": balance,
+            "pack_price": INVOICE_PACK_PRICE,
+            "pack_size": INVOICE_PACK_SIZE,
             "message": message,
         }
 
     def enforce_quota(self, issuer_id: int, invoice_type: str) -> None:
-        """Raise if the issuer cannot create more invoices."""
+        """Raise if the issuer has no invoice balance (revenue invoices only)."""
         if invoice_type != "revenue":
-            return
+            return  # Expense invoices don't consume balance
+        
         quota = self.check_invoice_quota(issuer_id)
         if not quota["can_create"]:
-            raise InvoiceLimitExceededError(
-                plan=quota["plan"],
-                limit=quota["limit"],
-                used=quota["used"],
+            raise InvoiceBalanceExhaustedError(
+                balance=quota["invoice_balance"],
+                pack_price=INVOICE_PACK_PRICE,
+                pack_size=INVOICE_PACK_SIZE,
             )
-
-    def _reset_usage_if_needed(self, user: models.User) -> None:
-        now = dt.datetime.now(dt.timezone.utc)
-        last_reset = user.usage_reset_at.replace(tzinfo=dt.timezone.utc)
-        if now.year > last_reset.year or (now.year == last_reset.year and now.month > last_reset.month):
-            user.invoices_this_month = 0
-            user.usage_reset_at = now
+    
+    def deduct_invoice_balance(self, issuer_id: int) -> None:
+        """Deduct one invoice from user's balance after creating revenue invoice."""
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
+        if user and user.invoice_balance > 0:
+            user.invoice_balance -= 1
             self.db.commit()
-            logger.info("Reset invoice usage for user %s (new month)", user.id)
-
-    @staticmethod
-    def _get_upgrade_message(current_plan: models.SubscriptionPlan) -> str:
-        messages = {
-            models.SubscriptionPlan.FREE: "Upgrade to Starter (₦4,500/month) for 100 invoices!",
-            models.SubscriptionPlan.STARTER: "Upgrade to Pro (₦8,000/month) for 200 invoices!",
-            models.SubscriptionPlan.PRO: "Upgrade to Business (₦16,000/month) for 300 invoices!",
-            models.SubscriptionPlan.BUSINESS: "You're on the highest plan with 300 invoices/month.",
-        }
-        return messages.get(current_plan, "Upgrade to increase your invoice limit!")
+            logger.info(
+                "Deducted 1 invoice from user %s balance (remaining: %d)",
+                issuer_id, user.invoice_balance
+            )

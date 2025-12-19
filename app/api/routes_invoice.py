@@ -167,23 +167,26 @@ async def upload_expense_receipt(
 
 @router.get("/quota", response_model=schemas.InvoiceQuotaOut)
 def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerDep, db: DbDep):
-    """Return current monthly invoice usage and limit for the data owner.
+    """Return current invoice balance for the data owner.
 
-    Enables frontend preflight checks to disable creation when limit reached.
+    NEW MODEL: Returns invoice_balance (purchased invoices remaining) instead of monthly limits.
     For team members, this returns the team admin's quota.
     """
+    from app.utils.feature_gate import INVOICE_PACK_PRICE, INVOICE_PACK_SIZE
+    
     gate = FeatureGate(db, data_owner_id)
-    current_count = gate.get_monthly_invoice_count()
     plan = gate.user.plan
-    limit = plan.invoice_limit  # None means unlimited
+    invoice_balance = gate.user.invoice_balance
     can_create, _ = gate.can_create_invoice()
-    upgrade_url = "/subscription/initialize" if not can_create else None
+    purchase_url = "/invoices/purchase-pack" if not can_create else None
+    
     return schemas.InvoiceQuotaOut(
-        current_count=current_count,
-        limit=limit,
+        invoice_balance=invoice_balance,
         current_plan=plan.value,
         can_create=can_create,
-        upgrade_url=upgrade_url,
+        pack_price=INVOICE_PACK_PRICE,
+        pack_size=INVOICE_PACK_SIZE,
+        purchase_url=purchase_url,
     )
 
 
@@ -322,3 +325,115 @@ def verify_invoice(invoice_id: str, db: DbDep):
         verified_at=datetime.now(timezone.utc),
         authentic=True,
     )
+
+
+@router.post("/purchase-pack", response_model=schemas.InvoicePackPurchaseInitOut)
+async def initialize_invoice_pack_purchase(
+    current_user_id: CurrentUserDep,
+    db: DbDep,
+    quantity: int = 1,
+):
+    """
+    Initialize Paystack payment for invoice pack purchase.
+    
+    NEW BILLING MODEL:
+    - 100 invoices = ₦2,500 per pack
+    - Available to all plans (FREE, STARTER, PRO, BUSINESS)
+    - Invoice balance never expires
+    
+    **Parameters:**
+    - quantity: Number of packs to purchase (default 1)
+    
+    **Returns:**
+    - authorization_url: Paystack checkout URL
+    - reference: Payment reference for tracking
+    - amount: Amount in kobo (₦ x 100)
+    - invoices_to_add: Number of invoices that will be added
+    """
+    import httpx
+    import uuid
+    from app.core.config import settings
+    from app.models.payment_models import PaymentTransaction, PaymentStatus, PaymentProvider
+    from app.utils.feature_gate import INVOICE_PACK_PRICE, INVOICE_PACK_SIZE
+    from app import metrics
+    
+    if quantity < 1 or quantity > 10:
+        raise HTTPException(status_code=400, detail="Quantity must be between 1 and 10 packs")
+    
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Calculate total
+    total_amount = INVOICE_PACK_PRICE * quantity
+    invoices_to_add = INVOICE_PACK_SIZE * quantity
+    
+    # Generate unique reference
+    reference = f"INVPACK-{current_user_id}-{uuid.uuid4().hex[:8].upper()}"
+    
+    # Record transaction
+    transaction = PaymentTransaction(
+        user_id=current_user_id,
+        reference=reference,
+        amount=total_amount,
+        provider=PaymentProvider.PAYSTACK,
+        status=PaymentStatus.PENDING,
+        payment_type="invoice_pack",
+        metadata={"quantity": quantity, "invoices_to_add": invoices_to_add},
+    )
+    db.add(transaction)
+    db.commit()
+    
+    # Initialize Paystack payment
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.paystack.co/transaction/initialize",
+                headers={
+                    "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "email": user.email or f"{user.phone}@suoops.com",
+                    "amount": total_amount * 100,  # Paystack expects kobo
+                    "reference": reference,
+                    "callback_url": f"{settings.FRONTEND_URL}/dashboard/invoices?payment=success",
+                    "metadata": {
+                        "payment_type": "invoice_pack",
+                        "user_id": current_user_id,
+                        "quantity": quantity,
+                        "invoices_to_add": invoices_to_add,
+                    },
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError as e:
+        logger.error(f"Paystack API error: {e}")
+        transaction.status = PaymentStatus.FAILED
+        db.commit()
+        raise HTTPException(status_code=502, detail="Payment gateway error. Please try again.")
+    
+    if not data.get("status"):
+        transaction.status = PaymentStatus.FAILED
+        db.commit()
+        raise HTTPException(status_code=502, detail=data.get("message", "Payment initialization failed"))
+    
+    auth_url = data["data"]["authorization_url"]
+    
+    metrics.payment_initiated("invoice_pack", total_amount)
+    logger.info(
+        "Invoice pack payment initialized | user=%s quantity=%d invoices=%d amount=%d ref=%s",
+        current_user_id, quantity, invoices_to_add, total_amount, reference
+    )
+    
+    return schemas.InvoicePackPurchaseInitOut(
+        authorization_url=auth_url,
+        reference=reference,
+        amount=total_amount,
+        invoices_to_add=invoices_to_add,
+    )
+
+
+# Import models at module level for the new endpoint
+from app.models import models

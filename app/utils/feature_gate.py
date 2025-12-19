@@ -1,11 +1,15 @@
 """
 Feature gating utilities for subscription-based access control.
 
-Tier structure:
-- Free: 5 invoices/month, manual only
-- Starter (₦4,500): 100 invoices/month + tax reports
-- Pro (₦8,000): 200 invoices/month + custom branding + inventory
-- Business (₦16,000): 300 invoices/month + voice (15 max) + OCR (15 max)
+NEW BILLING MODEL:
+- Invoice Packs: 100 invoices for ₦2,500 (one-time purchase, never expires)
+- FREE: 5 free invoices to start, then purchase packs
+- STARTER: No monthly fee, just buy invoice packs + tax features
+- PRO (₦8,000/mo): Premium features (branding, inventory, team) + buy invoice packs
+- BUSINESS (₦16,000/mo): All features (voice, OCR, API) + buy invoice packs
+
+Invoice balance is decremented per use. All plans can purchase more packs.
+Pro/Business users keep features even when invoices are exhausted.
 """
 import datetime as dt
 import logging
@@ -18,9 +22,13 @@ from app.models import models
 
 logger = logging.getLogger(__name__)
 
+# Invoice pack pricing
+INVOICE_PACK_SIZE = 100
+INVOICE_PACK_PRICE = 2500  # ₦2,500
+
 
 class FeatureGate:
-    """Check if user has access to premium features based on their subscription plan."""
+    """Check if user has access to features and invoice balance."""
     
     def __init__(self, db: Session, user_id: int):
         self.db = db
@@ -34,74 +42,43 @@ class FeatureGate:
             self._user = self.db.query(models.User).filter(models.User.id == self.user_id).first()
             if not self._user:
                 raise HTTPException(status_code=404, detail="User not found")
-            # Check if paid subscription has expired
+            # Check if paid subscription (Pro/Business) has expired
             self._check_subscription_expiry()
         return self._user
     
     def _check_subscription_expiry(self) -> None:
         """
-        Check if user's paid subscription has expired and downgrade to FREE if so.
-        Also resets free tier usage every 30 days.
+        Check if user's Pro/Business subscription has expired.
         
-        This ensures users are automatically returned to FREE tier when their
-        subscription period ends, and free users get their invoice count reset
-        every 30 days from their usage_reset_at date.
+        When expired:
+        - Pro/Business → Starter (keep tax features, lose premium features)
+        - Invoice balance is preserved (they paid for those invoices)
+        - Starter has no expiry (just buy invoice packs)
         """
         user = self._user
         now = dt.datetime.now(dt.timezone.utc)
         
-        if user.plan == models.SubscriptionPlan.FREE:
-            # For free tier, check if 30 days have passed since last reset
-            self._check_free_tier_reset(now)
+        # Only Pro and Business have monthly subscriptions that can expire
+        if not user.plan.has_monthly_subscription:
             return
         
         if user.subscription_expires_at is None:
-            return  # No expiry set (legacy data), don't auto-downgrade
+            return  # No expiry set (legacy data)
         
         expiry = user.subscription_expires_at
         if expiry.tzinfo is None:
             expiry = expiry.replace(tzinfo=dt.timezone.utc)
         
         if now > expiry:
-            # Subscription has expired, downgrade to FREE
+            # Subscription has expired - downgrade to Starter (keeps tax features)
             old_plan = user.plan.value
-            user.plan = models.SubscriptionPlan.FREE
+            user.plan = models.SubscriptionPlan.STARTER
             user.subscription_expires_at = None
-            user.invoices_this_month = 0  # Reset usage
-            user.usage_reset_at = now
+            # Keep invoice_balance - they paid for those!
             self.db.commit()
             logger.info(
-                "Subscription expired for user %s: downgraded from %s to FREE",
-                user.id, old_plan
-            )
-
-    def _check_free_tier_reset(self, now: dt.datetime) -> None:
-        """
-        Check if free tier user's 30-day billing cycle has elapsed and reset usage.
-        
-        Free tier users get 5 invoices per 30-day cycle, not per calendar month.
-        """
-        user = self._user
-        
-        if user.usage_reset_at is None:
-            # No reset date set, initialize it now
-            user.usage_reset_at = now
-            user.invoices_this_month = 0
-            self.db.commit()
-            return
-        
-        reset_at = user.usage_reset_at
-        if reset_at.tzinfo is None:
-            reset_at = reset_at.replace(tzinfo=dt.timezone.utc)
-        
-        # Check if 30 days have passed since last reset
-        if now >= reset_at + dt.timedelta(days=30):
-            user.invoices_this_month = 0
-            user.usage_reset_at = now
-            self.db.commit()
-            logger.info(
-                "Free tier 30-day cycle reset for user %s: invoice count reset to 0",
-                user.id
+                "Subscription expired for user %s: downgraded from %s to STARTER (invoice balance: %d)",
+                user.id, old_plan, user.invoice_balance
             )
     
     def is_free_tier(self) -> bool:
@@ -109,79 +86,71 @@ class FeatureGate:
         return self.user.plan == models.SubscriptionPlan.FREE
     
     def is_paid_tier(self) -> bool:
-        """Check if user has any paid subscription."""
+        """Check if user has any paid subscription (not FREE)."""
         return self.user.plan != models.SubscriptionPlan.FREE
     
-    def get_billing_cycle_start(self) -> dt.datetime:
-        """
-        Get the start of the current billing cycle.
-        
-        For paid users: 30 days before subscription_expires_at
-        For free users: use usage_reset_at (30-day cycles)
-        """
-        user = self.user
-        now = dt.datetime.now(dt.timezone.utc)
-        
-        if user.subscription_expires_at:
-            # For paid plans, billing cycle started 30 days before expiry
-            expiry = user.subscription_expires_at
-            if expiry.tzinfo is None:
-                expiry = expiry.replace(tzinfo=dt.timezone.utc)
-            return expiry - dt.timedelta(days=30)
-        
-        # For free tier, use usage_reset_at (this marks start of 30-day cycle)
-        if user.usage_reset_at:
-            reset = user.usage_reset_at
-            if reset.tzinfo is None:
-                reset = reset.replace(tzinfo=dt.timezone.utc)
-            return reset
-        
-        # Fallback: use current time as start (will be set properly on first access)
-        return now
-    
-    def get_monthly_invoice_count(self) -> int:
-        """Get number of invoices created in current billing cycle."""
-        billing_start = self.get_billing_cycle_start()
-        
-        count = (
-            self.db.query(func.count(models.Invoice.id))
-            .filter(
-                models.Invoice.issuer_id == self.user_id,
-                models.Invoice.created_at >= billing_start,
-            )
-            .scalar()
-        )
-        return count or 0
+    def get_invoice_balance(self) -> int:
+        """Get user's current invoice balance."""
+        return self.user.invoice_balance
     
     def can_create_invoice(self) -> tuple[bool, str | None]:
         """
-        Check if user can create another invoice in current billing cycle.
+        Check if user has invoice balance to create an invoice.
+        
+        NEW MODEL: Check invoice_balance instead of monthly limits.
+        All plans work the same - need balance >= 1 to create invoice.
         
         Returns:
             (can_create: bool, error_message: str | None)
         """
-        plan = self.user.plan
-        limit = plan.invoice_limit
+        balance = self.user.invoice_balance
         
-        current_count = self.get_monthly_invoice_count()
-        
-        if current_count >= limit:
-            if self.is_free_tier():
-                return False, (
-                    f"You've reached the free tier limit of {limit} invoices per month. "
-                    "Upgrade to a paid plan to create more invoices and unlock premium features."
-                )
-            else:
-                return False, (
-                    f"You've reached your {plan.value} plan limit of {limit} invoices per month. "
-                    "Upgrade to a higher plan for more invoices."
-                )
+        if balance <= 0:
+            return False, (
+                "You've used all your invoices! "
+                f"Purchase an invoice pack (₦{INVOICE_PACK_PRICE:,} for {INVOICE_PACK_SIZE} invoices) to continue."
+            )
         
         return True, None
     
+    def deduct_invoice(self) -> None:
+        """
+        Deduct one invoice from user's balance after creating a revenue invoice.
+        
+        Should be called after successfully creating a revenue invoice.
+        """
+        if self.user.invoice_balance > 0:
+            self.user.invoice_balance -= 1
+            self.db.commit()
+            logger.info(
+                "Deducted 1 invoice from user %s balance (remaining: %d)",
+                self.user_id, self.user.invoice_balance
+            )
+    
+    def add_invoice_pack(self, quantity: int = 1) -> int:
+        """
+        Add invoice pack(s) to user's balance.
+        
+        Args:
+            quantity: Number of packs to add (default 1)
+            
+        Returns:
+            New invoice balance
+        """
+        invoices_to_add = INVOICE_PACK_SIZE * quantity
+        self.user.invoice_balance += invoices_to_add
+        self.db.commit()
+        logger.info(
+            "Added %d invoices (%d packs) to user %s balance (new balance: %d)",
+            invoices_to_add, quantity, self.user_id, self.user.invoice_balance
+        )
+        return self.user.invoice_balance
+    
     def require_paid_plan(self, feature_name: str = "This feature") -> None:
         """
-        Raise HTTPException if user is not on a paid plan.
+        Raise HTTPException if user is not on a paid plan (FREE tier).
+        
+        Note: Starter, Pro, and Business are all considered "paid" for feature access.
         
         Args:
             feature_name: Name of the feature being accessed (for error message)
@@ -205,22 +174,21 @@ class FeatureGate:
         Check if user can create invoice and raise exception if not.
         
         Raises:
-            HTTPException: 403 if invoice limit reached
+            HTTPException: 403 if no invoice balance
         """
         can_create, error_msg = self.can_create_invoice()
         if not can_create:
-            current_count = self.get_monthly_invoice_count()
-            limit = self.user.plan.invoice_limit
-            
             raise HTTPException(
                 status_code=403,
                 detail={
-                    "error": "invoice_limit_reached",
+                    "error": "invoice_balance_exhausted",
                     "message": error_msg,
-                    "current_count": current_count,
-                    "limit": limit,
+                    "invoice_balance": self.user.invoice_balance,
+                    "pack_price": INVOICE_PACK_PRICE,
+                    "pack_size": INVOICE_PACK_SIZE,
                     "current_plan": self.user.plan.value,
-                    "upgrade_url": "/subscription/initialize"
+                    "purchase_url": "/invoices/purchase-pack"
+                }
                 }
             )
     
