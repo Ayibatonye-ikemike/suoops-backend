@@ -58,16 +58,16 @@ class SubscriptionPlan(str, enum.Enum):
 
     @property
     def monthly_price(self) -> int:
-        """Monthly subscription price in Naira (for features, not invoices).
+        """Monthly subscription price in Naira.
         
         Starter has no monthly fee - users just buy invoice packs.
-        Pro/Business pay monthly for premium features.
+        Pro/Business include 100 invoices + premium features.
         """
         prices = {
             SubscriptionPlan.FREE: 0,
             SubscriptionPlan.STARTER: 0,  # No monthly fee, pay per invoice pack
-            SubscriptionPlan.PRO: 8000,
-            SubscriptionPlan.BUSINESS: 16000,
+            SubscriptionPlan.PRO: 5000,  # 100 invoices + premium features
+            SubscriptionPlan.BUSINESS: 10000,  # 100 invoices + premium features
         }
         return prices[self]
     
@@ -75,6 +75,17 @@ class SubscriptionPlan(str, enum.Enum):
     def price(self) -> int:
         """Alias for monthly_price for backward compatibility."""
         return self.monthly_price
+    
+    @property
+    def invoices_included(self) -> int:
+        """Number of invoices included with monthly subscription.
+        
+        Pro and Business plans include 100 invoices per month.
+        Free/Starter don't have monthly subscription, use invoice packs.
+        """
+        if self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS):
+            return 100
+        return 0
 
     @property
     def has_monthly_subscription(self) -> bool:
@@ -91,12 +102,11 @@ class SubscriptionPlan(str, enum.Enum):
         """
         Get feature access for this plan.
         
-        NEW BILLING MODEL:
-        - All plans use invoice packs (100 invoices = ₦2,500)
+        BILLING MODEL:
         - FREE: 5 free invoices to start, basic features
-        - STARTER: Tax reports & automation (no monthly fee, just buy invoice packs)
-        - PRO: + Custom branding + Inventory + Team Management (₦8,000/month for features)
-        - BUSINESS: + Voice invoices + Photo OCR + API access (₦16,000/month for features)
+        - STARTER: No monthly fee, buy invoice packs (100 = ₦2,500) + tax features
+        - PRO: ₦5,000/month = 100 invoices + premium features (can buy more packs)
+        - BUSINESS: ₦10,000/month = 100 invoices + all features (can buy more packs)
         """
         return {
             "invoice_pack_price": 2500,  # ₦2,500 per 100 invoices

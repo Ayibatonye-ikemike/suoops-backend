@@ -100,14 +100,26 @@ def _handle_paystack_subscription(payload: dict, db: Session, signature: str | N
         return {"status": "error", "message": "Invalid plan"}
 
     old_plan = user.plan.value
+    old_balance = user.invoice_balance
     user.plan = new_plan
+    
+    # Pro and Business plans include 100 invoices with subscription
+    invoices_added = new_plan.invoices_included
+    if invoices_added > 0:
+        user.invoice_balance += invoices_added
+        logger.info(
+            "Adding %d invoices to user %s balance (now %d)",
+            invoices_added, user_id, user.invoice_balance
+        )
+    
     db.commit()
 
     logger.info(
-        "✅ Paystack subscription upgrade: user %s from %s to %s (ref: %s)",
+        "✅ Paystack subscription: user %s %s -> %s, +%d invoices (ref: %s)",
         user_id,
         old_plan,
         new_plan.value,
+        invoices_added,
         reference,
     )
 
@@ -115,6 +127,8 @@ def _handle_paystack_subscription(payload: dict, db: Session, signature: str | N
         "status": "success",
         "old_plan": old_plan,
         "new_plan": new_plan.value,
+        "invoices_added": invoices_added,
+        "invoice_balance": user.invoice_balance,
         "reference": reference,
     }
 

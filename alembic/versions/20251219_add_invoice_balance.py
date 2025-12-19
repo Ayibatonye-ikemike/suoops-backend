@@ -32,16 +32,16 @@ def upgrade() -> None:
     )
     
     # Migrate existing users: give them invoices based on their current plan
-    # - FREE users: 5 invoices
-    # - STARTER: 100 invoices (equivalent to 1 pack)
-    # - PRO: 200 invoices (equivalent to 2 packs)
-    # - BUSINESS: 300 invoices (equivalent to 3 packs)
+    # - FREE users: 5 invoices (starter pack)
+    # - STARTER: 100 invoices (1 pack equivalent)
+    # - PRO: 100 invoices (included with subscription)
+    # - BUSINESS: 100 invoices (included with subscription)
     op.execute("""
         UPDATE "user" SET invoice_balance = CASE
             WHEN plan = 'free' THEN 5
             WHEN plan = 'starter' THEN 100
-            WHEN plan = 'pro' THEN 200
-            WHEN plan = 'business' THEN 300
+            WHEN plan = 'pro' THEN 100
+            WHEN plan = 'business' THEN 100
             ELSE 5
         END
     """)
