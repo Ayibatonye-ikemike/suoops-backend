@@ -108,6 +108,18 @@ class WhatsAppHandler:
                 # This is a registered business - send welcome/help message
                 self._send_business_welcome(sender)
                 return
+            else:
+                # Not a business and not a found customer - send generic response
+                # Don't confuse them with invoice creation instructions
+                self.client.send_text(
+                    sender,
+                    "👋 Hi there!\n\n"
+                    "I'm the SuoOps invoice assistant.\n\n"
+                    "If you received an invoice, I'll send you the payment details shortly. "
+                    "Please make sure you're messaging from the same number the invoice was sent to.\n\n"
+                    "If you're a business looking to create invoices, please register at suoops.com first."
+                )
+                return
 
         parse = self.nlp.parse_text(text, is_speech=False)
         

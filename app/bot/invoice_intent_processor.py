@@ -297,7 +297,7 @@ class InvoiceIntentProcessor:
         from app.models import models
         import datetime as dt
         
-        # Normalize phone number for lookup
+        # Normalize phone number for lookup - handle all Nigerian formats
         clean_digits = "".join(ch for ch in customer_phone if ch.isdigit())
         candidates = {customer_phone}
         if customer_phone.startswith("+"):
@@ -306,6 +306,16 @@ class InvoiceIntentProcessor:
             candidates.add(clean_digits)
             if clean_digits.startswith("234"):
                 candidates.add(f"+{clean_digits}")
+                # Also add local format (0xxx) - remove 234 prefix and add 0
+                local_number = "0" + clean_digits[3:]
+                candidates.add(local_number)
+            elif clean_digits.startswith("0"):
+                # Local format - also try international
+                intl_number = "234" + clean_digits[1:]
+                candidates.add(intl_number)
+                candidates.add(f"+{intl_number}")
+        
+        logger.info("[OPTIN] Looking up customer with phone candidates: %s", candidates)
         
         # Find customer by phone
         customer = (
