@@ -71,7 +71,7 @@ async def create_invoice(
         )
         
         # Send notifications via all available channels (Email, WhatsApp, SMS) - ONLY for revenue invoices
-        # Note: If async_pdf=True, pdf_url may be None initially but we still send notifications without attachment
+        # Note: WhatsApp uses centralized opt-in logic - new customers get template, opted-in get full invoice
         if invoice.invoice_type == "revenue" and (data.customer_email or data.customer_phone):
             from app.services.notification_service import NotificationService
             notification_service = NotificationService()
@@ -82,6 +82,9 @@ async def create_invoice(
                 customer_phone=data.customer_phone,
                 pdf_url=invoice.pdf_url,
             )
+            
+            # Commit any changes made during notification (e.g., whatsapp_delivery_pending flag)
+            db.commit()
 
             if async_pdf and not invoice.pdf_url:
                 logger.info(
