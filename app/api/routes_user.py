@@ -33,10 +33,8 @@ def get_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Use FeatureGate for accurate monthly count (auto-resets each month)
-    # This also checks subscription expiry and downgrades to FREE if expired
+    # Use FeatureGate for subscription expiry check (downgrades to FREE if expired)
     gate = FeatureGate(db, current_user_id)
-    monthly_invoice_count = gate.get_monthly_invoice_count()
     
     # Re-fetch user after FeatureGate may have updated plan
     db.refresh(user)
@@ -45,7 +43,7 @@ def get_profile(
     email_plain = decrypt_value(user.email) if user.email else None
     
     # Safely get invoice_balance (may not exist if migration hasn't run)
-    invoice_balance = getattr(user, 'invoice_balance', 5)  # Default 5 for FREE users
+    invoice_balance = gate.get_invoice_balance()  # Uses safe access internally
     
     return schemas.UserOut(
         id=user.id,
@@ -55,7 +53,7 @@ def get_profile(
         name=user.name,
         plan=user.plan.value,
         invoice_balance=invoice_balance,  # New billing model: available invoices
-        invoices_this_month=monthly_invoice_count,  # Deprecated, kept for backward compat
+        invoices_this_month=0,  # Deprecated, kept for backward compat
         logo_url=user.logo_url,
         subscription_expires_at=user.subscription_expires_at,
         subscription_started_at=user.usage_reset_at,  # When current billing cycle started
