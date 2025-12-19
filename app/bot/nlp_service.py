@@ -168,7 +168,19 @@ class NLPService:
         return match.group(0).lower() if match else None
     
     def _extract_invoice(self, text: str) -> dict[str, object]:
-        # naive parse: Invoice <name> <amount>
+        """
+        Extract invoice data including support for multiple items.
+        
+        Supported formats:
+            Single item:
+                "invoice Joy 12000 for wigs"
+                "invoice 07065730703 12000 wigs"
+            
+            Multiple items (comma or space separated):
+                "invoice 07065730703 wig 1000, shoe 3000"
+                "invoice 07065730703 wig 1000 shoe 3000 bag 5000"
+                "invoice Joy 07065730703 wigs 12000, shoes 5000"
+        """
         tokens = text.split()
         name = tokens[1] if len(tokens) > 1 else "Customer"
         
@@ -178,35 +190,132 @@ class NLPService:
         # Extract email address
         email = self._extract_email(text)
 
-        # Extract amount, preferring values that are not the phone digits
-        amount_raw = "0"
-        
         # Build a set of phone-related digit strings to skip
         phone_variants: set[str] = set()
         if phone:
             phone_digits = phone.replace("+", "")
-            phone_variants.add(phone_digits)  # e.g. 2348078557662
-            phone_variants.add(phone_digits.lstrip("234"))  # e.g. 8078557662
-            # Also add the original 0-prefixed format (common in Nigeria)
+            phone_variants.add(phone_digits)
+            phone_variants.add(phone_digits.lstrip("234"))
             if phone_digits.startswith("234"):
-                phone_variants.add("0" + phone_digits[3:])  # e.g. 08078557662
+                phone_variants.add("0" + phone_digits[3:])
 
-        for match in self.AMOUNT_PATTERN.finditer(text):
-            candidate = match.group(1).replace(",", "")
-            if candidate in phone_variants:
-                continue
-            amount_raw = candidate
-            break
+        # Try to extract multiple items using pattern: <item_name> <amount>
+        # Supports: "wig 1000, shoe 3000" or "wig 1000 shoe 3000"
+        lines = self._extract_line_items(text, phone_variants)
+        
+        # Calculate total amount from all items
+        if lines:
+            total_amount = sum(Decimal(str(line["unit_price"])) * line.get("quantity", 1) for line in lines)
+        else:
+            # Fallback: single amount extraction for backward compatibility
+            amount_raw = "0"
+            for match in self.AMOUNT_PATTERN.finditer(text):
+                candidate = match.group(1).replace(",", "")
+                if candidate in phone_variants:
+                    continue
+                amount_raw = candidate
+                break
+            total_amount = Decimal(amount_raw)
+            
+            # Create a single line item with description
+            description = self._extract_description(text)
+            lines = [{"description": description, "quantity": 1, "unit_price": total_amount}]
         
         # Extract due date
         due = None
         if "tomorrow" in text:
             due = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=1)
         
+        # If name looks like a phone number, use a default name
+        if name and name.replace("+", "").replace("-", "").isdigit():
+            name = "Customer"
+        
         return {
             "customer_name": name.capitalize(),
-            "amount": Decimal(amount_raw),
+            "amount": total_amount,
             "due_date": due,
             "customer_phone": phone,
             "customer_email": email,
+            "lines": lines,
         }
+    
+    def _extract_line_items(self, text: str, phone_variants: set[str]) -> list[dict[str, object]]:
+        """
+        Extract multiple line items from text.
+        
+        Supports two patterns:
+            1. Amount first: "1000 wig, 2000 shoe, 4000 belt"
+            2. Item first: "wig 1000, shoe 2000" (fallback)
+        
+        Examples:
+            "1000 wig, 2000 shoe" → [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
+            "wig 1000, shoe 2000" → [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
+        """
+        lines = []
+        
+        # Remove common prefixes to focus on item data
+        clean_text = text.lower()
+        
+        # Remove "invoice" and customer name (first word after invoice)
+        clean_text = re.sub(r"^invoice\s+[a-zA-Z]+\s*", "", clean_text)
+        
+        for word in ["for", "due", "tomorrow", "today", "next week"]:
+            clean_text = clean_text.replace(word, " ")
+        
+        # Remove phone number from text
+        for variant in phone_variants:
+            clean_text = clean_text.replace(variant.lower(), " ")
+        
+        # Also remove phone patterns directly
+        clean_text = self.PHONE_PATTERN.sub(" ", clean_text)
+        
+        # Remove email from text
+        clean_text = self.EMAIL_PATTERN.sub(" ", clean_text)
+        
+        # Split by comma to get individual items
+        # "1000 wig, 2000 shoe, 4000 belt" → ["1000 wig", "2000 shoe", "4000 belt"]
+        parts = [p.strip() for p in clean_text.split(",") if p.strip()]
+        
+        for part in parts:
+            tokens = part.split()
+            if len(tokens) < 2:
+                continue
+            
+            # Try pattern 1: <amount> <item_name>
+            # e.g., "1000 wig" or "2000 running shoes"
+            first_token = tokens[0].replace(",", "")
+            if first_token.isdigit() and len(first_token) >= 3:
+                if first_token not in phone_variants:
+                    item_name = " ".join(tokens[1:]).strip()
+                    if item_name and not item_name.isdigit():
+                        lines.append({
+                            "description": item_name.capitalize(),
+                            "quantity": 1,
+                            "unit_price": Decimal(first_token),
+                        })
+                        continue
+            
+            # Try pattern 2: <item_name> <amount>
+            # e.g., "wig 1000" or "running shoes 2000"
+            last_token = tokens[-1].replace(",", "")
+            if last_token.isdigit() and len(last_token) >= 3:
+                if last_token not in phone_variants:
+                    item_name = " ".join(tokens[:-1]).strip()
+                    if item_name and not item_name[0].isdigit():
+                        lines.append({
+                            "description": item_name.capitalize(),
+                            "quantity": 1,
+                            "unit_price": Decimal(last_token),
+                        })
+        
+        return lines
+    
+    def _extract_description(self, text: str) -> str:
+        """Extract item description from text (for single-item invoices)."""
+        # Look for "for <description>" pattern
+        for_match = re.search(r"\bfor\s+([a-zA-Z][a-zA-Z\s]+?)(?:\s+due|\s*$)", text, re.IGNORECASE)
+        if for_match:
+            return for_match.group(1).strip().capitalize()
+        
+        # Default description
+        return "Item"
