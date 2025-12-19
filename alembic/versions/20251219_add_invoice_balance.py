@@ -7,7 +7,7 @@ NEW BILLING MODEL:
 - Default 5 for new users (free starter pack)
 
 Revision ID: 20251219_add_invoice_balance
-Revises: 20251218_whatsapp_optin
+Revises: 20251218_whatsapp_optin, 20251218_admin_users
 Create Date: 2025-12-19
 
 """
@@ -19,7 +19,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '20251219_add_invoice_balance'
-down_revision: Union[str, None] = '20251218_whatsapp_optin'
+down_revision: Union[str, Sequence[str], None] = ('20251218_whatsapp_optin', '20251218_admin_users')
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
