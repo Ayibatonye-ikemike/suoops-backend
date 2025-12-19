@@ -430,7 +430,6 @@ async def initialize_invoice_pack_purchase(
     
     auth_url = data["data"]["authorization_url"]
     
-    metrics.payment_initiated("invoice_pack", total_amount)
     logger.info(
         "Invoice pack payment initialized | user=%s quantity=%d invoices=%d amount=%d ref=%s",
         current_user_id, quantity, invoices_to_add, total_amount, reference
