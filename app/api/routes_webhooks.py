@@ -153,7 +153,7 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
 
     metadata = data.get("metadata") or {}
     user_id = metadata.get("user_id")
-    invoices_to_add = metadata.get("invoices_to_add", 100)
+    invoices_to_add = int(metadata.get("invoices_to_add", 100))  # Ensure int from metadata
 
     if not user_id:
         logger.error("Paystack invoice pack webhook missing user_id: %s", metadata)
