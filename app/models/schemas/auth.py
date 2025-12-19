@@ -55,7 +55,8 @@ class UserOut(BaseModel):
     email: str | None = None
     name: str
     plan: str  # FREE, STARTER, PRO, BUSINESS
-    invoices_this_month: int
+    invoice_balance: int = 0  # Available invoices (new billing model)
+    invoices_this_month: int = 0  # Deprecated, kept for backward compat
     logo_url: str | None = None
     subscription_expires_at: dt.datetime | None = None
     subscription_started_at: dt.datetime | None = None
