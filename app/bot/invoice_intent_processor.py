@@ -23,10 +23,12 @@ class InvoiceIntentProcessor:
         if getattr(parse, "intent", None) != "create_invoice":
             self.client.send_text(
                 sender,
-                "Sorry, I didn't understand. Try:\n"
-                "• Single item: \"Invoice Joy 08012345678, 12000 wig\"\n"
-                "• Multiple items: \"Invoice Joy 08012345678, 2000 boxers, 5000 hair\"\n"
-                "• Voice: Send a voice note with invoice details",
+                "🤔 I didn't quite catch that.\n\n"
+                "*To create an invoice, try:*\n"
+                "• `Invoice Joy 08012345678, 12000 wig`\n"
+                "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n"
+                "• Or send a *voice note* with the details\n\n"
+                "💡 Type *help* for a full guide!",
             )
             return
 
