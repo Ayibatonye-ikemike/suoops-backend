@@ -21,6 +21,7 @@ from .invoice import (
     InvoicePublicOut,
     InvoiceVerificationOut,
     InvoiceQuotaOut,
+    InvoicePackPurchaseInitOut,
     ReceiptUploadOut,
 )
 
@@ -74,6 +75,7 @@ __all__ = [
     "InvoicePublicOut",
     "InvoiceVerificationOut",
     "InvoiceQuotaOut",
+    "InvoicePackPurchaseInitOut",
     "ReceiptUploadOut",
     # Auth
     "OTPPhoneRequest",
