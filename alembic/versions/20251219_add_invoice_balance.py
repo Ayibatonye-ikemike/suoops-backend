@@ -36,12 +36,13 @@ def upgrade() -> None:
     # - STARTER: 100 invoices (1 pack equivalent)
     # - PRO: 100 invoices (included with subscription)
     # - BUSINESS: 100 invoices (included with subscription)
+    # Note: plan is an enum type in PostgreSQL, so we cast to text for comparison
     op.execute("""
         UPDATE "user" SET invoice_balance = CASE
-            WHEN plan = 'free' THEN 5
-            WHEN plan = 'starter' THEN 100
-            WHEN plan = 'pro' THEN 100
-            WHEN plan = 'business' THEN 100
+            WHEN plan::text = 'free' THEN 5
+            WHEN plan::text = 'starter' THEN 100
+            WHEN plan::text = 'pro' THEN 100
+            WHEN plan::text = 'business' THEN 100
             ELSE 5
         END
     """)
