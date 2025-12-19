@@ -26,8 +26,7 @@ class InvoiceIntentProcessor:
                 "🤔 I didn't quite catch that.\n\n"
                 "*To create an invoice, try:*\n"
                 "• `Invoice Joy 08012345678, 12000 wig`\n"
-                "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n"
-                "• Or send a *voice note* with the details\n\n"
+                "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n\n"
                 "💡 Type *help* for a full guide!",
             )
             return
