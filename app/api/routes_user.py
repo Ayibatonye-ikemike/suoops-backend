@@ -50,7 +50,8 @@ def get_profile(
         email=email_plain,
         name=user.name,
         plan=user.plan.value,
-        invoices_this_month=monthly_invoice_count,  # Use accurate count, not stored field
+        invoice_balance=user.invoice_balance,  # New billing model: available invoices
+        invoices_this_month=monthly_invoice_count,  # Deprecated, kept for backward compat
         logo_url=user.logo_url,
         subscription_expires_at=user.subscription_expires_at,
         subscription_started_at=user.usage_reset_at,  # When current billing cycle started
