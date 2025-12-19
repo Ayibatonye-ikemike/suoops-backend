@@ -397,7 +397,7 @@ async def initialize_invoice_pack_purchase(
                     "email": user.email or f"{user.phone}@suoops.com",
                     "amount": total_amount * 100,  # Paystack expects kobo
                     "reference": reference,
-                    "callback_url": f"{settings.FRONTEND_URL}/dashboard/invoices?payment=success",
+                    "callback_url": f"{settings.FRONTEND_URL}/dashboard/billing/success?reference={reference}",
                     "metadata": {
                         "payment_type": "invoice_pack",
                         "user_id": current_user_id,
