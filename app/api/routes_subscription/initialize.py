@@ -52,6 +52,14 @@ async def initialize_subscription_payment(
     if plan == "FREE":
         raise HTTPException(status_code=400, detail="Cannot upgrade to FREE plan. Already default.")
     
+    # STARTER has no monthly subscription fee (pay-per-invoice only)
+    # Use /subscriptions/switch-to-starter endpoint instead
+    if plan == "STARTER":
+        raise HTTPException(
+            status_code=400, 
+            detail="STARTER has no monthly fee. Use the switch-to-starter endpoint or buy invoice packs."
+        )
+    
     # Get user
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
     if not user:
