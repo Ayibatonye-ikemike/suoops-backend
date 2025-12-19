@@ -59,27 +59,34 @@ class InvoiceIntentProcessor:
         await self._create_invoice(invoice_service, issuer_id, sender, data, payload)
 
     def _enforce_quota(self, invoice_service, issuer_id: int, sender: str) -> bool:
+        """Check invoice balance before creating invoice."""
         try:
             quota_check = invoice_service.check_invoice_quota(issuer_id)
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to check quota: %s", exc)
             return True
 
-        limit = quota_check.get("limit")
-        remaining = (limit - quota_check.get("used", 0)) if limit else None
+        balance = quota_check.get("invoice_balance", 0)
 
-        if quota_check.get("can_create") and remaining is not None and 0 < remaining <= 5:
-            self.client.send_text(sender, quota_check.get("message", ""))
+        # Warn if balance is getting low
+        if quota_check.get("can_create") and 0 < balance <= 10:
+            self.client.send_text(
+                sender, 
+                f"⚠️ Only {balance} invoices left!\n\n"
+                f"Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} for {quota_check.get('pack_size', 100)} invoices\n"
+                "Visit: suoops.com/dashboard/billing"
+            )
 
         if quota_check.get("can_create"):
             return True
 
+        # No balance remaining
         limit_message = (
-            "🚫 Invoice Limit Reached!\n\n"
+            "🚫 No Invoices Remaining!\n\n"
             f"Plan: {quota_check.get('plan', '').upper()}\n"
-            f"Used: {quota_check.get('used')}/{quota_check.get('limit')} invoices this month\n\n"
-            f"{quota_check.get('message', '')}\n\n"
-            "📞 Contact us to upgrade your plan."
+            f"Balance: {balance} invoices\n\n"
+            f"💳 Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} for {quota_check.get('pack_size', 100)} invoices\n\n"
+            "Visit suoops.com/dashboard/billing to buy more."
         )
         self.client.send_text(sender, limit_message)
         return False
@@ -133,11 +140,12 @@ class InvoiceIntentProcessor:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to create invoice")
             error_msg = str(exc)
-            if "invoice_limit_reached" in error_msg or "403" in error_msg:
+            if "invoice_balance_exhausted" in error_msg or "INV005" in error_msg:
                 self.client.send_text(
                     sender,
-                    "🚫 You've reached your monthly invoice limit.\n\n"
-                    "Upgrade your plan to create more invoices.",
+                    "🚫 No invoices remaining!\n\n"
+                    "Purchase a pack: ₦2,500 for 100 invoices\n"
+                    "Visit: suoops.com/dashboard/billing",
                 )
             else:
                 self.client.send_text(sender, f"Error: {exc}")
