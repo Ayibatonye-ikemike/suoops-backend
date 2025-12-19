@@ -178,22 +178,21 @@ class WhatsAppChannel:
         return message
 
     def _build_items_text(self, invoice: "models.Invoice") -> str:
-        """Build a text representation of invoice items."""
-        if not invoice.items or len(invoice.items) == 0:
+        """Build a text representation of invoice line items."""
+        if not invoice.lines or len(invoice.lines) == 0:
             return "Invoice items"
         
         # Limit to first 3 items to keep message short
-        items = invoice.items[:3]
+        lines = invoice.lines[:3]
         parts = []
-        for item in items:
-            desc = getattr(item, "description", "Item")
-            qty = getattr(item, "quantity", 1)
-            unit = getattr(item, "unit_price", 0)
+        for line in lines:
+            desc = getattr(line, "description", "Item")
+            qty = getattr(line, "quantity", 1)
             parts.append(f"{desc} x{qty}")
         
         text = ", ".join(parts)
-        if len(invoice.items) > 3:
-            text += f" +{len(invoice.items) - 3} more"
+        if len(invoice.lines) > 3:
+            text += f" +{len(invoice.lines) - 3} more"
         
         return text
 
