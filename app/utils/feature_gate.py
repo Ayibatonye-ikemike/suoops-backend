@@ -189,7 +189,6 @@ class FeatureGate:
                     "current_plan": self.user.plan.value,
                     "purchase_url": "/invoices/purchase-pack"
                 }
-                }
             )
     
     def get_monthly_voice_ocr_count(self) -> int:
