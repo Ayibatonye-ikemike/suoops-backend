@@ -1,9 +1,12 @@
 """
 Referral system models for tracking referral codes, referrals, and rewards.
 
-NEW BILLING MODEL:
+BILLING MODEL:
 - Free signup referrals: 8 signups → 100 free invoices (₦2,500 value)
-- Paid signup referrals: 2 signups → 100 free invoices (₦2,500 value)
+- Paid subscription referrals: 2 Pro/Business signups → 100 free invoices (₦2,500 value)
+
+Note: Starter plan has no monthly subscription (pay-per-invoice only).
+Only Pro (₦5,000/month) and Business (₦10,000/month) count as paid referrals.
 
 Budget: ₦500,000 = ~200 rewards from free referrals = 1,600 potential new users
 """
@@ -36,8 +39,8 @@ def generate_referral_code() -> str:
 
 class ReferralType(str, enum.Enum):
     """Type of referral based on referred user's action."""
-    FREE_SIGNUP = "free_signup"  # Referred user signed up (free tier)
-    PAID_SIGNUP = "paid_signup"  # Referred user subscribed to paid plan
+    FREE_SIGNUP = "free_signup"  # Referred user signed up (free/starter tier)
+    PAID_SIGNUP = "paid_signup"  # Referred user subscribed to Pro or Business plan
 
 
 class ReferralStatus(str, enum.Enum):

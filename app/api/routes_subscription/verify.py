@@ -112,13 +112,15 @@ async def verify_subscription_payment(
             
             db.commit()
             
-            # Upgrade referral status to PAID if user was referred
-            try:
-                from app.services.referral_service import ReferralService
-                referral_service = ReferralService(db)
-                referral_service.upgrade_referral_to_paid(current_user_id)
-            except Exception as e:
-                logger.warning(f"Failed to upgrade referral to paid: {e}")
+            # Upgrade referral status to PAID only for Pro/Business (not Starter)
+            # Starter has no monthly subscription - only Pro (₦5,000) and Business (₦10,000) count
+            if plan in ("PRO", "BUSINESS"):
+                try:
+                    from app.services.referral_service import ReferralService
+                    referral_service = ReferralService(db)
+                    referral_service.upgrade_referral_to_paid(current_user_id)
+                except Exception as e:
+                    logger.warning(f"Failed to upgrade referral to paid: {e}")
             
             # Record metrics
             metrics.subscription_payment_success(plan.lower())
