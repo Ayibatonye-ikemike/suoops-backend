@@ -371,15 +371,24 @@ async def initialize_invoice_pack_purchase(
     # Generate unique reference
     reference = f"INVPACK-{current_user_id}-{uuid.uuid4().hex[:8].upper()}"
     
-    # Record transaction
+    # Record transaction (invoice pack - plan stays the same)
+    current_plan = user.plan.value if user.plan else "free"
     transaction = PaymentTransaction(
         user_id=current_user_id,
         reference=reference,
-        amount=total_amount,
+        amount=total_amount * 100,  # Store in kobo like other transactions
+        currency="NGN",
         provider=PaymentProvider.PAYSTACK,
         status=PaymentStatus.PENDING,
-        payment_type="invoice_pack",
-        metadata={"quantity": quantity, "invoices_to_add": invoices_to_add},
+        plan_before=current_plan,
+        plan_after=current_plan,  # Invoice pack doesn't change plan
+        customer_email=user.email or f"{user.phone}@suoops.com",
+        customer_phone=user.phone,
+        payment_metadata={
+            "payment_type": "invoice_pack",
+            "quantity": quantity,
+            "invoices_to_add": invoices_to_add,
+        },
     )
     db.add(transaction)
     db.commit()
