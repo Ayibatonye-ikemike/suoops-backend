@@ -20,11 +20,11 @@ class WhatsAppClient:
         self.base_url = f"https://graph.facebook.com/v21.0/{self.phone_number_id}/messages"
         self.media_url = "https://graph.facebook.com/v21.0"
 
-    def send_text(self, to: str, body: str) -> None:
-        """Send a plain text message."""
+    def send_text(self, to: str, body: str) -> bool:
+        """Send a plain text message. Returns True on success, False on failure."""
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP] Not configured, would send to %s: %s", to, body)
-            return
+            return False
 
         try:
             payload = {
@@ -44,6 +44,7 @@ class WhatsAppClient:
             )
             response.raise_for_status()
             logger.info("[WHATSAPP] ✓ Sent to %s: %s", to, body[:50])
+            return True
         except requests.HTTPError as exc:  # pragma: no cover - external service
             detail = exc.response.text if exc.response is not None else "(no body)"
             logger.error(
@@ -52,8 +53,10 @@ class WhatsAppClient:
                 exc,
                 detail,
             )
+            return False
         except Exception as exc:  # noqa: BLE001
             logger.error("[WHATSAPP] Failed to send to %s: %s", to, exc)
+            return False
 
     def send_document(self, to: str, url: str, filename: str, caption: str | None = None) -> None:
         """Send a document (usually PDF)."""
