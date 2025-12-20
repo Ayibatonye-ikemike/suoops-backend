@@ -38,3 +38,15 @@ def init_logging(level: int | None = None) -> None:
     root = logging.getLogger()
     root.setLevel(effective_level)
     root.addHandler(handler)
+    
+    # Silence noisy third-party loggers
+    for noisy_logger in [
+        "fontTools",
+        "fontTools.subset",
+        "fontTools.ttLib",
+        "fontTools.subset.timer",
+        "httpx",
+        "httpcore",
+        "PIL",
+    ]:
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)

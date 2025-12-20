@@ -81,10 +81,11 @@ class SMSChannel:
                 if data.get("messageId"):
                     logger.info("Brevo SMS sent successfully to %s (messageId: %s)", to, data.get("messageId"))
                     return True
-                logger.error("Brevo SMS failed: %s", data)
+                logger.warning("Brevo SMS failed: %s", data)
                 return False
         except Exception as e:
-            logger.error("Failed to send Brevo SMS: %s", e)
+            # SMS is optional - log as warning to avoid Sentry noise
+            logger.warning("Failed to send Brevo SMS: %s", e)
             return False
 
     async def _send_termii_sms(self, to: str, message: str) -> bool:  # pragma: no cover - external service
