@@ -139,6 +139,48 @@ class WhatsAppClient:
             logger.error("[WHATSAPP TEMPLATE] Failed to send to %s: %s", to, exc)
             return False
 
+    def send_otp_template(
+        self,
+        to: str,
+        otp_code: str,
+        template_name: str = "opt_verification",
+        language: str = "en",
+    ) -> bool:
+        """Send OTP verification code using approved authentication template.
+        
+        Uses Meta's authentication template format which allows sending to users
+        who haven't messaged the business first (bypasses 24-hour window).
+        
+        Args:
+            to: Recipient phone number
+            otp_code: The OTP code to send
+            template_name: Name of the approved auth template (default: opt_verification)
+            language: Template language code (default: en)
+        
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        # Authentication templates use a special component structure
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": otp_code}
+                ]
+            },
+            {
+                "type": "button",
+                "sub_type": "url",
+                "index": "0",
+                "parameters": [
+                    {"type": "text", "text": otp_code}
+                ]
+            }
+        ]
+        
+        logger.info("[WHATSAPP OTP] Sending OTP template to %s", to)
+        return self.send_template(to, template_name, language, components)
+
     async def get_media_url(self, media_id: str) -> str:
         """Resolve a media ID into a downloadable URL."""
         if not self.api_key:
