@@ -202,7 +202,7 @@ def list_invoices(
     start_date: str | None = None,  # Optional date filter (YYYY-MM-DD)
     end_date: str | None = None,  # Optional date filter (YYYY-MM-DD)
 ):
-    from datetime import datetime as dt
+    from datetime import datetime as dt, date
     
     svc = get_invoice_service_for_user(data_owner_id, db)
     invoices = svc.list_invoices(data_owner_id)
@@ -212,12 +212,34 @@ def list_invoices(
         invoices = [inv for inv in invoices if inv.invoice_type == invoice_type]
     
     # Filter by date range if specified
-    if start_date:
-        start = dt.strptime(start_date, "%Y-%m-%d").date()
-        invoices = [inv for inv in invoices if inv.due_date and inv.due_date >= start]
-    if end_date:
-        end = dt.strptime(end_date, "%Y-%m-%d").date()
-        invoices = [inv for inv in invoices if inv.due_date and inv.due_date <= end]
+    if start_date or end_date:
+        def get_invoice_date(inv) -> date | None:
+            """Extract date from invoice, handling various formats."""
+            d = inv.due_date or inv.created_at
+            if d is None:
+                return None
+            if isinstance(d, date):
+                return d if not hasattr(d, 'date') else d.date()
+            if isinstance(d, str):
+                try:
+                    return dt.strptime(d[:10], "%Y-%m-%d").date()
+                except (ValueError, TypeError):
+                    return None
+            return None
+        
+        if start_date:
+            try:
+                start = dt.strptime(start_date, "%Y-%m-%d").date()
+                invoices = [inv for inv in invoices if (d := get_invoice_date(inv)) and d >= start]
+            except ValueError:
+                pass  # Invalid date format, skip filter
+        
+        if end_date:
+            try:
+                end = dt.strptime(end_date, "%Y-%m-%d").date()
+                invoices = [inv for inv in invoices if (d := get_invoice_date(inv)) and d <= end]
+            except ValueError:
+                pass  # Invalid date format, skip filter
     
     return invoices
 
