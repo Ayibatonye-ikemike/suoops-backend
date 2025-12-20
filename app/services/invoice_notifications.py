@@ -66,14 +66,18 @@ def notify_business_of_customer_confirmation(db: Session, invoice: models.Invoic
     
     from app.core.config import settings
     frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
-    dashboard_link = f"{frontend_url.rstrip('/')}/dashboard?invoice={invoice.invoice_id}"
+    verify_link = f"{frontend_url.rstrip('/')}/dashboard/invoices/{invoice.invoice_id}"
     
+    customer_name = invoice.customer.name if invoice.customer else "Customer"
     message = (
-        "Customer reported a transfer.\n\n"
-        f"Invoice: {invoice.invoice_id}\n"
-        f"Amount: ₦{invoice.amount:,.2f}\n\n"
-        "Please confirm the funds and mark the invoice as paid to send their receipt.\n\n"
-        f"View in dashboard: {dashboard_link}"
+        f"💰 Payment Notification!\n\n"
+        f"Customer reported a bank transfer for:\n\n"
+        f"📄 Invoice: {invoice.invoice_id}\n"
+        f"💵 Amount: ₦{invoice.amount:,.2f}\n"
+        f"👤 Customer: {customer_name}\n\n"
+        f"🔗 Verify & Mark as Paid:\n{verify_link}\n\n"
+        f"✅ Please verify the funds in your bank account "
+        f"and mark the invoice as PAID to send the customer their receipt."
     )
     from app.services.notification.service import NotificationService
     service = NotificationService()
