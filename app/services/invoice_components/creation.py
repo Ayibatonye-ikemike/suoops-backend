@@ -197,20 +197,53 @@ class InvoiceCreationMixin:
             "account_name": user.account_name,
         }
 
+    def _normalize_phone(self, phone: str) -> str:
+        """Normalize phone number to consistent format for storage and lookup."""
+        if not phone:
+            return phone
+        # Remove all non-digit characters
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        if not digits:
+            return phone
+        # Convert to local Nigerian format (0xxx) for consistency
+        if digits.startswith("234") and len(digits) > 3:
+            return "0" + digits[3:]
+        elif digits.startswith("0"):
+            return digits
+        # For other formats, return as-is
+        return phone
+
     def _get_or_create_customer(
         self, name: str, phone: str | None, email: str | None = None
     ) -> models.Customer:
+        # Normalize phone for consistent lookup/storage
+        normalized_phone = self._normalize_phone(phone) if phone else None
+        
+        # Build phone candidates for lookup (handle existing records with different formats)
+        phone_candidates = set()
+        if normalized_phone:
+            phone_candidates.add(normalized_phone)
+            # Also check international formats in case old records exist
+            if normalized_phone.startswith("0"):
+                intl = "234" + normalized_phone[1:]
+                phone_candidates.add(intl)
+                phone_candidates.add("+" + intl)
+            phone_candidates.add(phone)  # Original input too
+        
         q = self.db.query(models.Customer).filter(models.Customer.name == name)
-        if phone:
-            q = q.filter(models.Customer.phone == phone)
+        if phone_candidates:
+            q = q.filter(models.Customer.phone.in_(list(phone_candidates)))
         elif email:
             q = q.filter(models.Customer.email == email)
         existing = q.first()
         if existing:
             if email and not existing.email:
                 existing.email = email
+            # Update phone to normalized format if different
+            if normalized_phone and existing.phone != normalized_phone:
+                existing.phone = normalized_phone
             return existing
-        customer = models.Customer(name=name, phone=phone, email=email)
+        customer = models.Customer(name=name, phone=normalized_phone, email=email)
         self.db.add(customer)
         self.db.flush()
         return customer

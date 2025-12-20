@@ -316,29 +316,34 @@ class InvoiceIntentProcessor:
         
         logger.info("[OPTIN] Looking up customer with phone candidates: %s", candidates)
         
-        # Find customer by phone
-        customer = (
+        # Find ALL customers matching any phone format (might have duplicates from before normalization)
+        customers = (
             self.db.query(models.Customer)
             .filter(models.Customer.phone.in_(list(candidates)))
-            .first()
+            .all()
         )
         
-        if not customer:
+        if not customers:
             logger.info("[OPTIN] No customer found for phone %s", customer_phone)
             return False
         
-        # Mark customer as opted in
-        if not customer.whatsapp_opted_in:
-            customer.whatsapp_opted_in = True
-            self.db.commit()
-            logger.info("[OPTIN] Customer %s opted in to WhatsApp", customer_phone)
+        # Get all customer IDs
+        customer_ids = [c.id for c in customers]
+        logger.info("[OPTIN] Found %d customer record(s) for phone %s: %s", len(customers), customer_phone, customer_ids)
         
-        # Find recent unpaid invoices (created in last 7 days)
+        # Mark all matching customers as opted in
+        for customer in customers:
+            if not customer.whatsapp_opted_in:
+                customer.whatsapp_opted_in = True
+        self.db.commit()
+        logger.info("[OPTIN] Customer(s) %s opted in to WhatsApp", customer_phone)
+        
+        # Find recent unpaid invoices for ANY of these customer records
         seven_days_ago = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)
         recent_invoices = (
             self.db.query(models.Invoice)
             .filter(
-                models.Invoice.customer_id == customer.id,
+                models.Invoice.customer_id.in_(customer_ids),
                 models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
                 models.Invoice.created_at >= seven_days_ago,
             )
@@ -405,14 +410,14 @@ class InvoiceIntentProcessor:
         
         logger.info("[PAID] Looking for customer with phone variants: %s", candidates)
         
-        # Find customer by phone
-        customer = (
+        # Find ALL customers matching any phone format (might have duplicates)
+        customers = (
             self.db.query(models.Customer)
             .filter(models.Customer.phone.in_(list(candidates)))
-            .first()
+            .all()
         )
         
-        if not customer:
+        if not customers:
             logger.info("[PAID] No customer found for phone %s", customer_phone)
             # Send helpful message and return True to prevent other processors
             self.client.send_text(
@@ -423,11 +428,14 @@ class InvoiceIntentProcessor:
             )
             return True  # Return True to stop other processors
         
-        # Find the most recent pending invoice for this customer
+        # Get all customer IDs
+        customer_ids = [c.id for c in customers]
+        
+        # Find the most recent pending invoice for ANY of these customers
         pending_invoice = (
             self.db.query(models.Invoice)
             .filter(
-                models.Invoice.customer_id == customer.id,
+                models.Invoice.customer_id.in_(customer_ids),
                 models.Invoice.status == "pending",
             )
             .order_by(models.Invoice.created_at.desc())
@@ -439,7 +447,7 @@ class InvoiceIntentProcessor:
             awaiting = (
                 self.db.query(models.Invoice)
                 .filter(
-                    models.Invoice.customer_id == customer.id,
+                    models.Invoice.customer_id.in_(customer_ids),
                     models.Invoice.status == "awaiting_confirmation",
                 )
                 .order_by(models.Invoice.created_at.desc())
