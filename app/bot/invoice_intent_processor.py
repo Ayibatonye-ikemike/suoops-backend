@@ -26,20 +26,13 @@ class InvoiceIntentProcessor:
                 "🤔 I didn't quite catch that.\n\n"
                 "*To create an invoice, try:*\n"
                 "• `Invoice Joy 08012345678, 12000 wig`\n"
+                "• `Invoice Joy 12000 wig` (no phone - won't notify customer)\n"
                 "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n\n"
                 "💡 Type *help* for a full guide!",
             )
             return
 
         data = getattr(parse, "entities", {})
-        customer_phone = data.get("customer_phone")
-        if not customer_phone:
-            self.client.send_text(
-                sender,
-                "⚠️ Please include the customer's phone number in your message.\n\n"
-                "Example: Invoice Joy 08012345678, 2000 boxers, 5000 hair",
-            )
-            return
 
         issuer_id = self._resolve_issuer_id(sender)
         if issuer_id is None:
@@ -156,6 +149,9 @@ class InvoiceIntentProcessor:
         customer_email = data.get("customer_email")
         customer_phone = data.get("customer_phone")
         
+        # Track if there's no contact info at all
+        no_contact_info = not customer_email and not customer_phone
+        
         # Only send email notification here - WhatsApp is handled by _notify_customer to avoid duplicates
         results = {"email": False, "whatsapp": False, "sms": False}
         if customer_email:
@@ -166,8 +162,8 @@ class InvoiceIntentProcessor:
             except Exception as exc:
                 logger.error("Failed to send invoice email: %s", exc)
 
-        whatsapp_pending = self._notify_customer(invoice, data, issuer_id)
-        self._notify_business(sender, invoice, customer_email, results, whatsapp_pending)
+        whatsapp_pending = self._notify_customer(invoice, data, issuer_id) if customer_phone else False
+        self._notify_business(sender, invoice, customer_email, results, whatsapp_pending, no_contact_info)
 
     def _notify_business(
         self,
@@ -175,7 +171,8 @@ class InvoiceIntentProcessor:
         invoice,
         customer_email: str | None = None,
         notification_results: dict[str, bool] | None = None,
-        whatsapp_pending: bool = False
+        whatsapp_pending: bool = False,
+        no_contact_info: bool = False
     ) -> None:
         customer_name = getattr(invoice.customer, "name", "N/A") if invoice.customer else "N/A"
         customer_phone = getattr(invoice.customer, "phone", None) if invoice.customer else None
@@ -187,7 +184,12 @@ class InvoiceIntentProcessor:
         )
         
         # Show notification status
-        if whatsapp_pending:
+        if no_contact_info:
+            business_message += (
+                "\n📝 No phone/email - customer won't be notified.\n"
+                "💡 Mark as paid when customer pays: suoops.com/dashboard/invoices"
+            )
+        elif whatsapp_pending:
             business_message += (
                 "\n📱 WhatsApp notification sent!\n"
                 "⏳ Customer needs to reply 'OK' to receive payment details & PDF.\n"
