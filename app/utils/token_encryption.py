@@ -83,7 +83,8 @@ def encrypt_token(token: str) -> str:
         encrypted_bytes = fernet.encrypt(token.encode("utf-8"))
         return encrypted_bytes.decode("utf-8")
     except Exception as e:
-        logger.error(f"Token encryption failed: {e}")
+        # Log as warning to avoid Sentry noise when OAuth tokens aren't used
+        logger.warning(f"Token encryption failed: {e}")
         raise
 
 
@@ -113,10 +114,12 @@ def decrypt_token(encrypted_token: str) -> str:
         decrypted_bytes = fernet.decrypt(encrypted_token.encode("utf-8"))
         return decrypted_bytes.decode("utf-8")
     except InvalidToken as e:
-        logger.error("Token decryption failed: invalid token or wrong key")
+        # Log as warning - invalid tokens are expected in some scenarios
+        logger.warning("Token decryption failed: invalid token or wrong key")
         raise ValueError("Failed to decrypt token") from e
     except Exception as e:
-        logger.error(f"Token decryption failed: {e}")
+        # Log as warning to avoid Sentry noise
+        logger.warning(f"Token decryption failed: {e}")
         raise
 
 

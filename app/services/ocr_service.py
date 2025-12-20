@@ -92,7 +92,8 @@ class OCRService:
             return self._validate_and_format(extracted_data)
             
         except Exception as e:
-            logger.error(f"OCR parsing failed: {str(e)}", exc_info=True)
+            # Log as warning - OCR failures are expected for invalid images or API issues
+            logger.warning(f"OCR parsing failed: {str(e)}")
             return {
                 "success": False,
                 "error": f"OCR processing error: {str(e)}"
@@ -123,7 +124,8 @@ class OCRService:
             return output.getvalue()
             
         except Exception as e:
-            logger.error(f"Image preprocessing failed: {str(e)}")
+            # User-provided invalid image - log as warning to avoid Sentry noise
+            logger.warning(f"Image preprocessing failed: {str(e)}")
             return None
     
     def _encode_image(self, image_bytes: bytes) -> str:
@@ -286,7 +288,7 @@ Guidelines:
             }
             
         except Exception as e:
-            logger.error(f"Validation failed: {str(e)}")
+            logger.warning(f"Validation failed: {str(e)}")
             return {
                 "success": False,
                 "error": f"Data validation error: {str(e)}"

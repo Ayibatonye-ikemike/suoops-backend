@@ -138,7 +138,8 @@ class InvoiceCacheRepository:
             return None
             
         except Exception as e:
-            logger.error(f"Cache read error for invoice {invoice_id}: {e}")
+            # Redis is optional - log as warning not error to avoid Sentry noise
+            logger.warning(f"Cache read error for invoice {invoice_id}: {e}")
             return None
 
     def set_invoice(self, invoice: models.Invoice, ttl: int | None = None) -> None:
@@ -157,7 +158,8 @@ class InvoiceCacheRepository:
             logger.debug(f"Cached invoice {invoice.id} (TTL: {expiry}s)")
             
         except Exception as e:
-            logger.error(f"Cache write error for invoice {invoice.id}: {e}")
+            # Redis is optional - log as warning not error to avoid Sentry noise
+            logger.warning(f"Cache write error for invoice {invoice.id}: {e}")
 
     def invalidate_invoice(self, invoice_id: str) -> None:
         """Remove invoice from cache.
@@ -171,7 +173,8 @@ class InvoiceCacheRepository:
             logger.debug(f"Invalidated cache for invoice {invoice_id}")
             
         except Exception as e:
-            logger.error(f"Cache invalidation error for invoice {invoice_id}: {e}")
+            # Redis is optional - log as warning not error to avoid Sentry noise
+            logger.warning(f"Cache invalidation error for invoice {invoice_id}: {e}")
 
     def invalidate_user_invoices(self, user_id: int) -> None:
         """Remove user's invoice list from cache.
@@ -185,7 +188,8 @@ class InvoiceCacheRepository:
             logger.debug(f"Invalidated invoice list cache for user {user_id}")
             
         except Exception as e:
-            logger.error(f"Cache list invalidation error for user {user_id}: {e}")
+            # Redis is optional - log as warning not error to avoid Sentry noise
+            logger.warning(f"Cache list invalidation error for user {user_id}: {e}")
 
     def get_invoice_list(self, user_id: int) -> list[dict[str, Any]] | None:
         """Retrieve user's invoice list from cache.
@@ -208,7 +212,8 @@ class InvoiceCacheRepository:
             return None
             
         except Exception as e:
-            logger.error(f"Cache read error for user {user_id} invoice list: {e}")
+            # Redis is optional - log as warning not error to avoid Sentry noise
+            logger.warning(f"Cache read error for user {user_id} invoice list: {e}")
             return None
 
     def set_invoice_list(self, user_id: int, invoices: list[models.Invoice], ttl: int | None = None) -> None:
@@ -229,4 +234,5 @@ class InvoiceCacheRepository:
             logger.debug(f"Cached {len(invoices)} invoices for user {user_id} (TTL: {expiry}s)")
             
         except Exception as e:
-            logger.error(f"Cache write error for user {user_id} invoice list: {e}")
+            # Redis is optional - log as warning not error to avoid Sentry noise
+            logger.warning(f"Cache write error for user {user_id} invoice list: {e}")
