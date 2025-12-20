@@ -176,18 +176,23 @@ class InvoiceIntentProcessor:
     ) -> None:
         customer_name = getattr(invoice.customer, "name", "N/A") if invoice.customer else "N/A"
         customer_phone = getattr(invoice.customer, "phone", None) if invoice.customer else None
+        
+        # Show appropriate status label
+        status_display = "Awaiting Payment Confirmation" if invoice.status == "awaiting_confirmation" else invoice.status.replace("_", " ").title()
+        
         business_message = (
             f"✅ Invoice {invoice.invoice_id} created!\n\n"
             f"💰 Amount: ₦{invoice.amount:,.2f}\n"
             f"👤 Customer: {customer_name}\n"
-            f"📊 Status: {invoice.status}\n"
+            f"📊 Status: {status_display}\n"
         )
         
         # Show notification status
         if no_contact_info:
             business_message += (
-                "\n📝 No phone/email - customer won't be notified.\n"
-                "💡 Mark as paid when customer pays: suoops.com/dashboard/invoices"
+                "\n📝 No phone/email provided.\n"
+                "⏳ Awaiting payment confirmation.\n"
+                "💡 Click 'Mark Paid' when customer pays: suoops.com/dashboard/invoices"
             )
         elif whatsapp_pending:
             business_message += (

@@ -42,8 +42,23 @@ class InvoiceCreationMixin:
 
         discount_raw = data.get("discount_amount")
         discount_amount = Decimal(str(discount_raw)) if discount_raw else None
-        status = "paid" if invoice_type == "expense" else "pending"
-        paid_at = dt.datetime.now(dt.timezone.utc) if invoice_type == "expense" else None
+        
+        # Determine initial status based on invoice type and contact info
+        customer_phone = data.get("customer_phone")
+        customer_email = data.get("customer_email")
+        has_contact_info = bool(customer_phone or customer_email)
+        
+        if invoice_type == "expense":
+            status = "paid"
+            paid_at = dt.datetime.now(dt.timezone.utc)
+        elif has_contact_info:
+            # Has contact info - pending notification
+            status = "pending"
+            paid_at = None
+        else:
+            # No contact info - skip to awaiting confirmation (manual payment tracking)
+            status = "awaiting_confirmation"
+            paid_at = None
 
         invoice = models.Invoice(
             invoice_id=generate_id("INV" if invoice_type == "revenue" else "EXP"),
