@@ -185,11 +185,16 @@ class InvoiceStatusMixin:
             logger.warning("Cannot notify business for invoice %s: issuer missing", invoice.invoice_id)
             return
 
+        from app.core.config import settings
+        frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+        dashboard_link = f"{frontend_url.rstrip('/')}/dashboard?invoice={invoice.invoice_id}"
+
         message = (
             "Customer reported a transfer.\n\n"
             f"Invoice: {invoice.invoice_id}\n"
             f"Amount: ₦{invoice.amount:,.2f}\n\n"
-            "Please confirm the funds and mark the invoice as paid to send their receipt."
+            "Please confirm the funds and mark the invoice as paid to send their receipt.\n\n"
+            f"View in dashboard: {dashboard_link}"
         )
 
         try:
