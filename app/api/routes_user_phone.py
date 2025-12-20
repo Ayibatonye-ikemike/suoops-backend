@@ -72,18 +72,23 @@ def request_phone_otp(
     user.phone_verified = False
     db.commit()
     
-    # Send OTP via WhatsApp using authentication template
+    # Send OTP via WhatsApp
+    # Since user first "Says Hi" on WhatsApp (opt-in flow), the 24-hour messaging
+    # window is already open - we can send a regular text message directly
     try:
         client = WhatsAppClient(settings.WHATSAPP_API_KEY)
-        # Use template for OTP - works even if user hasn't messaged us first
-        success = client.send_otp_template(normalized_phone, otp)
+        message = f"🔐 *SuoOps Verification*\n\nYour verification code is: *{otp}*\n\nThis code expires in 10 minutes."
+        success = client.send_text(normalized_phone, message)
         if success:
-            logger.info("Sent phone verification OTP to %s via template", normalized_phone)
+            logger.info("Sent phone verification OTP to %s via WhatsApp", normalized_phone)
         else:
-            # Fallback to regular text (will only work if user has messaged us)
-            message = f"🔐 *SuoOps Verification*\n\nYour verification code is: *{otp}*\n\nThis code expires in 10 minutes."
-            client.send_text(normalized_phone, message)
-            logger.info("Sent phone verification OTP to %s via text (fallback)", normalized_phone)
+            logger.warning("Failed to send OTP to %s - user may not have opted in yet", normalized_phone)
+            raise HTTPException(
+                status_code=400, 
+                detail="Please say 'Hi' to our WhatsApp bot first, then try again."
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to send OTP via WhatsApp to %s: %s", normalized_phone, e)
         raise HTTPException(status_code=500, detail="Failed to send OTP. Please try again.")
