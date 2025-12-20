@@ -361,12 +361,26 @@ class InvoiceIntentProcessor:
         
         if not recent_invoices:
             logger.info("[OPTIN] No recent unpaid invoices for customer %s", customer_phone)
-            # Still return True since they are a customer (just no pending invoices)
-            self.client.send_text(
-                customer_phone,
-                "👋 Thanks for your message! You don't have any pending invoices at the moment.\n\n"
-                "You'll receive invoice notifications here when a business sends you one."
-            )
+            
+            # Check if they're ALSO a registered business
+            issuer_id = self._resolve_issuer_id(customer_phone)
+            if issuer_id is not None:
+                # They're both a customer AND a business - let them know about both roles
+                self.client.send_text(
+                    customer_phone,
+                    "👋 Hi there!\n\n"
+                    "📥 *As a customer:* No pending invoices at the moment.\n\n"
+                    "📤 *As a business:* You can create invoices!\n"
+                    "Example: `Invoice Joy 08012345678, 5000 wig`\n\n"
+                    "Type *help* for full guide."
+                )
+            else:
+                # Just a customer
+                self.client.send_text(
+                    customer_phone,
+                    "👋 Thanks for your message! You don't have any pending invoices at the moment.\n\n"
+                    "You'll receive invoice notifications here when a business sends you one."
+                )
             return True
         
         # Send payment details for recent invoices
@@ -390,6 +404,16 @@ class InvoiceIntentProcessor:
                 invoice.whatsapp_delivery_pending = False
         
         self.db.commit()
+        
+        # If they're also a business, remind them they can create invoices too
+        issuer_id = self._resolve_issuer_id(customer_phone)
+        if issuer_id is not None:
+            self.client.send_text(
+                customer_phone,
+                "💡 *Tip:* You're also a registered business!\n"
+                "Type *help* to see how to create your own invoices."
+            )
+        
         return True
 
     def handle_customer_paid(self, customer_phone: str) -> bool:
