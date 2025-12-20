@@ -643,9 +643,14 @@ class InvoiceIntentProcessor:
         if not candidates:
             return None
 
+        # Only match users with VERIFIED phone numbers
+        # This prevents someone from hijacking a number after another business removes it
         user = (
             self.db.query(models.User)
-            .filter(models.User.phone.in_(list(candidates)))
+            .filter(
+                models.User.phone.in_(list(candidates)),
+                models.User.phone_verified == True,  # Must be verified!
+            )
             .first()
         )
 
