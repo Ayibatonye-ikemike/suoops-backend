@@ -115,10 +115,14 @@ class AuthService:
             return self._issue_tokens(existing)
 
         # Create new user with email or phone
+        # Determine if this is a phone signup or email signup
+        is_phone_signup = not stored_data.get("email") and stored_data.get("phone")
+        
         user_data = {
             "name": stored_data.get("name", identifier),
             "business_name": stored_data.get("business_name"),
-            "phone_verified": True,
+            # Only mark phone_verified if user actually signed up with phone
+            "phone_verified": is_phone_signup,
         }
         
         email_value = stored_data.get("email")
@@ -128,11 +132,10 @@ class AuthService:
             encrypted_email = encrypt_value(plaintext_email)
             user_data["email"] = plaintext_email
             user_data["email_enc"] = encrypted_email
-            # Temporary phone fallback mapping retained only if phone absent.
+            # Use email as phone placeholder (required field) - NOT verified
             user_data["phone"] = stored_data.get("phone") or plaintext_email
         else:
-            # Some edge cases observed in tests where stored_data['phone'] persisted as None.
-            # Always fall back to normalized identifier to satisfy NOT NULL constraint.
+            # Phone signup - use the actual phone number
             user_data["phone"] = stored_data.get("phone") or identifier
 
         # Final safety: ensure phone is never None (model constraint) even if upstream data was missing.
