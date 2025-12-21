@@ -187,6 +187,10 @@ class InvoiceIntentProcessor:
             f"📊 Status: {status_display}\n"
         )
         
+        # Always include PDF link if available
+        if invoice.pdf_url:
+            business_message += f"\n📄 PDF: {invoice.pdf_url}\n"
+        
         # Show notification status
         if no_contact_info:
             business_message += (
