@@ -68,7 +68,7 @@ class BaseAppSettings(BaseSettings):
     PRIMARY_PAYMENT_PROVIDER: str = "paystack"
     FRONTEND_URL: str = "https://suoops.com"
     BACKEND_URL: str = "https://api.suoops.com"  # Used for QR code verification URLs
-    CORS_ALLOW_ORIGINS: list[str] = ["*"]
+    CORS_ALLOW_ORIGINS: list[str] = ["https://suoops.com", "https://www.suoops.com", "http://localhost:3000"]
     CORS_ALLOW_METHODS: list[str] = ["*"]
     CORS_ALLOW_HEADERS: list[str] = ["*"]
     CORS_ALLOW_CREDENTIALS: bool = True
