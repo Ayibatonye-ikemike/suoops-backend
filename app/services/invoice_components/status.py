@@ -300,14 +300,20 @@ class InvoiceStatusMixin:
                 f"📄 Invoice: {invoice.invoice_id}\n"
                 f"💵 Amount: ₦{invoice.amount:,.2f}\n"
                 f"👤 Customer: {customer_name}\n\n"
+                f"Share this receipt with your customer."
             )
             
-            if invoice.pdf_url:
-                receipt_message += f"📄 Receipt PDF: {invoice.pdf_url}\n\n"
-                
-            receipt_message += "Share this receipt with your customer."
-            
             client.send_text(user.phone, receipt_message)
+            
+            # Send receipt PDF as document (better UX than URL link)
+            if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+                client.send_document(
+                    user.phone,
+                    invoice.pdf_url,
+                    f"Receipt_{invoice.invoice_id}.pdf",
+                    f"🧾 Receipt for {customer_name} - ₦{invoice.amount:,.2f}",
+                )
+                
             logger.info("Receipt PDF sent to business %s for invoice %s", user.id, invoice.invoice_id)
             
         except Exception as exc:  # noqa: BLE001

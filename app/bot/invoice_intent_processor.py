@@ -187,10 +187,6 @@ class InvoiceIntentProcessor:
             f"📊 Status: {status_display}\n"
         )
         
-        # Always include PDF link if available
-        if invoice.pdf_url:
-            business_message += f"\n📄 PDF: {invoice.pdf_url}\n"
-        
         # Show notification status
         if no_contact_info:
             business_message += (
@@ -221,6 +217,15 @@ class InvoiceIntentProcessor:
             business_message += "\n✅ Full invoice sent to customer via WhatsApp!"
         
         self.client.send_text(sender, business_message)
+        
+        # Send invoice PDF as document (better UX than URL link)
+        if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+            self.client.send_document(
+                sender,
+                invoice.pdf_url,
+                f"Invoice_{invoice.invoice_id}.pdf",
+                f"📄 Invoice {invoice.invoice_id} - ₦{invoice.amount:,.2f}",
+            )
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> bool:
         """
