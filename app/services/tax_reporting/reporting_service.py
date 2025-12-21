@@ -247,7 +247,8 @@ class TaxReportingService:
         if basis == "paid":
             q = q.filter(Invoice.status == "paid")
         else:
-            q = q.filter(Invoice.status != "refunded")
+            # Exclude both refunded AND cancelled invoices for "all" basis
+            q = q.filter(Invoice.status.notin_(["refunded", "cancelled"]))
         invoices = q.all()
         
         for inv in invoices:
