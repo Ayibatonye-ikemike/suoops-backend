@@ -57,7 +57,8 @@ def generate_tax_report(
         # (ensures PDF is available for download button)
         if not report.pdf_url:
             try:
-                pdf_service = PDFService()
+                from app.storage.s3_client import S3Client
+                pdf_service = PDFService(S3Client())
                 pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis=basis)
                 reporting_service.attach_report_pdf(report, pdf_url)
                 report.pdf_url = pdf_url
@@ -163,7 +164,8 @@ def download_tax_report_by_id(
     # Generate PDF on-demand if not already present
     if not report.pdf_url:
         try:
-            pdf_service = PDFService()
+            from app.storage.s3_client import S3Client
+            pdf_service = PDFService(S3Client())
             pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis="paid")
             report.pdf_url = pdf_url
             db.commit()
