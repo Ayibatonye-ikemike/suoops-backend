@@ -88,29 +88,31 @@ class WhatsAppHandler:
                 logger.info("Handled payment confirmation from customer %s", sender)
                 return
 
-        # Check if this is an opt-in response from a customer
-        # Common affirmative replies that indicate opt-in
-        optin_keywords = {"ok", "yes", "hi", "hello", "hey", "sure", "yea", "yeah", "yep", "👍", "okay"}
-        if text_lower in optin_keywords:
-            # Try to handle as customer opt-in (send pending invoices)
-            if self.invoice_processor.handle_customer_optin(sender):
-                logger.info("Handled opt-in from customer %s", sender)
-                return  # Successfully sent pending invoices, don't process further
-        
-        # Check if this is a help/greeting from a business user
+        # Check if this is a help/greeting message
         help_keywords = {"help", "start", "menu", "guide", "how", "instructions"}
         greeting_keywords = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening"}
+        optin_keywords = {"ok", "yes", "sure", "yea", "yeah", "yep", "👍", "okay"}
         
-        if text_lower in help_keywords or text_lower in greeting_keywords or text_lower in optin_keywords:
-            # Check if sender is a registered business
+        is_greeting = text_lower in greeting_keywords or text_lower in help_keywords
+        is_optin = text_lower in optin_keywords
+        
+        # BUSINESS CHECK FIRST: If sender is a registered business AND sends greeting/help, 
+        # show business welcome - don't treat them as a customer
+        if is_greeting or text_lower in optin_keywords:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
                 # This is a registered business - send welcome/help message
                 self._send_business_welcome(sender)
                 return
+        
+        # Only now check for customer opt-in (for non-business users)
+        if is_greeting or is_optin:
+            # Try to handle as customer opt-in (send pending invoices)
+            if self.invoice_processor.handle_customer_optin(sender):
+                logger.info("Handled opt-in from customer %s", sender)
+                return  # Successfully sent pending invoices, don't process further
             else:
                 # Not a business and not a found customer - send generic response
-                # Don't confuse them with invoice creation instructions
                 self.client.send_text(
                     sender,
                     "👋 Hi there!\n\n"
