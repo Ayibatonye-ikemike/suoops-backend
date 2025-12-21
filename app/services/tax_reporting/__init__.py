@@ -11,7 +11,7 @@ Sub-modules:
 """
 from .computations import (
     PIT_BANDS,
-    CIT_RATES,
+    CIT_THRESHOLDS,
     compute_personal_income_tax,
     compute_company_income_tax,
     compute_revenue_by_date_range,
@@ -25,7 +25,7 @@ from .reporting_service import TaxReportingService
 __all__ = [
     # Constants
     "PIT_BANDS",
-    "CIT_RATES",
+    "CIT_THRESHOLDS",
     # Computation functions
     "compute_personal_income_tax",
     "compute_company_income_tax",

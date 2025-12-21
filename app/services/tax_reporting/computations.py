@@ -16,21 +16,32 @@ logger = logging.getLogger(__name__)
 
 # Nigerian Personal Income Tax (PIT) Bands for 2026
 # Progressive taxation on profit (revenue - expenses)
+# Tax exemption for low earners (≤₦800,000)
 PIT_BANDS = [
-    (800_000, 0.00),         # First ₦800,000: 0%
-    (3_000_000, 0.15),       # Next ₦2.2M (₦800K-₦3M): 15%
-    (12_000_000, 0.18),      # Next ₦9M (₦3M-₦12M): 18%
-    (25_000_000, 0.21),      # Next ₦13M (₦12M-₦25M): 21%
-    (50_000_000, 0.23),      # Next ₦25M (₦25M-₦50M): 23%
-    (float('inf'), 0.25),    # Above ₦50M: 25%
+    (800_000, 0.00),         # First ₦800,000: 0% (EXEMPT)
+    (3_000_000, 0.15),       # ₦800,001-₦3,000,000: 15%
+    (12_000_000, 0.18),      # ₦3,000,001-₦12,000,000: 18%
+    (25_000_000, 0.21),      # ₦12,000,001-₦25,000,000: 21%
+    (50_000_000, 0.23),      # ₦25,000,001-₦50,000,000: 23%
+    (float('inf'), 0.25),    # Above ₦50,000,000: 25%
 ]
 
 
 # Nigerian Company Income Tax (CIT) Rates
-# Based on annual gross turnover
-CIT_RATES = {
-    "small": 0.00,    # ≤₦50M turnover: 0% (exempt)
-    "other": 0.30,    # >₦50M turnover: 30%
+# Based on annual gross turnover thresholds
+CIT_THRESHOLDS = {
+    "small": {
+        "max_turnover": 25_000_000,   # ≤₦25M
+        "rate": 0.00,                  # 0% (Exempt from CIT)
+    },
+    "medium": {
+        "max_turnover": 100_000_000,  # >₦25M and <₦100M
+        "rate": 0.20,                  # 20%
+    },
+    "large": {
+        "max_turnover": float('inf'), # ≥₦100M
+        "rate": 0.30,                  # 30%
+    },
 }
 
 # Development Levy rate (4% of assessable profits for non-small companies)
@@ -41,6 +52,10 @@ MINIMUM_TAX_RATE = 0.005
 
 # Maximum capital allowance claimable (66.67% of assessable profit)
 MAX_CAPITAL_ALLOWANCE_RATIO = 0.6667
+
+# Rent Relief: 20% of annual rent paid, capped at ₦500,000
+RENT_RELIEF_RATE = 0.20
+RENT_RELIEF_CAP = 500_000
 
 
 def compute_company_income_tax(
@@ -57,9 +72,10 @@ def compute_company_income_tax(
     3. Deduct capital allowances (capped at 66.67% of assessable profit)
     4. Apply CIT rate based on company size (turnover threshold)
     
-    CIT Rates (2024 Tax Reform):
-    - Small Company (turnover ≤₦50M): 0% (EXEMPT)
-    - Other Companies (turnover >₦50M): 30%
+    CIT Rates (Nigerian Tax Law):
+    - Small Company (turnover ≤₦25M): 0% (EXEMPT)
+    - Medium Company (turnover >₦25M and <₦100M): 20%
+    - Large Company (turnover ≥₦100M): 30%
     
     Additional Levies:
     - Development Levy: 4% of assessable profits (non-small companies)
@@ -87,13 +103,16 @@ def compute_company_income_tax(
     
     turnover = float(annual_turnover or 0)
     
-    # Determine company size based on turnover
-    if turnover <= 50_000_000:
+    # Determine company size and CIT rate based on turnover thresholds
+    if turnover <= CIT_THRESHOLDS["small"]["max_turnover"]:
         company_size = "small"
-        cit_rate = CIT_RATES["small"]
+        cit_rate = CIT_THRESHOLDS["small"]["rate"]
+    elif turnover < CIT_THRESHOLDS["medium"]["max_turnover"]:
+        company_size = "medium"
+        cit_rate = CIT_THRESHOLDS["medium"]["rate"]
     else:
-        company_size = "other"
-        cit_rate = CIT_RATES["other"]
+        company_size = "large"
+        cit_rate = CIT_THRESHOLDS["large"]["rate"]
     
     # Calculate taxable profit after capital allowances
     assessable_profit = profit
@@ -134,16 +153,22 @@ def compute_company_income_tax(
     else:
         effective_rate = Decimal("0")
     
-    # Generate notes
+    # Generate notes based on company size
     notes = []
     if company_size == "small":
-        notes.append("Small company (turnover ≤₦50M): CIT exempt")
-    else:
-        notes.append(f"CIT rate: {int(cit_rate * 100)}%")
+        notes.append("Small company (turnover ≤₦25M): CIT exempt")
+    elif company_size == "medium":
+        notes.append(f"Medium company (₦25M-₦100M): CIT rate {int(cit_rate * 100)}%")
         if development_levy > 0:
-            notes.append(f"Development levy: 4% of assessable profit")
+            notes.append("Development levy: 4% of assessable profit")
         if minimum_tax > 0:
-            notes.append(f"Minimum tax applies (CIT < 0.5% of turnover)")
+            notes.append("Minimum tax applies (CIT < 0.5% of turnover)")
+    else:
+        notes.append(f"Large company (≥₦100M): CIT rate {int(cit_rate * 100)}%")
+        if development_levy > 0:
+            notes.append("Development levy: 4% of assessable profit")
+        if minimum_tax > 0:
+            notes.append("Minimum tax applies (CIT < 0.5% of turnover)")
     
     return {
         "cit_amount": cit_amount.quantize(Decimal("0.01")),
