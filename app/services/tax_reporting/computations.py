@@ -274,7 +274,9 @@ def compute_revenue_by_date_range(
     if basis == "paid":
         q = q.filter(Invoice.status == "paid")
     else:
-        q = q.filter(Invoice.status != "refunded")
+        # Exclude both refunded AND cancelled invoices for "all" basis
+        # Only count invoices that represent actual/potential revenue
+        q = q.filter(Invoice.status.notin_(["refunded", "cancelled"]))
     
     invoices = q.all()
     total = Decimal("0")

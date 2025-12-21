@@ -330,18 +330,19 @@ def _get_invoice_debug_info(
     # Get top 5 invoices by amount
     top_invoices = sorted(all_invoices, key=lambda i: float(i.amount or 0), reverse=True)[:5]
     
-    # Calculate basis-specific totals
+    # Calculate basis-specific totals (matching the actual revenue calculation logic)
     if basis == "paid":
         relevant_invoices = paid_invoices
     else:
-        relevant_invoices = [i for i in all_invoices if i.status != "refunded"]
+        # Exclude both refunded AND cancelled invoices for "all" basis
+        relevant_invoices = [i for i in all_invoices if i.status not in ("refunded", "cancelled")]
     
     total_revenue = sum(float(i.amount or 0) - float(i.discount_amount or 0) for i in relevant_invoices)
     
     return {
         "total_invoices_in_period": len(all_invoices),
         "paid_invoices": len(paid_invoices),
-        "non_refunded_invoices": len([i for i in all_invoices if i.status != "refunded"]),
+        "non_refunded_invoices": len([i for i in all_invoices if i.status not in ("refunded", "cancelled")]),
         "invoices_counted_for_basis": len(relevant_invoices),
         "calculated_revenue": total_revenue,
         "top_5_invoices": [
