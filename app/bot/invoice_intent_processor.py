@@ -345,15 +345,30 @@ class InvoiceIntentProcessor:
         self.db.commit()
         logger.info("[OPTIN] Customer(s) %s opted in to WhatsApp", customer_phone)
         
+        # Check if this phone also belongs to a registered business (issuer)
+        # We'll exclude invoices where they're BOTH the issuer and customer (self-invoices/tests)
+        issuer_id = self._resolve_issuer_id(customer_phone)
+        
         # Find recent unpaid invoices for ANY of these customer records
         seven_days_ago = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)
-        recent_invoices = (
+        recent_invoices_query = (
             self.db.query(models.Invoice)
             .filter(
                 models.Invoice.customer_id.in_(customer_ids),
                 models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
                 models.Invoice.created_at >= seven_days_ago,
             )
+        )
+        
+        # Exclude self-invoices: where the issuer is the same person messaging
+        if issuer_id is not None:
+            recent_invoices_query = recent_invoices_query.filter(
+                models.Invoice.issuer_id != issuer_id
+            )
+            logger.info("[OPTIN] Excluding self-invoices for issuer_id=%s", issuer_id)
+        
+        recent_invoices = (
+            recent_invoices_query
             .order_by(models.Invoice.created_at.desc())
             .limit(3)  # Max 3 recent invoices to avoid spam
             .all()
@@ -362,8 +377,7 @@ class InvoiceIntentProcessor:
         if not recent_invoices:
             logger.info("[OPTIN] No recent unpaid invoices for customer %s", customer_phone)
             
-            # Check if they're ALSO a registered business
-            issuer_id = self._resolve_issuer_id(customer_phone)
+            # issuer_id already resolved above
             if issuer_id is not None:
                 # They're both a customer AND a business - let them know about both roles
                 self.client.send_text(
@@ -406,7 +420,7 @@ class InvoiceIntentProcessor:
         self.db.commit()
         
         # If they're also a business, remind them they can create invoices too
-        issuer_id = self._resolve_issuer_id(customer_phone)
+        # issuer_id already resolved above
         if issuer_id is not None:
             self.client.send_text(
                 customer_phone,
@@ -669,10 +683,20 @@ class InvoiceIntentProcessor:
             candidates.add(clean_digits)
             if clean_digits.startswith("234"):
                 candidates.add(f"+{clean_digits}")
+                # Also add local format (0xxx) - remove 234 prefix and add 0
+                local_number = "0" + clean_digits[3:]
+                candidates.add(local_number)
+            elif clean_digits.startswith("0"):
+                # Local format - also try international
+                intl_number = "234" + clean_digits[1:]
+                candidates.add(intl_number)
+                candidates.add(f"+{intl_number}")
 
         candidates = {c for c in candidates if c}
         if not candidates:
             return None
+        
+        logger.info("[RESOLVE_ISSUER] Looking for user with phone candidates: %s", candidates)
 
         # Only match users with VERIFIED phone numbers
         # This prevents someone from hijacking a number after another business removes it
