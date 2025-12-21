@@ -250,6 +250,10 @@ class InvoiceCreationMixin:
             q = q.filter(models.Customer.phone.in_(list(phone_candidates)))
         elif email:
             q = q.filter(models.Customer.email == email)
+        else:
+            # No phone or email provided - look for customer with same name AND no contact info
+            # This prevents matching an existing customer with a different phone/email
+            q = q.filter(models.Customer.phone.is_(None), models.Customer.email.is_(None))
         existing = q.first()
         if existing:
             if email and not existing.email:
