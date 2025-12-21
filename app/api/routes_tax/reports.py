@@ -53,13 +53,15 @@ def generate_tax_report(
             force_regenerate=force,
         )
 
-        # Generate PDF on-demand if not already generated
+        # Always generate PDF on-demand if not present
+        # (ensures PDF is available for download button)
         if not report.pdf_url:
             try:
                 pdf_service = PDFService()
                 pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis=basis)
                 reporting_service.attach_report_pdf(report, pdf_url)
                 report.pdf_url = pdf_url
+                db.commit()  # Persist the pdf_url
                 logger.info(f"Generated PDF for tax report {report.id}: {pdf_url}")
             except Exception as pdf_err:
                 logger.warning(f"Failed to generate PDF for tax report {report.id}: {pdf_err}")
@@ -155,8 +157,20 @@ def download_tax_report_by_id(
         MonthlyTaxReport.user_id == current_user_id,
     ).first()
 
-    if not report or not report.pdf_url:
-        raise HTTPException(status_code=404, detail="Report or PDF not found.")
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found.")
+
+    # Generate PDF on-demand if not already present
+    if not report.pdf_url:
+        try:
+            pdf_service = PDFService()
+            pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis="paid")
+            report.pdf_url = pdf_url
+            db.commit()
+            logger.info(f"Generated PDF on download for report {report.id}: {pdf_url}")
+        except Exception as e:
+            logger.error(f"Failed to generate PDF for report {report.id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to generate PDF.")
 
     return {
         "pdf_url": report.pdf_url,
