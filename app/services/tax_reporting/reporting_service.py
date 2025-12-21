@@ -15,6 +15,7 @@ from app.services.tax_service import TaxProfileService
 
 from .computations import (
     compute_personal_income_tax,
+    compute_company_income_tax,
     compute_actual_profit_by_date_range,
 )
 from .period_utils import calculate_period_range
@@ -141,6 +142,10 @@ class TaxReportingService:
         pit_calc = compute_personal_income_tax(profit)
         pit_amount = pit_calc["pit_amount"]
 
+        # Calculate Company Income Tax (CIT) for PRO+ plans
+        cit_data = self._compute_cit_data(user_id, profit, start_date, end_date)
+        cit_amount = cit_data.get("cit_amount", Decimal("0"))
+
         # Get VAT data
         vat_data = self._compute_vat_data(user_id, start_date, end_date, basis)
         
@@ -148,16 +153,62 @@ class TaxReportingService:
         if not existing:
             report = self._create_report(
                 user_id, period_type, start_date, end_date, year, month,
-                profit, levy, pit_amount, vat_data, cogs_data
+                profit, levy, pit_amount, cit_amount, vat_data, cogs_data
             )
         else:
             report = self._update_report(
-                existing, profit, levy, pit_amount, vat_data, cogs_data
+                existing, profit, levy, pit_amount, cit_amount, vat_data, cogs_data
             )
         
         self.db.commit()
         self.db.refresh(report)
         return report
+
+    def _compute_cit_data(
+        self,
+        user_id: int,
+        profit: Decimal,
+        start_date: date,
+        end_date: date,
+    ) -> dict:
+        """Compute Company Income Tax (CIT) for PRO+ plans."""
+        from app.models.models import User, SubscriptionPlan
+        
+        user = self.db.query(User).filter(User.id == user_id).first()
+        user_plan = user.plan if user else SubscriptionPlan.FREE
+        
+        # CIT is only calculated for PRO and BUSINESS plans
+        is_cit_eligible = user_plan in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS)
+        
+        if not is_cit_eligible:
+            return {
+                "cit_amount": Decimal("0"),
+                "development_levy": Decimal("0"),
+                "company_size": "n/a",
+                "notes": "CIT requires PRO or BUSINESS plan",
+            }
+        
+        # Get annual turnover estimate (for company size classification)
+        # Estimate based on current period profit (annualized)
+        days_in_period = (end_date - start_date).days + 1
+        annual_turnover = (profit / days_in_period * 365) if days_in_period > 0 else profit * 12
+        
+        # Get tax profile for capital allowances if available
+        from app.models.tax_models import TaxProfile
+        tax_profile = self.db.query(TaxProfile).filter(TaxProfile.user_id == user_id).first()
+        capital_allowances = None
+        if tax_profile and tax_profile.fixed_assets:
+            # Simplified: assume 25% depreciation on fixed assets per year
+            annual_allowance = float(tax_profile.fixed_assets) * 0.25
+            capital_allowances = Decimal(str(annual_allowance * days_in_period / 365))
+        
+        cit_calc = compute_company_income_tax(
+            profit=profit,
+            annual_turnover=Decimal(str(annual_turnover)),
+            capital_allowances=capital_allowances,
+        )
+        
+        return cit_calc
 
     def _compute_vat_data(
         self,
@@ -228,6 +279,7 @@ class TaxReportingService:
         profit: Decimal,
         levy: dict,
         pit_amount: Decimal,
+        cit_amount: Decimal,
         vat_data: dict,
         cogs_data: dict,
     ) -> MonthlyTaxReport:
@@ -242,6 +294,7 @@ class TaxReportingService:
             assessable_profit=profit,
             levy_amount=Decimal(str(levy["levy_amount"])),
             pit_amount=pit_amount,
+            cit_amount=cit_amount,
             vat_collected=vat_data["vat_collected"],
             taxable_sales=vat_data["taxable_sales"],
             zero_rated_sales=vat_data["zero_rated_sales"],
@@ -260,6 +313,7 @@ class TaxReportingService:
         profit: Decimal,
         levy: dict,
         pit_amount: Decimal,
+        cit_amount: Decimal,
         vat_data: dict,
         cogs_data: dict,
     ) -> MonthlyTaxReport:
@@ -267,6 +321,7 @@ class TaxReportingService:
         report.assessable_profit = profit
         report.levy_amount = Decimal(str(levy["levy_amount"]))
         report.pit_amount = pit_amount
+        report.cit_amount = cit_amount
         report.vat_collected = vat_data["vat_collected"]
         report.taxable_sales = vat_data["taxable_sales"]
         report.zero_rated_sales = vat_data["zero_rated_sales"]

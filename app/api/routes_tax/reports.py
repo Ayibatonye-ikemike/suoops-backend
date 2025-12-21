@@ -59,6 +59,7 @@ def generate_tax_report(
         annual_revenue_estimate = _estimate_annual_revenue(report, period_type)
         alerts = _generate_tax_alerts(user_plan, annual_revenue_estimate)
         pit_band_info = _get_pit_band_info(float(report.assessable_profit or 0))
+        is_cit_eligible = user_plan in ("pro", "business")
 
         return {
             "id": report.id,
@@ -71,6 +72,7 @@ def generate_tax_report(
             "assessable_profit": float(report.assessable_profit or 0),
             "levy_amount": float(report.levy_amount or 0),
             "pit_amount": float(report.pit_amount or 0),
+            "cit_amount": float(report.cit_amount or 0) if is_cit_eligible else 0,
             "vat_collected": float(report.vat_collected or 0),
             "taxable_sales": float(report.taxable_sales or 0),
             "zero_rated_sales": float(report.zero_rated_sales or 0),
@@ -79,6 +81,7 @@ def generate_tax_report(
             "basis": basis,
             "user_plan": user_plan,
             "is_vat_eligible": user_plan in ("pro", "business"),
+            "is_cit_eligible": is_cit_eligible,
             "pit_band_info": pit_band_info,
             "alerts": alerts,
             "annual_revenue_estimate": annual_revenue_estimate,

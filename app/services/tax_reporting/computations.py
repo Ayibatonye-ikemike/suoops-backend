@@ -26,6 +26,136 @@ PIT_BANDS = [
 ]
 
 
+# Nigerian Company Income Tax (CIT) Rates
+# Based on annual gross turnover
+CIT_RATES = {
+    "small": 0.00,    # ≤₦50M turnover: 0% (exempt)
+    "other": 0.30,    # >₦50M turnover: 30%
+}
+
+# Development Levy rate (4% of assessable profits for non-small companies)
+DEVELOPMENT_LEVY_RATE = 0.04
+
+# Minimum tax rate (0.5% of gross turnover less franked investment income)
+MINIMUM_TAX_RATE = 0.005
+
+# Maximum capital allowance claimable (66.67% of assessable profit)
+MAX_CAPITAL_ALLOWANCE_RATIO = 0.6667
+
+
+def compute_company_income_tax(
+    profit: Decimal,
+    annual_turnover: Optional[Decimal] = None,
+    capital_allowances: Optional[Decimal] = None,
+) -> dict:
+    """
+    Calculate Nigerian Company Income Tax (CIT) based on profit and turnover.
+    
+    CIT Calculation Steps:
+    1. Start with accounting profit (profit parameter)
+    2. Compute assessable profit (after adjustments - simplified here)
+    3. Deduct capital allowances (capped at 66.67% of assessable profit)
+    4. Apply CIT rate based on company size (turnover threshold)
+    
+    CIT Rates (2024 Tax Reform):
+    - Small Company (turnover ≤₦50M): 0% (EXEMPT)
+    - Other Companies (turnover >₦50M): 30%
+    
+    Additional Levies:
+    - Development Levy: 4% of assessable profits (non-small companies)
+    - Minimum Tax: 0.5% of gross turnover (if CIT < minimum tax)
+    
+    Args:
+        profit: Taxable profit (Revenue - Expenses)
+        annual_turnover: Annual gross turnover for size classification
+        capital_allowances: Capital allowances (tax depreciation) to deduct
+        
+    Returns:
+        dict with cit_amount, development_levy, minimum_tax, effective_rate, 
+        company_size, notes
+    """
+    if profit <= 0:
+        return {
+            "cit_amount": Decimal("0"),
+            "development_levy": Decimal("0"),
+            "minimum_tax": Decimal("0"),
+            "effective_rate": Decimal("0"),
+            "company_size": "small",
+            "taxable_profit": Decimal("0"),
+            "notes": "No profit - no CIT liability",
+        }
+    
+    turnover = float(annual_turnover or 0)
+    
+    # Determine company size based on turnover
+    if turnover <= 50_000_000:
+        company_size = "small"
+        cit_rate = CIT_RATES["small"]
+    else:
+        company_size = "other"
+        cit_rate = CIT_RATES["other"]
+    
+    # Calculate taxable profit after capital allowances
+    assessable_profit = profit
+    
+    if capital_allowances and capital_allowances > 0:
+        # Cap capital allowances at 66.67% of assessable profit
+        max_allowance = assessable_profit * Decimal(str(MAX_CAPITAL_ALLOWANCE_RATIO))
+        actual_allowance = min(capital_allowances, max_allowance)
+        taxable_profit = assessable_profit - actual_allowance
+    else:
+        taxable_profit = assessable_profit
+    
+    if taxable_profit < Decimal("0"):
+        taxable_profit = Decimal("0")
+    
+    # Calculate CIT
+    cit_amount = taxable_profit * Decimal(str(cit_rate))
+    
+    # Calculate Development Levy (4% for non-small companies)
+    if company_size == "small":
+        development_levy = Decimal("0")
+    else:
+        development_levy = assessable_profit * Decimal(str(DEVELOPMENT_LEVY_RATE))
+    
+    # Calculate Minimum Tax (0.5% of turnover)
+    # Applies if CIT is less than minimum tax
+    minimum_tax = Decimal("0")
+    if company_size != "small" and turnover > 0:
+        min_tax_amount = Decimal(str(turnover)) * Decimal(str(MINIMUM_TAX_RATE))
+        if cit_amount < min_tax_amount:
+            minimum_tax = min_tax_amount - cit_amount
+            # Note: In practice, company pays the higher of CIT or minimum tax
+    
+    # Calculate effective rate
+    if profit > 0:
+        total_tax = cit_amount + development_levy
+        effective_rate = (total_tax / profit * 100)
+    else:
+        effective_rate = Decimal("0")
+    
+    # Generate notes
+    notes = []
+    if company_size == "small":
+        notes.append("Small company (turnover ≤₦50M): CIT exempt")
+    else:
+        notes.append(f"CIT rate: {int(cit_rate * 100)}%")
+        if development_levy > 0:
+            notes.append(f"Development levy: 4% of assessable profit")
+        if minimum_tax > 0:
+            notes.append(f"Minimum tax applies (CIT < 0.5% of turnover)")
+    
+    return {
+        "cit_amount": cit_amount.quantize(Decimal("0.01")),
+        "development_levy": development_levy.quantize(Decimal("0.01")),
+        "minimum_tax": minimum_tax.quantize(Decimal("0.01")),
+        "effective_rate": effective_rate.quantize(Decimal("0.01")),
+        "company_size": company_size,
+        "taxable_profit": taxable_profit.quantize(Decimal("0.01")),
+        "notes": "; ".join(notes),
+    }
+
+
 def compute_personal_income_tax(profit: Decimal) -> dict:
     """
     Calculate Nigerian Personal Income Tax (PIT) using progressive bands.
