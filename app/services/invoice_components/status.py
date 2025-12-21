@@ -168,6 +168,11 @@ class InvoiceStatusMixin:
                 results["whatsapp"],
                 results["sms"],
             )
+            
+            # If no customer contact info, notify business with receipt PDF via WhatsApp
+            if not customer_email and not customer_phone:
+                self._notify_business_with_receipt(invoice)
+                
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to send receipt notifications for %s: %s", invoice_id, exc)
         
@@ -259,6 +264,54 @@ class InvoiceStatusMixin:
             asyncio.run(_run())
         except Exception as exc:  # noqa: BLE001
             logger.error("Notification dispatch failed for invoice %s: %s", invoice.invoice_id, exc)
+
+    def _notify_business_with_receipt(self, invoice: models.Invoice) -> None:
+        """
+        Notify the business owner with the receipt PDF via WhatsApp.
+        
+        This is called when an invoice is marked as paid but has no customer
+        contact info (no email/phone). In this case, the business needs the
+        receipt PDF to give to the customer manually.
+        """
+        if not invoice.issuer:
+            logger.warning("No issuer found for invoice %s", invoice.invoice_id)
+            return
+            
+        user = invoice.issuer
+        if not user.phone:
+            logger.warning("Business %s has no phone for receipt notification", user.id)
+            return
+            
+        try:
+            from app.bot.whatsapp_client import WhatsAppClient
+            from app.core.config import settings
+            
+            whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
+            if not whatsapp_key:
+                logger.warning("No WhatsApp API key configured for receipt notification")
+                return
+                
+            client = WhatsAppClient(whatsapp_key)
+            
+            customer_name = invoice.customer.name if invoice.customer else "Customer"
+            
+            receipt_message = (
+                f"✅ Invoice Paid!\n\n"
+                f"📄 Invoice: {invoice.invoice_id}\n"
+                f"💵 Amount: ₦{invoice.amount:,.2f}\n"
+                f"👤 Customer: {customer_name}\n\n"
+            )
+            
+            if invoice.pdf_url:
+                receipt_message += f"📄 Receipt PDF: {invoice.pdf_url}\n\n"
+                
+            receipt_message += "Share this receipt with your customer."
+            
+            client.send_text(user.phone, receipt_message)
+            logger.info("Receipt PDF sent to business %s for invoice %s", user.id, invoice.invoice_id)
+            
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to send receipt to business %s: %s", invoice.invoice_id, exc)
 
     def _process_inventory_on_payment(self, invoice: models.Invoice) -> None:
         """
