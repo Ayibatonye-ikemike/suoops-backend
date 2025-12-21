@@ -53,8 +53,12 @@ class WhatsAppChannel:
             customer = invoice.customer
             has_opted_in = getattr(customer, "whatsapp_opted_in", False) if customer else False
             
-            if has_opted_in:
-                # Customer has messaged us before - send full invoice with payment details
+            # Also check if the customer's phone belongs to a registered business user
+            # Registered users should receive full invoices without needing to opt-in
+            is_registered_user = self._is_registered_user(recipient_phone, invoice)
+            
+            if has_opted_in or is_registered_user:
+                # Customer has messaged us before OR is a registered business - send full invoice
                 return await self._send_full_invoice(client, invoice, recipient_phone, pdf_url)
             else:
                 # New customer - send template only (regular messages will fail due to 24h window)
@@ -63,6 +67,33 @@ class WhatsAppChannel:
         except Exception as e:  # pragma: no cover - network failures
             logger.error("Failed to send invoice via WhatsApp: %s", e)
             return False
+    
+    def _is_registered_user(self, phone: str, invoice: "models.Invoice") -> bool:
+        """Check if a phone number belongs to a registered business user."""
+        from sqlalchemy.orm import object_session
+        from app.models import models
+        
+        # Normalize phone for lookup
+        normalized = phone.replace(" ", "").replace("-", "")
+        if not normalized.startswith("+"):
+            if normalized.startswith("0"):
+                normalized = "+234" + normalized[1:]
+            elif normalized.startswith("234"):
+                normalized = "+" + normalized
+            else:
+                normalized = "+" + normalized
+        
+        # Get db session from invoice object
+        db = object_session(invoice)
+        if not db:
+            return False
+            
+        # Check if phone exists in users table
+        user = db.query(models.User).filter(models.User.phone == normalized).first()
+        if user:
+            logger.info("[WHATSAPP] Recipient phone %s is a registered user (ID: %s)", phone, user.id)
+            return True
+        return False
 
     async def _send_full_invoice(
         self,

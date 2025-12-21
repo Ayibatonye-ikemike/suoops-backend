@@ -242,8 +242,12 @@ class InvoiceIntentProcessor:
         customer = invoice.customer
         has_opted_in = getattr(customer, "whatsapp_opted_in", False) if customer else False
         
-        if has_opted_in:
-            # Customer has messaged us before - send full invoice with payment details
+        # Also check if the customer's phone belongs to a registered business user
+        # Registered users should receive full invoices without needing to opt-in
+        is_registered_user = self._is_registered_user(customer_phone)
+        
+        if has_opted_in or is_registered_user:
+            # Customer has messaged us before OR is a registered business - send full invoice
             self._send_full_invoice(invoice, customer_phone, issuer_id)
             return False  # Full delivery completed
         else:
@@ -251,6 +255,27 @@ class InvoiceIntentProcessor:
             # Regular messages will fail, so we just send template and wait for reply
             self._send_template_only(invoice, customer_phone, issuer_id)
             return True  # Pending - waiting for customer to reply
+    
+    def _is_registered_user(self, phone: str) -> bool:
+        """Check if a phone number belongs to a registered business user."""
+        from app.models import models
+        
+        # Normalize phone for lookup
+        normalized = phone.replace(" ", "").replace("-", "")
+        if not normalized.startswith("+"):
+            if normalized.startswith("0"):
+                normalized = "+234" + normalized[1:]
+            elif normalized.startswith("234"):
+                normalized = "+" + normalized
+            else:
+                normalized = "+" + normalized
+        
+        # Check if phone exists in users table
+        user = self.db.query(models.User).filter(models.User.phone == normalized).first()
+        if user:
+            logger.info("[NOTIFY] Customer phone %s is a registered user (ID: %s)", phone, user.id)
+            return True
+        return False
 
     def _send_template_only(self, invoice, customer_phone: str, issuer_id: int) -> None:
         """Send only the template to new customers who haven't messaged us yet."""
