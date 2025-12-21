@@ -17,6 +17,7 @@ from app.api.routes_auth import get_current_user_id
 from app.models.tax_models import MonthlyTaxReport
 from app.models import models
 from app.services.tax_reporting_service import TaxReportingService
+from app.services.pdf_service import PDFService
 from .schemas import AlertEventOut
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,18 @@ def generate_tax_report(
             basis=basis,
             force_regenerate=force,
         )
+
+        # Generate PDF on-demand if not already generated
+        if not report.pdf_url:
+            try:
+                pdf_service = PDFService()
+                pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis=basis)
+                reporting_service.attach_report_pdf(report, pdf_url)
+                report.pdf_url = pdf_url
+                logger.info(f"Generated PDF for tax report {report.id}: {pdf_url}")
+            except Exception as pdf_err:
+                logger.warning(f"Failed to generate PDF for tax report {report.id}: {pdf_err}")
+                # Continue without PDF - report is still valid
 
         period_label = _format_period_label(period_type, year, month, day, week)
         user = db.query(models.User).filter(models.User.id == current_user_id).first()
