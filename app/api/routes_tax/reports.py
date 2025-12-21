@@ -74,6 +74,11 @@ def generate_tax_report(
         pit_band_info = _get_pit_band_info(float(report.assessable_profit or 0))
         is_cit_eligible = user_plan in ("pro", "business")
 
+        # Debug: Get invoice counts for troubleshooting
+        invoice_debug = _get_invoice_debug_info(
+            db, current_user_id, report.start_date, report.end_date, basis
+        )
+
         return {
             "id": report.id,
             "period_type": report.period_type,
@@ -98,6 +103,8 @@ def generate_tax_report(
             "pit_band_info": pit_band_info,
             "alerts": alerts,
             "annual_revenue_estimate": annual_revenue_estimate,
+            # Debug info for troubleshooting
+            "debug_info": invoice_debug,
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -290,6 +297,63 @@ def _generate_tax_alerts(user_plan: str, annual_revenue: float) -> list[dict]:
         })
 
     return alerts
+
+
+def _get_invoice_debug_info(
+    db: Session,
+    user_id: int,
+    start_date,
+    end_date,
+    basis: str,
+) -> dict:
+    """Get invoice counts and totals for debugging."""
+    from datetime import datetime, timezone
+    from sqlalchemy import func
+    from app.models.models import Invoice
+    
+    # Convert dates
+    start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+    
+    # Query revenue invoices
+    base_query = db.query(Invoice).filter(
+        Invoice.issuer_id == user_id,
+        Invoice.invoice_type == "revenue",
+        Invoice.created_at >= start_dt,
+        Invoice.created_at <= end_dt,
+    )
+    
+    # Get counts by status
+    all_invoices = base_query.all()
+    paid_invoices = [i for i in all_invoices if i.status == "paid"]
+    
+    # Get top 5 invoices by amount
+    top_invoices = sorted(all_invoices, key=lambda i: float(i.amount or 0), reverse=True)[:5]
+    
+    # Calculate basis-specific totals
+    if basis == "paid":
+        relevant_invoices = paid_invoices
+    else:
+        relevant_invoices = [i for i in all_invoices if i.status != "refunded"]
+    
+    total_revenue = sum(float(i.amount or 0) - float(i.discount_amount or 0) for i in relevant_invoices)
+    
+    return {
+        "total_invoices_in_period": len(all_invoices),
+        "paid_invoices": len(paid_invoices),
+        "non_refunded_invoices": len([i for i in all_invoices if i.status != "refunded"]),
+        "invoices_counted_for_basis": len(relevant_invoices),
+        "calculated_revenue": total_revenue,
+        "top_5_invoices": [
+            {
+                "invoice_id": i.invoice_id,
+                "amount": float(i.amount or 0),
+                "status": i.status,
+                "created_at": i.created_at.isoformat() if i.created_at else None,
+            }
+            for i in top_invoices
+        ],
+    }
 
 
 def _get_pit_band_info(profit: float) -> str:
