@@ -234,10 +234,12 @@ async def get_user_detail(
         models.Invoice.invoice_type == "expense"
     ).count()
     
-    # Count customers
-    total_customers = db.query(models.Customer).filter(
-        models.Customer.user_id == user_id
-    ).count()
+    # Count unique customers via invoices (Customer doesn't have user_id, linked through Invoice)
+    total_customers = db.query(models.Customer.id).join(
+        models.Invoice, models.Invoice.customer_id == models.Customer.id
+    ).filter(
+        models.Invoice.issuer_id == user_id
+    ).distinct().count()
     
     return {
         "user": UserListItem(
