@@ -373,6 +373,25 @@ async def get_referral_stats(
 # Platform Metrics
 # ============================================================================
 
+class PaidUserInfo(BaseModel):
+    """Info about a paid user including referral status."""
+    id: int
+    name: str
+    email: str | None
+    phone: str
+    plan: str
+    business_name: str | None
+    created_at: dt.datetime
+    subscription_started_at: dt.datetime | None
+    subscription_expires_at: dt.datetime | None
+    was_referred: bool
+    referred_by_name: str | None = None
+    referred_by_id: int | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class PlatformMetrics(BaseModel):
     total_invoices: int
     paid_invoices: int
@@ -385,7 +404,7 @@ class PlatformMetrics(BaseModel):
     invoices_this_month: int
     active_subscriptions: dict[str, int]
     total_customers: int
-    customers_this_month: int
+    paid_users: list[PaidUserInfo]
 
 
 @router.get("/metrics", response_model=PlatformMetrics)
@@ -395,6 +414,7 @@ async def get_platform_metrics(
 ) -> Any:
     """Get platform-wide metrics for monitoring."""
     from app.models.models import Invoice, Customer
+    from app.models.referral_models import Referral, ReferralStatus
     
     log_audit_event("admin.metrics", user_id=admin_user.id)
     
@@ -434,7 +454,46 @@ async def get_platform_metrics(
     
     # Customers
     total_customers = db.query(Customer).count()
-    customers_month = db.query(Customer).filter(Customer.created_at >= month_start).count()
+    
+    # Get paid users (Basic, Pro, Business - not free or starter)
+    paid_plans = [SubscriptionPlan.BASIC, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS]
+    paid_users_query = db.query(models.User).filter(
+        models.User.plan.in_(paid_plans)
+    ).order_by(desc(models.User.subscription_started_at)).all()
+    
+    # Build paid users list with referral info
+    paid_users_list: list[PaidUserInfo] = []
+    for user in paid_users_query:
+        # Check if this user was referred
+        referral = db.query(Referral).filter(
+            Referral.referred_id == user.id,
+            Referral.status == ReferralStatus.COMPLETED
+        ).first()
+        
+        was_referred = referral is not None
+        referred_by_name = None
+        referred_by_id = None
+        
+        if referral:
+            referrer = db.query(models.User).filter(models.User.id == referral.referrer_id).first()
+            if referrer:
+                referred_by_name = referrer.name
+                referred_by_id = referrer.id
+        
+        paid_users_list.append(PaidUserInfo(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            phone=user.phone,
+            plan=user.plan.value,
+            business_name=user.business_name,
+            created_at=user.created_at,
+            subscription_started_at=user.subscription_started_at,
+            subscription_expires_at=user.subscription_expires_at,
+            was_referred=was_referred,
+            referred_by_name=referred_by_name,
+            referred_by_id=referred_by_id
+        ))
     
     return PlatformMetrics(
         total_invoices=total_invoices,
@@ -448,5 +507,5 @@ async def get_platform_metrics(
         invoices_this_month=invoices_month,
         active_subscriptions=active_subs,
         total_customers=total_customers,
-        customers_this_month=customers_month
+        paid_users=paid_users_list
     )
