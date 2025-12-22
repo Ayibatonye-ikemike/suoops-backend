@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from app.core.cache import cached
-from app.core.rbac import admin_required
+from app.api.routes_admin_auth import get_current_admin
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from app.db.session import get_db
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/")
-async def admin_root(admin_user=Depends(admin_required)) -> dict:
+async def admin_root(admin_user=Depends(get_current_admin)) -> dict:
     """
     Admin API root - lists available endpoints.
     """
@@ -65,7 +65,7 @@ class UserStats(BaseModel):
 
 
 @router.get("/users/count")
-async def user_count(db: Session = Depends(get_db), admin_user=Depends(admin_required)) -> dict:
+async def user_count(db: Session = Depends(get_db), admin_user=Depends(get_current_admin)) -> dict:
     import time
 
     async def _produce():
@@ -81,7 +81,7 @@ async def user_count(db: Session = Depends(get_db), admin_user=Depends(admin_req
 @router.get("/users/stats", response_model=UserStats)
 async def get_user_stats(
     db: Session = Depends(get_db),
-    admin_user=Depends(admin_required)
+    admin_user=Depends(get_current_admin)
 ) -> Any:
     """
     Get comprehensive user statistics.
@@ -141,7 +141,7 @@ async def get_user_stats(
 @router.get("/users", response_model=list[UserListItem])
 async def list_users(
     db: Session = Depends(get_db),
-    admin_user=Depends(admin_required),
+    admin_user=Depends(get_current_admin),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     plan: str | None = Query(None, description="Filter by plan (free, starter, pro, business)"),
@@ -208,7 +208,7 @@ async def list_users(
 async def get_user_detail(
     user_id: int,
     db: Session = Depends(get_db),
-    admin_user=Depends(admin_required)
+    admin_user=Depends(get_current_admin)
 ) -> Any:
     """
     Get detailed information about a specific user including their activity.
@@ -262,3 +262,191 @@ async def get_user_detail(
             "has_bank_details": user.account_number is not None
         }
     }
+
+
+# ============================================================================
+# Referral Statistics
+# ============================================================================
+
+class ReferralStats(BaseModel):
+    total_referral_codes: int
+    total_referrals: int
+    completed_referrals: int
+    pending_referrals: int
+    expired_referrals: int
+    free_signup_referrals: int
+    paid_referrals: int
+    total_rewards_earned: int
+    pending_rewards: int
+    applied_rewards: int
+    expired_rewards: int
+    top_referrers: list[dict]
+    referrals_today: int
+    referrals_this_week: int
+    referrals_this_month: int
+
+
+@router.get("/referrals/stats", response_model=ReferralStats)
+async def get_referral_stats(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin)
+) -> Any:
+    """Get comprehensive referral program statistics."""
+    from app.models.referral_models import (
+        ReferralCode, Referral, ReferralReward,
+        ReferralStatus, ReferralType, RewardStatus
+    )
+    
+    log_audit_event("admin.referrals.stats", user_id=admin_user.id)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - dt.timedelta(days=today_start.weekday())
+    month_start = today_start.replace(day=1)
+    
+    # Referral codes
+    total_codes = db.query(ReferralCode).count()
+    
+    # Referrals by status
+    total_referrals = db.query(Referral).count()
+    completed = db.query(Referral).filter(Referral.status == ReferralStatus.COMPLETED).count()
+    pending = db.query(Referral).filter(Referral.status == ReferralStatus.PENDING).count()
+    expired = db.query(Referral).filter(Referral.status == ReferralStatus.EXPIRED).count()
+    
+    # Referrals by type
+    free_signups = db.query(Referral).filter(Referral.referral_type == ReferralType.FREE_SIGNUP).count()
+    paid = db.query(Referral).filter(Referral.referral_type == ReferralType.PAID_SIGNUP).count()
+    
+    # Rewards
+    total_rewards = db.query(ReferralReward).count()
+    pending_rewards = db.query(ReferralReward).filter(ReferralReward.status == RewardStatus.PENDING).count()
+    applied_rewards = db.query(ReferralReward).filter(ReferralReward.status == RewardStatus.APPLIED).count()
+    expired_rewards = db.query(ReferralReward).filter(ReferralReward.status == RewardStatus.EXPIRED).count()
+    
+    # Time-based referrals
+    referrals_today = db.query(Referral).filter(Referral.created_at >= today_start).count()
+    referrals_week = db.query(Referral).filter(Referral.created_at >= week_start).count()
+    referrals_month = db.query(Referral).filter(Referral.created_at >= month_start).count()
+    
+    # Top referrers
+    top_referrers_query = db.query(
+        Referral.referrer_id,
+        func.count(Referral.id).label("referral_count")
+    ).filter(
+        Referral.status == ReferralStatus.COMPLETED
+    ).group_by(Referral.referrer_id).order_by(
+        desc("referral_count")
+    ).limit(10).all()
+    
+    top_referrers = []
+    for referrer_id, count in top_referrers_query:
+        user = db.query(models.User).filter(models.User.id == referrer_id).first()
+        if user:
+            top_referrers.append({
+                "user_id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "phone": user.phone,
+                "referral_count": count
+            })
+    
+    return ReferralStats(
+        total_referral_codes=total_codes,
+        total_referrals=total_referrals,
+        completed_referrals=completed,
+        pending_referrals=pending,
+        expired_referrals=expired,
+        free_signup_referrals=free_signups,
+        paid_referrals=paid,
+        total_rewards_earned=total_rewards,
+        pending_rewards=pending_rewards,
+        applied_rewards=applied_rewards,
+        expired_rewards=expired_rewards,
+        top_referrers=top_referrers,
+        referrals_today=referrals_today,
+        referrals_this_week=referrals_week,
+        referrals_this_month=referrals_month
+    )
+
+
+# ============================================================================
+# Platform Metrics
+# ============================================================================
+
+class PlatformMetrics(BaseModel):
+    total_invoices: int
+    paid_invoices: int
+    pending_invoices: int
+    cancelled_invoices: int
+    total_revenue_amount: float
+    total_expense_amount: float
+    invoices_today: int
+    invoices_this_week: int
+    invoices_this_month: int
+    active_subscriptions: dict[str, int]
+    total_customers: int
+    customers_this_month: int
+
+
+@router.get("/metrics", response_model=PlatformMetrics)
+async def get_platform_metrics(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin)
+) -> Any:
+    """Get platform-wide metrics for monitoring."""
+    from app.models.models import Invoice, Customer
+    
+    log_audit_event("admin.metrics", user_id=admin_user.id)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - dt.timedelta(days=today_start.weekday())
+    month_start = today_start.replace(day=1)
+    
+    # Invoice counts
+    total_invoices = db.query(Invoice).count()
+    paid = db.query(Invoice).filter(Invoice.status == "paid").count()
+    pending = db.query(Invoice).filter(Invoice.status == "pending").count()
+    cancelled = db.query(Invoice).filter(Invoice.status == "cancelled").count()
+    
+    # Revenue and expense totals
+    revenue_sum = db.query(func.sum(Invoice.amount)).filter(
+        Invoice.invoice_type == "revenue",
+        Invoice.status == "paid"
+    ).scalar() or 0
+    
+    expense_sum = db.query(func.sum(Invoice.amount)).filter(
+        Invoice.invoice_type == "expense"
+    ).scalar() or 0
+    
+    # Time-based invoices
+    invoices_today = db.query(Invoice).filter(Invoice.created_at >= today_start).count()
+    invoices_week = db.query(Invoice).filter(Invoice.created_at >= week_start).count()
+    invoices_month = db.query(Invoice).filter(Invoice.created_at >= month_start).count()
+    
+    # Subscriptions by plan
+    plan_counts = db.query(
+        models.User.plan,
+        func.count(models.User.id)
+    ).group_by(models.User.plan).all()
+    
+    active_subs = {str(plan.value): count for plan, count in plan_counts}
+    
+    # Customers
+    total_customers = db.query(Customer).count()
+    customers_month = db.query(Customer).filter(Customer.created_at >= month_start).count()
+    
+    return PlatformMetrics(
+        total_invoices=total_invoices,
+        paid_invoices=paid,
+        pending_invoices=pending,
+        cancelled_invoices=cancelled,
+        total_revenue_amount=float(revenue_sum),
+        total_expense_amount=float(expense_sum),
+        invoices_today=invoices_today,
+        invoices_this_week=invoices_week,
+        invoices_this_month=invoices_month,
+        active_subscriptions=active_subs,
+        total_customers=total_customers,
+        customers_this_month=customers_month
+    )
