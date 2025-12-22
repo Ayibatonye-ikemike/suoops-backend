@@ -63,12 +63,60 @@ class ExpenseIntentProcessor:
             else:
                 await self._handle_text_expense(user.id, sender, parse, message)
         
+        except ValueError as e:
+            # Handle validation errors (e.g., couldn't extract amount)
+            error_msg = str(e)
+            logger.warning(f"Validation error processing expense for {sender}: {error_msg}")
+            
+            if "amount" in error_msg.lower():
+                self.client.send_text(
+                    sender,
+                    "❌ I couldn't find an amount in your message.\n\n"
+                    "*How to record an expense:*\n"
+                    "• `Expense: ₦5,000 for transport`\n"
+                    "• `Spent 3000 naira on data`\n"
+                    "• `₦2,500 fuel`\n\n"
+                    "Please include an amount (e.g., ₦5,000 or 5000 naira)."
+                )
+            else:
+                self.client.send_text(
+                    sender,
+                    f"❌ {error_msg}\n\n"
+                    "Please check your message format and try again."
+                )
+        
         except Exception as e:
+            # Handle unexpected errors gracefully
+            error_str = str(e).lower()
             logger.error(f"Error processing expense for {sender}: {e}", exc_info=True)
-            self.client.send_text(
-                sender,
-                f"❌ Sorry, I couldn't process that expense: {str(e)}"
-            )
+            
+            # Database constraint errors
+            if "not-null" in error_str or "notnull" in error_str:
+                self.client.send_text(
+                    sender,
+                    "❌ Something was missing from your expense.\n\n"
+                    "*Please try again with this format:*\n"
+                    "`Expense: ₦5,000 for [description]`\n\n"
+                    "Example: `Expense: ₦3,500 for transport to Lekki`"
+                )
+            # Connection/timeout errors
+            elif "connection" in error_str or "timeout" in error_str:
+                self.client.send_text(
+                    sender,
+                    "❌ Network issue. Please try again in a moment."
+                )
+            # Generic fallback - user-friendly message
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Sorry, I couldn't process that expense.\n\n"
+                    "*Tips:*\n"
+                    "• Make sure to include an amount (e.g., ₦5,000)\n"
+                    "• Add a description (e.g., for transport)\n\n"
+                    "*Example:*\n"
+                    "`Expense: ₦2,500 for data subscription`\n\n"
+                    "Or send a photo of your receipt 📸"
+                )
     
     def _is_expense_message(
         self,

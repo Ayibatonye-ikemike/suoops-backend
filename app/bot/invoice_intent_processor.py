@@ -133,16 +133,63 @@ class InvoiceIntentProcessor:
             invoice = invoice_service.create_invoice(issuer_id=issuer_id, data=data)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to create invoice")
-            error_msg = str(exc)
-            if "invoice_balance_exhausted" in error_msg or "INV005" in error_msg:
+            error_msg = str(exc).lower()
+            
+            # Invoice balance exhausted
+            if "invoice_balance_exhausted" in error_msg or "inv005" in error_msg:
                 self.client.send_text(
                     sender,
                     "🚫 No invoices remaining!\n\n"
                     "Purchase a pack: ₦2,500 for 100 invoices\n"
                     "Visit: suoops.com/dashboard/billing",
                 )
+            # Missing amount
+            elif "amount" in error_msg:
+                self.client.send_text(
+                    sender,
+                    "❌ I couldn't find an amount in your message.\n\n"
+                    "*How to create an invoice:*\n"
+                    "`Invoice Joy 08012345678, 12000 wig`\n\n"
+                    "Make sure to include the amount (e.g., 12000)."
+                )
+            # Missing customer name
+            elif "customer" in error_msg or "name" in error_msg:
+                self.client.send_text(
+                    sender,
+                    "❌ Please include a customer name.\n\n"
+                    "*Format:*\n"
+                    "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                    "*Example:*\n"
+                    "`Invoice Joy 08012345678, 12000 wig`"
+                )
+            # Database errors
+            elif "not-null" in error_msg or "constraint" in error_msg:
+                self.client.send_text(
+                    sender,
+                    "❌ Something was missing from your invoice.\n\n"
+                    "*Please use this format:*\n"
+                    "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                    "*Example:*\n"
+                    "`Invoice Ada 08098765432, 5000 braids, 2000 gel`"
+                )
+            # Connection errors
+            elif "connection" in error_msg or "timeout" in error_msg:
+                self.client.send_text(
+                    sender,
+                    "❌ Network issue. Please try again in a moment."
+                )
+            # Generic fallback
             else:
-                self.client.send_text(sender, f"Error: {exc}")
+                self.client.send_text(
+                    sender,
+                    "❌ Sorry, I couldn't create that invoice.\n\n"
+                    "*Please try again with this format:*\n"
+                    "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                    "*Examples:*\n"
+                    "• `Invoice Joy 08012345678, 12000 wig`\n"
+                    "• `Invoice Ada 5000 braids` (no phone)\n\n"
+                    "💡 Type *help* for more examples."
+                )
             return
 
         # Send notifications via all channels (Email only - WhatsApp handled separately by _notify_customer)
