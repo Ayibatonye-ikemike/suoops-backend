@@ -6,6 +6,7 @@ from sqlalchemy import func, desc
 from app.db.session import get_db
 from app.models import models
 from app.models.models import SubscriptionPlan
+from app.models.payment_models import PaymentTransaction, PaymentStatus
 from app.core.audit import log_audit_event
 from pydantic import BaseModel
 import datetime as dt
@@ -241,6 +242,31 @@ async def get_user_detail(
         models.Invoice.issuer_id == user_id
     ).distinct().count()
     
+    # Get invoice balance info
+    invoice_balance = getattr(user, 'invoice_balance', 0)
+    
+    # Get invoice pack purchases (INVPACK references)
+    invoice_pack_purchases = db.query(PaymentTransaction).filter(
+        PaymentTransaction.user_id == user_id,
+        PaymentTransaction.reference.like("INVPACK-%"),
+        PaymentTransaction.status == PaymentStatus.SUCCESS
+    ).order_by(desc(PaymentTransaction.created_at)).limit(10).all()
+    
+    # Calculate invoices used (total created minus current balance)
+    # For new users with 5 free invoices, total would be total_invoices + remaining balance - 5
+    # Simpler: invoices_used = total_invoices (each invoice created consumes 1)
+    invoices_used = total_invoices
+    
+    # Build pack purchase history
+    pack_purchases = []
+    for purchase in invoice_pack_purchases:
+        pack_purchases.append({
+            "reference": purchase.reference,
+            "amount": purchase.amount / 100,  # Convert kobo to naira
+            "invoices_added": 100,  # Standard pack size
+            "date": purchase.created_at.isoformat() if purchase.created_at else None
+        })
+    
     return {
         "user": UserListItem(
             id=user.id,
@@ -261,7 +287,10 @@ async def get_user_detail(
             "expense_invoices": expense_invoices,
             "total_customers": total_customers,
             "has_logo": user.logo_url is not None,
-            "has_bank_details": user.account_number is not None
+            "has_bank_details": user.account_number is not None,
+            "invoice_balance": invoice_balance,
+            "invoices_used": invoices_used,
+            "pack_purchases": pack_purchases
         }
     }
 
