@@ -68,7 +68,7 @@ class InvoiceIntentProcessor:
                 sender, 
                 f"⚠️ Only {balance} invoices left!\n\n"
                 f"Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} for {quota_check.get('pack_size', 100)} invoices\n"
-                "Visit: suoops.com/dashboard/billing"
+                "Visit: suoops.com/dashboard/billing/purchase"
             )
 
         if quota_check.get("can_create"):
@@ -80,7 +80,7 @@ class InvoiceIntentProcessor:
             f"Plan: {quota_check.get('plan', '').upper()}\n"
             f"Balance: {balance} invoices\n\n"
             f"💳 Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} for {quota_check.get('pack_size', 100)} invoices\n\n"
-            "Visit suoops.com/dashboard/billing to buy more."
+            "Visit suoops.com/dashboard/billing/purchase to buy more."
         )
         self.client.send_text(sender, limit_message)
         return False
@@ -141,7 +141,7 @@ class InvoiceIntentProcessor:
                     sender,
                     "🚫 No invoices remaining!\n\n"
                     "Purchase a pack: ₦2,500 for 100 invoices\n"
-                    "Visit: suoops.com/dashboard/billing",
+                    "Visit: suoops.com/dashboard/billing/purchase",
                 )
             # Missing amount
             elif "amount" in error_msg:
