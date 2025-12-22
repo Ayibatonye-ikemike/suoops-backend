@@ -215,7 +215,7 @@ class ExpenseNLPService:
                     pass
         
         # Default to today if no date found
-        return None
+        return today
     
     def _categorize(self, text: str) -> str:
         """

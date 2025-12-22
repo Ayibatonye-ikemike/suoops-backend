@@ -82,7 +82,15 @@ class ExpenseIntentProcessor:
         - Contains "expense" keyword
         - Contains amount + expense keywords
         - Image message (assume receipt)
+        
+        Exclusions:
+        - If intent is create_invoice, skip expense processing
         """
+        # Skip if this is an invoice request
+        intent = getattr(parse, 'intent', None) if hasattr(parse, 'intent') else parse.get('intent')
+        if intent == 'create_invoice':
+            return False
+        
         msg_type = message.get("type", "text")
         
         # Images are assumed to be receipts
@@ -92,8 +100,12 @@ class ExpenseIntentProcessor:
         # Check text content
         text = message.get("text", "").lower()
         
+        # Skip if message contains "invoice" - likely an invoice request
+        if "invoice" in text:
+            return False
+        
         expense_keywords = [
-            "expense", "spent", "paid for", "paid", "bought",
+            "expense", "spent", "paid for", "bought",
             "purchase", "cost", "receipt"
         ]
         
@@ -135,11 +147,15 @@ class ExpenseIntentProcessor:
         # Extract expense details using NLP
         expense_data = self.nlp_service.extract_expense(text)
         
+        # Ensure date is never None (database constraint)
+        from datetime import date as date_type
+        expense_date = expense_data["date"] or date_type.today()
+        
         # Create expense record
         expense = Expense(
             user_id=user_id,
             amount=expense_data["amount"],
-            date=expense_data["date"],
+            date=expense_date,
             category=expense_data["category"],
             description=expense_data["description"],
             merchant=expense_data["merchant"],
