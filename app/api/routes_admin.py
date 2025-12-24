@@ -486,8 +486,8 @@ async def get_platform_metrics(
     # Customers
     total_customers = db.query(Customer).count()
     
-    # Get paying users (Starter, Pro, Business - not free)
-    paid_plans = [SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS]
+    # Get paying users (Starter and Pro - BUSINESS removed)
+    paid_plans = [SubscriptionPlan.STARTER, SubscriptionPlan.PRO]
     paid_users_query = db.query(models.User).filter(
         models.User.plan.in_(paid_plans)
     ).order_by(desc(models.User.subscription_started_at)).all()

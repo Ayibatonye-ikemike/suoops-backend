@@ -61,8 +61,8 @@ class VoiceMessageProcessor:
         if not user:
             return False, None
         
-        # Check if Business plan
-        has_access = user.plan == models.SubscriptionPlan.BUSINESS
+        # Check if Pro plan (voice is premium feature now included in Pro)
+        has_access = user.plan == models.SubscriptionPlan.PRO
         return has_access, user
 
     async def process(self, sender: str, media_id: str, payload: dict[str, Any]) -> None:
@@ -78,17 +78,17 @@ class VoiceMessageProcessor:
                 )
                 return
 
-            # Check if user has Business plan (voice is premium feature)
+            # Check if user has Pro plan (voice is premium feature)
             has_access, user = self._check_user_has_business_plan(sender)
             if not has_access:
                 self.client.send_text(
                     sender,
                     "🔒 Voice Invoice Feature\n\n"
-                    "Voice message invoices are only available on the Business plan.\n\n"
+                    "Voice message invoices are only available on the Pro plan.\n\n"
                     "📊 Plans:\n"
-                    "• Starter: No monthly fee, buy invoice packs (₦2,500 for 100)\n"
-                    "• Pro (₦5,000/mo): 100 invoices + Custom branding\n"
-                    "• Business (₦10,000/mo): 100 invoices + Voice & Photo OCR\n\n"
+                    "• Free: 5 free invoices to start\n"
+                    "• Starter: No monthly fee, buy packs (₦2,500 for 100)\n"
+                    "• Pro (₦5,000/mo): 100 invoices + Voice, OCR & all features\n\n"
                     "Visit suoops.com/dashboard/subscription to upgrade!"
                 )
                 return

@@ -214,10 +214,9 @@ class FeatureGate:
     
     def can_use_voice_ocr(self) -> tuple[bool, str | None]:
         """
-        Check if user can use voice/OCR features (Business plan with quota check).
+        Check if user can use voice/OCR features (Pro plan with quota check).
         
-        Business plan: 5% quota (15 invoices out of 300)
-        Enterprise: Unlimited
+        Pro plan: 15 voice/OCR invoices per month
         
         Returns:
             (can_use: bool, error_message: str | None)
@@ -228,20 +227,19 @@ class FeatureGate:
         # Check if plan has voice/OCR access at all
         if not features.get("voice_invoice") or not features.get("photo_invoice_ocr"):
             return False, (
-                "Voice invoices and Photo OCR are only available on the Business plan. "
+                "Voice invoices and Photo OCR are only available on the Pro plan. "
                 "Upgrade to unlock these premium features."
             )
         
-        # Business plan: check quota (15 out of 300)
-        if plan == models.SubscriptionPlan.BUSINESS:
+        # Pro plan: check quota (15 per month)
+        if plan == models.SubscriptionPlan.PRO:
             quota = features.get("voice_ocr_quota", 15)  # 15 premium invoices
             current_count = self.get_monthly_voice_ocr_count()
             
             if current_count >= quota:
                 return False, (
-                    f"You've reached your Business plan voice/OCR quota of {quota} premium invoices per month. "
-                    f"You can still create {plan.invoice_limit - self.get_monthly_invoice_count()} "
-                    "manual invoices this month."
+                    f"You've reached your Pro plan voice/OCR quota of {quota} premium invoices per month. "
+                    "You can still create manual text invoices."
                 )
             
             return True, None
@@ -258,7 +256,7 @@ class FeatureGate:
         """
         can_use, error_msg = self.can_use_voice_ocr()
         if not can_use:
-            quota = int(self.user.plan.invoice_limit * 0.05) if self.user.plan == models.SubscriptionPlan.BUSINESS else 0
+            quota = 15 if self.user.plan == models.SubscriptionPlan.PRO else 0
             current_count = self.get_monthly_voice_ocr_count()
             
             raise HTTPException(

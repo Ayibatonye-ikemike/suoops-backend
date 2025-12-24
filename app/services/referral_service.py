@@ -4,8 +4,8 @@ Referral service for managing referral codes, tracking referrals, and distributi
 Business rules:
 - Each user gets a unique 8-character referral code
 - Free signup referrals: 8 signups → 100 free invoices (₦2,500 value)
-- Paid subscription referrals: 2 Pro/Business signups → 100 free invoices (₦2,500 value)
-- Note: Starter has no monthly subscription - only Pro/Business count as paid referrals
+- Paid subscription referrals: 2 Pro signups → 100 free invoices (₦2,500 value)
+- Note: Starter has no monthly subscription - only Pro counts as paid referrals
 - Rewards expire after 90 days if not applied
 """
 from __future__ import annotations

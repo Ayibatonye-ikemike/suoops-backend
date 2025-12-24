@@ -171,21 +171,21 @@ class TaxReportingService:
         start_date: date,
         end_date: date,
     ) -> dict:
-        """Compute Company Income Tax (CIT) for PRO+ plans."""
+        """Compute Company Income Tax (CIT) for PRO plan."""
         from app.models.models import User, SubscriptionPlan
         
         user = self.db.query(User).filter(User.id == user_id).first()
         user_plan = user.plan if user else SubscriptionPlan.FREE
         
-        # CIT is only calculated for PRO and BUSINESS plans
-        is_cit_eligible = user_plan in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS)
+        # CIT is only calculated for PRO plan
+        is_cit_eligible = user_plan == SubscriptionPlan.PRO
         
         if not is_cit_eligible:
             return {
                 "cit_amount": Decimal("0"),
                 "development_levy": Decimal("0"),
                 "company_size": "n/a",
-                "notes": "CIT requires PRO or BUSINESS plan",
+                "notes": "CIT requires PRO plan",
             }
         
         # Get annual turnover estimate (for company size classification)
@@ -223,7 +223,7 @@ class TaxReportingService:
         user = self.db.query(User).filter(User.id == user_id).first()
         user_plan = user.plan if user else SubscriptionPlan.FREE
         
-        is_vat_eligible = user_plan in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS)
+        is_vat_eligible = user_plan == SubscriptionPlan.PRO
         
         vat_data = {
             "taxable_sales": Decimal("0"),

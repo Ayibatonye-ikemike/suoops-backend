@@ -44,17 +44,19 @@ def utcnow() -> dt.datetime:
 class SubscriptionPlan(str, enum.Enum):
     """Subscription tiers for feature access.
     
-    NEW BILLING MODEL:
+    BILLING MODEL (Small & Medium Business Focus):
     - Invoice Packs: 100 invoices for ₦2,500 (one-time, doesn't expire)
     - FREE: 5 free invoices, then must purchase packs
-    - STARTER: No monthly fee - just purchase invoice packs as needed
-    - PRO: ₦8,000/month for premium features (invoices purchased separately)
-    - BUSINESS: ₦16,000/month for all features (invoices purchased separately)
+    - STARTER: No monthly fee - just purchase invoice packs as needed + tax features
+    - PRO: ₦5,000/month for all premium features including voice/OCR/API
+    
+    Note: BUSINESS plan removed - we focus on businesses under ₦100M annual revenue.
+    PRO now includes all features that were previously BUSINESS-only.
     """
     FREE = "free"
     STARTER = "starter"
     PRO = "pro"
-    BUSINESS = "business"
+    # BUSINESS removed - all users migrated to PRO
 
     @property
     def monthly_price(self) -> int:
@@ -66,10 +68,9 @@ class SubscriptionPlan(str, enum.Enum):
         prices = {
             SubscriptionPlan.FREE: 0,
             SubscriptionPlan.STARTER: 0,  # No monthly fee, pay per invoice pack
-            SubscriptionPlan.PRO: 5000,  # 100 invoices + premium features
-            SubscriptionPlan.BUSINESS: 10000,  # 100 invoices + premium features
+            SubscriptionPlan.PRO: 5000,  # 100 invoices + all premium features
         }
-        return prices[self]
+        return prices.get(self, 0)
     
     @property
     def price(self) -> int:
@@ -83,14 +84,14 @@ class SubscriptionPlan(str, enum.Enum):
         Pro and Business plans include 100 invoices per month.
         Free/Starter don't have monthly subscription, use invoice packs.
         """
-        if self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS):
+        if self == SubscriptionPlan.PRO:
             return 100
         return 0
 
     @property
     def has_monthly_subscription(self) -> bool:
         """Check if plan requires monthly subscription payment."""
-        return self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS)
+        return self == SubscriptionPlan.PRO
     
     @property
     def has_premium_features(self) -> bool:
@@ -102,11 +103,12 @@ class SubscriptionPlan(str, enum.Enum):
         """
         Get feature access for this plan.
         
-        BILLING MODEL:
+        BILLING MODEL (Small & Medium Business Focus):
         - FREE: 5 free invoices to start, basic features
         - STARTER: No monthly fee, buy invoice packs (100 = ₦2,500) + tax features
-        - PRO: ₦5,000/month = 100 invoices + premium features (can buy more packs)
-        - BUSINESS: ₦10,000/month = 100 invoices + all features (can buy more packs)
+        - PRO: ₦5,000/month = 100 invoices + ALL premium features
+        
+        Note: BUSINESS plan removed - PRO now includes voice/OCR/API.
         """
         return {
             "invoice_pack_price": 2500,  # ₦2,500 per 100 invoices
@@ -116,22 +118,22 @@ class SubscriptionPlan(str, enum.Enum):
             "pdf_generation": True,  # Available to all
             "qr_verification": True,  # Available to all
             # Tax features: Starter+
-            "tax_automation": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
-            "tax_reports": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
-            # Custom branding: Pro+
-            "custom_branding": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
-            # Inventory management: Pro+
-            "inventory": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
-            # Team management: Pro+ (invite up to 3 team members)
-            "team_management": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
-            # Priority support: Pro+
-            "priority_support": self in (SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS),
-            # Voice & OCR: Business only (15/mo quota)
-            "voice_invoice": self == SubscriptionPlan.BUSINESS,
-            "photo_invoice_ocr": self == SubscriptionPlan.BUSINESS,
-            "voice_ocr_quota": 15 if self == SubscriptionPlan.BUSINESS else 0,
-            # API access: Business only
-            "api_access": self == SubscriptionPlan.BUSINESS,
+            "tax_automation": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO),
+            "tax_reports": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO),
+            # Custom branding: Pro only
+            "custom_branding": self == SubscriptionPlan.PRO,
+            # Inventory management: Pro only
+            "inventory": self == SubscriptionPlan.PRO,
+            # Team management: Pro only (invite up to 3 team members)
+            "team_management": self == SubscriptionPlan.PRO,
+            # Priority support: Pro only
+            "priority_support": self == SubscriptionPlan.PRO,
+            # Voice & OCR: Pro only (15/mo quota)
+            "voice_invoice": self == SubscriptionPlan.PRO,
+            "photo_invoice_ocr": self == SubscriptionPlan.PRO,
+            "voice_ocr_quota": 15 if self == SubscriptionPlan.PRO else 0,
+            # API access: Pro only
+            "api_access": self == SubscriptionPlan.PRO,
         }
 
 
