@@ -48,7 +48,7 @@ class SubscriptionPlan(str, enum.Enum):
     - Invoice Packs: 100 invoices for ₦2,500 (one-time, doesn't expire)
     - FREE: 5 free invoices, then must purchase packs
     - STARTER: No monthly fee - just purchase invoice packs as needed + tax features
-    - PRO: ₦5,000/month for all premium features including voice/OCR/API
+    - PRO: ₦5,000/month for all premium features including voice/API
     
     Note: BUSINESS plan removed - we focus on businesses under ₦100M annual revenue.
     PRO now includes all features that were previously BUSINESS-only.
@@ -95,7 +95,7 @@ class SubscriptionPlan(str, enum.Enum):
     
     @property
     def has_premium_features(self) -> bool:
-        """Check if plan has access to premium features (OCR, voice, etc)."""
+        """Check if plan has access to premium features (voice, etc)."""
         return self != SubscriptionPlan.FREE
     
     @property
@@ -108,7 +108,8 @@ class SubscriptionPlan(str, enum.Enum):
         - STARTER: No monthly fee, buy invoice packs (100 = ₦2,500) + tax features
         - PRO: ₦5,000/month = 100 invoices + ALL premium features
         
-        Note: BUSINESS plan removed - PRO now includes voice/OCR/API.
+        Note: BUSINESS plan removed - PRO now includes voice.
+        Note: OCR and API features removed to focus on core invoicing.
         """
         return {
             "invoice_pack_price": 2500,  # ₦2,500 per 100 invoices
@@ -128,12 +129,9 @@ class SubscriptionPlan(str, enum.Enum):
             "team_management": self == SubscriptionPlan.PRO,
             # Priority support: Pro only
             "priority_support": self == SubscriptionPlan.PRO,
-            # Voice & OCR: Pro only (15/mo quota)
+            # Voice: Pro only (15/mo quota)
             "voice_invoice": self == SubscriptionPlan.PRO,
-            "photo_invoice_ocr": self == SubscriptionPlan.PRO,
-            "voice_ocr_quota": 15 if self == SubscriptionPlan.PRO else 0,
-            # API access: Pro only
-            "api_access": self == SubscriptionPlan.PRO,
+            "voice_quota": 15 if self == SubscriptionPlan.PRO else 0,
         }
 
 

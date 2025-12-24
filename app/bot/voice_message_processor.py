@@ -29,10 +29,10 @@ class VoiceMessageProcessor:
 
     def _check_user_has_business_plan(self, sender: str) -> tuple[bool, models.User | None]:
         """
-        Check if user has Business plan for voice/OCR features.
+        Check if user has Pro plan for voice features.
         
-        Voice and OCR are exclusive to Business plan.
-        Business plan: 15 voice+OCR invoices per month quota.
+        Voice is exclusive to Pro plan.
+        Pro plan: 15 voice invoices per month quota.
         
         Returns:
             (has_access: bool, user: User | None)
@@ -88,13 +88,13 @@ class VoiceMessageProcessor:
                     "📊 Plans:\n"
                     "• Free: 5 free invoices to start\n"
                     "• Starter: No monthly fee, buy packs (₦2,500 for 100)\n"
-                    "• Pro (₦5,000/mo): 100 invoices + Voice, OCR & all features\n\n"
+                    "• Pro (₦5,000/mo): 100 invoices + Voice & all features\n\n"
                     "Visit suoops.com/dashboard/subscription to upgrade!"
                 )
                 return
             
-            # TODO: Check Business plan quota (15 voice+OCR per month)
-            # For now, allow all Business users
+            # TODO: Check Pro plan quota (15 voice per month)
+            # For now, allow all Pro users
             
             self.client.send_text(sender, "🎙️ Processing your voice message...")
             media_url = await self.client.get_media_url(media_id)
