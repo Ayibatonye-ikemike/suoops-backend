@@ -22,16 +22,24 @@ depends_on = None
 
 def upgrade():
     # Step 1: Update any users on BUSINESS plan to PRO
-    # The BUSINESS enum value will remain in PostgreSQL but won't be used
+    # PostgreSQL enum uses UPPERCASE values (see 0007_fix_enum_case.py)
+    # This is safe even if no users are on BUSINESS - UPDATE affects 0 rows
     op.execute("""
         UPDATE "user"
-        SET plan = 'pro'
-        WHERE plan = 'business'
+        SET plan = 'PRO'
+        WHERE plan = 'BUSINESS'
     """)
     
-    # Note: We don't remove the enum value from PostgreSQL
+    # Also handle ENTERPRISE users if any exist (migrating to PRO)
+    op.execute("""
+        UPDATE "user"
+        SET plan = 'PRO'
+        WHERE plan = 'ENTERPRISE'
+    """)
+    
+    # Note: We don't remove the enum values from PostgreSQL
     # because it requires recreating the column which is risky
-    # The application code will simply not use 'business' anymore
+    # The application code will simply not use BUSINESS/ENTERPRISE anymore
 
 
 def downgrade():
