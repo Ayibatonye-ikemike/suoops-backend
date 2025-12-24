@@ -1,4 +1,6 @@
-"""Tax profile & small business endpoints split from routes_tax.py for modularity."""
+"""Tax profile & small business endpoints split from routes_tax.py for modularity.
+Requires STARTER or PRO plan for access.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -8,6 +10,7 @@ from typing import Optional
 from app.db.session import get_db
 from app.api.routes_auth import get_current_user_id
 from app.services.tax_service import TaxProfileService
+from app.utils.feature_gate import require_plan_feature
 
 router = APIRouter(prefix="/tax", tags=["tax-profile"])
 
@@ -25,6 +28,8 @@ async def get_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
+    """Get user's tax profile. Requires STARTER or PRO plan."""
+    require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
     try:
         service = TaxProfileService(db)
         return service.get_tax_summary(current_user_id)
@@ -38,6 +43,8 @@ async def update_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
+    """Update user's tax profile. Requires STARTER or PRO plan."""
+    require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
     try:
         service = TaxProfileService(db)
         service.update_profile(
@@ -60,6 +67,8 @@ async def small_business_check(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
+    """Check small business eligibility. Requires STARTER or PRO plan."""
+    require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
     try:
         service = TaxProfileService(db)
         return service.check_small_business_eligibility(current_user_id)
@@ -72,6 +81,8 @@ async def tax_compliance(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
+    """Get tax compliance summary. Requires STARTER or PRO plan."""
+    require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
     try:
         service = TaxProfileService(db)
         summary = service.get_compliance_summary(current_user_id)

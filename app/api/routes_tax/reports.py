@@ -2,6 +2,7 @@
 Tax Reports Routes.
 
 Handles tax report generation, downloads, and CSV exports.
+Requires STARTER or PRO plan for access.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from app.models.tax_models import MonthlyTaxReport
 from app.models import models
 from app.services.tax_reporting_service import TaxReportingService
 from app.services.pdf_service import PDFService
+from app.utils.feature_gate import require_plan_feature
 from .schemas import AlertEventOut
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,10 @@ def generate_tax_report(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Generate tax report for specified period."""
+    """Generate tax report for specified period. Requires STARTER or PRO plan."""
+    # Gate: Require tax_reports feature (STARTER+)
+    require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
+    
     try:
         reporting_service = TaxReportingService(db)
         report = reporting_service.generate_report(
