@@ -799,9 +799,9 @@ async def sync_segment_to_brevo(
     
     if segment == "inactive":
         # Users who never created an invoice
-        users_with_invoices = db.query(models.Invoice.user_id).distinct().subquery()
+        users_with_invoices = db.query(models.Invoice.user_id).distinct()
         users = db.query(models.User).filter(
-            ~models.User.id.in_(db.query(users_with_invoices))
+            ~models.User.id.in_(users_with_invoices)
         ).all()
     
     elif segment == "low-balance":
@@ -821,19 +821,19 @@ async def sync_segment_to_brevo(
             func.count(models.Invoice.id) >= 3
         ).subquery()
         
-        users = db.query(models.User).join(
-            user_invoice_counts,
-            models.User.id == user_invoice_counts.c.user_id
-        ).filter(
+        users = db.query(models.User).filter(
+            models.User.id.in_(
+                db.query(user_invoice_counts.c.user_id)
+            ),
             models.User.plan == SubscriptionPlan.FREE
         ).all()
     
     elif segment == "churned":
         # Users inactive for 14+ days
         cutoff = now - dt.timedelta(days=14)
-        users_with_invoices = db.query(models.Invoice.user_id).distinct().subquery()
+        users_with_invoices = db.query(models.Invoice.user_id).distinct()
         users = db.query(models.User).filter(
-            models.User.id.in_(db.query(users_with_invoices)),
+            models.User.id.in_(users_with_invoices),
             models.User.last_login < cutoff
         ).all()
     
