@@ -540,3 +540,459 @@ async def get_platform_metrics(
         total_customers=total_customers,
         paid_users=paid_users_list
     )
+
+
+# =============================================================================
+# USER SEGMENTS FOR CAMPAIGNS (Brevo Email/WhatsApp Export)
+# =============================================================================
+
+class UserSegmentExport(BaseModel):
+    """User data formatted for Brevo campaign import."""
+    name: str
+    phone: str
+    email: str | None
+    plan: str
+    invoice_balance: int
+    total_invoices: int
+    days_since_signup: int
+    days_since_last_login: int | None
+    business_name: str | None
+
+
+@router.get("/users/segments/inactive", response_model=list[UserSegmentExport])
+async def get_inactive_users(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    days_inactive: int = Query(7, description="Days since last login to consider inactive"),
+) -> list[UserSegmentExport]:
+    """
+    Get users who registered but never created an invoice.
+    Perfect for activation campaign.
+    
+    Export this list to Brevo for Email/WhatsApp campaign targeting.
+    """
+    log_audit_event("admin.segments.inactive", user_id=admin_user.id, days=days_inactive)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    
+    # Users with 0 invoices
+    users_with_invoices = db.query(models.Invoice.user_id).distinct().subquery()
+    
+    inactive_users = db.query(models.User).filter(
+        ~models.User.id.in_(db.query(users_with_invoices))
+    ).all()
+    
+    result = []
+    for user in inactive_users:
+        days_since_signup = (now - user.created_at.replace(tzinfo=dt.timezone.utc)).days if user.created_at else 0
+        days_since_login = None
+        if user.last_login:
+            days_since_login = (now - user.last_login.replace(tzinfo=dt.timezone.utc)).days
+        
+        result.append(UserSegmentExport(
+            name=user.name or "Customer",
+            phone=user.phone,
+            email=user.email,
+            plan=user.plan.value,
+            invoice_balance=getattr(user, 'invoice_balance', 5),
+            total_invoices=0,
+            days_since_signup=days_since_signup,
+            days_since_last_login=days_since_login,
+            business_name=user.business_name
+        ))
+    
+    return result
+
+
+@router.get("/users/segments/low-balance", response_model=list[UserSegmentExport])
+async def get_low_balance_users(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    max_balance: int = Query(2, description="Maximum invoice balance to include"),
+) -> list[UserSegmentExport]:
+    """
+    Get FREE users with low invoice balance (1-2 left).
+    Perfect for upgrade campaign - "Running low! Buy 100 for ₦2,500"
+    """
+    log_audit_event("admin.segments.low_balance", user_id=admin_user.id, max_balance=max_balance)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    
+    low_balance_users = db.query(models.User).filter(
+        models.User.plan == SubscriptionPlan.FREE,
+        models.User.invoice_balance <= max_balance,
+        models.User.invoice_balance > 0  # Still have some
+    ).all()
+    
+    result = []
+    for user in low_balance_users:
+        # Count their invoices
+        invoice_count = db.query(func.count(models.Invoice.id)).filter(
+            models.Invoice.user_id == user.id
+        ).scalar() or 0
+        
+        days_since_signup = (now - user.created_at.replace(tzinfo=dt.timezone.utc)).days if user.created_at else 0
+        days_since_login = None
+        if user.last_login:
+            days_since_login = (now - user.last_login.replace(tzinfo=dt.timezone.utc)).days
+        
+        result.append(UserSegmentExport(
+            name=user.name or "Customer",
+            phone=user.phone,
+            email=user.email,
+            plan=user.plan.value,
+            invoice_balance=user.invoice_balance,
+            total_invoices=invoice_count,
+            days_since_signup=days_since_signup,
+            days_since_last_login=days_since_login,
+            business_name=user.business_name
+        ))
+    
+    return result
+
+
+@router.get("/users/segments/active-free", response_model=list[UserSegmentExport])
+async def get_active_free_users(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    min_invoices: int = Query(3, description="Minimum invoices created"),
+) -> list[UserSegmentExport]:
+    """
+    Get active FREE users who create invoices but haven't upgraded.
+    Perfect for upgrade campaign - "You're invoicing a lot! Upgrade to Pro"
+    """
+    log_audit_event("admin.segments.active_free", user_id=admin_user.id, min_invoices=min_invoices)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    
+    # Get users with invoice counts
+    user_invoice_counts = db.query(
+        models.Invoice.user_id,
+        func.count(models.Invoice.id).label('invoice_count')
+    ).group_by(models.Invoice.user_id).having(
+        func.count(models.Invoice.id) >= min_invoices
+    ).subquery()
+    
+    active_free_users = db.query(models.User, user_invoice_counts.c.invoice_count).join(
+        user_invoice_counts,
+        models.User.id == user_invoice_counts.c.user_id
+    ).filter(
+        models.User.plan == SubscriptionPlan.FREE
+    ).all()
+    
+    result = []
+    for user, invoice_count in active_free_users:
+        days_since_signup = (now - user.created_at.replace(tzinfo=dt.timezone.utc)).days if user.created_at else 0
+        days_since_login = None
+        if user.last_login:
+            days_since_login = (now - user.last_login.replace(tzinfo=dt.timezone.utc)).days
+        
+        result.append(UserSegmentExport(
+            name=user.name or "Customer",
+            phone=user.phone,
+            email=user.email,
+            plan=user.plan.value,
+            invoice_balance=getattr(user, 'invoice_balance', 5),
+            total_invoices=invoice_count,
+            days_since_signup=days_since_signup,
+            days_since_last_login=days_since_login,
+            business_name=user.business_name
+        ))
+    
+    return result
+
+
+@router.get("/users/segments/churned", response_model=list[UserSegmentExport])
+async def get_churned_users(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    days_inactive: int = Query(14, description="Days since last login"),
+) -> list[UserSegmentExport]:
+    """
+    Get users who haven't logged in for X days but had activity before.
+    Perfect for win-back campaign - "We miss you! Create an invoice today"
+    """
+    log_audit_event("admin.segments.churned", user_id=admin_user.id, days=days_inactive)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    cutoff = now - dt.timedelta(days=days_inactive)
+    
+    # Users who have invoices but haven't logged in recently
+    users_with_invoices = db.query(models.Invoice.user_id).distinct().subquery()
+    
+    churned_users = db.query(models.User).filter(
+        models.User.id.in_(db.query(users_with_invoices)),
+        models.User.last_login < cutoff
+    ).all()
+    
+    result = []
+    for user in churned_users:
+        invoice_count = db.query(func.count(models.Invoice.id)).filter(
+            models.Invoice.user_id == user.id
+        ).scalar() or 0
+        
+        days_since_signup = (now - user.created_at.replace(tzinfo=dt.timezone.utc)).days if user.created_at else 0
+        days_since_login = (now - user.last_login.replace(tzinfo=dt.timezone.utc)).days if user.last_login else None
+        
+        result.append(UserSegmentExport(
+            name=user.name or "Customer",
+            phone=user.phone,
+            email=user.email,
+            plan=user.plan.value,
+            invoice_balance=getattr(user, 'invoice_balance', 5),
+            total_invoices=invoice_count,
+            days_since_signup=days_since_signup,
+            days_since_last_login=days_since_login,
+            business_name=user.business_name
+        ))
+    
+    return result
+
+
+# =============================================================================
+# BREVO SYNC - Push segments directly to Brevo lists
+# =============================================================================
+
+class BrevoSyncResult(BaseModel):
+    """Result of syncing a segment to Brevo."""
+    segment: str
+    contacts_synced: int
+    list_id: int
+    success: bool
+    error: str | None = None
+
+
+@router.post("/brevo/sync/{segment}", response_model=BrevoSyncResult)
+async def sync_segment_to_brevo(
+    segment: str,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    list_id: int = Query(..., description="Brevo list ID to sync contacts to"),
+) -> BrevoSyncResult:
+    """
+    Sync a user segment directly to a Brevo contact list.
+    
+    Segments: inactive, low-balance, active-free, churned
+    
+    1. First create lists in Brevo Dashboard → Contacts → Lists
+    2. Get the list ID from Brevo
+    3. Call this endpoint to push contacts to that list
+    """
+    import httpx
+    from app.core.config import settings
+    
+    log_audit_event("admin.brevo.sync", user_id=admin_user.id, segment=segment, list_id=list_id)
+    
+    brevo_api_key = getattr(settings, "BREVO_API_KEY", None)
+    if not brevo_api_key:
+        return BrevoSyncResult(
+            segment=segment,
+            contacts_synced=0,
+            list_id=list_id,
+            success=False,
+            error="BREVO_API_KEY not configured"
+        )
+    
+    # Get users based on segment
+    now = dt.datetime.now(dt.timezone.utc)
+    users = []
+    
+    if segment == "inactive":
+        # Users who never created an invoice
+        users_with_invoices = db.query(models.Invoice.user_id).distinct().subquery()
+        users = db.query(models.User).filter(
+            ~models.User.id.in_(db.query(users_with_invoices))
+        ).all()
+    
+    elif segment == "low-balance":
+        # FREE users with low invoice balance
+        users = db.query(models.User).filter(
+            models.User.plan == SubscriptionPlan.FREE,
+            models.User.invoice_balance <= 2,
+            models.User.invoice_balance > 0
+        ).all()
+    
+    elif segment == "active-free":
+        # Active FREE users with 3+ invoices
+        user_invoice_counts = db.query(
+            models.Invoice.user_id,
+            func.count(models.Invoice.id).label('invoice_count')
+        ).group_by(models.Invoice.user_id).having(
+            func.count(models.Invoice.id) >= 3
+        ).subquery()
+        
+        users = db.query(models.User).join(
+            user_invoice_counts,
+            models.User.id == user_invoice_counts.c.user_id
+        ).filter(
+            models.User.plan == SubscriptionPlan.FREE
+        ).all()
+    
+    elif segment == "churned":
+        # Users inactive for 14+ days
+        cutoff = now - dt.timedelta(days=14)
+        users_with_invoices = db.query(models.Invoice.user_id).distinct().subquery()
+        users = db.query(models.User).filter(
+            models.User.id.in_(db.query(users_with_invoices)),
+            models.User.last_login < cutoff
+        ).all()
+    
+    else:
+        return BrevoSyncResult(
+            segment=segment,
+            contacts_synced=0,
+            list_id=list_id,
+            success=False,
+            error=f"Unknown segment: {segment}. Valid: inactive, low-balance, active-free, churned"
+        )
+    
+    if not users:
+        return BrevoSyncResult(
+            segment=segment,
+            contacts_synced=0,
+            list_id=list_id,
+            success=True,
+            error=None
+        )
+    
+    # Prepare contacts for Brevo
+    contacts = []
+    for user in users:
+        if user.email:  # Brevo requires email
+            contact = {
+                "email": user.email,
+                "attributes": {
+                    "FIRSTNAME": user.name or "Customer",
+                    "PHONE": user.phone,
+                    "PLAN": user.plan.value,
+                    "INVOICE_BALANCE": getattr(user, 'invoice_balance', 5),
+                    "BUSINESS_NAME": user.business_name or ""
+                },
+                "listIds": [list_id],
+                "updateEnabled": True  # Update if contact exists
+            }
+            contacts.append(contact)
+    
+    if not contacts:
+        return BrevoSyncResult(
+            segment=segment,
+            contacts_synced=0,
+            list_id=list_id,
+            success=True,
+            error="No users with email addresses in this segment"
+        )
+    
+    # Push to Brevo using batch import
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.brevo.com/v3/contacts/import",
+                headers={
+                    "api-key": brevo_api_key,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "listIds": [list_id],
+                    "updateExistingContacts": True,
+                    "jsonBody": contacts
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code in (200, 201, 202):
+                return BrevoSyncResult(
+                    segment=segment,
+                    contacts_synced=len(contacts),
+                    list_id=list_id,
+                    success=True,
+                    error=None
+                )
+            else:
+                return BrevoSyncResult(
+                    segment=segment,
+                    contacts_synced=0,
+                    list_id=list_id,
+                    success=False,
+                    error=f"Brevo API error: {response.status_code} - {response.text}"
+                )
+    
+    except Exception as e:
+        return BrevoSyncResult(
+            segment=segment,
+            contacts_synced=0,
+            list_id=list_id,
+            success=False,
+            error=str(e)
+        )
+
+
+@router.get("/brevo/lists")
+async def get_brevo_lists(
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """
+    Get all Brevo contact lists to find list IDs for syncing.
+    """
+    import httpx
+    from app.core.config import settings
+    
+    brevo_api_key = getattr(settings, "BREVO_API_KEY", None)
+    if not brevo_api_key:
+        return {"error": "BREVO_API_KEY not configured", "lists": []}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.brevo.com/v3/contacts/lists",
+                headers={"api-key": brevo_api_key},
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "lists": [
+                        {"id": lst["id"], "name": lst["name"], "totalSubscribers": lst.get("totalSubscribers", 0)}
+                        for lst in data.get("lists", [])
+                    ]
+                }
+            else:
+                return {"error": f"Brevo API error: {response.status_code}", "lists": []}
+    
+    except Exception as e:
+        return {"error": str(e), "lists": []}
+
+
+@router.post("/brevo/create-list")
+async def create_brevo_list(
+    name: str = Query(..., description="Name for the new list"),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Create a new contact list in Brevo."""
+    import httpx
+    from app.core.config import settings
+    
+    brevo_api_key = getattr(settings, "BREVO_API_KEY", None)
+    if not brevo_api_key:
+        return {"error": "BREVO_API_KEY not configured", "list_id": None}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.brevo.com/v3/contacts/lists",
+                headers={
+                    "api-key": brevo_api_key,
+                    "Content-Type": "application/json"
+                },
+                json={"name": name, "folderId": 1},  # folderId 1 is usually the default folder
+                timeout=10.0
+            )
+            
+            if response.status_code in (200, 201):
+                data = response.json()
+                return {"list_id": data.get("id"), "name": name, "success": True}
+            else:
+                return {"error": f"Brevo API error: {response.status_code} - {response.text}", "list_id": None}
+    
+    except Exception as e:
+        return {"error": str(e), "list_id": None}

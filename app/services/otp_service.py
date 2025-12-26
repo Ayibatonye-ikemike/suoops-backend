@@ -363,11 +363,20 @@ Powered by SuoOps
                 metrics.otp_email_delivery_failure()
                 raise
         else:
-            # WhatsApp OTP
-            message = self._format_message(code, purpose)
+            # WhatsApp OTP using approved authentication template
             try:
-                self._delivery.send_text(identifier, message)
-                metrics.otp_whatsapp_delivery_success()
+                success = self._delivery.send_otp_template(
+                    to=identifier,
+                    otp_code=code,
+                    template_name="otp_verifications",  # Approved authentication template
+                    language="en",
+                )
+                if success:
+                    metrics.otp_whatsapp_delivery_success()
+                    logger.info("OTP template sent successfully to %s", identifier)
+                else:
+                    metrics.otp_whatsapp_delivery_failure()
+                    raise ValueError("Failed to send OTP via WhatsApp template")
             except Exception:
                 metrics.otp_whatsapp_delivery_failure()
                 raise

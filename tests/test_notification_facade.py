@@ -55,7 +55,7 @@ def sample_invoice(db_session):  # type: ignore[override]
 @pytest.mark.asyncio
 async def test_send_invoice_notification(monkeypatch, sample_invoice):
     service = NotificationService()
-    calls = {"email": 0, "whatsapp": 0, "sms": 0}
+    calls = {"email": 0, "whatsapp": 0}
 
     async def fake_invoice_email(self, invoice, recipient_email, pdf_url=None, subject="New Invoice"):
         calls["email"] += 1
@@ -65,13 +65,8 @@ async def test_send_invoice_notification(monkeypatch, sample_invoice):
         calls["whatsapp"] += 1
         return True
 
-    async def fake_invoice_sms(self, invoice, recipient_phone):
-        calls["sms"] += 1
-        return True
-
     monkeypatch.setattr(NotificationService, "send_invoice_email", fake_invoice_email)
     monkeypatch.setattr(NotificationService, "send_invoice_whatsapp", fake_invoice_whatsapp)
-    monkeypatch.setattr(NotificationService, "send_invoice_sms", fake_invoice_sms)
 
     result = await service.send_invoice_notification(
         invoice=sample_invoice,
@@ -80,8 +75,8 @@ async def test_send_invoice_notification(monkeypatch, sample_invoice):
         pdf_url=sample_invoice.pdf_url,
     )
 
-    assert result == {"email": True, "whatsapp": True, "sms": True}
-    assert calls == {"email": 1, "whatsapp": 1, "sms": 1}
+    assert result == {"email": True, "whatsapp": True}
+    assert calls == {"email": 1, "whatsapp": 1}
 
 
 @pytest.mark.asyncio
@@ -92,7 +87,7 @@ async def test_send_receipt_notification(monkeypatch, sample_invoice, db_session
     db_session.commit()
 
     service = NotificationService()
-    calls = {"email": 0, "whatsapp": 0, "sms": 0}
+    calls = {"email": 0, "whatsapp": 0}
 
     async def fake_receipt_email(self, invoice, recipient_email, pdf_url=None):
         calls["email"] += 1
@@ -102,13 +97,8 @@ async def test_send_receipt_notification(monkeypatch, sample_invoice, db_session
         calls["whatsapp"] += 1
         return True
 
-    async def fake_receipt_sms(self, invoice, recipient_phone):
-        calls["sms"] += 1
-        return True
-
     monkeypatch.setattr(NotificationService, "send_receipt_email", fake_receipt_email)
     monkeypatch.setattr(NotificationService, "send_receipt_whatsapp", fake_receipt_whatsapp)
-    monkeypatch.setattr(NotificationService, "send_receipt_sms", fake_receipt_sms)
 
     result = await service.send_receipt_notification(
         invoice=sample_invoice,
@@ -117,5 +107,5 @@ async def test_send_receipt_notification(monkeypatch, sample_invoice, db_session
         pdf_url=sample_invoice.receipt_pdf_url,
     )
 
-    assert result == {"email": True, "whatsapp": True, "sms": True}
-    assert calls == {"email": 1, "whatsapp": 1, "sms": 1}
+    assert result == {"email": True, "whatsapp": True}
+    assert calls == {"email": 1, "whatsapp": 1}

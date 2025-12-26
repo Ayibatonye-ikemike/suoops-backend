@@ -20,8 +20,8 @@ class BaseAppSettings(BaseSettings):
     S3_REGION: str = "us-east-1"  # AWS region for S3 bucket
     S3_PRESIGN_TTL: int = 3600
     
-    # Email/SMS Configuration - Using Brevo
-    EMAIL_PROVIDER: str = "brevo"  # We use Brevo for email and SMS
+    # Email Configuration - Using Brevo
+    EMAIL_PROVIDER: str = "brevo"  # We use Brevo for email
     FROM_EMAIL: str | None = None
     
     # SMTP Configuration (Generic - works with Brevo, SES, etc.)
@@ -30,18 +30,10 @@ class BaseAppSettings(BaseSettings):
     SMTP_USER: str | None = None
     SMTP_PASSWORD: str | None = None
     
-    # Brevo (Sendinblue) - For both Email and SMS
+    # Brevo (Sendinblue) - For Email
     BREVO_API_KEY: str | None = None  # Get from Brevo dashboard
     BREVO_SMTP_LOGIN: str | None = None  # Brevo SMTP login (e.g., "9a485d001@smtp-brevo.com")
-    BREVO_SENDER_NAME: str = "SuoOps"  # Sender name for emails and SMS
-    
-    # SMS Configuration
-    SMS_PROVIDER: str = "brevo"  # Options: brevo, termii, twilio
-    
-    # Termii - Alternative SMS provider (Nigerian)
-    TERMII_API_KEY: str | None = None
-    TERMII_SENDER_ID: str = "SuoOps"  # Max 11 characters for SMS
-    TERMII_DEVICE_ID: str = "TID"  # Max 9 characters for WhatsApp (use "TID" for testing)
+    BREVO_SENDER_NAME: str = "SuoOps"  # Sender name for emails
     
     # WhatsApp Configuration (Meta/Facebook)
     WHATSAPP_API_KEY: str | None = None

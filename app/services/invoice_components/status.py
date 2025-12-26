@@ -162,11 +162,10 @@ class InvoiceStatusMixin:
 
             results = asyncio.run(_run())
             logger.info(
-                "Receipt sent for invoice %s - Email: %s, WhatsApp: %s, SMS: %s",
+                "Receipt sent for invoice %s - Email: %s, WhatsApp: %s",
                 invoice_id,
                 results["email"],
                 results["whatsapp"],
-                results["sms"],
             )
             
             # If no customer contact info, notify business with receipt PDF via WhatsApp
@@ -212,7 +211,7 @@ class InvoiceStatusMixin:
             service = NotificationService()
 
             async def _run():  # pragma: no cover - network IO
-                results = {"email": False, "sms": False, "whatsapp": False}
+                results = {"email": False, "whatsapp": False}
                 if user.email:
                     try:
                         results["email"] = await service.send_email(
@@ -249,16 +248,11 @@ class InvoiceStatusMixin:
                             results["whatsapp"] = True
                     except Exception as exc:  # noqa: BLE001
                         logger.error("Failed WhatsApp notify business %s: %s", invoice.invoice_id, exc)
-                    try:
-                        results["sms"] = await service.send_receipt_sms(invoice, user.phone)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.error("Failed SMS notify business %s: %s", invoice.invoice_id, exc)
                 logger.info(
-                    "Business notification for invoice %s - Email: %s, WhatsApp: %s, SMS: %s",
+                    "Business notification for invoice %s - Email: %s, WhatsApp: %s",
                     invoice.invoice_id,
                     results["email"],
                     results["whatsapp"],
-                    results["sms"],
                 )
 
             asyncio.run(_run())
@@ -478,7 +472,7 @@ class InvoiceStatusMixin:
         products: list,
         purchase_order_id: int | None = None
     ) -> None:
-        """Send low stock alert to business owner via email/SMS."""
+        """Send low stock alert to business owner via email."""
         try:
             user = self.db.query(models.User).filter(models.User.id == user_id).one_or_none()
             if not user:

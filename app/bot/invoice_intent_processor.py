@@ -92,7 +92,7 @@ class InvoiceIntentProcessor:
         customer_phone: str | None = None
     ) -> dict[str, bool]:
         """
-        Send invoice notifications via all available channels (Email, WhatsApp, SMS).
+        Send invoice notifications via available channels (Email, WhatsApp).
         
         Args:
             invoice: Invoice model instance
@@ -100,7 +100,7 @@ class InvoiceIntentProcessor:
             customer_phone: Customer phone number (optional)
         
         Returns:
-            dict: Status of each channel {"email": bool, "whatsapp": bool, "sms": bool}
+            dict: Status of each channel {"email": bool, "whatsapp": bool}
         """
         try:
             from app.services.notification_service import NotificationService
@@ -113,13 +113,13 @@ class InvoiceIntentProcessor:
                 pdf_url=invoice.pdf_url,
             )
             
-            logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s, SMS: %s",
-                       invoice.invoice_id, results["email"], results["whatsapp"], results["sms"])
+            logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s",
+                       invoice.invoice_id, results["email"], results["whatsapp"])
             
             return results
         except Exception as exc:  # noqa: BLE001
             logger.error("Error sending invoice notifications: %s", exc)
-            return {"email": False, "whatsapp": False, "sms": False}
+            return {"email": False, "whatsapp": False}
 
     async def _create_invoice(
         self,
@@ -200,7 +200,7 @@ class InvoiceIntentProcessor:
         no_contact_info = not customer_email and not customer_phone
         
         # Only send email notification here - WhatsApp is handled by _notify_customer to avoid duplicates
-        results = {"email": False, "whatsapp": False, "sms": False}
+        results = {"email": False, "whatsapp": False}
         if customer_email:
             try:
                 from app.services.notification.service import NotificationService
@@ -253,8 +253,6 @@ class InvoiceIntentProcessor:
                 sent_channels.append("📧 Email")
             if notification_results.get("whatsapp"):
                 sent_channels.append("💬 WhatsApp")
-            if notification_results.get("sms"):
-                sent_channels.append("📱 SMS")
             
             if sent_channels:
                 business_message += f"\n✉️ Sent via: {', '.join(sent_channels)}"

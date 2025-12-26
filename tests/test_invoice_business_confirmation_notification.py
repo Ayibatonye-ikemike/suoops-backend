@@ -1,7 +1,7 @@
 """Integration-style test for business confirmation notifications.
 
 Verifies that `InvoiceService.confirm_transfer` triggers NotificationService
-email & SMS dispatch via the facade after customer reports payment.
+email dispatch via the facade after customer reports payment.
 Network calls are monkeypatched to avoid external dependencies.
 """
 from __future__ import annotations
@@ -61,25 +61,19 @@ def test_business_confirmation_notifications(monkeypatch, db_session):
     # Sanity pre-condition
     assert invoice.status == "pending"
 
-    calls = {"email": 0, "sms": 0}
+    calls = {"email": 0}
 
     async def fake_send_email(self, to_email, subject, body):  # noqa: D401
         assert "Payment Confirmation" in subject
         calls["email"] += 1
         return True
 
-    async def fake_send_receipt_sms(self, invoice_obj, recipient_phone):  # noqa: D401
-        assert recipient_phone == user.phone
-        calls["sms"] += 1
-        return True
-
     # Monkeypatch facade methods used internally by confirm_transfer flow
     monkeypatch.setattr(NotificationService, "send_email", fake_send_email)
-    monkeypatch.setattr(NotificationService, "send_receipt_sms", fake_send_receipt_sms)
 
     # Execute confirmation
     updated = service.confirm_transfer(invoice.invoice_id)
     assert updated.status == "awaiting_confirmation"
 
-    # Email & SMS paths attempted exactly once
-    assert calls == {"email": 1, "sms": 1}
+    # Email path attempted exactly once
+    assert calls == {"email": 1}

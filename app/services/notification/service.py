@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from app.core.config import settings
 from app.services.notification.channels.email import EmailChannel
 from app.services.notification.channels.whatsapp import WhatsAppChannel
-from app.services.notification.channels.sms import SMSChannel
 
 if TYPE_CHECKING:  # pragma: no cover
     from app.models import models
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class NotificationService:
-    """Facade for sending notifications via Email, WhatsApp, and SMS.
+    """Facade for sending notifications via Email and WhatsApp.
 
     Public methods preserved for compatibility while delegating to channel classes.
     """
@@ -24,17 +23,12 @@ class NotificationService:
         # WhatsApp setup
         self.whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
         self.whatsapp_phone_number_id = getattr(settings, "WHATSAPP_PHONE_NUMBER_ID", None)
-        # SMS provider setup
-        self.sms_provider = getattr(settings, "SMS_PROVIDER", "brevo")
+        # Brevo API key for email (also used for sender config)
         self.brevo_api_key = getattr(settings, "BREVO_API_KEY", None)
         self.brevo_sender_name = getattr(settings, "BREVO_SENDER_NAME", "SuoOps")
-        self.termii_api_key = getattr(settings, "TERMII_API_KEY", None)
-        self.termii_sender_id = getattr(settings, "TERMII_SENDER_ID", "SuoOps")
-        self.termii_device_id = getattr(settings, "TERMII_DEVICE_ID", "TID")
-        # Channels
+        # Channels (Email + WhatsApp only)
         self.email = EmailChannel(self)
         self.whatsapp = WhatsAppChannel(self)
-        self.sms = SMSChannel(self)
 
     def _get_smtp_config(self) -> dict[str, str | int] | None:
         """Get SMTP configuration for Brevo email sending.
@@ -110,13 +104,6 @@ class NotificationService:
     ) -> bool:
         return await self.whatsapp.send_receipt(invoice, recipient_phone, pdf_url)
 
-    # --- SMS ---
-    async def send_invoice_sms(self, invoice: "models.Invoice", recipient_phone: str) -> bool:
-        return await self.sms.send_invoice(invoice, recipient_phone)
-
-    async def send_receipt_sms(self, invoice: "models.Invoice", recipient_phone: str) -> bool:
-        return await self.sms.send_receipt(invoice, recipient_phone)
-
     # --- Composite ---
     async def send_invoice_notification(
         self,
@@ -125,17 +112,16 @@ class NotificationService:
         customer_phone: str | None = None,
         pdf_url: str | None = None,
     ) -> dict[str, bool]:
-        results = {"email": False, "whatsapp": False, "sms": False}
+        """Send invoice notification via Email and/or WhatsApp."""
+        results = {"email": False, "whatsapp": False}
         if customer_email:
             results["email"] = await self.send_invoice_email(invoice, customer_email, pdf_url)
         if customer_phone:
             results["whatsapp"] = await self.send_invoice_whatsapp(invoice, customer_phone, pdf_url)
-            results["sms"] = await self.send_invoice_sms(invoice, customer_phone)
         logger.info(
-            "Invoice notification sent - Email: %s, WhatsApp: %s, SMS: %s",
+            "Invoice notification sent - Email: %s, WhatsApp: %s",
             results["email"],
             results["whatsapp"],
-            results["sms"],
         )
         return results
 
@@ -146,7 +132,8 @@ class NotificationService:
         customer_phone: str | None = None,
         pdf_url: str | None = None,
     ) -> dict[str, bool]:
-        results = {"email": False, "whatsapp": False, "sms": False}
+        """Send receipt notification via Email and/or WhatsApp."""
+        results = {"email": False, "whatsapp": False}
         if customer_email:
             results["email"] = await self.send_receipt_email(
                 invoice,
@@ -155,11 +142,9 @@ class NotificationService:
             )
         if customer_phone:
             results["whatsapp"] = await self.send_receipt_whatsapp(invoice, customer_phone, invoice.receipt_pdf_url or pdf_url)
-            results["sms"] = await self.send_receipt_sms(invoice, customer_phone)
         logger.info(
-            "Receipt notification sent - Email: %s, WhatsApp: %s, SMS: %s",
+            "Receipt notification sent - Email: %s, WhatsApp: %s",
             results["email"],
             results["whatsapp"],
-            results["sms"],
         )
         return results

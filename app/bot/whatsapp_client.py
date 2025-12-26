@@ -146,7 +146,7 @@ class WhatsAppClient:
         self,
         to: str,
         otp_code: str,
-        template_name: str = "otp_verification",
+        template_name: str = "otp_verifications",
         language: str = "en",
     ) -> bool:
         """Send OTP verification code using approved authentication template.
@@ -157,13 +157,15 @@ class WhatsAppClient:
         Args:
             to: Recipient phone number
             otp_code: The OTP code to send
-            template_name: Name of the approved auth template (default: otp_verification)
+            template_name: Name of the approved auth template (default: otp_verifications)
             language: Template language code (default: en)
         
         Returns:
             True if sent successfully, False otherwise
         """
-        # Authentication templates use a special component structure
+        # Authentication templates with "Copy code" button structure:
+        # - Body: {{1}} is the OTP code
+        # - Button: URL button with otp{{1}} parameter
         components = [
             {
                 "type": "body",
@@ -181,7 +183,7 @@ class WhatsAppClient:
             }
         ]
         
-        logger.info("[WHATSAPP OTP] Sending OTP template to %s", to)
+        logger.info("[WHATSAPP OTP] Sending OTP template '%s' to %s", template_name, to)
         return self.send_template(to, template_name, language, components)
 
     async def get_media_url(self, media_id: str) -> str:

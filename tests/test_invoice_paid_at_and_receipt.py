@@ -98,7 +98,7 @@ def test_paid_status_sets_paid_at_and_receipt_pdf(monkeypatch):
     async def fake_send_receipt_notification(self, invoice, customer_email=None, customer_phone=None, pdf_url=None):  # noqa: D401
         called["invoice_id"] = invoice.invoice_id
         called["pdf_url"] = invoice.pdf_url
-        return {"email": bool(customer_email), "whatsapp": bool(customer_phone), "sms": bool(customer_phone)}
+        return {"email": bool(customer_email), "whatsapp": bool(customer_phone)}
     # Patch NotificationService facade method directly (legacy wrapper removed)
     from app.services.notification.service import NotificationService
     monkeypatch.setattr(NotificationService, "send_receipt_notification", fake_send_receipt_notification)
@@ -138,14 +138,14 @@ def test_receipt_email_subject_includes_business_name(monkeypatch):
             subject = f"Payment Receipt - {invoice.issuer.business_name}"
             captured["subject"] = subject
             captured["pdf_url"] = pdf_url
-            return {"email": True, "whatsapp": False, "sms": False}
+            return {"email": True, "whatsapp": False}
 
     # Monkeypatch facade method now used directly inside service.update_status
     async def fake_send_receipt_notification(self, invoice, customer_email=None, customer_phone=None, pdf_url=None):  # noqa: D401
         subject = f"Payment Receipt - {invoice.issuer.business_name}"
         captured["subject"] = subject
         captured["pdf_url"] = pdf_url or invoice.receipt_pdf_url
-        return {"email": bool(customer_email), "whatsapp": bool(customer_phone), "sms": bool(customer_phone)}
+        return {"email": bool(customer_email), "whatsapp": bool(customer_phone)}
     from app.services.notification.service import NotificationService
     monkeypatch.setattr(NotificationService, "send_receipt_notification", fake_send_receipt_notification)
 
