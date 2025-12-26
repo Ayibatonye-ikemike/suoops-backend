@@ -783,14 +783,14 @@ async def sync_segment_to_brevo(
     
     log_audit_event("admin.brevo.sync", user_id=admin_user.id, segment=segment, list_id=list_id)
     
-    brevo_api_key = getattr(settings, "BREVO_API_KEY", None)
+    brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
     if not brevo_api_key:
         return BrevoSyncResult(
             segment=segment,
             contacts_synced=0,
             list_id=list_id,
             success=False,
-            error="BREVO_API_KEY not configured"
+            error="BREVO_CONTACTS_API_KEY not configured"
         )
     
     # Get users based on segment
@@ -936,9 +936,9 @@ async def get_brevo_lists(
     import httpx
     from app.core.config import settings
     
-    brevo_api_key = getattr(settings, "BREVO_API_KEY", None)
+    brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
     if not brevo_api_key:
-        return {"error": "BREVO_API_KEY not configured", "lists": []}
+        return {"error": "BREVO_CONTACTS_API_KEY not configured", "lists": []}
     
     try:
         async with httpx.AsyncClient() as client:
@@ -972,9 +972,9 @@ async def create_brevo_list(
     import httpx
     from app.core.config import settings
     
-    brevo_api_key = getattr(settings, "BREVO_API_KEY", None)
+    brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
     if not brevo_api_key:
-        return {"error": "BREVO_API_KEY not configured", "list_id": None}
+        return {"error": "BREVO_CONTACTS_API_KEY not configured", "list_id": None}
     
     try:
         async with httpx.AsyncClient() as client:
