@@ -46,6 +46,8 @@ EXEMPT_PATHS = {
     "/referrals/",         # Referral endpoints use JWT authentication
     "/support/",           # Support contact form (public endpoint)
     "/admin/auth/",        # Admin auth endpoints use JWT authentication
+    "/admin-auth/",        # Admin auth endpoints (hyphenated route)
+    "/admin/brevo/",       # Admin Brevo sync endpoints use JWT authentication
 }
 
 
