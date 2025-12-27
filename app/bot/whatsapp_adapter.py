@@ -96,21 +96,23 @@ class WhatsAppHandler:
         is_greeting = text_lower in greeting_keywords or text_lower in help_keywords
         is_optin = text_lower in optin_keywords
         
-        # BUSINESS CHECK FIRST: If sender is a registered business AND sends greeting/help, 
-        # show business welcome - don't treat them as a customer
-        if is_greeting or text_lower in optin_keywords:
+        # CUSTOMER OPT-IN CHECK FIRST: A person can be BOTH a business AND a customer
+        # who received an invoice. Check for pending invoices first!
+        if is_greeting or is_optin:
+            # Try to handle as customer opt-in (send pending invoices)
+            # This works for both pure customers AND business users who also received invoices
+            if self.invoice_processor.handle_customer_optin(sender):
+                logger.info("Handled opt-in from customer %s", sender)
+                return  # Successfully handled, don't process further
+        
+        # If they're a registered business with NO pending customer invoices, 
+        # show business welcome
+        if is_greeting or is_optin:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
                 # This is a registered business - send welcome/help message
                 self._send_business_welcome(sender)
                 return
-        
-        # Only now check for customer opt-in (for non-business users)
-        if is_greeting or is_optin:
-            # Try to handle as customer opt-in (send pending invoices)
-            if self.invoice_processor.handle_customer_optin(sender):
-                logger.info("Handled opt-in from customer %s", sender)
-                return  # Successfully sent pending invoices, don't process further
             else:
                 # Not a business and not a found customer - send generic response
                 self.client.send_text(
