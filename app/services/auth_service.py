@@ -170,6 +170,13 @@ class AuthService:
             except Exception as e:
                 logger.warning(f"Failed to record referral: {e}", exc_info=True)
         
+        # Sync new user to Brevo (real-time)
+        try:
+            from app.services.brevo_service import sync_user_to_brevo_sync
+            sync_user_to_brevo_sync(user)
+        except Exception as e:
+            logger.warning(f"Failed to sync user to Brevo: {e}")
+        
         return self._issue_tokens(user)
 
     # ----------------------------- Login -----------------------------

@@ -150,12 +150,14 @@ class OAuthService:
         """
         # Check if user exists
         user = self.db.query(User).filter(User.email == email).first()
+        is_new_user = False
 
         if user:
             # Update last_login timestamp
             user.last_login = datetime.now(timezone.utc)
             logger.info(f"Existing user logged in via {oauth_provider}: {email}")
         else:
+            is_new_user = True
             # Fallback phone requirement: model requires 'phone' (unique, non-null)
             synthetic_phone = f"oauth_{oauth_provider}_{email.split('@')[0]}"
             # Ensure length constraint (32) and uniqueness attempt
@@ -178,6 +180,15 @@ class OAuthService:
 
         self.db.commit()
         self.db.refresh(user)
+        
+        # Sync new user to Brevo (real-time)
+        if is_new_user:
+            try:
+                from app.services.brevo_service import sync_user_to_brevo_sync
+                sync_user_to_brevo_sync(user)
+            except Exception as e:
+                logger.warning(f"Failed to sync OAuth user to Brevo: {e}")
+        
         return user
 
     async def authenticate_with_code(
