@@ -858,7 +858,7 @@ async def sync_segment_to_brevo(
     """
     Sync a user segment directly to a Brevo contact list.
     
-    Segments: inactive, low-balance, active-free, churned, starter, pro
+    Segments: inactive, low-balance, active-free, churned, starter, pro, all
     
     1. First create lists in Brevo Dashboard → Contacts → Lists
     2. Get the list ID from Brevo
@@ -935,13 +935,17 @@ async def sync_segment_to_brevo(
             models.User.plan == SubscriptionPlan.PRO
         ).all()
     
+    elif segment == "all":
+        # ALL users - sync entire user base to Brevo
+        users = db.query(models.User).all()
+    
     else:
         return BrevoSyncResult(
             segment=segment,
             contacts_synced=0,
             list_id=list_id,
             success=False,
-            error=f"Unknown segment: {segment}. Valid: inactive, low-balance, active-free, churned, starter, pro"
+            error=f"Unknown segment: {segment}. Valid: inactive, low-balance, active-free, churned, starter, pro, all"
         )
     
     if not users:
