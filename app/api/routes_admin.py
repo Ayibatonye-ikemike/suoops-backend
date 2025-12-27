@@ -1098,3 +1098,44 @@ async def create_brevo_list(
     
     except Exception as e:
         return {"error": str(e), "list_id": None}
+
+
+@router.get("/users/export/csv")
+async def export_users_csv(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+):
+    """
+    Export all users as CSV for Brevo import.
+    
+    Download this file and upload to Brevo:
+    Contacts → Import contacts → Upload file
+    """
+    from fastapi.responses import StreamingResponse
+    import io
+    
+    users = db.query(models.User).all()
+    
+    # Build CSV
+    output = io.StringIO()
+    output.write("EMAIL,FIRSTNAME,PHONE,PLAN,INVOICE_BALANCE,BUSINESS_NAME\n")
+    
+    for user in users:
+        if user.email:  # Brevo requires email
+            row = [
+                user.email,
+                (user.name or "Customer").replace(",", " "),
+                user.phone or "",
+                user.plan.value,
+                str(getattr(user, 'invoice_balance', 5)),
+                (user.business_name or "").replace(",", " ")
+            ]
+            output.write(",".join(row) + "\n")
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=suoops_users.csv"}
+    )
