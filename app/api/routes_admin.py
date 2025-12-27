@@ -749,6 +749,92 @@ async def get_churned_users(
     return result
 
 
+@router.get("/users/segments/starter", response_model=list[UserSegmentExport])
+async def get_starter_users(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> list[UserSegmentExport]:
+    """
+    Get STARTER plan users (bought invoice packs).
+    Perfect for Pro upsell campaign - "Unlock analytics, inventory, team management"
+    """
+    log_audit_event("admin.segments.starter", user_id=admin_user.id)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    
+    starter_users = db.query(models.User).filter(
+        models.User.plan == SubscriptionPlan.STARTER
+    ).all()
+    
+    result = []
+    for user in starter_users:
+        invoice_count = db.query(func.count(models.Invoice.id)).filter(
+            models.Invoice.issuer_id == user.id
+        ).scalar() or 0
+        
+        days_since_signup = (now - user.created_at.replace(tzinfo=dt.timezone.utc)).days if user.created_at else 0
+        days_since_login = None
+        if user.last_login:
+            days_since_login = (now - user.last_login.replace(tzinfo=dt.timezone.utc)).days
+        
+        result.append(UserSegmentExport(
+            name=user.name or "Customer",
+            phone=user.phone,
+            email=user.email,
+            plan=user.plan.value,
+            invoice_balance=getattr(user, 'invoice_balance', 100),
+            total_invoices=invoice_count,
+            days_since_signup=days_since_signup,
+            days_since_last_login=days_since_login,
+            business_name=user.business_name
+        ))
+    
+    return result
+
+
+@router.get("/users/segments/pro", response_model=list[UserSegmentExport])
+async def get_pro_users(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> list[UserSegmentExport]:
+    """
+    Get PRO plan users (monthly subscribers).
+    Perfect for retention/engagement campaign - "Tips to get more value"
+    """
+    log_audit_event("admin.segments.pro", user_id=admin_user.id)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    
+    pro_users = db.query(models.User).filter(
+        models.User.plan == SubscriptionPlan.PRO
+    ).all()
+    
+    result = []
+    for user in pro_users:
+        invoice_count = db.query(func.count(models.Invoice.id)).filter(
+            models.Invoice.issuer_id == user.id
+        ).scalar() or 0
+        
+        days_since_signup = (now - user.created_at.replace(tzinfo=dt.timezone.utc)).days if user.created_at else 0
+        days_since_login = None
+        if user.last_login:
+            days_since_login = (now - user.last_login.replace(tzinfo=dt.timezone.utc)).days
+        
+        result.append(UserSegmentExport(
+            name=user.name or "Customer",
+            phone=user.phone,
+            email=user.email,
+            plan=user.plan.value,
+            invoice_balance=getattr(user, 'invoice_balance', 100),
+            total_invoices=invoice_count,
+            days_since_signup=days_since_signup,
+            days_since_last_login=days_since_login,
+            business_name=user.business_name
+        ))
+    
+    return result
+
+
 # =============================================================================
 # BREVO SYNC - Push segments directly to Brevo lists
 # =============================================================================
@@ -772,7 +858,7 @@ async def sync_segment_to_brevo(
     """
     Sync a user segment directly to a Brevo contact list.
     
-    Segments: inactive, low-balance, active-free, churned
+    Segments: inactive, low-balance, active-free, churned, starter, pro
     
     1. First create lists in Brevo Dashboard → Contacts → Lists
     2. Get the list ID from Brevo
@@ -837,13 +923,25 @@ async def sync_segment_to_brevo(
             models.User.last_login < cutoff
         ).all()
     
+    elif segment == "starter":
+        # STARTER plan users (bought invoice packs) - for Pro upsell
+        users = db.query(models.User).filter(
+            models.User.plan == SubscriptionPlan.STARTER
+        ).all()
+    
+    elif segment == "pro":
+        # PRO plan users (monthly subscribers) - for retention
+        users = db.query(models.User).filter(
+            models.User.plan == SubscriptionPlan.PRO
+        ).all()
+    
     else:
         return BrevoSyncResult(
             segment=segment,
             contacts_synced=0,
             list_id=list_id,
             success=False,
-            error=f"Unknown segment: {segment}. Valid: inactive, low-balance, active-free, churned"
+            error=f"Unknown segment: {segment}. Valid: inactive, low-balance, active-free, churned, starter, pro"
         )
     
     if not users:
