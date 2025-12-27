@@ -137,15 +137,24 @@ class WhatsAppChannel:
         """
         # Try the full invoice template with payment details first
         template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
+        fallback_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
+        
+        logger.info(
+            "[WHATSAPP] Template config - INVOICE_PAYMENT='%s', INVOICE='%s'",
+            template_name, fallback_template
+        )
         
         if template_name:
             # Use the full template with bank details
+            logger.info("[WHATSAPP] Using invoice_with_payment template: %s", template_name)
             return await self._send_invoice_with_payment_template(
                 client, invoice, recipient_phone, template_name
             )
         
+        logger.info("[WHATSAPP] INVOICE_PAYMENT not set, falling back to basic template")
+        
         # Fall back to basic invoice template
-        template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
+        template_name = fallback_template
         
         if not template_name:
             logger.warning("[WHATSAPP] No invoice template configured, cannot notify customer")
