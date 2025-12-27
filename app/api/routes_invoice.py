@@ -72,9 +72,23 @@ async def create_invoice(
         
         # Send notifications via available channels (Email, WhatsApp) - ONLY for revenue invoices
         # Note: WhatsApp uses centralized opt-in logic - new customers get template, opted-in get full invoice
+        logger.info(
+            "[INVOICE CREATE] invoice_type=%s, customer_email=%s, customer_phone=%s, invoice_id=%s",
+            invoice.invoice_type,
+            data.customer_email,
+            data.customer_phone,
+            invoice.invoice_id,
+        )
         if invoice.invoice_type == "revenue" and (data.customer_email or data.customer_phone):
             from app.services.notification_service import NotificationService
             notification_service = NotificationService()
+            
+            logger.info(
+                "[INVOICE NOTIFY] Sending notification for %s to email=%s, phone=%s",
+                invoice.invoice_id,
+                data.customer_email,
+                data.customer_phone,
+            )
 
             results = await notification_service.send_invoice_notification(
                 invoice=invoice,

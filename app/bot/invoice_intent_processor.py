@@ -274,8 +274,13 @@ class InvoiceIntentProcessor:
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> bool:
         """
-        Notify customer about their invoice.
-        Returns True if delivery is pending (customer needs to reply first).
+        Notify customer about their invoice using WhatsApp template.
+        
+        Always uses template message because Meta's 24-hour messaging window
+        expires, so regular messages may fail even for previously engaged customers.
+        Templates work anytime.
+        
+        Returns True (template sent, customer can reply for payment details).
         """
         customer_phone = data.get("customer_phone")
         logger.info("[NOTIFY] customer_phone from data: %s, invoice: %s", customer_phone, invoice.invoice_id)
@@ -283,23 +288,10 @@ class InvoiceIntentProcessor:
             logger.warning("No customer phone for invoice %s", invoice.invoice_id)
             return False
 
-        # Check if customer has messaged us before (can receive regular messages)
-        customer = invoice.customer
-        has_opted_in = getattr(customer, "whatsapp_opted_in", False) if customer else False
-        
-        # Also check if the customer's phone belongs to a registered business user
-        # Registered users should receive full invoices without needing to opt-in
-        is_registered_user = self._is_registered_user(customer_phone)
-        
-        if has_opted_in or is_registered_user:
-            # Customer has messaged us before OR is a registered business - send full invoice
-            self._send_full_invoice(invoice, customer_phone, issuer_id)
-            return False  # Full delivery completed
-        else:
-            # New customer - send template only with prompt to reply
-            # Regular messages will fail, so we just send template and wait for reply
-            self._send_template_only(invoice, customer_phone, issuer_id)
-            return True  # Pending - waiting for customer to reply
+        # Always use template for invoice notifications
+        # This ensures delivery regardless of 24-hour messaging window
+        self._send_template_only(invoice, customer_phone, issuer_id)
+        return True  # Template sent - customer can reply for full details
     
     def _is_registered_user(self, phone: str) -> bool:
         """Check if a phone number belongs to a registered business user."""
@@ -323,22 +315,41 @@ class InvoiceIntentProcessor:
         return False
 
     def _send_template_only(self, invoice, customer_phone: str, issuer_id: int) -> None:
-        """Send only the template to new customers who haven't messaged us yet."""
+        """Send invoice template with full payment details.
+        
+        Uses 'invoice_with_payment' template if configured (includes bank details),
+        falls back to basic 'invoice_notification' template.
+        """
         customer_name = getattr(invoice.customer, "name", "valued customer") if invoice.customer else "valued customer"
         amount_text = f"₦{invoice.amount:,.2f}"
         items_text = self._build_items_text(invoice)
         
-        # Add call-to-action for new customers to reply
-        items_with_cta = f"{items_text}. Reply 'Hi' to get payment details"
-
-        logger.info("[TEMPLATE] Sending template ONLY to new customer %s for invoice %s", customer_phone, invoice.invoice_id)
-        template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, items_with_cta)
+        # Try the full invoice template with payment details first
+        template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
+        
+        if template_name:
+            # Use the full template with bank details
+            issuer = self._load_issuer(issuer_id)
+            bank_name = getattr(issuer, "bank_name", "N/A") if issuer else "N/A"
+            account_number = getattr(issuer, "account_number", "N/A") if issuer else "N/A"
+            account_name = getattr(issuer, "account_name", "N/A") if issuer else "N/A"
+            
+            frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+            payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
+            
+            logger.info("[TEMPLATE] Sending full invoice template to %s for invoice %s", customer_phone, invoice.invoice_id)
+            template_sent = self._send_full_invoice_template(
+                customer_phone, customer_name, invoice.invoice_id, amount_text, items_text,
+                bank_name, account_number, account_name, payment_link, template_name
+            )
+        else:
+            # Fall back to basic template with CTA to reply
+            items_with_cta = f"{items_text}. Reply 'Hi' to get payment details"
+            logger.info("[TEMPLATE] Sending basic template to %s for invoice %s", customer_phone, invoice.invoice_id)
+            template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, items_with_cta)
         
         if template_sent:
-            # Mark invoice as pending follow-up delivery
-            invoice.whatsapp_delivery_pending = True
-            self.db.commit()
-            logger.info("[TEMPLATE] Template sent, invoice marked pending for follow-up")
+            logger.info("[TEMPLATE] Template sent successfully to %s", customer_phone)
         else:
             logger.warning("[TEMPLATE] Failed to send template to %s", customer_phone)
 
@@ -718,7 +729,45 @@ class InvoiceIntentProcessor:
         return self.client.send_template(
             customer_phone,
             template_name=template_name,
-            language=getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en_US"),
+            language=getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
+            components=components,
+        )
+
+    def _send_full_invoice_template(
+        self,
+        customer_phone: str,
+        customer_name: str,
+        invoice_id: str,
+        amount_text: str,
+        items_text: str,
+        bank_name: str,
+        account_number: str,
+        account_name: str,
+        payment_link: str,
+        template_name: str,
+    ) -> bool:
+        """Send the full invoice template with bank details and payment link."""
+        # 8 parameters: customer_name, invoice_id, amount, items, bank, account, account_name, payment_link
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": customer_name},
+                    {"type": "text", "text": invoice_id},
+                    {"type": "text", "text": amount_text},
+                    {"type": "text", "text": items_text},
+                    {"type": "text", "text": bank_name},
+                    {"type": "text", "text": account_number},
+                    {"type": "text", "text": account_name},
+                    {"type": "text", "text": payment_link},
+                ],
+            }
+        ]
+
+        return self.client.send_template(
+            customer_phone,
+            template_name=template_name,
+            language=getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
             components=components,
         )
 
