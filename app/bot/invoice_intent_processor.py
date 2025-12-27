@@ -326,9 +326,16 @@ class InvoiceIntentProcessor:
         
         # Try the full invoice template with payment details first
         template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
+        fallback_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
+        
+        logger.info(
+            "[BOT TEMPLATE] Config - INVOICE_PAYMENT='%s', INVOICE='%s'",
+            template_name, fallback_template
+        )
         
         if template_name:
             # Use the full template with bank details
+            logger.info("[BOT TEMPLATE] Using invoice_with_payment template: %s", template_name)
             issuer = self._load_issuer(issuer_id)
             bank_name = getattr(issuer, "bank_name", "N/A") if issuer else "N/A"
             account_number = getattr(issuer, "account_number", "N/A") if issuer else "N/A"
