@@ -15,15 +15,23 @@ logger = logging.getLogger(__name__)
 class InvoiceQueryMixin:
     db: Session
 
-    def list_invoices(self, issuer_id: int) -> list[models.Invoice]:
+    def list_invoices(self, issuer_id: int, invoice_type: str | None = None) -> list[models.Invoice]:
         if self.cache:
             cached = self.cache.get_invoice_list(issuer_id)
             if cached is not None:
                 logger.info("Cache hit for user %s invoice list", issuer_id)
 
-        invoices = (
+        query = (
             self.db.query(models.Invoice)
             .filter(models.Invoice.issuer_id == issuer_id)
+        )
+        
+        # Filter by invoice_type before limit for correct results
+        if invoice_type:
+            query = query.filter(models.Invoice.invoice_type == invoice_type)
+        
+        invoices = (
+            query
             .options(
                 joinedload(models.Invoice.customer),
                 selectinload(models.Invoice.lines),

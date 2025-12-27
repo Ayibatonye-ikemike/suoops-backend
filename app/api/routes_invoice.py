@@ -218,11 +218,8 @@ def list_invoices(
     from datetime import datetime as dt, date
     
     svc = get_invoice_service_for_user(data_owner_id, db)
-    invoices = svc.list_invoices(data_owner_id)
-    
-    # Filter by invoice_type if specified
-    if invoice_type:
-        invoices = [inv for inv in invoices if inv.invoice_type == invoice_type]
+    # Pass invoice_type to query so filtering happens BEFORE the limit
+    invoices = svc.list_invoices(data_owner_id, invoice_type=invoice_type)
     
     # Filter by date range if specified
     if start_date or end_date:
