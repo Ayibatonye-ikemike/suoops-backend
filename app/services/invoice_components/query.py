@@ -40,7 +40,6 @@ class InvoiceQueryMixin:
                 joinedload(models.Invoice.status_updated_by),  # Load status updater for name display
             )
             .order_by(models.Invoice.id.desc())
-            .limit(50)
             .all()
         )
 
