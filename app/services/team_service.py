@@ -475,8 +475,14 @@ Professional Invoicing & Expense Management
                 detail=f"Invitation is {error}"
             )
         
-        # Verify the current user's email matches invitation
-        if self.user.email != invitation.email:
+        # Verify the current user's email matches invitation (case-insensitive)
+        user_email = (self.user.email or "").strip().lower()
+        invitation_email = (invitation.email or "").strip().lower()
+        
+        if user_email != invitation_email:
+            logger.warning(
+                f"Email mismatch: user={self.user.email!r} invitation={invitation.email!r}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="This invitation was sent to a different email address"
