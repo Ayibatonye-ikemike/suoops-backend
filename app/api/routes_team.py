@@ -258,11 +258,10 @@ def accept_invitation_direct(data: InvitationAcceptDirect, db: DbDep):
     The new user will have limited permissions (MEMBER role, not ADMIN).
     """
     from app.services.team_service import TeamService
-    from app.models.team_models import TeamInvitation, TeamMember, TeamRole, InvitationStatus as InvStatus
+    from app.models.team_models import TeamInvitation, TeamMember, TeamRole, InvitationStatus as InvStatus, utcnow
     from app.models.models import User, SubscriptionPlan
     from sqlalchemy.orm import joinedload
     from sqlalchemy import select
-    from app.db.session import utcnow
     
     # Validate invitation
     invitation = db.scalar(
