@@ -40,12 +40,17 @@ class WhatsAppChannel:
         - Templates work anytime, regardless of when customer last messaged
         - Provides consistent experience for all customers
         
+        After sending template, attempts to send PDF immediately as a regular message.
+        If PDF send fails (outside 24-hour window), marks invoice as pending delivery
+        so PDF is sent when customer replies.
+        
         Returns True if template was sent successfully.
         """
         logger.info(
-            "[WHATSAPP CHANNEL] send_invoice called for %s to phone=%s",
+            "[WHATSAPP CHANNEL] send_invoice called for %s to phone=%s, pdf_url=%s",
             invoice.invoice_id,
             recipient_phone,
+            pdf_url[:50] + "..." if pdf_url else None,
         )
         try:
             if not self._service.whatsapp_key or not self._service.whatsapp_phone_number_id:
@@ -55,9 +60,40 @@ class WhatsAppChannel:
             from app.bot.whatsapp_client import WhatsAppClient
             client = WhatsAppClient(self._service.whatsapp_key)
             
-            # Always use template for invoice notifications
-            # This ensures delivery regardless of 24-hour messaging window
-            return await self._send_template_only(client, invoice, recipient_phone)
+            # Send template for invoice notification (always works, no 24-hour limit)
+            template_sent = await self._send_template_only(client, invoice, recipient_phone)
+            
+            if not template_sent:
+                return False
+            
+            # Try to send PDF immediately as a regular message
+            # This will succeed if customer messaged within last 24 hours
+            if pdf_url and pdf_url.startswith("http"):
+                try:
+                    logger.info("[WHATSAPP] Attempting to send PDF immediately to %s", recipient_phone)
+                    client.send_document(
+                        recipient_phone,
+                        pdf_url,
+                        f"Invoice_{invoice.invoice_id}.pdf",
+                        f"📄 Invoice {invoice.invoice_id} - ₦{invoice.amount:,.2f}",
+                    )
+                    # If we reach here, PDF was sent successfully
+                    logger.info("[WHATSAPP] PDF sent immediately to %s (within 24-hour window)", recipient_phone)
+                    # Clear pending flag since they already have the PDF
+                    if getattr(invoice, "whatsapp_delivery_pending", False):
+                        invoice.whatsapp_delivery_pending = False
+                    return True
+                except Exception as e:
+                    # PDF send failed - likely outside 24-hour messaging window
+                    logger.info(
+                        "[WHATSAPP] Could not send PDF immediately to %s (outside 24-hour window): %s. "
+                        "Will send when customer replies.",
+                        recipient_phone,
+                        str(e)[:100]
+                    )
+                    # whatsapp_delivery_pending stays True, PDF sent when they reply
+            
+            return True
                 
         except Exception as e:  # pragma: no cover - network failures
             logger.error("Failed to send invoice via WhatsApp: %s", e)
@@ -165,7 +201,7 @@ class WhatsAppChannel:
         
         # Build items text
         items_text = self._build_items_text(invoice)
-        items_with_cta = f"{items_text}. Reply 'Hi' to get payment details"
+        items_with_cta = f"{items_text}. Reply 'OK' to receive invoice PDF & payment details"
         
         components = [
             {
