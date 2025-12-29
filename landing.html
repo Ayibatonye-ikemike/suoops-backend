@@ -585,21 +585,63 @@
     <section id="pricing" class="pricing-section">
         <div class="container">
             <div class="section-header">
-                <h2>Simple pricing that grows with you</h2>
+                <h2>Pay only when you're earning</h2>
+                <p>No invoices sent? No pressure. Only pay as your business grows.</p>
             </div>
-            <div class="pricing-card">
-                <h3>Starter Plan</h3>
-                <div class="price">From ₦5,000/month</div>
-                <ul class="pricing-features">
-                    <li>100 invoices included</li>
-                    <li>Inventory management</li>
-                    <li>Tax insights</li>
-                    <li>Team members</li>
-                    <li>Priority support</li>
-                </ul>
-                <a href="https://app.suoops.com/auth/signup" class="btn btn-primary" style="display: block; text-align: center;">Get Started</a>
-                <p class="pricing-note">👉 No forced banking. No accounting setup. No hidden stress.</p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; max-width: 1000px; margin: 0 auto;">
+                <!-- Starter Plan -->
+                <div style="padding: 2.5rem; background: white; border: 2px solid var(--gray-200); border-radius: 16px; text-align: center;">
+                    <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--gray-900);">Starter</h3>
+                    <p style="color: var(--gray-600); font-size: 0.95rem; margin-bottom: 1.5rem;">Getting Paid</p>
+                    <div class="price" style="font-size: 2.5rem; font-weight: 700; color: var(--brand-jade); margin: 1rem 0;">₦2,500<span style="font-size: 1rem; color: var(--gray-600); font-weight: 400;">/month</span></div>
+                    <ul class="pricing-features" style="list-style: none; text-align: left; margin: 2rem 0;">
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>100 invoices / month</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>WhatsApp invoicing</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Custom logo branding</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Payment tracking</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Any Nigerian bank</li>
+                    </ul>
+                    <a href="https://app.suoops.com/auth/signup" class="btn btn-secondary" style="display: block; text-align: center; width: 100%;">Get Started</a>
+                    <p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--gray-500);">Perfect for freelancers & solo operators</p>
+                </div>
+
+                <!-- Pro Plan (Hero) -->
+                <div style="padding: 2.5rem; background: white; border: 3px solid var(--brand-jade); border-radius: 16px; text-align: center; position: relative; box-shadow: 0 8px 24px rgba(20, 181, 106, 0.2);">
+                    <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--brand-jade); color: white; padding: 0.25rem 1rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">MOST POPULAR</div>
+                    <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--gray-900);">Pro</h3>
+                    <p style="color: var(--gray-600); font-size: 0.95rem; margin-bottom: 1.5rem;">Stay Paid & In Control</p>
+                    <div class="price" style="font-size: 2.5rem; font-weight: 700; color: var(--brand-jade); margin: 1rem 0;">₦5,000<span style="font-size: 1rem; color: var(--gray-600); font-weight: 400;">/month</span></div>
+                    <ul class="pricing-features" style="list-style: none; text-align: left; margin: 2rem 0;">
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Everything in Starter</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Inventory management</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Low-stock alerts</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Tax clarity (PIT + CIT bands)</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Team access (up to 3)</li>
+                        <li style="padding: 0.75rem 0; color: var(--gray-700); display: flex; align-items: center; gap: 0.75rem;"><span style="color: var(--brand-jade); font-weight: 700; font-size: 1.3rem;">✓</span>Priority support</li>
+                    </ul>
+                    <a href="https://app.suoops.com/auth/signup" class="btn btn-primary" style="display: block; text-align: center; width: 100%;">Get Started</a>
+                    <p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--gray-600); font-weight: 600;">When invoicing becomes income, Pro pays for itself</p>
+                </div>
             </div>
+
+            <!-- Invoice Packs -->
+            <div style="max-width: 700px; margin: 4rem auto 0; padding: 2rem; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid var(--brand-jade); border-radius: 16px; text-align: center;">
+                <h3 style="font-size: 1.5rem; margin-bottom: 0.75rem; color: var(--gray-900);">📦 Need More Invoices?</h3>
+                <p style="color: var(--gray-700); margin-bottom: 1.5rem; font-size: 1.05rem;">Sell more? Just add more invoices.</p>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 1rem; flex-wrap: wrap;">
+                    <div style="font-size: 2rem; font-weight: 700; color: var(--brand-jade);">100 invoices</div>
+                    <div style="font-size: 1.5rem; color: var(--gray-400);">→</div>
+                    <div style="font-size: 2rem; font-weight: 700; color: var(--brand-jade);">₦2,500</div>
+                </div>
+                <p style="margin-top: 1.5rem; font-size: 0.9rem; color: var(--gray-600);">
+                    💡 <strong>No forced upgrade.</strong> Buy invoice packs as you grow—scales with your success.
+                </p>
+            </div>
+
+            <p style="text-align: center; margin-top: 3rem; font-size: 1.1rem; font-weight: 600; color: var(--gray-700);">
+                👉 No forced banking. No accounting setup. No hidden stress.
+            </p>
         </div>
     </section>
 
