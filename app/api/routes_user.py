@@ -102,9 +102,60 @@ async def get_feature_access(
     return await cached(f"user:{current_user_id}:features", 20, _produce)
 
 
+@router.patch("/me", response_model=UpdateProfileResponse)
+def update_profile(
+    request: UpdateProfileRequest,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Update the current user's profile information.
+    
+    Currently supports:
+    - Name updates
+    
+    Returns updated profile data.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Update name
+    user.name = request.name.strip()
+    
+    try:
+        db.commit()
+        db.refresh(user)
+        
+        return UpdateProfileResponse(
+            success=True,
+            message="Profile updated successfully",
+            name=user.name
+        )
+    except Exception as e:
+        logger.error(f"Profile update failed for user {current_user_id}: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update profile. Please try again."
+        )
+
+
 class DeleteAccountRequest(BaseModel):
     """Request to delete user account."""
     confirmation: str  # Must be "DELETE MY ACCOUNT" to confirm
+
+
+class UpdateProfileRequest(BaseModel):
+    """Request to update user profile."""
+    name: str = Field(..., min_length=1, max_length=120, description="User's full name")
+
+
+class UpdateProfileResponse(BaseModel):
+    """Response after profile update."""
+    success: bool
+    message: str
+    name: str
 
 
 class DeleteAccountResponse(BaseModel):

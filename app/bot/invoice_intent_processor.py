@@ -501,7 +501,7 @@ class InvoiceIntentProcessor:
             f"📄 Here are your pending invoice(s):"
         )
         
-        # Send each invoice's payment details (just payment link, no PDF spam)
+        # Send each invoice's payment details AND PDF
         for invoice in recent_invoices:
             issuer = self._load_issuer(invoice.issuer_id)
             amount_text = f"₦{invoice.amount:,.2f}"
@@ -509,6 +509,15 @@ class InvoiceIntentProcessor:
             # Send payment link and bank details
             payment_msg = self._build_payment_link_message(invoice, issuer)
             self.client.send_text(customer_phone, f"📄 {invoice.invoice_id} - {amount_text}\n\n{payment_msg}")
+            
+            # Send invoice PDF document if available
+            if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+                self.client.send_document(
+                    customer_phone,
+                    invoice.pdf_url,
+                    f"Invoice_{invoice.invoice_id}.pdf",
+                    f"Invoice {invoice.invoice_id} - {amount_text}",
+                )
             
             # Clear pending flag
             if invoice.whatsapp_delivery_pending:

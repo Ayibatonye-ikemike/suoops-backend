@@ -53,12 +53,12 @@ async def create_invoice(
     
     svc = get_invoice_service_for_user(data_owner_id, db)
 
-    # Ensure PDF exists before sending email so attachment is present
+    # Ensure PDF exists before sending notifications so it's available when customer replies
     effective_async = async_pdf
-    if async_pdf and data.customer_email:
+    if async_pdf and (data.customer_email or data.customer_phone):
         effective_async = False
         logger.info(
-            "Forcing synchronous PDF generation for invoice email attachment | user=%s data_owner=%s",
+            "Forcing synchronous PDF generation for invoice notifications | user=%s data_owner=%s",
             current_user_id,
             data_owner_id,
         )
