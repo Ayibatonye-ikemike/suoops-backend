@@ -506,22 +506,34 @@ class InvoiceIntentProcessor:
             issuer = self._load_issuer(invoice.issuer_id)
             amount_text = f"₦{invoice.amount:,.2f}"
             
-            # Send payment link and bank details
-            payment_msg = self._build_payment_link_message(invoice, issuer)
-            self.client.send_text(customer_phone, f"📄 {invoice.invoice_id} - {amount_text}\n\n{payment_msg}")
-            
-            # Send invoice PDF document if available
-            if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-                self.client.send_document(
-                    customer_phone,
-                    invoice.pdf_url,
-                    f"Invoice_{invoice.invoice_id}.pdf",
-                    f"Invoice {invoice.invoice_id} - {amount_text}",
-                )
-            
-            # Clear pending flag
+            # Check if this invoice already had template sent (pending delivery)
+            # If so, only send PDF (payment details already in template)
+            # If not, send full payment details + PDF
             if invoice.whatsapp_delivery_pending:
+                logger.info("[OPTIN] Invoice %s had pending delivery, sending PDF only", invoice.invoice_id)
+                # Just send PDF - they already got payment details in template
+                if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+                    self.client.send_document(
+                        customer_phone,
+                        invoice.pdf_url,
+                        f"Invoice_{invoice.invoice_id}.pdf",
+                        f"Invoice {invoice.invoice_id} - {amount_text}",
+                    )
                 invoice.whatsapp_delivery_pending = False
+            else:
+                logger.info("[OPTIN] Sending full payment details for invoice %s", invoice.invoice_id)
+                # Send payment link and bank details
+                payment_msg = self._build_payment_link_message(invoice, issuer)
+                self.client.send_text(customer_phone, f"📄 {invoice.invoice_id} - {amount_text}\n\n{payment_msg}")
+                
+                # Send invoice PDF document if available
+                if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+                    self.client.send_document(
+                        customer_phone,
+                        invoice.pdf_url,
+                        f"Invoice_{invoice.invoice_id}.pdf",
+                        f"Invoice {invoice.invoice_id} - {amount_text}",
+                    )
         
         self.db.commit()
         
