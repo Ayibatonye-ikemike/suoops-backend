@@ -224,7 +224,7 @@ class InvoiceLine(Base):
 
 class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
-    phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     # Encrypted email (Fernet) stored separately; plaintext email remains in `email` for now.
     # Future policy may remove plaintext after full migration & token flows updated.
