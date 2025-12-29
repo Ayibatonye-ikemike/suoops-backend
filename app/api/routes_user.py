@@ -102,6 +102,18 @@ async def get_feature_access(
     return await cached(f"user:{current_user_id}:features", 20, _produce)
 
 
+class UpdateProfileRequest(BaseModel):
+    """Request to update user profile."""
+    name: str = Field(..., min_length=1, max_length=120, description="User's full name")
+
+
+class UpdateProfileResponse(BaseModel):
+    """Response after profile update."""
+    success: bool
+    message: str
+    name: str
+
+
 @router.patch("/me", response_model=UpdateProfileResponse)
 def update_profile(
     request: UpdateProfileRequest,
@@ -144,18 +156,6 @@ def update_profile(
 class DeleteAccountRequest(BaseModel):
     """Request to delete user account."""
     confirmation: str  # Must be "DELETE MY ACCOUNT" to confirm
-
-
-class UpdateProfileRequest(BaseModel):
-    """Request to update user profile."""
-    name: str = Field(..., min_length=1, max_length=120, description="User's full name")
-
-
-class UpdateProfileResponse(BaseModel):
-    """Response after profile update."""
-    success: bool
-    message: str
-    name: str
 
 
 class DeleteAccountResponse(BaseModel):
