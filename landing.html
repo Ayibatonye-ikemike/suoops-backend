@@ -3,108 +3,618 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SuoOps Documentation</title>
+    <title>Suoops - Invoice customers and get paid straight from WhatsApp</title>
+    <meta name="description" content="Create invoices, track payments, manage inventory, and stay tax-aware without switching banks or learning accounting software.">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --brand-jade: #14B56A;
+            --brand-teal: #10a37f;
+            --brand-jade-hover: #12a35f;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-900: #111827;
+        }
+        
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+            background: #fff;
+            color: var(--gray-900);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+        
+        .small-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+        
+        /* Navigation */
+        nav {
+            padding: 1.5rem 0;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--brand-jade);
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+        
+        .nav-links a {
+            color: var(--gray-700);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        .nav-links a:hover {
+            color: var(--brand-jade);
+        }
+        
+        /* Hero Section */
+        .hero {
+            padding: 5rem 0;
+            text-align: center;
+            background: linear-gradient(180deg, var(--gray-50) 0%, #fff 100%);
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            color: var(--gray-900);
+        }
+        
+        .hero .highlight {
+            color: var(--brand-jade);
+        }
+        
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--gray-600);
+            max-width: 700px;
+            margin: 0 auto 2.5rem;
+        }
+        
+        .cta-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 10px;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: var(--brand-jade);
+            color: white;
+            box-shadow: 0 4px 12px rgba(20, 181, 106, 0.3);
+        }
+        
+        .btn-primary:hover {
+            background: var(--brand-jade-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(20, 181, 106, 0.4);
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: var(--brand-jade);
+            border: 2px solid var(--brand-jade);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--gray-50);
+        }
+        
+        .trust-signal {
+            margin-top: 3rem;
+            font-size: 0.95rem;
+            color: var(--gray-600);
+        }
+        
+        /* Section Styles */
+        section {
+            padding: 5rem 0;
+        }
+        
+        .section-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .section-header h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--gray-900);
+        }
+        
+        .section-header p {
+            font-size: 1.1rem;
+            color: var(--gray-600);
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        
+        /* Problem Section */
+        .problem-section {
+            background: var(--gray-50);
+        }
+        
+        .problem-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .problem-list {
+            list-style: none;
+            margin: 2rem 0;
+            display: grid;
+            gap: 1rem;
+        }
+        
+        .problem-list li {
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #ef4444;
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+        
+        /* Value Props */
+        .value-props {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        
+        .value-card {
+            padding: 2rem;
+            background: white;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+        
+        .value-card:hover {
+            border-color: var(--brand-jade);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(20, 181, 106, 0.15);
+        }
+        
+        .value-card .icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .value-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--gray-900);
+        }
+        
+        .value-card p {
+            color: var(--gray-600);
+            line-height: 1.7;
+        }
+        
+        .code-example {
+            background: var(--gray-900);
+            color: #10b981;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.95rem;
+        }
+        
+        /* How It Works */
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2.5rem;
+            margin-top: 3rem;
+        }
+        
+        .step {
+            text-align: center;
+        }
+        
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: var(--brand-jade);
+            color: white;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0 auto 1.5rem;
+        }
+        
+        .step h3 {
+            font-size: 1.3rem;
+            margin-bottom: 0.75rem;
+            color: var(--gray-900);
+        }
+        
+        .step p {
+            color: var(--gray-600);
+        }
+        
+        /* Features */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        
+        .feature-card {
             padding: 2rem;
+            background: var(--gray-50);
+            border-radius: 10px;
         }
-        .container {
-            max-width: 600px;
-            background: white;
-            padding: 3rem;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        
+        .feature-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--gray-900);
         }
-        h1 {
-            color: #667eea;
-            margin-bottom: 0.5rem;
-            font-size: 2.5rem;
+        
+        .feature-list {
+            list-style: none;
         }
-        .subtitle {
-            color: #666;
-            margin-bottom: 2rem;
-            font-size: 1.1rem;
-        }
-        .links {
+        
+        .feature-list li {
+            padding: 0.5rem 0;
+            color: var(--gray-600);
             display: flex;
-            flex-direction: column;
-            gap: 1rem;
+            align-items: start;
+            gap: 0.5rem;
         }
-        a {
-            display: block;
-            padding: 1.5rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-decoration: none;
+        
+        .feature-list li:before {
+            content: "✓";
+            color: var(--brand-jade);
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+        
+        .highlight-box {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 1rem 1.5rem;
             border-radius: 8px;
-            transition: transform 0.2s, box-shadow 0.2s;
-            font-size: 1.1rem;
-            font-weight: 600;
+            margin-top: 1rem;
+            font-size: 0.95rem;
+            color: var(--gray-700);
+        }
+        
+        /* Pricing */
+        .pricing-section {
+            background: var(--gray-50);
+        }
+        
+        .pricing-card {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 3rem;
+            background: white;
+            border: 2px solid var(--brand-jade);
+            border-radius: 16px;
             text-align: center;
+            box-shadow: 0 8px 24px rgba(20, 181, 106, 0.15);
         }
-        a:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        
+        .price {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--brand-jade);
+            margin: 1rem 0;
         }
-        .icon {
-            margin-right: 0.5rem;
+        
+        .pricing-features {
+            list-style: none;
+            text-align: left;
+            margin: 2rem 0;
+        }
+        
+        .pricing-features li {
+            padding: 0.75rem 0;
+            color: var(--gray-700);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .pricing-features li:before {
+            content: "✓";
+            color: var(--brand-jade);
+            font-weight: 700;
             font-size: 1.3rem;
         }
-        .footer {
+        
+        .pricing-note {
             margin-top: 2rem;
-            text-align: center;
-            color: #666;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
+            color: var(--gray-600);
+            font-weight: 600;
         }
-        .badge {
-            display: inline-block;
-            background: #28a745;
+        
+        /* Footer */
+        footer {
+            background: var(--gray-900);
             color: white;
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            margin-left: 0.5rem;
+            padding: 3rem 0;
+            text-align: center;
+        }
+        
+        footer p {
+            opacity: 0.8;
+        }
+        
+        footer a {
+            color: var(--brand-jade);
+            text-decoration: none;
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .hero p {
+                font-size: 1.1rem;
+            }
+            
+            .section-header h2 {
+                font-size: 2rem;
+            }
+            
+            .nav-links {
+                display: none;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📚 SuoOps Documentation</h1>
-    <p class="subtitle">FIRS E-Invoicing Readiness (Pre-Accreditation) <span class="badge">PREVIEW</span></p>
-        
-        <div class="links">
-            <a href="index.html">
-                <span class="icon">📖</span>
-                API Documentation
-            </a>
-            <a href="sla.html">
-                <span class="icon">⚖️</span>
-                Service Level Agreement
-            </a>
-            <a href="https://api.suoops.com/docs" target="_blank">
-                <span class="icon">🚀</span>
-                Interactive API (Swagger)
-            </a>
-            <a href="https://status.suoops.com" target="_blank">
-                <span class="icon">📊</span>
-                Dashboard & Status
-            </a>
+    <!-- Navigation -->
+    <nav>
+        <div class="container">
+            <div class="nav-content">
+                <div class="logo">Suoops</div>
+                <div class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#pricing">Pricing</a>
+                    <a href="https://app.suoops.com/auth/login">Login</a>
+                </div>
+            </div>
         </div>
+    </nav>
 
-        <div class="footer">
-            <p><strong>SuoOps E-Invoicing Platform</strong></p>
-            <p>Provisional Fiscalization & Tax Compliance (FIRS 2026 Preparation)</p>
-            <p style="margin-top: 0.5rem; font-size: 0.8rem;">
-                &copy; 2025 SuoOps. All rights reserved.
-            </p>
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <h1>Invoice customers and get paid — <span class="highlight">straight from WhatsApp</span></h1>
+            <p>Create invoices, track payments, manage inventory, and stay tax-aware without switching banks or learning accounting software.</p>
+            <div class="cta-group">
+                <a href="https://app.suoops.com/auth/signup" class="btn btn-primary">Start invoicing on WhatsApp</a>
+                <a href="#how-it-works" class="btn btn-secondary">See how it works</a>
+            </div>
+            <p class="trust-signal">Built for freelancers and small businesses in Nigeria who already do business on WhatsApp.</p>
         </div>
-    </div>
+    </section>
+
+    <!-- Problem Section -->
+    <section class="problem-section">
+        <div class="small-container">
+            <div class="section-header">
+                <h2>Invoicing shouldn't slow your business down</h2>
+            </div>
+            <div class="problem-content">
+                <p style="font-size: 1.1rem; color: var(--gray-700); margin-bottom: 1.5rem;">
+                    Most small businesses already sell, negotiate, and follow up with customers on WhatsApp. 
+                    But invoicing tools still force you into dashboards, emails, and accounting complexity.
+                </p>
+                <p style="font-size: 1.05rem; font-weight: 600; margin-bottom: 1rem; color: var(--gray-900);">That leads to:</p>
+                <ul class="problem-list">
+                    <li>Late payments</li>
+                    <li>Lost invoice records</li>
+                    <li>Unclear stock levels</li>
+                    <li>Confusion about taxes</li>
+                    <li>Too much time spent "just admin"</li>
+                </ul>
+                <p style="font-size: 1.1rem; font-weight: 600; color: var(--brand-jade); margin-top: 2rem;">
+                    Suoops fixes this by bringing invoicing to where your business already runs.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Core Value Proposition -->
+    <section>
+        <div class="container">
+            <div class="section-header">
+                <h2>Built for WhatsApp-first businesses</h2>
+            </div>
+            <div class="value-props">
+                <div class="value-card">
+                    <div class="icon">💬</div>
+                    <h3>Create invoices by texting</h3>
+                    <p>Send a message like:</p>
+                    <div class="code-example">"Invoice John ₦50k for design"</div>
+                    <p style="margin-top: 1rem;">Suoops turns it into a professional, payment-ready invoice instantly.</p>
+                </div>
+                
+                <div class="value-card">
+                    <div class="icon">🏦</div>
+                    <h3>Works with any Nigerian bank</h3>
+                    <p>Add your existing bank account once. Invoices include clear transfer instructions—no forced bank lock-in.</p>
+                </div>
+                
+                <div class="value-card">
+                    <div class="icon">📊</div>
+                    <h3>Know where your money stands</h3>
+                    <p>See who has paid, who hasn't, what stock is low, and whether you're tax-safe—all in one dashboard.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" style="background: var(--gray-50);">
+        <div class="container">
+            <div class="section-header">
+                <h2>How it works</h2>
+                <p>Simple, visual, and straightforward</p>
+            </div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h3>Create an invoice</h3>
+                    <p>From WhatsApp or the dashboard. Add line items, customers, or products.</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h3>Send instantly</h3>
+                    <p>Send invoices directly on WhatsApp or download a PDF.</p>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h3>Get paid & track</h3>
+                    <p>Get notified when customers pay. Track pending invoices and follow up easily.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>Everything you need to run your business</h2>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>✅ Invoicing, without complexity</h3>
+                    <ul class="feature-list">
+                        <li>Create and send invoices in seconds</li>
+                        <li>Track paid, pending, and overdue invoices</li>
+                        <li>Custom branding with your logo</li>
+                        <li>Team access for small teams</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>📦 Inventory that helps you sell</h3>
+                    <ul class="feature-list">
+                        <li>Manage products and categories</li>
+                        <li>Automatic stock updates when invoicing</li>
+                        <li>Low-stock alerts before you run out</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🧾 Simple tax insight</h3>
+                    <ul class="feature-list">
+                        <li>See your tax band clearly</li>
+                        <li>Know when you're exempt</li>
+                        <li>Understand obligations without jargon</li>
+                    </ul>
+                    <div class="highlight-box">
+                        Small businesses under ₦25M annual revenue are exempt from Company Income Tax.
+                    </div>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>💬 WhatsApp Bot</h3>
+                    <ul class="feature-list">
+                        <li>Create invoices by chat</li>
+                        <li>Receive invoice notifications</li>
+                        <li>Follow up where conversations happen</li>
+                    </ul>
+                    <p style="margin-top: 1rem; font-weight: 600; color: var(--brand-jade);">
+                        This is not an add-on. This is the core workflow.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section id="pricing" class="pricing-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Simple pricing that grows with you</h2>
+            </div>
+            <div class="pricing-card">
+                <h3>Starter Plan</h3>
+                <div class="price">From ₦5,000/month</div>
+                <ul class="pricing-features">
+                    <li>100 invoices included</li>
+                    <li>Inventory management</li>
+                    <li>Tax insights</li>
+                    <li>Team members</li>
+                    <li>Priority support</li>
+                </ul>
+                <a href="https://app.suoops.com/auth/signup" class="btn btn-primary" style="display: block; text-align: center;">Get Started</a>
+                <p class="pricing-note">👉 No forced banking. No accounting setup. No hidden stress.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p style="font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem;">Suoops</p>
+            <p>Invoice customers and get paid — straight from WhatsApp</p>
+            <p style="margin-top: 2rem; font-size: 0.9rem;">
+                <a href="https://api.suoops.com/docs">API Docs</a> • 
+                <a href="https://app.suoops.com/auth/login">Login</a> • 
+                <a href="https://app.suoops.com/auth/signup">Sign Up</a>
+            </p>
+            <p style="margin-top: 1.5rem; font-size: 0.85rem;">&copy; 2025 Suoops. All rights reserved.</p>
+        </div>
+    </footer>
 </body>
 </html>
