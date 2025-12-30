@@ -72,20 +72,22 @@ def request_phone_otp(
     user.phone_verified = False
     db.commit()
     
-    # Send OTP via WhatsApp
-    # Since user first "Says Hi" on WhatsApp (opt-in flow), the 24-hour messaging
-    # window is already open - we can send a regular text message directly
+    # Send OTP via WhatsApp using authentication template (bypasses 24-hour window)
     try:
         client = WhatsAppClient(settings.WHATSAPP_API_KEY)
-        message = f"🔐 *SuoOps Verification*\n\nYour verification code is: *{otp}*\n\nThis code expires in 10 minutes."
-        success = client.send_text(normalized_phone, message)
+        success = client.send_otp_template(
+            to=normalized_phone,
+            otp_code=otp,
+            template_name="otp_verifications",
+            language="en",
+        )
         if success:
-            logger.info("Sent phone verification OTP to %s via WhatsApp", normalized_phone)
+            logger.info("Sent phone verification OTP to %s via WhatsApp template", normalized_phone)
         else:
-            logger.warning("Failed to send OTP to %s - user may not have opted in yet", normalized_phone)
+            logger.warning("Failed to send OTP template to %s", normalized_phone)
             raise HTTPException(
-                status_code=400, 
-                detail="Please say 'Hi' to our WhatsApp bot first, then try again."
+                status_code=500, 
+                detail="Failed to send OTP via WhatsApp. Please try again."
             )
     except HTTPException:
         raise
@@ -107,15 +109,23 @@ def send_phone_otp_legacy(
     if not user or not user.phone:
         raise HTTPException(status_code=400, detail="Use /me/phone/request to add phone number")
     
-    # Re-send OTP to existing phone
+    # Re-send OTP to existing phone using authentication template
     otp = f"{random.randint(100000, 999999)}"
     user.phone_otp = otp
     db.commit()
     
     try:
         client = WhatsAppClient(settings.WHATSAPP_API_KEY)
-        message = f"🔐 *SuoOps Verification*\n\nYour verification code is: *{otp}*\n\nThis code expires in 10 minutes."
-        client.send_text(user.phone, message)
+        success = client.send_otp_template(
+            to=user.phone,
+            otp_code=otp,
+            template_name="otp_verifications",
+            language="en",
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to send OTP via WhatsApp")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to send OTP via WhatsApp to %s: %s", user.phone, e)
         raise HTTPException(status_code=500, detail="Failed to send OTP")
