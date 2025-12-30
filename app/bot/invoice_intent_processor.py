@@ -21,15 +21,7 @@ class InvoiceIntentProcessor:
 
     async def handle(self, sender: str, parse: Any, payload: dict[str, Any]) -> None:
         if getattr(parse, "intent", None) != "create_invoice":
-            self.client.send_text(
-                sender,
-                "🤔 I didn't quite catch that.\n\n"
-                "*To create an invoice, try:*\n"
-                "• `Invoice Joy 08012345678, 12000 wig`\n"
-                "• `Invoice Joy 12000 wig` (no phone - won't notify customer)\n"
-                "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n\n"
-                "💡 Type *help* for a full guide!",
-            )
+            # Don't respond to non-invoice messages - let other processors handle them
             return
 
         data = getattr(parse, "entities", {})
@@ -144,33 +136,51 @@ class InvoiceIntentProcessor:
                     "Visit: suoops.com/dashboard/billing/purchase",
                 )
             # Missing amount
-            elif "amount" in error_msg:
+            elif "amount" in error_msg or data.get("amount", 0) == 0:
                 self.client.send_text(
                     sender,
-                    "❌ I couldn't find an amount in your message.\n\n"
-                    "*How to create an invoice:*\n"
-                    "`Invoice Joy 08012345678, 12000 wig`\n\n"
-                    "Make sure to include the amount (e.g., 12000)."
+                    "❌ I couldn't find a valid amount in your message.\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "✅ *CORRECT FORMAT:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                    "📱 *WITH PHONE:*\n"
+                    "• `Invoice Joy 08012345678, 12000 wig`\n"
+                    "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n\n"
+                    "📝 *WITHOUT PHONE:*\n"
+                    "• `Invoice Joy 12000 wig`\n"
+                    "• `Invoice Mike 8000 shirt`\n\n"
+                    "💡 *TIP:* The amount must be at least ₦100"
                 )
             # Missing customer name
-            elif "customer" in error_msg or "name" in error_msg:
+            elif "customer" in error_msg or "name" in error_msg or not data.get("customer_name") or data.get("customer_name") == "Customer":
                 self.client.send_text(
                     sender,
                     "❌ Please include a customer name.\n\n"
-                    "*Format:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "✅ *CORRECT FORMAT:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
                     "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
-                    "*Example:*\n"
-                    "`Invoice Joy 08012345678, 12000 wig`"
+                    "📋 *EXAMPLES:*\n"
+                    "• `Invoice Joy 08012345678, 12000 wig`\n"
+                    "• `Invoice Ada 5000 braids` (no phone)\n"
+                    "• `Invoice Mike 08091234567, 25000 consulting`\n\n"
+                    "💡 *TIP:* Customer name should come right after 'Invoice'"
                 )
             # Database errors
             elif "not-null" in error_msg or "constraint" in error_msg:
                 self.client.send_text(
                     sender,
                     "❌ Something was missing from your invoice.\n\n"
-                    "*Please use this format:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "✅ *CORRECT FORMAT:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
                     "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
-                    "*Example:*\n"
-                    "`Invoice Ada 08098765432, 5000 braids, 2000 gel`"
+                    "📋 *COMPLETE EXAMPLES:*\n"
+                    "• `Invoice Joy 08012345678, 12000 wig`\n"
+                    "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n"
+                    "• `Invoice Mike 25000 consulting`\n\n"
+                    "💡 *TIP:* Type *help* to see the full guide"
                 )
             # Connection errors
             elif "connection" in error_msg or "timeout" in error_msg:
@@ -178,17 +188,28 @@ class InvoiceIntentProcessor:
                     sender,
                     "❌ Network issue. Please try again in a moment."
                 )
-            # Generic fallback
+            # Generic fallback - provide comprehensive guide
             else:
                 self.client.send_text(
                     sender,
                     "❌ Sorry, I couldn't create that invoice.\n\n"
-                    "*Please try again with this format:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "✅ *CORRECT FORMAT:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
                     "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
-                    "*Examples:*\n"
+                    "📱 *WITH PHONE NUMBER:*\n"
                     "• `Invoice Joy 08012345678, 12000 wig`\n"
-                    "• `Invoice Ada 5000 braids` (no phone)\n\n"
-                    "💡 Type *help* for more examples."
+                    "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n\n"
+                    "📝 *WITHOUT PHONE:*\n"
+                    "• `Invoice Joy 12000 wig`\n"
+                    "• `Invoice Mike 25000 consulting`\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "💡 *TIPS:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "• Use the word 'Invoice' to start\n"
+                    "• Include customer name, amount, and item description\n"
+                    "• Phone number is optional but needed for WhatsApp notifications\n"
+                    "• Type *help* anytime for the full guide"
                 )
             return
 

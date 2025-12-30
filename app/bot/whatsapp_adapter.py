@@ -127,6 +127,36 @@ class WhatsAppHandler:
 
         parse = self.nlp.parse_text(text, is_speech=False)
         
+        # Check if user is trying to create an invoice but format is wrong
+        # NLP will return "unknown" intent if the keyword is missing or format is too off
+        if parse.intent == "unknown" and "invoice" in text_lower:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                # This is a registered business trying to create an invoice
+                self.client.send_text(
+                    sender,
+                    "🤔 I see you're trying to create an invoice, but I couldn't understand the format.\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "✅ *CORRECT FORMAT:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                    "📱 *WITH PHONE NUMBER:*\n"
+                    "• `Invoice Joy 08012345678, 12000 wig`\n"
+                    "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n\n"
+                    "📝 *WITHOUT PHONE:*\n"
+                    "• `Invoice Joy 12000 wig`\n"
+                    "• `Invoice Mike 25000 consulting`\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "💡 *TIPS:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "• Start with the word 'Invoice'\n"
+                    "• Include customer name right after 'Invoice'\n"
+                    "• Add phone number (optional, but enables WhatsApp notifications)\n"
+                    "• Specify amount and item description\n"
+                    "• Type *help* for more examples"
+                )
+                return
+        
         # Try expense processor first (checks if expense-related)
         await self.expense_processor.handle(sender, parse, message)
         
