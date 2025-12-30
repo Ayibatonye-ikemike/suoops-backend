@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
+from app.core.exceptions import InvoiceBalanceExhaustedError
 from app.services.invoice_service import build_invoice_service
 
 logger = logging.getLogger(__name__)
@@ -123,11 +124,21 @@ class InvoiceIntentProcessor:
     ) -> None:
         try:
             invoice = invoice_service.create_invoice(issuer_id=issuer_id, data=data)
+        except InvoiceBalanceExhaustedError as exc:
+            # Invoice balance exhausted - caught by exception type
+            logger.warning("Invoice balance exhausted for user %s: %s", issuer_id, exc)
+            self.client.send_text(
+                sender,
+                "🚫 No invoices remaining!\n\n"
+                "Purchase a pack: ₦2,500 for 100 invoices\n"
+                "Visit: suoops.com/dashboard/billing/purchase",
+            )
+            return
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to create invoice")
             error_msg = str(exc).lower()
             
-            # Invoice balance exhausted
+            # Invoice balance exhausted (fallback string check)
             if "invoice_balance_exhausted" in error_msg or "inv005" in error_msg:
                 self.client.send_text(
                     sender,
