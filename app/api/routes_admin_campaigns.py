@@ -37,6 +37,7 @@ class CampaignRequest(BaseModel):
     campaign_type: CampaignType
     dry_run: bool = True  # Default to dry run for safety
     limit: int = 50
+    async_send: bool = False  # Use background task for large batches
 
 
 class SingleUserCampaignRequest(BaseModel):
@@ -84,6 +85,39 @@ async def list_campaigns(
     return CampaignListResponse(campaigns=campaigns)
 
 
+@router.get("/task/{task_id}")
+async def get_task_status(
+    task_id: str,
+    _admin: Annotated[AdminUser, Depends(get_current_admin)],
+) -> dict:
+    """Check the status of an async campaign task."""
+    from celery.result import AsyncResult
+    from app.workers.celery_app import celery_app
+    
+    try:
+        result = AsyncResult(task_id, app=celery_app)
+        
+        response = {
+            "task_id": task_id,
+            "status": result.status,
+            "ready": result.ready(),
+        }
+        
+        if result.ready():
+            if result.successful():
+                response["result"] = result.get()
+            elif result.failed():
+                response["error"] = str(result.result)
+        
+        return response
+    except Exception as e:
+        logger.exception("[CAMPAIGN] Failed to get task status: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get task status: {str(e)}"
+        )
+
+
 @router.post("/preview")
 async def preview_campaign(
     request: CampaignRequest,
@@ -122,17 +156,43 @@ async def send_campaign(
     """Send a marketing campaign to eligible users.
     
     WARNING: Set dry_run=False to actually send messages.
-    This will send WhatsApp messages to real users!
+    This will send WhatsApp/email messages to real users!
+    
+    For large campaigns (>50 users), set async_send=True to process
+    in the background without timeout issues.
     """
     try:
         logger.info(
-            "[CAMPAIGN] Admin %s initiating %s campaign, dry_run=%s, limit=%d",
+            "[CAMPAIGN] Admin %s initiating %s campaign, dry_run=%s, limit=%d, async=%s",
             admin.email,
             request.campaign_type.value,
             request.dry_run,
             request.limit,
+            request.async_send,
         )
         
+        # For large non-dry-run campaigns, use async processing
+        if request.async_send and not request.dry_run:
+            from app.workers.tasks.campaign_tasks import send_campaign_async
+            
+            # Queue the task
+            task = send_campaign_async.delay(
+                campaign_type=request.campaign_type.value,
+                dry_run=False,
+                limit=request.limit,
+                admin_email=admin.email,
+            )
+            
+            return {
+                "success": True,
+                "async": True,
+                "task_id": task.id,
+                "message": f"Campaign queued for background processing. Sending to up to {request.limit} users.",
+                "campaign": request.campaign_type.value,
+                "limit": request.limit,
+            }
+        
+        # Synchronous processing (for dry runs and small batches)
         service = MarketingCampaignService(db)
         
         result = service.send_campaign(
@@ -150,6 +210,7 @@ async def send_campaign(
         
         return {
             "success": True,
+            "async": False,
             **result,
         }
     except Exception as e:
@@ -208,7 +269,7 @@ async def get_campaign_candidates(
     campaign_type: CampaignType,
     db: Annotated[Session, Depends(get_db)],
     _admin: Annotated[AdminUser, Depends(get_current_admin)],
-    limit: int = Query(default=20, le=100),
+    limit: int = Query(default=20, le=500),  # Increased to 500 for async sending
 ) -> dict:
     """Get list of candidates for a specific campaign type."""
     try:
