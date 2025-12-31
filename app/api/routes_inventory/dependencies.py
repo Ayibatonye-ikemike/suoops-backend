@@ -5,10 +5,10 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.routes_auth import get_current_user_id
 from app.api.dependencies import get_data_owner_id
+from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
-from app.services.inventory import build_inventory_service, InventoryService
+from app.services.inventory import InventoryService, build_inventory_service
 from app.utils.feature_gate import FeatureGate
 
 CurrentUserDep: TypeAlias = Annotated[int, Depends(get_current_user_id)]
@@ -83,7 +83,11 @@ def require_inventory_admin(current_user_id: InventoryAccessDep, db: DbDep) -> i
 InventoryAdminDep: TypeAlias = Annotated[int, Depends(require_inventory_admin)]
 
 
-def get_inventory_service(current_user_id: InventoryAccessDep, data_owner_id: DataOwnerDep, db: DbDep) -> InventoryService:
+def get_inventory_service(
+    current_user_id: InventoryAccessDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
+) -> InventoryService:
     """Get InventoryService for user with verified Pro/Business access (read).
     
     Uses data_owner_id to access the team admin's data for team members.
@@ -91,7 +95,11 @@ def get_inventory_service(current_user_id: InventoryAccessDep, data_owner_id: Da
     return build_inventory_service(db, user_id=data_owner_id)
 
 
-def get_inventory_service_admin(current_user_id: InventoryAdminDep, data_owner_id: DataOwnerDep, db: DbDep) -> InventoryService:
+def get_inventory_service_admin(
+    current_user_id: InventoryAdminDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
+) -> InventoryService:
     """Get InventoryService for user with verified admin access (write).
     
     Uses data_owner_id which should be the same as current_user_id for admins.

@@ -1,17 +1,17 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+import sentry_sdk
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-import sentry_sdk
 
-from app.api.rate_limit import limiter, RATE_LIMITS
-from app.core.config import settings
-from app.core.security import TokenExpiredError, TokenValidationError, decode_token
-from app.core.audit import log_audit_event, log_failure
-from app.core.csrf import get_csrf_token, set_csrf_cookie
 from app import metrics
+from app.api.rate_limit import RATE_LIMITS, limiter
+from app.core.audit import log_audit_event, log_failure
+from app.core.config import settings
+from app.core.csrf import get_csrf_token, set_csrf_cookie
+from app.core.security import TokenExpiredError, TokenValidationError, decode_token
 from app.models import schemas
 from app.services.auth_service import AuthService, TokenBundle, get_auth_service
 
@@ -42,7 +42,11 @@ def request_signup(request: Request, payload: schemas.SignupStart, svc: AuthServ
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _bundle_to_response(bundle: TokenBundle, request: Request | None = None, include_refresh_cookie: bool = True) -> JSONResponse:
+def _bundle_to_response(
+    bundle: TokenBundle,
+    request: Request | None = None,
+    include_refresh_cookie: bool = True,
+) -> JSONResponse:
     token_out = schemas.TokenOut(
         access_token=bundle.access_token,
         access_expires_at=bundle.access_expires_at,
@@ -167,7 +171,7 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
     try:
         bundle = svc.refresh(refresh_value)
         # Extract user_id from the new access token
-        from app.core.security import decode_token, TokenType
+        from app.core.security import TokenType, decode_token
         token_payload = decode_token(bundle.access_token, expected_type=TokenType.ACCESS)
         user_id = int(token_payload["sub"])
         log_audit_event("auth.refresh", user_id=user_id)

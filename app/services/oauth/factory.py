@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 
-from .service import OAuthService
 from .providers import GoogleOAuthProvider
+from .service import OAuthService
 
 logger = logging.getLogger(__name__)
 

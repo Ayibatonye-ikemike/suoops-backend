@@ -3,22 +3,22 @@ from __future__ import annotations
 
 import logging
 import smtplib
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
 
-from app.core.config import settings
 from app.api.routes_admin_auth import get_current_admin
+from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
-from app.models.support_models import SupportTicket, TicketStatus, TicketPriority, TicketCategory
 from app.models.admin_models import AdminUser
+from app.models.support_models import SupportTicket, TicketCategory, TicketPriority, TicketStatus
 
 router = APIRouter(prefix="/support", tags=["support"])
 logger = logging.getLogger(__name__)
@@ -63,8 +63,7 @@ class TicketOut(BaseModel):
     assigned_to_name: str | None = None
     responded_by_name: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TicketUpdate(BaseModel):
@@ -571,7 +570,7 @@ async def get_dashboard_stats(
 
     # User stats
     total_users = db.query(models.User).count()
-    verified_users = db.query(models.User).filter(models.User.phone_verified == True).count()
+    verified_users = db.query(models.User).filter(models.User.phone_verified.is_(True)).count()
     users_today = db.query(models.User).filter(models.User.created_at >= today_start).count()
     users_this_week = db.query(models.User).filter(models.User.created_at >= week_start).count()
     active_users = db.query(models.User).filter(models.User.last_login >= thirty_days_ago).count()

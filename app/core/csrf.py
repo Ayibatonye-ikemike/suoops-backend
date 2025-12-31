@@ -7,9 +7,10 @@ For state-changing operations (POST, PUT, DELETE, PATCH), clients must:
 
 This prevents CSRF attacks while working with SPA/API architecture.
 """
-import secrets
 import logging
-from fastapi import Request, HTTPException, status
+import secrets
+
+from fastapi import HTTPException, Request, status
 from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp

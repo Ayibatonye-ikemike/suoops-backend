@@ -90,8 +90,12 @@ def generate_invoice_pdf_async(
         logger.error("PDF generation failed for invoice %s: %s", invoice_id, e)
 
         if self.request.retries < self.max_retries:
-            logger.info("Retrying PDF generation (attempt %s/%s)", self.request.retries + 1, self.max_retries)
-            raise self.retry(exc=e)
+            logger.info(
+                "Retrying PDF generation (attempt %s/%s)",
+                self.request.retries + 1,
+                self.max_retries,
+            )
+            raise self.retry(exc=e) from e
 
         logger.error("PDF generation failed after %s retries for invoice %s", self.max_retries, invoice_id)
         raise
@@ -146,6 +150,6 @@ def generate_receipt_pdf_async(
         logger.error("Receipt generation failed for invoice %s: %s", invoice_id, e)
 
         if self.request.retries < self.max_retries:
-            raise self.retry(exc=e)
+            raise self.retry(exc=e) from e
 
         raise

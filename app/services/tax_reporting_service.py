@@ -9,16 +9,16 @@ New code should import from app.services.tax_reporting directly.
 from app.services.tax_reporting import (
     # Constants
     PIT_BANDS,
+    # Service class
+    TaxReportingService,
+    # Utilities
+    calculate_period_range,
+    compute_actual_profit_by_date_range,
+    compute_expenses_by_date_range,
     # Computation functions
     compute_personal_income_tax,
     compute_revenue_by_date_range,
-    compute_expenses_by_date_range,
-    compute_actual_profit_by_date_range,
-    # Utilities
-    calculate_period_range,
     get_inventory_cogs,
-    # Service class
-    TaxReportingService,
 )
 
 __all__ = [

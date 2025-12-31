@@ -1,7 +1,9 @@
-from fastapi import Depends, HTTPException, status
 from typing import Iterable
-from app.api.routes_auth import get_current_user_id
+
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
+from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models
 

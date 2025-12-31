@@ -8,22 +8,21 @@ from app.api.routes_auth import get_current_user_id
 from app.core.security import create_access_token, create_refresh_token
 from app.db.session import get_db
 from app.models.models import User
+from app.models.team_models import InvitationStatus
 from app.models.team_schemas import (
+    InvitationAccept,
+    InvitationAcceptDirect,
+    InvitationAcceptResponse,
     InvitationCreate,
     InvitationOut,
     InvitationValidation,
     TeamCreate,
     TeamMemberOut,
-    TeamMemberRemove,
     TeamOut,
     TeamUpdate,
     TeamWithMembersOut,
     UserTeamRole,
-    InvitationAccept,
-    InvitationAcceptDirect,
-    InvitationAcceptResponse,
 )
-from app.models.team_models import InvitationStatus
 from app.services.team_service import TeamService
 from app.utils.feature_gate import FeatureGate
 
@@ -171,9 +170,10 @@ def validate_invitation_token(token: str, db: DbDep):
     the invitation before signing up/logging in.
     """
     # Create service without user context for validation
-    from app.models.team_models import TeamInvitation
     from sqlalchemy import select
     from sqlalchemy.orm import joinedload
+
+    from app.models.team_models import TeamInvitation
     
     invitation = db.scalar(
         select(TeamInvitation)
@@ -257,11 +257,12 @@ def accept_invitation_direct(data: InvitationAcceptDirect, db: DbDep):
     
     The new user will have limited permissions (MEMBER role, not ADMIN).
     """
-    from app.services.team_service import TeamService
-    from app.models.team_models import TeamInvitation, TeamMember, TeamRole, InvitationStatus as InvStatus, utcnow
-    from app.models.models import User, SubscriptionPlan
-    from sqlalchemy.orm import joinedload
     from sqlalchemy import select
+    from sqlalchemy.orm import joinedload
+
+    from app.models.models import SubscriptionPlan, User
+    from app.models.team_models import InvitationStatus as InvStatus
+    from app.models.team_models import TeamInvitation, TeamMember, TeamRole, utcnow
     
     # Validate invitation
     invitation = db.scalar(
@@ -344,7 +345,7 @@ def accept_invitation_direct(data: InvitationAcceptDirect, db: DbDep):
     refresh_token = create_refresh_token(str(user.id))
     
     # Calculate expiry (24 hours from now)
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
     access_expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
     
     return InvitationAcceptResponse(

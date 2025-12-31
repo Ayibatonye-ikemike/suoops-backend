@@ -7,9 +7,9 @@ purchase order management.
 """
 from __future__ import annotations
 
-from decimal import Decimal
 import datetime as dt
 import logging
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from app.models.inventory_models import (
     PurchaseOrderStatus,
 )
 from app.utils.id_generator import generate_id
+
 from .base import InventoryServiceBase
 
 logger = logging.getLogger(__name__)
@@ -143,7 +144,7 @@ class PurchaseOrderService(InventoryServiceBase):
         return self._db.query(Product).filter(
             Product.id.in_(product_ids),
             Product.user_id == self._user_id,
-            Product.is_active == True,
+              Product.is_active.is_(True),
         ).all()
 
     def _create_purchase_order(

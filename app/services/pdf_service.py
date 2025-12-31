@@ -411,8 +411,9 @@ class PDFService:
             Base64 encoded image as data URI, or None if fetch fails
         """
         try:
-            import requests
             import mimetypes
+
+            import requests
             
             # Fetch the image from S3 with timeout
             response = requests.get(receipt_url, timeout=15)

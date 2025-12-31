@@ -10,10 +10,22 @@ Note: Field names formerly referencing NRS have been updated to FIRS terminology
 reflect Federal Inland Revenue Service. External API integration is pending; current
 fields store provisional registration metadata only.
 """
-from enum import Enum
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Dict
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, JSON, ForeignKey, Numeric, Date
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+)
 from sqlalchemy.orm import relationship
 
 from app.db.base_class import Base
@@ -75,7 +87,11 @@ class TaxProfile(Base):
     
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
     
     # Relationships
     user = relationship("User", back_populates="tax_profile")
@@ -197,7 +213,11 @@ class VATReturn(Base):
     firs_submission_id = Column(String(100), nullable=True)
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
     
     # Relationships
     user = relationship("User", back_populates="vat_returns")
@@ -248,5 +268,9 @@ class MonthlyTaxReport(Base):
     
     pdf_url = Column(String(500), nullable=True)
     generated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 

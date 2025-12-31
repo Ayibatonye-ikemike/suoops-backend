@@ -8,11 +8,10 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.api.routes_auth import get_current_user_id
 from app.api.dependencies import get_data_owner_id
+from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models.expense import Expense
 from app.models.expense_schemas import (

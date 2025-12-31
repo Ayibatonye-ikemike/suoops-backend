@@ -115,6 +115,7 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
 def transmit_invoice(self: Task, fiscal_code: str) -> None:
     """Background transmission of a fiscalized invoice to external gateway."""
     import asyncio
+
     from app.services.fiscalization_service import FiscalTransmitter
 
     with session_scope() as db:

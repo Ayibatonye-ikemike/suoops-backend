@@ -17,12 +17,12 @@ from .exceptions import (
     OAuthTokenError,
     OAuthUserInfoError,
 )
+from .factory import create_oauth_service
 from .providers import (
-    OAuthProvider,
     GoogleOAuthProvider,
+    OAuthProvider,
 )
 from .service import OAuthService
-from .factory import create_oauth_service
 
 __all__ = [
     # Exceptions

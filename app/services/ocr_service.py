@@ -18,8 +18,8 @@ import base64
 import io
 import logging
 import os
-from typing import Optional
 from decimal import Decimal, InvalidOperation
+from typing import Optional
 
 import httpx
 from PIL import Image

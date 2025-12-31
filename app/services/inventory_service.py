@@ -8,14 +8,14 @@ DEPRECATED: Import directly from app.services.inventory instead:
     from app.services.inventory import InventoryService, build_inventory_service
 """
 from app.services.inventory import (
-    InventoryService,
-    build_inventory_service,
     CategoryService,
+    InventoryAnalyticsService,
+    InventoryService,
     ProductService,
+    PurchaseOrderService,
     StockMovementService,
     SupplierService,
-    InventoryAnalyticsService,
-    PurchaseOrderService,
+    build_inventory_service,
 )
 
 __all__ = [

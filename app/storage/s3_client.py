@@ -156,7 +156,7 @@ class S3Client:
         try:
             # Handle presigned URLs: https://bucket.s3.region.amazonaws.com/key?X-Amz-...
             # or https://bucket.s3.amazonaws.com/key?X-Amz-...
-            from urllib.parse import urlparse, unquote
+            from urllib.parse import unquote, urlparse
             parsed = urlparse(url)
             # The path starts with /, so remove it
             key = unquote(parsed.path.lstrip("/"))

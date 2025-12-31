@@ -1,16 +1,18 @@
+import datetime as dt
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
-from app.core.cache import cached
-from app.api.routes_admin_auth import get_current_admin
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+
+from app.api.routes_admin_auth import get_current_admin
+from app.core.audit import log_audit_event
+from app.core.cache import cached
 from app.db.session import get_db
 from app.models import models
 from app.models.models import SubscriptionPlan
-from app.models.payment_models import PaymentTransaction, PaymentStatus
-from app.core.audit import log_audit_event
-from pydantic import BaseModel
-import datetime as dt
-from typing import Any
+from app.models.payment_models import PaymentStatus, PaymentTransaction
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -25,7 +27,10 @@ async def admin_root(admin_user=Depends(get_current_admin)) -> dict:
         "endpoints": {
             "GET /admin/users/count": "Get total user count (cached)",
             "GET /admin/users/stats": "Get comprehensive user statistics",
-            "GET /admin/users": "List all users with filtering (query params: skip, limit, plan, verified_only, search)",
+            "GET /admin/users": (
+                "List all users with filtering (query params: skip, limit, plan, "
+                "verified_only, search)"
+            ),
             "GET /admin/users/{user_id}": "Get detailed user information including activity"
         },
         "authenticated_as": {
@@ -50,8 +55,7 @@ class UserListItem(BaseModel):
     business_name: str | None
     role: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserStats(BaseModel):
@@ -99,7 +103,7 @@ async def get_user_stats(
     total = db.query(models.User).count()
     
     # Verified vs unverified
-    verified = db.query(models.User).filter(models.User.phone_verified == True).count()
+    verified = db.query(models.User).filter(models.User.phone_verified.is_(True)).count()
     
     # Users by plan
     plan_counts = db.query(
@@ -171,7 +175,7 @@ async def list_users(
             pass  # Invalid plan, ignore filter
     
     if verified_only:
-        query = query.filter(models.User.phone_verified == True)
+        query = query.filter(models.User.phone_verified.is_(True))
     
     if search:
         search_pattern = f"%{search}%"
@@ -324,8 +328,12 @@ async def get_referral_stats(
 ) -> Any:
     """Get comprehensive referral program statistics."""
     from app.models.referral_models import (
-        ReferralCode, Referral, ReferralReward,
-        ReferralStatus, ReferralType, RewardStatus
+        Referral,
+        ReferralCode,
+        ReferralReward,
+        ReferralStatus,
+        ReferralType,
+        RewardStatus,
     )
     
     log_audit_event("admin.referrals.stats", user_id=admin_user.id)
@@ -419,8 +427,7 @@ class PaidUserInfo(BaseModel):
     referred_by_name: str | None = None
     referred_by_id: int | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlatformMetrics(BaseModel):
@@ -444,7 +451,7 @@ async def get_platform_metrics(
     admin_user=Depends(get_current_admin)
 ) -> Any:
     """Get platform-wide metrics for monitoring."""
-    from app.models.models import Invoice, Customer
+    from app.models.models import Customer, Invoice
     from app.models.referral_models import Referral, ReferralStatus
     
     log_audit_event("admin.metrics", user_id=admin_user.id)
@@ -865,6 +872,7 @@ async def sync_segment_to_brevo(
     3. Call this endpoint to push contacts to that list
     """
     import httpx
+
     from app.core.config import settings
     
     log_audit_event("admin.brevo.sync", user_id=admin_user.id, segment=segment, list_id=list_id)
@@ -1036,6 +1044,7 @@ async def get_brevo_lists(
     Get all Brevo contact lists to find list IDs for syncing.
     """
     import httpx
+
     from app.core.config import settings
     
     brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
@@ -1072,6 +1081,7 @@ async def create_brevo_list(
 ) -> dict:
     """Create a new contact list in Brevo."""
     import httpx
+
     from app.core.config import settings
     
     brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
@@ -1111,8 +1121,9 @@ async def export_users_csv(
     Download this file and upload to Brevo:
     Contacts → Import contacts → Upload file
     """
-    from fastapi.responses import StreamingResponse
     import io
+
+    from fastapi.responses import StreamingResponse
     
     users = db.query(models.User).all()
     

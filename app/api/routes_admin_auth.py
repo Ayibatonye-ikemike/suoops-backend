@@ -4,17 +4,17 @@ from __future__ import annotations
 import logging
 import secrets
 import smtplib
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import TokenType, create_access_token, decode_token, hash_password, verify_password
 from app.db.session import get_db
 from app.models.admin_models import AdminUser
 
@@ -74,8 +74,7 @@ class AdminUserOut(BaseModel):
     last_login: datetime | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -86,9 +85,6 @@ class ChangePasswordRequest(BaseModel):
 # ============================================================================
 # Authentication Dependencies
 # ============================================================================
-
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.core.security import decode_token, TokenType
 
 security = HTTPBearer()
 
@@ -180,7 +176,15 @@ def send_admin_invite_email(to_email: str, name: str, invite_link: str) -> bool:
             <style>
                 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
                 .container {{ max-width: 600px; margin: 0 auto; padding: 40px 20px; }}
-                .btn {{ display: inline-block; padding: 14px 28px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }}
+                .btn {{
+                    display: inline-block;
+                    padding: 14px 28px;
+                    background: #10b981;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                }}
             </style>
         </head>
         <body>
@@ -291,9 +295,6 @@ def invite_admin(
     
     Note: Requires authentication - must be called with valid admin token.
     """
-    from fastapi import Request
-    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-    from app.core.security import decode_token, TokenType
     
     # For now, we'll validate the caller is an admin in the route
     # In production, this should use proper dependency injection
@@ -407,9 +408,6 @@ def get_current_admin_user(db: Session = Depends(get_db)):
     
     Note: This route requires authentication via admin token.
     """
-    from fastapi import Request
-    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-    from app.core.security import decode_token, TokenType
     
     # This would be handled by dependency in production
     # For now, return placeholder
@@ -425,7 +423,7 @@ def list_admins(db: Session = Depends(get_db)):
     
     Note: Only super admins or those with invite permission can see this.
     """
-    admins = db.query(AdminUser).filter(AdminUser.is_active == True).all()
+    admins = db.query(AdminUser).filter(AdminUser.is_active.is_(True)).all()
     return admins
 
 

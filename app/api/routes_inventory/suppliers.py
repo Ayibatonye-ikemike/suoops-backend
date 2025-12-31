@@ -4,7 +4,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models import inventory_schemas as schemas
-from .dependencies import InventoryServiceDep, InventoryServiceAdminDep
+
+from .dependencies import InventoryServiceAdminDep, InventoryServiceDep
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

@@ -9,13 +9,13 @@ Handles:
 Single Responsibility: Tax profile management
 """
 import logging
-from decimal import Decimal
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Dict, Optional
+
 from sqlalchemy.orm import Session
 
-from app.models.models import User
-from app.models.tax_models import TaxProfile, BusinessSize, MonthlyTaxReport
+from app.models.tax_models import BusinessSize, MonthlyTaxReport, TaxProfile
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +329,9 @@ class TaxProfileService:
         NOTE: Core implementation moved to tax_reporting_service.TaxReportingService.
         This wrapper preserves existing public API while callers migrate.
         """
-        from app.services.tax_reporting_service import TaxReportingService  # local import to avoid circular
+        from app.services.tax_reporting_service import (
+            TaxReportingService,  # local import to avoid circular
+        )
         return TaxReportingService(self.db).compute_development_levy(user_id, assessable_profit)
 
     # ---------------- Assessable profit computation -----------------

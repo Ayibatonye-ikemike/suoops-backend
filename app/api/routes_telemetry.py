@@ -3,12 +3,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.core.rbac import staff_or_admin_required  # optional future use
-from app.core.config import settings
 from app.api.rate_limit import limiter
+from app.core.config import settings
 
 try:  # pragma: no cover
     from prometheus_client import Counter

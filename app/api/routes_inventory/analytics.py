@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter
 
 from app.models import inventory_schemas as schemas
+
 from .dependencies import InventoryServiceDep
 
 router = APIRouter()

@@ -16,24 +16,25 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.models import User
 from app.models.team_models import (
+    InvitationStatus,
     Team,
     TeamInvitation,
     TeamMember,
     TeamRole,
-    InvitationStatus,
     generate_invite_token,
     utcnow,
 )
 from app.models.team_schemas import (
-    TeamCreate,
-    TeamMemberOut,
     InvitationCreate,
     InvitationOut,
+    InvitationValidation,
+    TeamMemberOut,
     TeamOut,
     TeamWithMembersOut,
     UserTeamRole,
-    InvitationValidation,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TeamService:
@@ -324,8 +325,6 @@ class TeamService:
     
     def _send_invitation_email(self, invitation: TeamInvitation, team: Team) -> None:
         """Send team invitation email via SMTP."""
-        logger = logging.getLogger(__name__)
-        
         try:
             # Get SMTP configuration
             smtp_host = getattr(settings, "SMTP_HOST", "smtp-relay.brevo.com")

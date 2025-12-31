@@ -18,7 +18,7 @@ import secrets
 import string
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Boolean, Integer, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -80,8 +80,8 @@ class ReferralCode(Base):
     )
     
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="referral_code")
-    referrals: Mapped[list["Referral"]] = relationship(
+    user: Mapped[User] = relationship("User", back_populates="referral_code")
+    referrals: Mapped[list[Referral]] = relationship(
         "Referral",
         back_populates="referral_code",
         foreign_keys="Referral.referral_code_id",
@@ -130,8 +130,8 @@ class Referral(Base):
         back_populates="referrals",
         foreign_keys=[referral_code_id],
     )
-    referrer: Mapped["User"] = relationship("User", foreign_keys=[referrer_id])
-    referred: Mapped["User"] = relationship("User", foreign_keys=[referred_id])
+    referrer: Mapped[User] = relationship("User", foreign_keys=[referrer_id])
+    referred: Mapped[User] = relationship("User", foreign_keys=[referred_id])
 
 
 class ReferralReward(Base):
@@ -173,7 +173,7 @@ class ReferralReward(Base):
     )
     
     # Relationship
-    user: Mapped["User"] = relationship("User", back_populates="referral_rewards")
+    user: Mapped[User] = relationship("User", back_populates="referral_rewards")
 
 
 # Referral thresholds (configurable)

@@ -12,7 +12,6 @@ Business logic delegated to OAuthService.
 
 import logging
 import secrets
-import ssl
 from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -23,13 +22,13 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.api.rate_limit import RATE_LIMITS, limiter
 from app.api.routes_auth import _set_refresh_cookie
-from app.api.rate_limit import limiter, RATE_LIMITS
-from app.metrics import oauth_login_success
 from app.core.config import settings
 from app.core.csrf import get_csrf_token, set_csrf_cookie
 from app.core.security import TokenType, decode_token
 from app.db.session import get_db
+from app.metrics import oauth_login_success
 from app.models import schemas
 from app.services.oauth_service import OAuthProviderError, create_oauth_service
 
@@ -172,7 +171,6 @@ async def list_oauth_providers(db: Annotated[Session, Depends(get_db)]) -> dict:
             ]
         }
     """
-    oauth_service = create_oauth_service(db)
     providers = []
 
     # Google provider
@@ -348,7 +346,7 @@ async def oauth_callback(
             status_code=400,
             detail="Authentication failed. The login code may have expired. Please try again."
         )
-    except Exception as e:
+    except Exception:
         logger.exception("OAuth callback unexpected error | provider=%s", provider)
         # Return JSON error for unexpected errors
         raise HTTPException(

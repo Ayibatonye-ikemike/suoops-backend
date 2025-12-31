@@ -1,19 +1,19 @@
-from typing import Annotated, TypeAlias
-from pathlib import Path
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Annotated, TypeAlias
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.routes_auth import get_current_user_id
 from app.api.dependencies import get_data_owner_id
+from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
-from app.models import schemas
-from app.services.invoice_service import build_invoice_service, InvoiceService
-from app.utils.feature_gate import check_invoice_limit, FeatureGate
+from app.models import models, schemas
+from app.services.invoice_service import InvoiceService, build_invoice_service
 from app.storage.s3_client import S3Client
-from datetime import datetime, timezone
+from app.utils.feature_gate import FeatureGate, check_invoice_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -215,7 +215,8 @@ def list_invoices(
     start_date: str | None = None,  # Optional date filter (YYYY-MM-DD)
     end_date: str | None = None,  # Optional date filter (YYYY-MM-DD)
 ):
-    from datetime import datetime as dt, date
+    from datetime import date
+    from datetime import datetime as dt
     
     svc = get_invoice_service_for_user(data_owner_id, db)
     # Pass invoice_type to query so filtering happens BEFORE the limit
@@ -341,8 +342,9 @@ def verify_invoice(invoice_id: str, db: DbDep):
     
     Returns masked customer information for privacy while proving authenticity.
     """
-    from app.models.models import Invoice
     from datetime import datetime
+
+    from app.models.models import Invoice
     
     invoice = db.query(Invoice).filter(Invoice.invoice_id == invoice_id).first()
     
@@ -397,12 +399,13 @@ async def initialize_invoice_pack_purchase(
     - amount: Amount in kobo (₦ x 100)
     - invoices_to_add: Number of invoices that will be added
     """
-    import httpx
     import uuid
+
+    import httpx
+
     from app.core.config import settings
-    from app.models.payment_models import PaymentTransaction, PaymentStatus, PaymentProvider
+    from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
     from app.utils.feature_gate import INVOICE_PACK_PRICE, INVOICE_PACK_SIZE
-    from app import metrics
     
     if quantity < 1 or quantity > 10:
         raise HTTPException(status_code=400, detail="Quantity must be between 1 and 10 packs")
@@ -488,7 +491,3 @@ async def initialize_invoice_pack_purchase(
         amount=total_amount,
         invoices_to_add=invoices_to_add,
     )
-
-
-# Import models at module level for the new endpoint
-from app.models import models

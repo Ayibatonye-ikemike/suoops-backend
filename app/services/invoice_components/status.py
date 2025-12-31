@@ -8,7 +8,7 @@ import logging
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app import metrics
-from app.core.exceptions import InvoiceNotFoundError, InvalidInvoiceStatusError
+from app.core.exceptions import InvalidInvoiceStatusError, InvoiceNotFoundError
 from app.models import models
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,13 @@ logger = logging.getLogger(__name__)
 class InvoiceStatusMixin:
     db: Session
 
-    def update_status(self, issuer_id: int, invoice_id: str, status: str, updated_by_user_id: int | None = None) -> models.Invoice:
+    def update_status(
+        self,
+        issuer_id: int,
+        invoice_id: str,
+        status: str,
+        updated_by_user_id: int | None = None,
+    ) -> models.Invoice:
         if status not in {"pending", "awaiting_confirmation", "paid", "cancelled"}:
             raise InvalidInvoiceStatusError(new_status=status)
 
@@ -40,12 +46,10 @@ class InvoiceStatusMixin:
         if previous_status == status:
             return invoice
 
-        # Enforce workflow: can only mark as "paid" if status is "awaiting_confirmation"
-        if status == "paid" and previous_status != "awaiting_confirmation":
-            raise ValueError(
-                "Invoice must be in 'awaiting_confirmation' status before marking as paid. "
-                "Customer must confirm payment first."
-            )
+        # Allow manual marking as paid (e.g., business confirms payment).
+        # Block nonsensical transitions.
+        if status == "paid" and previous_status == "cancelled":
+            raise ValueError("Cannot mark a cancelled invoice as paid")
 
         invoice.status = status
         
@@ -329,8 +333,9 @@ class InvoiceStatusMixin:
             return  # Only process revenue invoices on payment
         
         try:
-            from app.services.inventory import build_inventory_service
             from decimal import Decimal
+
+            from app.services.inventory import build_inventory_service
             
             # Check if any lines have products linked
             has_inventory_items = any(
@@ -399,7 +404,7 @@ class InvoiceStatusMixin:
             # Check which products are now low stock
             low_stock_products = self.db.query(Product).filter(
                 Product.id.in_(affected_product_ids),
-                Product.track_stock == True,
+                Product.track_stock.is_(True),
                 Product.quantity_in_stock <= Product.reorder_level,
             ).all()
             

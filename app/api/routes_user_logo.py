@@ -1,10 +1,10 @@
 """Logo upload/delete endpoints split from routes_user.py."""
 import logging
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.routes_auth import get_current_user_id
 from app.api.dependencies import AdminUserDep
 from app.db.session import get_db
 from app.models import models, schemas
@@ -65,5 +65,6 @@ def delete_logo(
         raise HTTPException(status_code=404, detail="User not found")
     if not user.logo_url:
         raise HTTPException(status_code=404, detail="No logo configured")
-    user.logo_url = None; db.commit()
+    user.logo_url = None
+    db.commit()
     return schemas.MessageOut(detail="Logo removed successfully")

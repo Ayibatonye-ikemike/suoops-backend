@@ -58,7 +58,10 @@ async def switch_to_starter(
     
     return {
         "status": "success",
-        "message": "Switched to STARTER plan! You can now access tax features. Purchase invoice packs to create invoices.",
+        "message": (
+            "Switched to STARTER plan! You can now access tax features. "
+            "Purchase invoice packs to create invoices."
+        ),
         "old_plan": old_plan,
         "new_plan": "STARTER",
     }

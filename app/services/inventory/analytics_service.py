@@ -6,14 +6,15 @@ Follows SRP by focusing solely on analytics and reporting.
 """
 from __future__ import annotations
 
-from decimal import Decimal
 import logging
+from decimal import Decimal
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.inventory_models import Product, ProductCategory
 from app.models.inventory_schemas import InventorySummary, LowStockAlert
+
 from .base import InventoryServiceBase
 
 logger = logging.getLogger(__name__)
@@ -48,8 +49,8 @@ class InventoryAnalyticsService(InventoryServiceBase):
         """Get list of products that need restocking."""
         products = self._db.query(Product).filter(
             Product.user_id == self._user_id,
-            Product.is_active == True,
-            Product.track_stock == True,
+            Product.is_active.is_(True),
+            Product.track_stock.is_(True),
             Product.quantity_in_stock <= Product.reorder_level,
         ).order_by(Product.quantity_in_stock).all()
 
@@ -65,15 +66,15 @@ class InventoryAnalyticsService(InventoryServiceBase):
             Product.user_id == self._user_id,
         )
         if active_only:
-            query = query.filter(Product.is_active == True)
+            query = query.filter(Product.is_active.is_(True))
         return query.scalar() or 0
 
     def _count_low_stock(self) -> int:
         """Count products with low stock."""
         return self._db.query(func.count(Product.id)).filter(
             Product.user_id == self._user_id,
-            Product.is_active == True,
-            Product.track_stock == True,
+            Product.is_active.is_(True),
+            Product.track_stock.is_(True),
             Product.quantity_in_stock <= Product.reorder_level,
             Product.quantity_in_stock > 0,
         ).scalar() or 0
@@ -82,8 +83,8 @@ class InventoryAnalyticsService(InventoryServiceBase):
         """Count products out of stock."""
         return self._db.query(func.count(Product.id)).filter(
             Product.user_id == self._user_id,
-            Product.is_active == True,
-            Product.track_stock == True,
+            Product.is_active.is_(True),
+            Product.track_stock.is_(True),
             Product.quantity_in_stock <= 0,
         ).scalar() or 0
 
@@ -91,8 +92,8 @@ class InventoryAnalyticsService(InventoryServiceBase):
         """Calculate total stock value and potential revenue."""
         products = self._db.query(Product).filter(
             Product.user_id == self._user_id,
-            Product.is_active == True,
-            Product.track_stock == True,
+            Product.is_active.is_(True),
+            Product.track_stock.is_(True),
         ).all()
 
         total_stock_value = Decimal("0")
@@ -108,7 +109,7 @@ class InventoryAnalyticsService(InventoryServiceBase):
         """Count active categories."""
         return self._db.query(func.count(ProductCategory.id)).filter(
             ProductCategory.user_id == self._user_id,
-            ProductCategory.is_active == True,
+            ProductCategory.is_active.is_(True),
         ).scalar() or 0
 
     @staticmethod

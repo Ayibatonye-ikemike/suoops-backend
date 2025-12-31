@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from app.core.encryption import encrypt_value
 from app.core.security import (
     TokenType,
     create_access_token,
@@ -16,7 +17,6 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.models import models, schemas
-from app.core.encryption import encrypt_value
 from app.services.otp_service import OTPService
 
 logger = logging.getLogger(__name__)
@@ -116,7 +116,8 @@ class AuthService:
 
         # Create new user with email or phone
         # Determine if this is a phone signup or email signup
-        is_phone_signup = not stored_data.get("email") and stored_data.get("phone")
+        # NOTE: use bool(...) because `and` returns the last operand (could be a string).
+        is_phone_signup = bool((not stored_data.get("email")) and stored_data.get("phone"))
         
         user_data = {
             "name": stored_data.get("name", identifier),
@@ -150,11 +151,16 @@ class AuthService:
         
         # Record referral if a referral code was provided
         referral_code = stored_data.get("referral_code")
-        logger.info(f"Signup complete for user {user.id}, referral_code in stored_data: {referral_code}, stored_data keys: {list(stored_data.keys())}")
+        logger.info(
+            "Signup complete for user %s, referral_code in stored_data: %s, stored_data keys: %s",
+            user.id,
+            referral_code,
+            list(stored_data.keys()),
+        )
         if referral_code:
             try:
-                from app.services.referral_service import ReferralService
                 from app.models.referral_models import ReferralType
+                from app.services.referral_service import ReferralService
                 referral_service = ReferralService(self.db)
                 referral = referral_service.record_referral(
                     code=referral_code,
@@ -164,9 +170,17 @@ class AuthService:
                 if referral:
                     # Complete the referral immediately since signup is verified
                     referral_service.complete_referral(user.id)
-                    logger.info(f"Successfully recorded and completed referral for user {user.id} with code {referral_code}")
+                    logger.info(
+                        "Successfully recorded and completed referral for user %s with code %s",
+                        user.id,
+                        referral_code,
+                    )
                 else:
-                    logger.warning(f"record_referral returned None for user {user.id} with code {referral_code}")
+                    logger.warning(
+                        "record_referral returned None for user %s with code %s",
+                        user.id,
+                        referral_code,
+                    )
             except Exception as e:
                 logger.warning(f"Failed to record referral: {e}", exc_info=True)
         

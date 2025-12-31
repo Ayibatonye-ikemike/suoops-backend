@@ -8,12 +8,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app import metrics
 from app.api.routes_auth import get_current_user_id
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
-from app.models.payment_models import PaymentTransaction, PaymentStatus
-from app import metrics
+from app.models.payment_models import PaymentStatus, PaymentTransaction
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -43,11 +43,10 @@ def send_expense_summary(
     Returns:
         Summary statistics
     """
-    from app.bot.whatsapp_client import WhatsAppClient
     from app.models.expense import Expense
     from app.services.tax_reporting_service import (
-        compute_revenue_by_date_range,
         compute_actual_profit_by_date_range,
+        compute_revenue_by_date_range,
     )
 
     with session_scope() as db:

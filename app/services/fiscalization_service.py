@@ -10,23 +10,23 @@ Handles:
 
 Single Responsibility: Invoice fiscalization only
 """
+import base64
 import hashlib
 import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
+from io import BytesIO
 from typing import Dict, Optional
 
 import httpx
 import qrcode
-from io import BytesIO
-import base64
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.models import Invoice
-from app.services.nrs_client import get_nrs_client
 from app.models.tax_models import FiscalInvoice, VATCategory
+from app.services.nrs_client import get_nrs_client
 
 logger = logging.getLogger(__name__)
 

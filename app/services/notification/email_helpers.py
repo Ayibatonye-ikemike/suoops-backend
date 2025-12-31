@@ -13,15 +13,15 @@ import httpx
 from app.core.config import settings
 
 if TYPE_CHECKING:  # pragma: no cover
-    from app.services.notification_service import NotificationService
     from app.models import models
+    from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
 
 async def send_invoice_email(
-    service: "NotificationService",
-    invoice: "models.Invoice",
+    service: NotificationService,
+    invoice: models.Invoice,
     recipient_email: str,
     pdf_url: str | None = None,
     subject: str = "New Invoice",
@@ -65,7 +65,8 @@ On the payment page you can:
 - Use one-click "Copy" buttons or copy all details at once
 - Notify the business after you've made the transfer
 
-After you complete the transfer, tap "I've sent the transfer" on that page so the business can confirm and your receipt will be issued.
+After you complete the transfer, tap "I've sent the transfer" on that page
+so the business can confirm and your receipt will be issued.
 
 Please find your invoice attached as a PDF.
 
@@ -101,8 +102,8 @@ Powered by SuoOps
 
 
 async def send_receipt_email(
-    service: "NotificationService",
-    invoice: "models.Invoice",
+    service: NotificationService,
+    invoice: models.Invoice,
     recipient_email: str,
     pdf_url: str | None = None,
 ) -> bool:
@@ -179,7 +180,7 @@ Powered by SuoOps
 
 
 async def send_simple_email(
-    service: "NotificationService", to_email: str, subject: str, body: str
+    service: NotificationService, to_email: str, subject: str, body: str
 ) -> bool:
     """Send a simple text email (helper)."""
     try:

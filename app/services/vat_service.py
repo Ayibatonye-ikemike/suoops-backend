@@ -12,11 +12,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List
+
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
 
 from app.models.models import Invoice
-from app.models.tax_models import VATReturn, TaxProfile
+from app.models.tax_models import TaxProfile, VATReturn
 
 logger = logging.getLogger(__name__)
 

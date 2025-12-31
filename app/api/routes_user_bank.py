@@ -1,11 +1,12 @@
 """Bank detail endpoints split from routes_user.py."""
 import logging
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.routes_auth import get_current_user_id
 from app.api.dependencies import AdminUserDep
+from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models, schemas
 
@@ -51,7 +52,8 @@ def update_bank_details(
         user.account_number = data.account_number
     if data.account_name is not None:
         user.account_name = data.account_name
-    db.commit(); db.refresh(user)
+    db.commit()
+    db.refresh(user)
     is_configured = bool(user.bank_name and user.account_number and user.account_name)
     return schemas.BankDetailsOut(
         business_name=user.business_name,

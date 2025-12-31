@@ -6,20 +6,21 @@ Requires STARTER or PRO plan for access.
 """
 from __future__ import annotations
 
-from io import StringIO
 import logging
-from typing import Literal, Optional
+from io import StringIO
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.api.routes_auth import get_current_user_id
-from app.models.tax_models import MonthlyTaxReport
+from app.db.session import get_db
 from app.models import models
-from app.services.tax_reporting_service import TaxReportingService
+from app.models.tax_models import MonthlyTaxReport
 from app.services.pdf_service import PDFService
+from app.services.tax_reporting_service import TaxReportingService
 from app.utils.feature_gate import require_plan_feature
+
 from .schemas import AlertEventOut
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,9 @@ def generate_tax_report(
         description="Period type: day, week, month, or year",
     ),
     year: int = Query(..., ge=2020, le=2100, description="Year"),
-    month: Optional[int] = Query(None, ge=1, le=12, description="Month"),
-    day: Optional[int] = Query(None, ge=1, le=31, description="Day"),
-    week: Optional[int] = Query(None, ge=1, le=53, description="ISO week number"),
+    month: int | None = Query(None, ge=1, le=12, description="Month"),
+    day: int | None = Query(None, ge=1, le=31, description="Day"),
+    week: int | None = Query(None, ge=1, le=53, description="ISO week number"),
     basis: Literal["paid", "all"] = Query("paid", description="Basis"),
     force: bool = Query(False, description="Force regeneration"),
     current_user_id: int = Depends(get_current_user_id),
@@ -274,7 +275,7 @@ def download_monthly_tax_report_csv(
 
 
 def _format_period_label(
-    period_type: str, year: int, month: Optional[int], day: Optional[int], week: Optional[int]
+    period_type: str, year: int, month: int | None, day: int | None, week: int | None
 ) -> str:
     """Format period label for response."""
     if period_type == "day":
@@ -301,7 +302,10 @@ def _generate_tax_alerts(user_plan: str, annual_revenue: float) -> list[dict]:
             alerts.append({
                 "type": "vat_threshold",
                 "severity": "warning",
-                "message": f"Your estimated annual turnover (₦{annual_revenue:,.0f}) exceeds ₦25M. VAT registration required.",
+                "message": (
+                    f"Your estimated annual turnover (₦{annual_revenue:,.0f}) exceeds ₦25M. "
+                    "VAT registration required."
+                ),
             })
         elif annual_revenue >= 20_000_000:
             alerts.append({
@@ -329,7 +333,7 @@ def _get_invoice_debug_info(
 ) -> dict:
     """Get invoice counts and totals for debugging."""
     from datetime import datetime, timezone
-    from sqlalchemy import func
+
     from app.models.models import Invoice
     
     # Convert dates

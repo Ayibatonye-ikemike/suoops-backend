@@ -8,12 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
 from app.core.cache import cached
+from app.core.encryption import decrypt_value
 from app.db.session import get_db
 from app.models import models, schemas
-from app.core.encryption import decrypt_value
-from app.services.otp_service import OTPService
-from app.storage.s3_client import s3_client
 from app.services.account_deletion_service import AccountDeletionService
+from app.services.otp_service import OTPService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -14,6 +15,13 @@ logger = logging.getLogger(__name__)
 class WhatsAppClient:
     """WhatsApp Cloud API client for sending messages and downloading media."""
 
+    @staticmethod
+    def _is_test_mode() -> bool:
+        # Keep tests hermetic: never hit real WhatsApp APIs under pytest.
+        if settings.ENV.lower() in {"test", "testing"}:
+            return True
+        return bool(os.getenv("PYTEST_CURRENT_TEST"))
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.phone_number_id = getattr(settings, "WHATSAPP_PHONE_NUMBER_ID", None)
@@ -22,6 +30,9 @@ class WhatsAppClient:
 
     def send_text(self, to: str, body: str) -> bool:
         """Send a plain text message. Returns True on success, False on failure."""
+        if self._is_test_mode():
+            logger.info("[WHATSAPP][TEST] Would send text to %s: %s", to, body[:200])
+            return True
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP] Not configured, would send to %s: %s", to, body)
             return False
@@ -60,6 +71,9 @@ class WhatsAppClient:
 
     def send_document(self, to: str, url: str, filename: str, caption: str | None = None) -> None:
         """Send a document (usually PDF)."""
+        if self._is_test_mode():
+            logger.info("[WHATSAPP DOC][TEST] Would send to %s: %s (%s)", to, filename, url)
+            return
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP DOC] Not configured, would send to %s: %s", to, filename)
             return
@@ -98,6 +112,14 @@ class WhatsAppClient:
         components: list[dict[str, Any]] | None = None,
     ) -> bool:
         """Send a pre-approved template message."""
+        if self._is_test_mode():
+            logger.info(
+                "[WHATSAPP TEMPLATE][TEST] Would send to %s: %s (%s)",
+                to,
+                template_name,
+                language,
+            )
+            return True
         if not self.phone_number_id or not self.api_key:
             logger.warning(
                 "[WHATSAPP TEMPLATE] Not configured, would send to %s: %s",
@@ -130,7 +152,11 @@ class WhatsAppClient:
                 json=payload,
                 timeout=10,
             )
-            logger.info("[WHATSAPP TEMPLATE] Response status=%s, body=%s", response.status_code, response.text[:500] if response.text else "empty")
+            logger.info(
+                "[WHATSAPP TEMPLATE] Response status=%s, body=%s",
+                response.status_code,
+                response.text[:500] if response.text else "empty",
+            )
             response.raise_for_status()
             logger.info("[WHATSAPP TEMPLATE] ✓ Sent to %s with %s", to, template_name)
             return True

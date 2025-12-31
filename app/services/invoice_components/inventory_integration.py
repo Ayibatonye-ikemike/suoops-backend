@@ -33,7 +33,7 @@ class InventoryIntegrationMixin:
 
     def process_inventory_for_invoice(
         self,
-        invoice: "Invoice",
+        invoice: Invoice,
         lines_data: list[dict[str, Any]],
     ) -> None:
         """
@@ -91,7 +91,7 @@ class InventoryIntegrationMixin:
 
     def reverse_inventory_for_invoice(
         self,
-        invoice: "Invoice",
+        invoice: Invoice,
     ) -> None:
         """
         Reverse inventory changes when an invoice is cancelled/deleted.
@@ -102,8 +102,8 @@ class InventoryIntegrationMixin:
         Args:
             invoice: The invoice being cancelled
         """
+        from app.models.inventory_models import StockMovement
         from app.services.inventory import build_inventory_service
-        from app.models.inventory_models import StockMovement, StockMovementType
         
         try:
             inventory_service = build_inventory_service(self.db, invoice.issuer_id)

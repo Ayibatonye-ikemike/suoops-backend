@@ -7,12 +7,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app import metrics
 from app.api.routes_auth import get_current_user_id
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
-from app.models.payment_models import PaymentTransaction, PaymentStatus, PaymentProvider
-from app import metrics
+from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
 
 from .constants import PLAN_PRICES
 
@@ -82,7 +82,7 @@ async def initialize_subscription_payment(
     amount_kobo = amount_naira * 100  # Paystack uses kobo (smallest unit)
     
     # Generate unique reference with current timestamp to avoid duplicates
-    timestamp = int(datetime.utcnow().timestamp() * 1000)  # milliseconds for uniqueness
+    timestamp = int(datetime.now(datetime.UTC).timestamp() * 1000)  # milliseconds for uniqueness
     reference = f"SUB-{current_user_id}-{plan}-{timestamp}"
     
     # Initialize Paystack transaction

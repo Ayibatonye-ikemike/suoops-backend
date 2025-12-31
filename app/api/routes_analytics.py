@@ -7,22 +7,22 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, case
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from app.api.routes_auth import get_current_user_id
 from app.api.dependencies import get_data_owner_id
+from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models
 from app.models.schemas import AnalyticsDashboard
 from app.services.analytics_service import (
-    calculate_revenue_metrics,
-    calculate_invoice_metrics,
-    calculate_customer_metrics,
     calculate_aging_report,
+    calculate_customer_metrics,
+    calculate_invoice_metrics,
     calculate_monthly_trends,
-    get_date_range,
+    calculate_revenue_metrics,
     get_conversion_rate,
+    get_date_range,
 )
 
 router = APIRouter()
@@ -169,7 +169,6 @@ async def get_conversion_funnel(
     total = stats.total or 0
     paid = stats.paid or 0
     awaiting = stats.awaiting or 0
-    pending = stats.pending or 0
     cancelled = stats.cancelled or 0
     
     return {

@@ -7,15 +7,15 @@ All imports should continue to work via this redirect module.
 New code should import from app.services.oauth directly.
 """
 from app.services.oauth import (
-    # Exceptions
-    OAuthProviderError,
-    OAuthTokenError,
-    OAuthUserInfoError,
+    GoogleOAuthProvider,
     # Providers
     OAuthProvider,
-    GoogleOAuthProvider,
+    # Exceptions
+    OAuthProviderError,
     # Service
     OAuthService,
+    OAuthTokenError,
+    OAuthUserInfoError,
     # Factory
     create_oauth_service,
 )

@@ -3,8 +3,9 @@
 Handles real-time syncing of users to Brevo contact lists.
 """
 import logging
-import httpx
 from typing import TYPE_CHECKING
+
+import httpx
 
 from app.core.config import settings
 
@@ -139,9 +140,8 @@ def sync_user_to_brevo_sync(user: "models.User") -> bool:
     try:
         # Check if we're already in an async context
         try:
-            loop = asyncio.get_running_loop()
-            # We're in an async context, create a task
-            # This won't work directly, so we'll use a different approach
+            asyncio.get_running_loop()
+            # We're in an async context, create a task via thread to avoid nested loop issues
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(

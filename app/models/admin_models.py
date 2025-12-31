@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import datetime as dt
-from sqlalchemy import String, Boolean, DateTime, Text, func
+
+from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base

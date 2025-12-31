@@ -106,7 +106,7 @@ class InvitationAcceptDirect(BaseModel):
 
 class InvitationAcceptResponse(BaseModel):
     """Response when accepting invitation directly (includes JWT tokens)."""
-    member: "TeamMemberOut"
+    member: TeamMemberOut
     access_token: str
     refresh_token: str
     access_expires_at: str  # ISO timestamp for token expiry

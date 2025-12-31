@@ -4,7 +4,6 @@ Expense tracking models for business expense management.
 Supports multi-channel input (WhatsApp, email, dashboard) and automated tax compliance.
 """
 from datetime import datetime, timezone
-from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import (
@@ -18,7 +17,6 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import relationship
 
 from app.db.base_class import Base
 
@@ -101,7 +99,10 @@ class Expense(Base):
     # Relationship removed since User.expenses no longer exists
     
     def __repr__(self):
-        return f"<Expense(id={self.id}, user_id={self.user_id}, amount={self.amount}, category={self.category}, date={self.date})>"
+        return (
+            f"<Expense(id={self.id}, user_id={self.user_id}, amount={self.amount}, "
+            f"category={self.category}, date={self.date})>"
+        )
     
     @property
     def amount_float(self) -> float:

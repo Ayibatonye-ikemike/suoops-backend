@@ -1,7 +1,6 @@
 import json
 import logging
-import time
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable
 
 try:  # pragma: no cover
     from prometheus_client import Counter
@@ -12,7 +11,6 @@ except Exception:  # noqa: BLE001
     _PROM_CACHE_MISSES = None
 
 import redis
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 _cache_metrics = {"hits": 0, "misses": 0}

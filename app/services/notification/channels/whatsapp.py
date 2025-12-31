@@ -24,12 +24,12 @@ class WhatsAppChannel:
     - WhatsApp bot (via InvoiceIntentProcessor)
     """
 
-    def __init__(self, service: "NotificationService") -> None:
+    def __init__(self, service: NotificationService) -> None:
         self._service = service
 
     async def send_invoice(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_phone: str,
         pdf_url: str | None,
     ) -> bool:
@@ -99,9 +99,10 @@ class WhatsAppChannel:
             logger.error("Failed to send invoice via WhatsApp: %s", e)
             return False
     
-    def _is_registered_user(self, phone: str, invoice: "models.Invoice") -> bool:
+    def _is_registered_user(self, phone: str, invoice: models.Invoice) -> bool:
         """Check if a phone number belongs to a registered business user."""
         from sqlalchemy.orm import object_session
+
         from app.models import models
         
         # Normalize phone for lookup
@@ -129,7 +130,7 @@ class WhatsAppChannel:
     async def _send_full_invoice(
         self,
         client,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_phone: str,
         pdf_url: str | None,
     ) -> bool:
@@ -163,7 +164,7 @@ class WhatsAppChannel:
     async def _send_template_only(
         self,
         client,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_phone: str,
     ) -> bool:
         """Send invoice template with full payment details.
@@ -235,7 +236,7 @@ class WhatsAppChannel:
     async def _send_invoice_with_payment_template(
         self,
         client,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_phone: str,
         template_name: str,
     ) -> bool:
@@ -287,7 +288,7 @@ class WhatsAppChannel:
         
         return template_sent
 
-    def _build_payment_message(self, invoice: "models.Invoice", business_name: str) -> str:
+    def _build_payment_message(self, invoice: models.Invoice, business_name: str) -> str:
         """Build payment message with bank details."""
         message = (
             f"📄 New Invoice from {business_name}\n\n"
@@ -317,7 +318,7 @@ class WhatsAppChannel:
         
         return message
 
-    def _build_items_text(self, invoice: "models.Invoice") -> str:
+    def _build_items_text(self, invoice: models.Invoice) -> str:
         """Build a text representation of invoice line items."""
         if not invoice.lines or len(invoice.lines) == 0:
             return "Invoice items"
@@ -338,7 +339,7 @@ class WhatsAppChannel:
 
     async def send_receipt(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_phone: str,
         pdf_url: str | None,
     ) -> bool:
@@ -352,8 +353,9 @@ class WhatsAppChannel:
                 logger.warning("WhatsApp not configured for receipt")
                 return False
             
-            from app.bot.whatsapp_client import WhatsAppClient
             import datetime as dt
+
+            from app.bot.whatsapp_client import WhatsAppClient
             
             client = WhatsAppClient(self._service.whatsapp_key)
             

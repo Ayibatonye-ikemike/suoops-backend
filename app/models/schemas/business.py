@@ -6,15 +6,26 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ----------------- Bank Details -----------------
 
 class BankDetailsUpdate(BaseModel):
     """Schema for updating business bank account details."""
-    business_name: str | None = Field(None, min_length=1, max_length=255, description="Business display name")
-    bank_name: str | None = Field(None, min_length=1, max_length=100, description="Bank name (e.g., GTBank, Access Bank)")
-    account_number: str | None = Field(None, min_length=10, max_length=10, pattern=r'^\d{10}$', description="10-digit account number")
-    account_name: str | None = Field(None, min_length=1, max_length=255, description="Account holder name")
+    business_name: str | None = Field(
+        None, min_length=1, max_length=255, description="Business display name"
+    )
+    bank_name: str | None = Field(
+        None, min_length=1, max_length=100, description="Bank name (e.g., GTBank, Access Bank)"
+    )
+    account_number: str | None = Field(
+        None,
+        min_length=10,
+        max_length=10,
+        pattern=r'^\d{10}$',
+        description="10-digit account number",
+    )
+    account_name: str | None = Field(
+        None, min_length=1, max_length=255, description="Account holder name"
+    )
 
 
 class BankDetailsOut(BaseModel):

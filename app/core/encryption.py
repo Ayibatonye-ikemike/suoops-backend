@@ -9,7 +9,6 @@ import base64
 import logging
 import os
 from functools import lru_cache
-from typing import Optional
 
 try:
     from cryptography.fernet import Fernet, InvalidToken
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @lru_cache
-def _get_cipher() -> Optional[Fernet]:
+def _get_cipher() -> Fernet | None:
     key = os.getenv("ENCRYPTION_KEY")
     if not key or Fernet is None:
         return None

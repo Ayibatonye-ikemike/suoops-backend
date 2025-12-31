@@ -12,11 +12,11 @@ Refactored from monolithic routes_inventory.py for SRP compliance.
 """
 from fastapi import APIRouter
 
+from .analytics import router as analytics_router
 from .categories import router as categories_router
 from .products import router as products_router
 from .stock import router as stock_router
 from .suppliers import router as suppliers_router
-from .analytics import router as analytics_router
 
 # Create main router and include sub-routers
 router = APIRouter()

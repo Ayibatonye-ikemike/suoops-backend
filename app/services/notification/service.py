@@ -46,12 +46,15 @@ class NotificationService:
             
             # Try SMTP_USER first (actual SMTP credential), fallback to BREVO_SMTP_LOGIN
             user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
-            
+
             # Brevo SMTP password is separate from API key - use SMTP_PASSWORD first
             password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-            
+
             if not all([user, password]):
-                logger.warning("Brevo email not configured. Set SMTP_USER/BREVO_SMTP_LOGIN and SMTP_PASSWORD/BREVO_API_KEY")
+                logger.warning(
+                    "Brevo email not configured. Set SMTP_USER/BREVO_SMTP_LOGIN and "
+                    "SMTP_PASSWORD/BREVO_API_KEY"
+                )
                 return None
                 
             logger.info("Using Brevo SMTP for email: %s", host)
@@ -60,7 +63,7 @@ class NotificationService:
                 "port": port,
                 "user": user,
                 "password": password,
-                "provider": "Brevo"
+                "provider": "Brevo",
             }
         
         logger.warning("Unsupported EMAIL_PROVIDER: %s. Only 'brevo' is supported.", provider)
@@ -69,7 +72,7 @@ class NotificationService:
     # --- Email ---
     async def send_invoice_email(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_email: str,
         pdf_url: str | None = None,
         subject: str = "New Invoice",
@@ -78,7 +81,7 @@ class NotificationService:
 
     async def send_receipt_email(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_email: str,
         pdf_url: str | None = None,
     ) -> bool:
@@ -90,7 +93,7 @@ class NotificationService:
     # --- WhatsApp ---
     async def send_invoice_whatsapp(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_phone: str,
         pdf_url: str | None = None,
     ) -> bool:
@@ -98,7 +101,7 @@ class NotificationService:
 
     async def send_receipt_whatsapp(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_phone: str,
         pdf_url: str | None = None,
     ) -> bool:
@@ -107,7 +110,7 @@ class NotificationService:
     # --- Composite ---
     async def send_invoice_notification(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         customer_email: str | None = None,
         customer_phone: str | None = None,
         pdf_url: str | None = None,
@@ -127,7 +130,7 @@ class NotificationService:
 
     async def send_receipt_notification(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         customer_email: str | None = None,
         customer_phone: str | None = None,
         pdf_url: str | None = None,
@@ -141,7 +144,11 @@ class NotificationService:
                 invoice.receipt_pdf_url or pdf_url,
             )
         if customer_phone:
-            results["whatsapp"] = await self.send_receipt_whatsapp(invoice, customer_phone, invoice.receipt_pdf_url or pdf_url)
+            results["whatsapp"] = await self.send_receipt_whatsapp(
+                invoice,
+                customer_phone,
+                invoice.receipt_pdf_url or pdf_url,
+            )
         logger.info(
             "Receipt notification sent - Email: %s, WhatsApp: %s",
             results["email"],

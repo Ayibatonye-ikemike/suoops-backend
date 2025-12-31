@@ -88,6 +88,7 @@ def ocr_parse_image(
 ) -> dict[str, Any]:
     """Run OCR parse with retries (handles rate limits/timeouts)."""
     import base64
+
     from app.services.ocr_service import OCRService
 
     raw = base64.b64decode(image_bytes_b64)

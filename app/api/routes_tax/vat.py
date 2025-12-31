@@ -11,11 +11,11 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.api.routes_auth import get_current_user_id
-from app.services.vat_service import VATService
-from app.services.fiscalization_service import VATCalculator
+from app.db.session import get_db
 from app.metrics import vat_calculation_record
+from app.services.fiscalization_service import VATCalculator
+from app.services.vat_service import VATService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

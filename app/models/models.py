@@ -5,25 +5,43 @@ import enum
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.base_class import Base
 
 if TYPE_CHECKING:
-    from app.models.tax_models import FiscalInvoice, TaxProfile, VATReturn
+    from app.models.inventory_models import (
+        Product,
+        ProductCategory,
+        PurchaseOrder,
+        StockMovement,
+        Supplier,
+    )
     from app.models.oauth_models import OAuthToken
     from app.models.payment_models import PaymentTransaction
-    from app.models.inventory_models import Product, ProductCategory, StockMovement, Supplier, PurchaseOrder
     from app.models.referral_models import ReferralCode, ReferralReward
+    from app.models.tax_models import FiscalInvoice, TaxProfile, VATReturn
 else:
     # Import at runtime for SQLAlchemy relationship resolution
-    from app.models import tax_models  # noqa: F401
-    from app.models import oauth_models  # noqa: F401
-    from app.models import payment_models  # noqa: F401
-    from app.models import inventory_models  # noqa: F401
-    from app.models import referral_models  # noqa: F401
+    from app.models import (
+        inventory_models,  # noqa: F401
+        oauth_models,  # noqa: F401
+        payment_models,  # noqa: F401
+        referral_models,  # noqa: F401
+        tax_models,  # noqa: F401
+    )
     FiscalInvoice = "FiscalInvoice"
     TaxProfile = "TaxProfile"
     VATReturn = "VATReturn"
@@ -176,7 +194,11 @@ class Invoice(Base):
     fiscal_code: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True, index=True)
     
     # Unified Invoice/Expense fields (revenue or expense tracking)
-    invoice_type: Mapped[str] = mapped_column(String(20), default="revenue", index=True)  # "revenue" or "expense"
+    invoice_type: Mapped[str] = mapped_column(
+        String(20),
+        default="revenue",
+        index=True,
+    )  # "revenue" or "expense"
     category: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)  # For expenses: rent, utilities, etc.
     vendor_name: Mapped[str | None] = mapped_column(String(200), nullable=True)  # For expenses: supplier name
     merchant: Mapped[str | None] = mapped_column(String(200), nullable=True)  # Merchant/vendor alternative field
@@ -219,7 +241,7 @@ class InvoiceLine(Base):
     # Link to inventory product for automatic stock tracking
     product_id: Mapped[int | None] = mapped_column(ForeignKey("product.id"), nullable=True, index=True)
     invoice: Mapped[Invoice] = relationship("Invoice", back_populates="lines")  # type: ignore
-    product: Mapped["Product | None"] = relationship("Product", foreign_keys=[product_id])  # type: ignore
+    product: Mapped[Product | None] = relationship("Product", foreign_keys=[product_id])  # type: ignore
 
 
 class User(Base):
@@ -300,7 +322,7 @@ class User(Base):
     # The separate Expense table is deprecated but kept for backward compatibility
     
     # Payment transactions for subscription billing
-    payment_transactions: Mapped[list["PaymentTransaction"]] = relationship(
+    payment_transactions: Mapped[list[PaymentTransaction]] = relationship(
         "PaymentTransaction",
         back_populates="user",
         foreign_keys="[PaymentTransaction.user_id]",
@@ -308,52 +330,52 @@ class User(Base):
     )  # type: ignore
     
     # OAuth tokens for SSO authentication
-    oauth_tokens: Mapped[list["OAuthToken"]] = relationship(
+    oauth_tokens: Mapped[list[OAuthToken]] = relationship(
         "OAuthToken",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore
     
     # Inventory management relationships
-    products: Mapped[list["Product"]] = relationship(
+    products: Mapped[list[Product]] = relationship(
         "Product",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore
     
-    product_categories: Mapped[list["ProductCategory"]] = relationship(
+    product_categories: Mapped[list[ProductCategory]] = relationship(
         "ProductCategory",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore
     
-    stock_movements: Mapped[list["StockMovement"]] = relationship(
+    stock_movements: Mapped[list[StockMovement]] = relationship(
         "StockMovement",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore
     
-    suppliers: Mapped[list["Supplier"]] = relationship(
+    suppliers: Mapped[list[Supplier]] = relationship(
         "Supplier",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore
     
-    purchase_orders: Mapped[list["PurchaseOrder"]] = relationship(
+    purchase_orders: Mapped[list[PurchaseOrder]] = relationship(
         "PurchaseOrder",
         back_populates="user",
         cascade="all, delete-orphan",
     )  # type: ignore
     
     # Referral system relationships
-    referral_code: Mapped["ReferralCode | None"] = relationship(
+    referral_code: Mapped[ReferralCode | None] = relationship(
         "ReferralCode",
         back_populates="user",
         uselist=False,
         cascade="all, delete-orphan",
     )  # type: ignore
     
-    referral_rewards: Mapped[list["ReferralReward"]] = relationship(
+    referral_rewards: Mapped[list[ReferralReward]] = relationship(
         "ReferralReward",
         back_populates="user",
         cascade="all, delete-orphan",

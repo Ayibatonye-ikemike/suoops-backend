@@ -13,15 +13,15 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
-    Boolean,
-    Index,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -29,7 +29,7 @@ from sqlalchemy.sql import func
 from app.db.base_class import Base
 
 if TYPE_CHECKING:
-    from app.models.models import User, InvoiceLine
+    from app.models.models import User
 
 
 def utcnow() -> dt.datetime:
@@ -72,8 +72,8 @@ class ProductCategory(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="product_categories")
-    products: Mapped[list["Product"]] = relationship(
+    user: Mapped[User] = relationship("User", back_populates="product_categories")
+    products: Mapped[list[Product]] = relationship(
         "Product",
         back_populates="category",
         cascade="all, delete-orphan",
@@ -122,7 +122,11 @@ class Product(Base):
     
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    track_stock: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")  # Whether to track inventory
+    track_stock: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+    )  # Whether to track inventory
     
     # Media
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -140,9 +144,9 @@ class Product(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="products")
-    category: Mapped["ProductCategory | None"] = relationship("ProductCategory", back_populates="products")
-    stock_movements: Mapped[list["StockMovement"]] = relationship(
+    user: Mapped[User] = relationship("User", back_populates="products")
+    category: Mapped[ProductCategory | None] = relationship("ProductCategory", back_populates="products")
+    stock_movements: Mapped[list[StockMovement]] = relationship(
         "StockMovement",
         back_populates="product",
         cascade="all, delete-orphan",
@@ -191,7 +195,10 @@ class Product(Base):
         """
         new_quantity = self.quantity_in_stock + quantity_change
         if new_quantity < 0:
-            raise ValueError(f"Insufficient stock. Current: {self.quantity_in_stock}, Requested change: {quantity_change}")
+            raise ValueError(
+                "Insufficient stock. Current: "
+                f"{self.quantity_in_stock}, Requested change: {quantity_change}"
+            )
         self.quantity_in_stock = new_quantity
 
 
@@ -227,14 +234,32 @@ class StockMovement(Base):
     quantity_after: Mapped[int] = mapped_column(Integer, nullable=False)  # Stock level after this movement
     
     # Financial tracking
-    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)  # Cost per unit at time of movement
-    total_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)  # Total cost of this movement
+    unit_cost: Mapped[Decimal | None] = mapped_column(
+        Numeric(15, 2),
+        nullable=True,
+    )  # Cost per unit at time of movement
+    total_cost: Mapped[Decimal | None] = mapped_column(
+        Numeric(15, 2),
+        nullable=True,
+    )  # Total cost of this movement
     
     # Reference to source document
-    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # 'invoice', 'purchase_order', 'adjustment'
-    reference_id: Mapped[str | None] = mapped_column(String(50), nullable=True)  # ID of the referenced document
-    invoice_line_id: Mapped[int | None] = mapped_column(ForeignKey("invoiceline.id"), nullable=True)  # Link to invoice line
-    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("supplier.id"), nullable=True)  # Link to supplier for purchases
+    reference_type: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )  # 'invoice', 'purchase_order', 'adjustment'
+    reference_id: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )  # ID of the referenced document
+    invoice_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("invoiceline.id"),
+        nullable=True,
+    )  # Link to invoice line
+    supplier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplier.id"),
+        nullable=True,
+    )  # Link to supplier for purchases
     
     # Additional info
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)  # Reason for adjustment
@@ -249,11 +274,14 @@ class StockMovement(Base):
     created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)  # Username or 'system'
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="stock_movements")
-    product: Mapped["Product"] = relationship("Product", back_populates="stock_movements")
+    user: Mapped[User] = relationship("User", back_populates="stock_movements")
+    product: Mapped[Product] = relationship("Product", back_populates="stock_movements")
 
     def __repr__(self) -> str:
-        return f"<StockMovement(id={self.id}, product_id={self.product_id}, type={self.movement_type}, qty={self.quantity})>"
+        return (
+            f"<StockMovement(id={self.id}, product_id={self.product_id}, "
+            f"type={self.movement_type}, qty={self.quantity})>"
+        )
 
 
 class Supplier(Base):
@@ -292,7 +320,7 @@ class Supplier(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="suppliers")
+    user: Mapped[User] = relationship("User", back_populates="suppliers")
 
     def __repr__(self) -> str:
         return f"<Supplier(id={self.id}, name='{self.name}')>"
@@ -357,9 +385,9 @@ class PurchaseOrder(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="purchase_orders")
-    supplier: Mapped["Supplier | None"] = relationship("Supplier")
-    lines: Mapped[list["PurchaseOrderLine"]] = relationship(
+    user: Mapped[User] = relationship("User", back_populates="purchase_orders")
+    supplier: Mapped[Supplier | None] = relationship("Supplier")
+    lines: Mapped[list[PurchaseOrderLine]] = relationship(
         "PurchaseOrderLine",
         back_populates="purchase_order",
         cascade="all, delete-orphan",
@@ -385,8 +413,8 @@ class PurchaseOrderLine(Base):
     quantity_received: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     
     # Relationships
-    purchase_order: Mapped["PurchaseOrder"] = relationship("PurchaseOrder", back_populates="lines")
-    product: Mapped["Product"] = relationship("Product")
+    purchase_order: Mapped[PurchaseOrder] = relationship("PurchaseOrder", back_populates="lines")
+    product: Mapped[Product] = relationship("Product")
 
     def __repr__(self) -> str:
         return f"<PurchaseOrderLine(id={self.id}, product_id={self.product_id}, qty={self.quantity})>"

@@ -3,6 +3,8 @@ import secrets
 from fastapi.testclient import TestClient
 
 from app.api.main import app
+from app.db.session import get_db
+from app.models import models
 from app.services.otp_service import OTPService
 
 
@@ -24,6 +26,14 @@ def _auth_client() -> tuple[TestClient, str]:
     otp = _extract_otp(phone, "signup")
     v = client.post("/auth/signup/verify", json={"phone": phone, "otp": otp})
     assert v.status_code == 200, v.text
+
+    # Tax endpoints are premium-gated; upgrade the test user to a plan
+    # that includes tax features.
+    db = next(get_db())
+    user = db.query(models.User).filter(models.User.phone == phone).one()
+    user.plan = models.SubscriptionPlan.STARTER
+    db.commit()
+
     access = v.json()["access_token"]
     return client, access
 

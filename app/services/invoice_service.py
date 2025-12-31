@@ -6,16 +6,16 @@ from typing import TYPE_CHECKING
 from sqlalchemy.orm import Session
 
 from app.services.invoice_components import (
+    InventoryIntegrationMixin,
     InvoiceCreationMixin,
     InvoiceQueryMixin,
     InvoiceQuotaMixin,
     InvoiceStatusMixin,
-    InventoryIntegrationMixin,
 )
 
 if TYPE_CHECKING:
-    from app.services.pdf_service import PDFService
     from app.services.cache_service import InvoiceCacheRepository
+    from app.services.pdf_service import PDFService
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +56,11 @@ def build_invoice_service(db: Session, user_id: int | None = None) -> InvoiceSer
     Returns:
         InvoiceService configured with PDF generation and optional caching
     """
+    from app.core.config import settings
+    from app.db.redis_client import get_redis_client
+    from app.services.cache_service import InvoiceCacheRepository
     from app.services.pdf_service import PDFService
     from app.storage.s3_client import S3Client
-    from app.services.cache_service import InvoiceCacheRepository
-    from app.db.redis_client import get_redis_client
-    from app.core.config import settings
 
     pdf = PDFService(S3Client())
     

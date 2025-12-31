@@ -10,10 +10,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.api.routes_auth import get_current_user_id
+from app.db.session import get_db
+from app.metrics import compliance_check_record, tax_profile_updated
 from app.services.tax_service import TaxProfileService
-from app.metrics import tax_profile_updated, compliance_check_record
+
 from .schemas import TaxProfileUpdate
 
 logger = logging.getLogger(__name__)

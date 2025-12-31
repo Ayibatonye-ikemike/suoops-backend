@@ -3,6 +3,7 @@ Centralized Redis client manager with connection pooling.
 Prevents connection limit issues by reusing a single connection pool.
 """
 import logging
+
 import redis
 from redis.connection import ConnectionPool
 

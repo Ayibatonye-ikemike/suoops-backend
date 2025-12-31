@@ -16,7 +16,7 @@ Future Implementation Notes:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class NRSNotConfigured(Exception):
@@ -42,7 +42,7 @@ class NRSClient:
 
     # --- Public API (to be called by fiscalization / tax services) ---
 
-    def transmit_invoice(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def transmit_invoice(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Transmit a fiscalized invoice to NRS (stub).
 
         Args:
@@ -66,7 +66,7 @@ class NRSClient:
             "processing_mode": "simulated",
         }
 
-    def get_status(self, reference: str) -> Dict[str, Any]:
+    def get_status(self, reference: str) -> dict[str, Any]:
         """Fetch invoice transmission status (stub)."""
         if not self.config.enabled:
             return {"reference": reference, "status": "stubbed"}

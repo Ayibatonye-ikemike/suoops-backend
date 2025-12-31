@@ -5,7 +5,7 @@ import datetime as dt
 import logging
 from decimal import Decimal
 
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload
 
 from app import metrics
 from app.core.exceptions import MissingBankDetailsError
@@ -157,8 +157,8 @@ class InvoiceCreationMixin:
         return invoice
 
     def _queue_pdf_generation(self, invoice: models.Invoice, invoice_type: str, user: models.User) -> None:
-        from app.workers.tasks import generate_invoice_pdf_async
         from app.storage.s3_client import s3_client
+        from app.workers.tasks import generate_invoice_pdf_async
 
         bank_details = None
         if invoice_type == "revenue":
@@ -220,12 +220,15 @@ class InvoiceCreationMixin:
         digits = "".join(ch for ch in phone if ch.isdigit())
         if not digits:
             return phone
-        # Convert to local Nigerian format (0xxx) for consistency
-        if digits.startswith("234") and len(digits) > 3:
-            return "0" + digits[3:]
-        elif digits.startswith("0"):
-            return digits
-        # For other formats, return as-is
+        # Canonicalize Nigerian numbers to +234XXXXXXXXXX for storage.
+        # Accept: +2348012345678, 2348012345678, 08012345678, 8012345678
+        if digits.startswith("234") and len(digits) == 13:
+            return "+" + digits
+        if digits.startswith("0") and len(digits) == 11:
+            return "+234" + digits[1:]
+        if len(digits) == 10 and digits[0] in {"7", "8", "9"}:
+            return "+234" + digits
+        # For other formats, keep original input.
         return phone
 
     def _get_or_create_customer(
@@ -238,11 +241,11 @@ class InvoiceCreationMixin:
         phone_candidates = set()
         if normalized_phone:
             phone_candidates.add(normalized_phone)
-            # Also check international formats in case old records exist
-            if normalized_phone.startswith("0"):
-                intl = "234" + normalized_phone[1:]
-                phone_candidates.add(intl)
-                phone_candidates.add("+" + intl)
+            # Also check legacy/local formats in case old records exist
+            if normalized_phone.startswith("+234") and len(normalized_phone) == 14:
+                digits_only = normalized_phone[1:]
+                phone_candidates.add(digits_only)  # 234XXXXXXXXXX
+                phone_candidates.add("0" + digits_only[3:])  # 0XXXXXXXXXX
             phone_candidates.add(phone)  # Original input too
         
         q = self.db.query(models.Customer).filter(models.Customer.name == name)

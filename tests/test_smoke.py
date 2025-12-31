@@ -84,11 +84,11 @@ def test_invoice_detail_status_flow():
 
     status_update = client.patch(
         f"/invoices/{invoice_id}",
-        json={"status": "failed"},
+        json={"status": "cancelled"},
         headers=headers,
     )
     assert status_update.status_code == 200, status_update.text
-    assert status_update.json()["status"] == "failed"
+    assert status_update.json()["status"] == "cancelled"
 
     bad_status = client.patch(
         f"/invoices/{invoice_id}",
@@ -118,7 +118,8 @@ def test_public_invoice_confirmation_flow():
 
     public_view = client.get(f"/public/invoices/{invoice_id}")
     assert public_view.status_code == 200, public_view.text
-    assert public_view.json()["status"] == "pending"
+    # Without customer phone/email, invoice starts in awaiting_confirmation (manual payment tracking).
+    assert public_view.json()["status"] == "awaiting_confirmation"
 
     confirm_resp = client.post(f"/public/invoices/{invoice_id}/confirm-transfer")
     assert confirm_resp.status_code == 200, confirm_resp.text

@@ -14,20 +14,20 @@ import datetime as dt
 import logging
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.models import User
 from app.models.referral_models import (
-    ReferralCode,
+    REFERRAL_THRESHOLDS,
     Referral,
+    ReferralCode,
     ReferralReward,
-    ReferralType,
     ReferralStatus,
+    ReferralType,
     RewardStatus,
     generate_referral_code,
-    REFERRAL_THRESHOLDS,
 )
-from app.models.models import User, SubscriptionPlan
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -81,7 +81,7 @@ class ReferralService:
         return self.db.execute(
             select(ReferralCode)
             .where(ReferralCode.code == code.upper())
-            .where(ReferralCode.is_active == True)
+            .where(ReferralCode.is_active.is_(True))
         ).scalar_one_or_none()
 
     def validate_referral_code(self, code: str, referred_user_id: int) -> tuple[bool, str]:
@@ -271,7 +271,7 @@ class ReferralService:
                 .where(ReferralReward.user_id == user_id)
                 .where(ReferralReward.status == RewardStatus.PENDING)
                 .where(
-                    (ReferralReward.expires_at == None) |
+                        (ReferralReward.expires_at.is_(None)) |
                     (ReferralReward.expires_at > dt.datetime.now(dt.timezone.utc))
                 )
             ).scalars().all()

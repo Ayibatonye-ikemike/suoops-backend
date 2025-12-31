@@ -1,13 +1,13 @@
 """Monthly tax report & CSV/PDF endpoints."""
+from io import StringIO
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from io import StringIO
 
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
-from app.services.tax_service import TaxProfileService
-from app.services.tax_reporting_service import TaxReportingService
 from app.models.tax_models import MonthlyTaxReport
+from app.services.tax_reporting_service import TaxReportingService
 from app.storage.s3_client import s3_client
 
 router = APIRouter(prefix="/tax", tags=["tax-reports"])
@@ -23,7 +23,13 @@ def generate_monthly_tax_report(
     db: Session = Depends(get_db),
 ):
     # Use reporting service directly (profile service wrappers retained for backward compat)
-    report = TaxReportingService(db).generate_monthly_report(current_user_id, year, month, basis=basis, force_regenerate=force)
+    report = TaxReportingService(db).generate_monthly_report(
+        current_user_id,
+        year,
+        month,
+        basis=basis,
+        force_regenerate=force,
+    )
     return {
         "year": report.year,
         "month": report.month,
@@ -70,7 +76,13 @@ def download_monthly_tax_report_csv(
     ).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found. Generate first.")
-    refreshed = TaxReportingService(db).generate_monthly_report(current_user_id, year, month, basis=basis, force_regenerate=True)
+    refreshed = TaxReportingService(db).generate_monthly_report(
+        current_user_id,
+        year,
+        month,
+        basis=basis,
+        force_regenerate=True,
+    )
     buf = StringIO()
     headers = [
         "year","month","basis","assessable_profit","levy_amount","vat_collected",

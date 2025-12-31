@@ -5,16 +5,16 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, case
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models import models
 from app.models.schemas import (
-    RevenueMetrics,
-    InvoiceMetrics,
-    CustomerMetrics,
     AgingReport,
+    CustomerMetrics,
+    InvoiceMetrics,
     MonthlyTrend,
+    RevenueMetrics,
 )
 
 
@@ -105,6 +105,7 @@ def calculate_invoice_metrics(
             func.count(models.Invoice.id).label("total"),
             func.sum(case((models.Invoice.status == "paid", 1), else_=0)).label("paid"),
             func.sum(case((models.Invoice.status == "pending", 1), else_=0)).label("pending"),
+            func.sum(case((models.Invoice.status == "failed", 1), else_=0)).label("failed"),
             func.sum(case((models.Invoice.status == "awaiting_confirmation", 1), else_=0)).label("awaiting"),
             func.sum(case((models.Invoice.status == "cancelled", 1), else_=0)).label("cancelled"),
         )
@@ -120,6 +121,7 @@ def calculate_invoice_metrics(
     total = invoices.total or 0
     paid = invoices.paid or 0
     pending = invoices.pending or 0
+    failed = invoices.failed or 0
     awaiting = invoices.awaiting or 0
     cancelled = invoices.cancelled or 0
     
@@ -130,6 +132,7 @@ def calculate_invoice_metrics(
         total_invoices=total,
         paid_invoices=paid,
         pending_invoices=pending,
+        failed_invoices=failed,
         awaiting_confirmation=awaiting,
         cancelled_invoices=cancelled,
         conversion_rate=conversion_rate,

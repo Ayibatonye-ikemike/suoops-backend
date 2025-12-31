@@ -9,14 +9,15 @@ Flow:
 import logging
 import random
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.bot.whatsapp_client import WhatsAppClient
+from app.core.config import settings
 from app.db.session import get_db
 from app.models import models, schemas
-from app.core.config import settings
-from app.bot.whatsapp_client import WhatsAppClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
@@ -58,7 +59,7 @@ def request_phone_otp(
     existing = db.query(models.User).filter(
         models.User.phone == normalized_phone,
         models.User.id != current_user_id,
-        models.User.phone_verified == True,
+        models.User.phone_verified.is_(True),
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Phone number already in use")

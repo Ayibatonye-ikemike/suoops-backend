@@ -1,15 +1,12 @@
 """
 Referral API routes for managing referral codes, tracking referrals, and claiming rewards.
 """
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUserDep, DbDep
 from app.services.referral_service import ReferralService
-
 
 router = APIRouter(prefix="/referrals", tags=["Referrals"])
 
@@ -163,6 +160,7 @@ async def validate_referral_code(
     before the user completes registration.
     """
     from sqlalchemy import select
+
     from app.models.models import User
     from app.models.referral_models import ReferralCode
     
@@ -172,7 +170,7 @@ async def validate_referral_code(
     referral_code = db.execute(
         select(ReferralCode)
         .where(ReferralCode.code == code)
-        .where(ReferralCode.is_active == True)
+            .where(ReferralCode.is_active.is_(True))
     ).scalar_one_or_none()
     
     if not referral_code:

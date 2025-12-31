@@ -59,9 +59,12 @@ class InvoiceIntentProcessor:
         if quota_check.get("can_create") and 0 < balance <= 10:
             self.client.send_text(
                 sender, 
-                f"⚠️ Only {balance} invoices left!\n\n"
-                f"Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} for {quota_check.get('pack_size', 100)} invoices\n"
-                "Visit: suoops.com/dashboard/billing/purchase"
+                (
+                    f"⚠️ Only {balance} invoices left!\n\n"
+                    f"Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} "
+                    f"for {quota_check.get('pack_size', 100)} invoices\n"
+                    "Visit: suoops.com/dashboard/billing/purchase"
+                ),
             )
 
         if quota_check.get("can_create"):
@@ -72,7 +75,8 @@ class InvoiceIntentProcessor:
             "🚫 No Invoices Remaining!\n\n"
             f"Plan: {quota_check.get('plan', '').upper()}\n"
             f"Balance: {balance} invoices\n\n"
-            f"💳 Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} for {quota_check.get('pack_size', 100)} invoices\n\n"
+            f"💳 Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} "
+            f"for {quota_check.get('pack_size', 100)} invoices\n\n"
             "Visit suoops.com/dashboard/billing/purchase to buy more."
         )
         self.client.send_text(sender, limit_message)
@@ -164,7 +168,12 @@ class InvoiceIntentProcessor:
                     "💡 *TIP:* The amount must be at least ₦100"
                 )
             # Missing customer name
-            elif "customer" in error_msg or "name" in error_msg or not data.get("customer_name") or data.get("customer_name") == "Customer":
+            elif (
+                "customer" in error_msg
+                or "name" in error_msg
+                or not data.get("customer_name")
+                or data.get("customer_name") == "Customer"
+            ):
                 self.client.send_text(
                     sender,
                     "❌ Please include a customer name.\n\n"
@@ -254,10 +263,13 @@ class InvoiceIntentProcessor:
         no_contact_info: bool = False
     ) -> None:
         customer_name = getattr(invoice.customer, "name", "N/A") if invoice.customer else "N/A"
-        customer_phone = getattr(invoice.customer, "phone", None) if invoice.customer else None
         
         # Show appropriate status label
-        status_display = "Awaiting Payment Confirmation" if invoice.status == "awaiting_confirmation" else invoice.status.replace("_", " ").title()
+        status_display = (
+            "Awaiting Payment Confirmation"
+            if invoice.status == "awaiting_confirmation"
+            else invoice.status.replace("_", " ").title()
+        )
         
         business_message = (
             f"✅ Invoice {invoice.invoice_id} created!\n\n"
@@ -376,16 +388,38 @@ class InvoiceIntentProcessor:
             frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
             payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
             
-            logger.info("[TEMPLATE] Sending full invoice template to %s for invoice %s", customer_phone, invoice.invoice_id)
+            logger.info(
+                "[TEMPLATE] Sending full invoice template to %s for invoice %s",
+                customer_phone,
+                invoice.invoice_id,
+            )
             template_sent = self._send_full_invoice_template(
-                customer_phone, customer_name, invoice.invoice_id, amount_text, items_text,
-                bank_name, account_number, account_name, payment_link, template_name
+                customer_phone,
+                customer_name,
+                invoice.invoice_id,
+                amount_text,
+                items_text,
+                bank_name,
+                account_number,
+                account_name,
+                payment_link,
+                template_name,
             )
         else:
             # Fall back to basic template with CTA to reply
             items_with_cta = f"{items_text}. Reply 'Hi' to get payment details"
-            logger.info("[TEMPLATE] Sending basic template to %s for invoice %s", customer_phone, invoice.invoice_id)
-            template_sent = self._send_template(customer_phone, invoice.invoice_id, customer_name, amount_text, items_with_cta)
+            logger.info(
+                "[TEMPLATE] Sending basic template to %s for invoice %s",
+                customer_phone,
+                invoice.invoice_id,
+            )
+            template_sent = self._send_template(
+                customer_phone,
+                invoice.invoice_id,
+                customer_name,
+                amount_text,
+                items_with_cta,
+            )
         
         if template_sent:
             logger.info("[TEMPLATE] Template sent successfully to %s", customer_phone)
@@ -429,8 +463,9 @@ class InvoiceIntentProcessor:
         
         Returns True if the sender is a customer with recent invoices.
         """
-        from app.models import models
         import datetime as dt
+
+        from app.models import models
         
         # Normalize phone number for lookup - handle all Nigerian formats
         clean_digits = "".join(ch for ch in customer_phone if ch.isdigit())
@@ -465,7 +500,12 @@ class InvoiceIntentProcessor:
         
         # Get all customer IDs
         customer_ids = [c.id for c in customers]
-        logger.info("[OPTIN] Found %d customer record(s) for phone %s: %s", len(customers), customer_phone, customer_ids)
+        logger.info(
+            "[OPTIN] Found %d customer record(s) for phone %s: %s",
+            len(customers),
+            customer_phone,
+            customer_ids,
+        )
         
         # Mark all matching customers as opted in
         for customer in customers:
@@ -508,29 +548,25 @@ class InvoiceIntentProcessor:
             
             # issuer_id already resolved above
             if issuer_id is not None:
-                # They're both a customer AND a business - let them know about both roles
-                self.client.send_text(
-                    customer_phone,
-                    "👋 Hi there!\n\n"
-                    "📥 *As a customer:* No pending invoices at the moment.\n\n"
-                    "📤 *As a business:* You can create invoices!\n"
-                    "Example: `Invoice Joy 08012345678, 5000 wig`\n\n"
-                    "Type *help* for full guide."
-                )
+                # They're a registered business - let the greeting handler deal with them
+                # Return False so the adapter can send the appropriate business greeting
+                logger.info("[OPTIN] User is a business with no pending invoices, deferring to greeting")
+                return False
             else:
-                # Just a customer
+                # Just a customer with no pending invoices
                 self.client.send_text(
                     customer_phone,
-                    "👋 Thanks for your message! You don't have any pending invoices at the moment.\n\n"
-                    "You'll receive invoice notifications here when a business sends you one."
+                    "👋 Thanks for your message!\n\n"
+                    "No pending invoices right now. You'll get a notification here when a "
+                    "business sends you one."
                 )
             return True
         
         # Send payment details for recent invoices
         self.client.send_text(
             customer_phone,
-            f"👋 Thanks for your reply!\n\n"
-            f"📄 Here are your pending invoice(s):"
+            "👋 Thanks for your reply!\n\n"
+            "📄 Here are your pending invoice(s):"
         )
         
         # Send each invoice's payment details AND PDF
@@ -587,9 +623,9 @@ class InvoiceIntentProcessor:
         
         Returns True if handled (even if no invoice found - to prevent other processors).
         """
+
         from app.models import models
         from app.services.invoice_components.status import InvoiceStatusComponent
-        import datetime as dt
         
         # Normalize phone number for lookup - build all possible formats
         clean_digits = "".join(ch for ch in customer_phone if ch.isdigit())
@@ -675,14 +711,21 @@ class InvoiceIntentProcessor:
                 f"(₦{pending_invoice.amount:,.2f}) has been sent to the business.\n\n"
                 "📧 You'll receive your receipt once they verify the payment."
             )
-            logger.info("[PAID] Customer %s confirmed payment for invoice %s", customer_phone, pending_invoice.invoice_id)
+            logger.info(
+                "[PAID] Customer %s confirmed payment for invoice %s",
+                customer_phone,
+                pending_invoice.invoice_id,
+            )
             return True
             
         except Exception as exc:
             logger.error("[PAID] Failed to confirm transfer: %s", exc)
             self.client.send_text(
                 customer_phone,
-                "❌ Sorry, there was an error processing your payment confirmation. Please try again or contact the business."
+                (
+                    "❌ Sorry, there was an error processing your payment confirmation. "
+                    "Please try again or contact the business."
+                ),
             )
             return True
 
@@ -769,7 +812,11 @@ class InvoiceIntentProcessor:
         items_text: str,
     ) -> bool:
         template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
-        logger.info("[TEMPLATE] template_name=%s, language=%s", template_name, getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en_US"))
+        logger.info(
+            "[TEMPLATE] template_name=%s, language=%s",
+            template_name,
+            getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en_US"),
+        )
         if not template_name:
             logger.warning("[TEMPLATE] No template configured, skipping")
             return False
@@ -892,7 +939,7 @@ class InvoiceIntentProcessor:
             self.db.query(models.User)
             .filter(
                 models.User.phone.in_(list(candidates)),
-                models.User.phone_verified == True,  # Must be verified!
+                models.User.phone_verified.is_(True),  # Must be verified!
             )
             .first()
         )

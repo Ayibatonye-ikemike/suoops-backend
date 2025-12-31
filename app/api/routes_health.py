@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated
 import time
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.core.config import settings
 from app.storage.s3_client import s3_client
 from app.workers.celery_app import celery_app
 
@@ -100,5 +100,5 @@ async def ready(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
 @router.get("/sentry-debug")
 async def trigger_error():
     """Test endpoint to verify Sentry integration."""
-    division_by_zero = 1 / 0
+    raise ZeroDivisionError("Sentry test error")
     return {"message": "This should never be reached"}

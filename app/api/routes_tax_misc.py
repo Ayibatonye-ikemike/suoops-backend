@@ -1,17 +1,17 @@
 """Miscellaneous tax endpoints: config, levy, fiscalization status, alerts, invoice fiscalize."""
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
-from app.services.tax_service import TaxProfileService
-from app.services.tax_reporting_service import TaxReportingService
-from app.services.fiscalization_service import FiscalizationService
-from app.models.tax_models import MonthlyTaxReport
 from app.models.models import Invoice
+from app.services.fiscalization_service import FiscalizationService
+from app.services.tax_reporting_service import TaxReportingService
+from app.services.tax_service import TaxProfileService
 
 router = APIRouter(prefix="/tax", tags=["tax-misc"])
 
@@ -136,7 +136,11 @@ async def fiscalize_invoice(
         if not invoice:
             raise HTTPException(status_code=404, detail="Invoice not found")
         if invoice.is_fiscalized:
-            return {"message": "Invoice already fiscalized", "fiscal_code": invoice.fiscal_code, "status": "already_fiscalized"}
+            return {
+                "message": "Invoice already fiscalized",
+                "fiscal_code": invoice.fiscal_code,
+                "status": "already_fiscalized",
+            }
         service = FiscalizationService(db)
         fiscal_data = await service.fiscalize_invoice(invoice_id)
         return {

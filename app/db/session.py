@@ -1,11 +1,3 @@
-from contextlib import contextmanager
-from typing import Generator
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-
-from app.core.config import settings
-
 """Database engine setup.
 
 For test runs (ENV=test) we intentionally fallback to synchronous in-memory SQLite
@@ -14,6 +6,13 @@ This avoids needing a PostgreSQL driver (psycopg2/pg_config) for logic tests.
 """
 
 import os
+from contextlib import contextmanager
+from typing import Generator
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.core.config import settings
 
 raw_url = settings.DATABASE_URL
 

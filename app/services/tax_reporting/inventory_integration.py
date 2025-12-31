@@ -4,7 +4,7 @@ Provides Cost of Goods Sold (COGS) data from inventory
 system for accurate profit calculations in tax reports.
 """
 import logging
-from datetime import datetime, timezone, date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session

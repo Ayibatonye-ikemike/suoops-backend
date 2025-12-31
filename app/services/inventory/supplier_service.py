@@ -6,13 +6,14 @@ solely on supplier management.
 """
 from __future__ import annotations
 
-from typing import Sequence
 import logging
+from typing import Sequence
 
 from sqlalchemy.orm import Session
 
 from app.models.inventory_models import Supplier
 from app.models.inventory_schemas import SupplierCreate, SupplierUpdate
+
 from .base import InventoryServiceBase
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ class SupplierService(InventoryServiceBase):
         """List all suppliers."""
         query = self._db.query(Supplier).filter(Supplier.user_id == self._user_id)
         if not include_inactive:
-            query = query.filter(Supplier.is_active == True)
+            query = query.filter(Supplier.is_active.is_(True))
         return query.order_by(Supplier.name).all()
 
     def update(self, supplier_id: int, data: SupplierUpdate) -> Supplier | None:

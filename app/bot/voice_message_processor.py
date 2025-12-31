@@ -4,8 +4,8 @@ import logging
 from typing import Any, Callable
 
 from app.bot.invoice_intent_processor import InvoiceIntentProcessor
-from app.bot.whatsapp_client import WhatsAppClient
 from app.bot.nlp_service import NLPService
+from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
 from app.models import models
 

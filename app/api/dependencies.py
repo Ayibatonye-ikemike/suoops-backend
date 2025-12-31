@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 
-
 CurrentUserDep: TypeAlias = Annotated[int, Depends(get_current_user_id)]
 DbDep: TypeAlias = Annotated[Session, Depends(get_db)]
 

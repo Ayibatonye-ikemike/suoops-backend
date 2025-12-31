@@ -6,9 +6,9 @@ and COGS calculations. Follows SRP by focusing solely on stock movements.
 """
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Sequence
-import logging
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -19,6 +19,7 @@ from app.models.inventory_models import (
     StockMovementType,
 )
 from app.models.inventory_schemas import StockAdjustmentCreate
+
 from .base import InventoryServiceBase
 
 logger = logging.getLogger(__name__)
@@ -98,11 +99,11 @@ class StockMovementService(InventoryServiceBase):
 
         try:
             product.adjust_stock(-quantity)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Insufficient stock for product '{product.name}'. "
                 f"Available: {product.quantity_in_stock}, Requested: {quantity}"
-            )
+            ) from err
 
         quantity_after = product.quantity_in_stock
 
@@ -294,8 +295,8 @@ class StockMovementService(InventoryServiceBase):
             func.sum(Product.quantity_in_stock * func.coalesce(Product.cost_price, Decimal(0)))
         ).filter(
             Product.user_id == self._user_id,
-            Product.is_active == True,
-            Product.track_stock == True,
+            Product.is_active.is_(True),
+            Product.track_stock.is_(True),
         ).scalar() or Decimal(0)
 
     # ========================================================================

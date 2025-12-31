@@ -10,16 +10,16 @@ Sub-modules:
 - reporting_service: Main TaxReportingService class
 """
 from .computations import (
-    PIT_BANDS,
     CIT_THRESHOLDS,
-    compute_personal_income_tax,
-    compute_company_income_tax,
-    compute_revenue_by_date_range,
-    compute_expenses_by_date_range,
+    PIT_BANDS,
     compute_actual_profit_by_date_range,
+    compute_company_income_tax,
+    compute_expenses_by_date_range,
+    compute_personal_income_tax,
+    compute_revenue_by_date_range,
 )
-from .period_utils import calculate_period_range
 from .inventory_integration import get_inventory_cogs
+from .period_utils import calculate_period_range
 from .reporting_service import TaxReportingService
 
 __all__ = [

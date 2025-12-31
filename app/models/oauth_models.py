@@ -14,14 +14,14 @@ Security:
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey, Index
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.db.base_class import Base
 
 if TYPE_CHECKING:
-    from app.models.models import User
+    pass
 
 
 class OAuthToken(Base):

@@ -45,8 +45,6 @@ from app.models.inventory_models import (
     Supplier,
 )
 from app.models.inventory_schemas import (
-    ProductCategoryCreate as CategoryCreate,
-    ProductCategoryUpdate as CategoryUpdate,
     InventorySummary,
     LowStockAlert,
     ProductCreate,
@@ -54,6 +52,12 @@ from app.models.inventory_schemas import (
     StockAdjustmentCreate,
     SupplierCreate,
     SupplierUpdate,
+)
+from app.models.inventory_schemas import (
+    ProductCategoryCreate as CategoryCreate,
+)
+from app.models.inventory_schemas import (
+    ProductCategoryUpdate as CategoryUpdate,
 )
 
 from .analytics_service import InventoryAnalyticsService

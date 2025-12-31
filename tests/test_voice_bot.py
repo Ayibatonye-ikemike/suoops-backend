@@ -137,12 +137,15 @@ class TestWhatsAppVoiceIntegration:
 
         await handler.handle_incoming(voice_payload)
 
-        assert mock_client.send_text.call_count >= 2
-        error_calls = [
+        # Voice feature is disabled by default; handler should respond with guidance
+        # and should not attempt transcription.
+        assert mock_client.send_text.call_count >= 1
+        speech_service.transcribe_audio.assert_not_called()
+        guidance_calls = [
             c for c in mock_client.send_text.call_args_list
-            if "too short" in str(c)
+            if "unavailable" in str(c).lower()
         ]
-        assert error_calls
+        assert guidance_calls
 
 
 if __name__ == "__main__":

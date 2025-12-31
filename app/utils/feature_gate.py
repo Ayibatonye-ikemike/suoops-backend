@@ -14,12 +14,12 @@ Note: OCR feature has been removed to focus on core invoicing.
 """
 import datetime as dt
 import logging
+
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.models import models
-
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +158,25 @@ class FeatureGate:
             invoices_to_add, quantity, self.user_id, new_balance
         )
         return new_balance
+
+    def get_monthly_invoice_count(self) -> int:
+        """Return count of revenue invoices created in the current month.
+
+        This is primarily used for dashboards/analytics and legacy UI.
+        It does not affect invoice balance enforcement (which is balance-based).
+        """
+        now = dt.datetime.now(dt.timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        count = (
+            self.db.query(func.count(models.Invoice.id))
+            .filter(
+                models.Invoice.issuer_id == self.user_id,
+                models.Invoice.invoice_type == "revenue",
+                models.Invoice.created_at >= month_start,
+            )
+            .scalar()
+        )
+        return int(count or 0)
     
     def require_paid_plan(self, feature_name: str = "This feature") -> None:
         """

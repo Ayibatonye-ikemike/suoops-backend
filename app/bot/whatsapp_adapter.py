@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 from app.bot.expense_intent_processor import ExpenseIntentProcessor
 from app.bot.invoice_intent_processor import InvoiceIntentProcessor
 from app.bot.message_extractor import extract_message
+from app.bot.nlp_service import NLPService
 from app.bot.voice_message_processor import VoiceMessageProcessor
 from app.bot.whatsapp_client import WhatsAppClient
-from app.bot.nlp_service import NLPService
 
 logger = logging.getLogger(__name__)
 
@@ -36,44 +36,58 @@ class WhatsAppHandler:
         )
 
     async def handle_incoming(self, payload: dict[str, Any]) -> None:
-        message = extract_message(payload)
-        if not message:
-            logger.warning("Unsupported WhatsApp payload: %s", payload)
-            return
+        """Handle incoming WhatsApp webhook payload with robust error handling."""
+        try:
+            message = extract_message(payload)
+            if not message:
+                logger.warning("Unsupported WhatsApp payload: %s", payload)
+                return
 
-        sender = message.get("from")
-        if not sender:
-            logger.warning("Missing sender in message: %s", message)
-            return
+            sender = message.get("from")
+            if not sender:
+                logger.warning("Missing sender in message: %s", message)
+                return
 
-        msg_type = message.get("type", "text")
+            msg_type = message.get("type", "text")
 
-        if msg_type == "text":
-            await self._handle_text_message(sender, message)
-            return
-        
-        if msg_type == "interactive":
-            # Handle button clicks
-            await self._handle_interactive_message(sender, message)
-            return
+            if msg_type == "text":
+                await self._handle_text_message(sender, message)
+                return
+            
+            if msg_type == "interactive":
+                # Handle button clicks
+                await self._handle_interactive_message(sender, message)
+                return
 
-        if msg_type == "audio":
-            media_id = message.get("audio_id")
-            if media_id:
-                await self.voice_processor.process(sender, media_id, message)
-            return
-        
-        if msg_type == "image":
-            # Handle image messages (receipts)
-            await self._handle_image_message(sender, message)
-            return
+            if msg_type == "audio":
+                media_id = message.get("audio_id")
+                if media_id:
+                    await self.voice_processor.process(sender, media_id, message)
+                return
+            
+            if msg_type == "image":
+                # Handle image messages (receipts)
+                await self._handle_image_message(sender, message)
+                return
 
-        self.client.send_text(
-            sender,
-            "Sorry, I only support text messages, voice notes, and images.",
-        )
+            self.client.send_text(
+                sender,
+                "Sorry, I only support text messages, voice notes, and images.",
+            )
+        except Exception as exc:
+            logger.exception("Error handling WhatsApp message: %s", exc)
+            # Try to notify user of error - but don't fail if this also errors
+            try:
+                if sender:
+                    self.client.send_text(
+                        sender,
+                        "⚠️ Something went wrong. Please try again in a moment.",
+                    )
+            except Exception:
+                logger.exception("Failed to send error message to user")
 
     async def _handle_text_message(self, sender: str, message: dict[str, Any]) -> None:
+        """Handle text messages with comprehensive error handling."""
         text = message.get("text", "").strip()
         if not text:
             logger.info("Received empty text message from %s", sender)
@@ -88,13 +102,31 @@ class WhatsAppHandler:
                 logger.info("Handled payment confirmation from customer %s", sender)
                 return
 
-        # Check if this is a help/greeting message
-        help_keywords = {"help", "start", "menu", "guide", "how", "instructions"}
-        greeting_keywords = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening"}
+        # Separate help vs greeting for different responses
+        help_keywords = {"help", "menu", "guide", "how", "instructions", "commands"}
+        greeting_keywords = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "start"}
         optin_keywords = {"ok", "yes", "sure", "yea", "yeah", "yep", "👍", "okay"}
         
-        is_greeting = text_lower in greeting_keywords or text_lower in help_keywords
+        is_help = text_lower in help_keywords
+        is_greeting = text_lower in greeting_keywords
         is_optin = text_lower in optin_keywords
+        
+        # Handle explicit help command - give concise guide
+        if is_help:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._send_help_guide(sender)
+            else:
+                self.client.send_text(
+                    sender,
+                    "📖 *SuoOps Help*\n\n"
+                    "I help businesses send invoices via WhatsApp.\n\n"
+                    "📥 *Received an invoice?*\n"
+                    "Reply 'Hi' to get payment details.\n\n"
+                    "📤 *Want to send invoices?*\n"
+                    "Register free at suoops.com"
+                )
+            return
         
         # CUSTOMER OPT-IN CHECK FIRST: A person can be BOTH a business AND a customer
         # who received an invoice. Check for pending invoices first!
@@ -106,22 +138,20 @@ class WhatsAppHandler:
                 return  # Successfully handled, don't process further
         
         # If they're a registered business with NO pending customer invoices, 
-        # show business welcome
+        # show business welcome (short version for greetings)
         if is_greeting or is_optin:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
-                # This is a registered business - send welcome/help message
-                self._send_business_welcome(sender)
+                # This is a registered business - send short greeting
+                self._send_business_greeting(sender)
                 return
             else:
-                # Not a business and not a found customer - send generic response
+                # Not a business and not a found customer - send short response
                 self.client.send_text(
                     sender,
-                    "👋 Hi there!\n\n"
-                    "I'm the SuoOps invoice assistant.\n\n"
-                    "If you received an invoice, I'll send you the payment details shortly. "
-                    "Please make sure you're messaging from the same number the invoice was sent to.\n\n"
-                    "If you're a business looking to create invoices, please register at suoops.com first."
+                    "👋 Hi! I'm the SuoOps invoice assistant.\n\n"
+                    "📥 Received an invoice? I'll send payment details when it arrives.\n\n"
+                    "📤 Want to send invoices? Register free at suoops.com"
                 )
                 return
 
@@ -135,65 +165,65 @@ class WhatsAppHandler:
                 # This is a registered business trying to create an invoice
                 self.client.send_text(
                     sender,
-                    "🤔 I see you're trying to create an invoice, but I couldn't understand the format.\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "✅ *CORRECT FORMAT:*\n"
-                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
-                    "📱 *WITH PHONE NUMBER:*\n"
-                    "• `Invoice Joy 08012345678, 12000 wig`\n"
-                    "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n\n"
-                    "📝 *WITHOUT PHONE:*\n"
-                    "• `Invoice Joy 12000 wig`\n"
-                    "• `Invoice Mike 25000 consulting`\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "💡 *TIPS:*\n"
-                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    "• Start with the word 'Invoice'\n"
-                    "• Include customer name right after 'Invoice'\n"
-                    "• Add phone number (optional, but enables WhatsApp notifications)\n"
-                    "• Specify amount and item description\n"
-                    "• Type *help* for more examples"
+                    "🤔 I couldn't understand the format.\n\n"
+                    "✅ *Try:*\n"
+                    "`Invoice Joy 08012345678, 5000 wig`\n\n"
+                    "Type *help* for more examples."
                 )
                 return
         
         # Try expense processor first (checks if expense-related)
-        await self.expense_processor.handle(sender, parse, message)
+        try:
+            await self.expense_processor.handle(sender, parse, message)
+        except Exception as exc:
+            logger.exception("Error in expense processor: %s", exc)
         
         # Then try invoice processor
-        await self.invoice_processor.handle(sender, parse, message)
+        try:
+            await self.invoice_processor.handle(sender, parse, message)
+        except Exception as exc:
+            logger.exception("Error in invoice processor: %s", exc)
+            self.client.send_text(
+                sender,
+                "⚠️ Something went wrong creating your invoice. Please try again.",
+            )
     
-    def _send_business_welcome(self, sender: str) -> None:
-        """Send welcome/help message to a registered business user."""
-        welcome_message = (
-            "👋 *Welcome to SuoOps!*\n\n"
-            "I'm your WhatsApp invoice assistant. Here's how to use me:\n\n"
+    def _send_business_greeting(self, sender: str) -> None:
+        """Send short greeting to a returning business user."""
+        self.client.send_text(
+            sender,
+            "👋 Welcome back!\n\n"
+            "📝 *Create invoice:*\n"
+            "`Invoice Joy 08012345678, 5000 wig`\n\n"
+            "Type *help* for full guide."
+        )
+    
+    def _send_help_guide(self, sender: str) -> None:
+        """Send comprehensive help guide to a business user."""
+        help_message = (
+            "📖 *SuoOps Invoice Guide*\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "📝 *HOW TO CREATE AN INVOICE*\n"
+            "📝 *CREATE AN INVOICE*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Send a message in this format:\n"
-            "```Invoice [Customer Name] [Phone], [Amount] [Item]```\n\n"
+            "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
             "*Examples:*\n"
             "• `Invoice Joy 08012345678, 12000 wig`\n"
-            "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n\n"
+            "• `Invoice Ada 08098765432, 5000 braids, 2000 gel`\n"
+            "• `Invoice Mike 25000 consulting` (no phone)\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "📱 *WHAT HAPPENS NEXT*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "1️⃣ Your customer receives a WhatsApp message\n"
-            "2️⃣ When they reply, they get:\n"
-            "   • Payment details (your bank info)\n"
-            "   • Invoice PDF\n"
-            "   • Payment link\n\n"
-            "3️⃣ When they pay & confirm, you get notified!\n\n"
+            "1️⃣ Customer gets WhatsApp notification\n"
+            "2️⃣ They reply 'Hi' → get payment details + PDF\n"
+            "3️⃣ They pay & tap 'I've Paid' → you're notified!\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "💡 *TIPS*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "• Make sure your bank details are set up in your dashboard\n"
-            "• First-time customers need to reply before seeing payment info\n"
-            "• Type *help* anytime to see this guide\n\n"
-            "Ready? Send your first invoice! 🚀"
+            "• Set up bank details in your dashboard first\n"
+            "• Share the payment link if customer doesn't reply\n"
+            "• Track all invoices at suoops.com/dashboard"
         )
-        self.client.send_text(sender, welcome_message)
+        self.client.send_text(sender, help_message)
     
     async def _handle_interactive_message(self, sender: str, message: dict[str, Any]) -> None:
         """Handle interactive button clicks from WhatsApp."""

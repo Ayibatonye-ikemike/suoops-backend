@@ -4,7 +4,7 @@ Pure computation logic for Nigerian Personal Income Tax (PIT)
 and profit calculations. No database access in helper functions.
 """
 import logging
-from datetime import datetime, timezone, date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 

@@ -1,10 +1,10 @@
 """Utility helpers for consistent Redis TLS configuration."""
 from __future__ import annotations
 
+import ssl
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
-import ssl
 
 import certifi
 

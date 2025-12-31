@@ -8,7 +8,6 @@ NEW BILLING MODEL:
 """
 from __future__ import annotations
 
-import datetime as dt
 import logging
 from typing import TYPE_CHECKING
 
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 class InvoiceQuotaMixin:
     """Provides invoice balance utilities for invoice flows."""
 
-    db: "Session"
+    db: Session
     
     def _get_invoice_balance_safe(self, user) -> int:
         """Safely get invoice_balance, defaulting to 5 if column doesn't exist yet."""
@@ -46,7 +45,10 @@ class InvoiceQuotaMixin:
                 "invoice_balance": 0,
                 "pack_price": INVOICE_PACK_PRICE,
                 "pack_size": INVOICE_PACK_SIZE,
-                "message": f"No invoices remaining. Purchase a pack (₦{INVOICE_PACK_PRICE:,} for {INVOICE_PACK_SIZE} invoices).",
+                "message": (
+                    "No invoices remaining. Purchase a pack "
+                    f"(₦{INVOICE_PACK_PRICE:,} for {INVOICE_PACK_SIZE} invoices)."
+                ),
             }
 
         message = f"{balance} invoices remaining"

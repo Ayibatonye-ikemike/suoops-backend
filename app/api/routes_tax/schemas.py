@@ -4,7 +4,6 @@ Shared Pydantic schemas for tax-related routes.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -12,17 +11,17 @@ from pydantic import BaseModel, Field
 class TaxProfileUpdate(BaseModel):
     """Tax profile update request."""
 
-    annual_turnover: Optional[Decimal] = Field(
+    annual_turnover: Decimal | None = Field(
         None, ge=0, description="Annual turnover in Naira"
     )
-    fixed_assets: Optional[Decimal] = Field(
+    fixed_assets: Decimal | None = Field(
         None, ge=0, description="Fixed assets value in Naira"
     )
-    tin: Optional[str] = Field(None, max_length=20, description="Tax Identification Number")
-    vat_registration_number: Optional[str] = Field(
+    tin: str | None = Field(None, max_length=20, description="Tax Identification Number")
+    vat_registration_number: str | None = Field(
         None, max_length=20, description="VAT registration number"
     )
-    vat_registered: Optional[bool] = Field(None, description="VAT registration status")
+    vat_registered: bool | None = Field(None, description="VAT registration status")
 
 
 class FiscalizationStatus(BaseModel):

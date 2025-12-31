@@ -1,14 +1,15 @@
 """Tax profile & small business endpoints split from routes_tax.py for modularity.
 Requires STARTER or PRO plan for access.
 """
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
 from decimal import Decimal
 from typing import Optional
 
-from app.db.session import get_db
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
 from app.api.routes_auth import get_current_user_id
+from app.db.session import get_db
 from app.services.tax_service import TaxProfileService
 from app.utils.feature_gate import require_plan_feature
 

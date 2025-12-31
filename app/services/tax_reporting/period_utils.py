@@ -3,7 +3,7 @@
 Provides functions for calculating date ranges for different
 tax reporting periods: day, week, month, year.
 """
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional, Tuple
 
 

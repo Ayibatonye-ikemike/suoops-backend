@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from .fiscalization import router as fiscalization_router
 from .profile import router as profile_router
 from .reports import router as reports_router
 from .vat import router as vat_router
-from .fiscalization import router as fiscalization_router
 
 # Main router with /tax prefix
 router = APIRouter(prefix="/tax", tags=["tax"])

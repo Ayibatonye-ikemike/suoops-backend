@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Mapping
+from typing import Any
 
 _AUDIT_LOG_PATH = os.getenv("AUDIT_LOG_FILE", "storage/audit.log")
 _logger = logging.getLogger("audit")

@@ -10,10 +10,10 @@ Sub-modules:
 """
 from fastapi import APIRouter
 
+from .constants import PLAN_PRICES
+from .history import router as history_router
 from .initialize import router as initialize_router
 from .verify import router as verify_router
-from .history import router as history_router
-from .constants import PLAN_PRICES
 
 # Create main router and include sub-routers
 router = APIRouter()

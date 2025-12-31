@@ -2,14 +2,14 @@ import hashlib
 import hmac
 import json
 import logging
-from typing import Annotated, TypeAlias
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
+from app.api.rate_limit import RATE_LIMITS, limiter
 from app.core.config import settings
-from app.api.rate_limit import limiter, RATE_LIMITS
 from app.db.session import get_db
 from app.models import models
 from app.queue import whatsapp_queue
@@ -184,7 +184,7 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
         user.invoice_balance += invoices_to_add
     
     # Update payment transaction if exists
-    from app.models.payment_models import PaymentTransaction, PaymentStatus
+    from app.models.payment_models import PaymentStatus, PaymentTransaction
     transaction = (
         db.query(PaymentTransaction)
         .filter(PaymentTransaction.reference == reference)

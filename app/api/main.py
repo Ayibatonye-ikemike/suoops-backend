@@ -1,51 +1,50 @@
+import logging
+from contextlib import asynccontextmanager
+
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-from sentry_sdk.integrations.redis import RedisIntegration
+from starlette.requests import Request
+from starlette.types import ASGIApp
 
-from app.api.rate_limit import limiter, increment_rate_limit_exceeded, rate_limit_stats
+from app.api.rate_limit import increment_rate_limit_exceeded, limiter
+from app.api.routes_admin import router as admin_router
+from app.api.routes_admin_auth import router as admin_auth_router
 from app.api.routes_analytics import router as analytics_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_expense import router as expense_router
 from app.api.routes_health import router as health_router
+from app.api.routes_inventory import router as inventory_router
 from app.api.routes_invoice import router as invoice_router
 from app.api.routes_invoice_public import router as invoice_public_router
 from app.api.routes_metrics import router as metrics_router
-from app.api.routes_admin import router as admin_router
 from app.api.routes_oauth import router as oauth_router
 from app.api.routes_ocr import router as ocr_router
+from app.api.routes_referral import router as referral_router
 from app.api.routes_subscription import router as subscription_router
+from app.api.routes_support import router as support_router
 from app.api.routes_tax_main import router as tax_router
+from app.api.routes_team import router as team_router
+from app.api.routes_telemetry import router as telemetry_router
 from app.api.routes_user import router as user_router
+from app.api.routes_user_bank import router as user_bank_router
 from app.api.routes_user_logo import router as user_logo_router
 from app.api.routes_user_phone import router as user_phone_router
-from app.api.routes_user_bank import router as user_bank_router
 from app.api.routes_webhooks import router as webhook_router
-from app.api.routes_telemetry import router as telemetry_router
-from app.api.routes_inventory import router as inventory_router
-from app.api.routes_team import router as team_router
-from app.api.routes_referral import router as referral_router
-from app.api.routes_support import router as support_router
-from app.api.routes_admin_auth import router as admin_auth_router
 from app.core.config import settings
+from app.core.csrf import CSRFMiddleware
+from app.core.errors import register_error_handlers
+from app.core.exceptions import SuoOpsException
 from app.core.logger import init_logging
 from app.core.monitoring import init_monitoring
-from app.core.errors import register_error_handlers
-from app.core.csrf import CSRFMiddleware
-from app.core.exceptions import SuoOpsException
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp, Receive, Scope, Send
-from starlette.requests import Request
-import uuid
-import logging
 
 
 async def _rate_limit_handler(request, exc: RateLimitExceeded):
@@ -131,6 +130,20 @@ def create_app() -> FastAPI:
             send_default_pii=True,
         )
     
+    # Lifespan replaces deprecated on_event startup/shutdown
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        from app.api.routes_admin_auth import init_default_admin
+        init_default_admin()
+        try:
+            yield
+        finally:
+            try:
+                from app.db.redis_client import close_redis_pool
+                close_redis_pool()
+            except Exception:
+                pass
+
     # Disable debug mode and interactive docs in production for security
     is_production = settings.ENV.lower() == "prod"
     app = FastAPI(
@@ -139,6 +152,7 @@ def create_app() -> FastAPI:
         docs_url=None if is_production else "/docs",
         redoc_url=None if is_production else "/redoc",
         openapi_url=None if is_production else "/openapi.json",
+        lifespan=lifespan,
     )
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
@@ -186,21 +200,6 @@ def create_app() -> FastAPI:
     app.include_router(admin_auth_router, tags=["admin-auth"])
     app.include_router(admin_router)
     app.include_router(health_router)
-    
-    # Initialize default admin on startup
-    @app.on_event("startup")
-    async def startup_event():
-        from app.api.routes_admin_auth import init_default_admin
-        init_default_admin()
-    
-    # Register shutdown handler to close Redis pool
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        try:
-            from app.db.redis_client import close_redis_pool
-            close_redis_pool()
-        except Exception:
-            pass
     
     return app
 

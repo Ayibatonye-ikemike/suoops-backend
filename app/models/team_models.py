@@ -69,19 +69,19 @@ class Team(Base):
     max_members: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
     
     # Relationships
-    admin_user: Mapped["User"] = relationship(
+    admin_user: Mapped[User] = relationship(
         "User",
         foreign_keys=[admin_user_id],
         backref="owned_team"
     )
     
-    members: Mapped[list["TeamMember"]] = relationship(
+    members: Mapped[list[TeamMember]] = relationship(
         "TeamMember",
         back_populates="team",
         cascade="all, delete-orphan",
     )
     
-    invitations: Mapped[list["TeamInvitation"]] = relationship(
+    invitations: Mapped[list[TeamInvitation]] = relationship(
         "TeamInvitation",
         back_populates="team",
         cascade="all, delete-orphan",
@@ -131,8 +131,8 @@ class TeamMember(Base):
     )
     
     # Relationships
-    team: Mapped["Team"] = relationship("Team", back_populates="members")
-    user: Mapped["User"] = relationship("User", backref="team_memberships")
+    team: Mapped[Team] = relationship("Team", back_populates="members")
+    user: Mapped[User] = relationship("User", backref="team_memberships")
 
 
 class TeamInvitation(Base):
@@ -202,8 +202,8 @@ class TeamInvitation(Base):
     )
     
     # Relationships
-    team: Mapped["Team"] = relationship("Team", back_populates="invitations")
-    invited_by: Mapped["User | None"] = relationship(
+    team: Mapped[Team] = relationship("Team", back_populates="invitations")
+    invited_by: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[invited_by_user_id]
     )

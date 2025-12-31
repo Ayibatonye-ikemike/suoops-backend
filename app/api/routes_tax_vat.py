@@ -1,12 +1,13 @@
 """VAT endpoints split from routes_tax.py."""
 from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
-from app.services.vat_service import VATService
 from app.services.fiscalization_service import VATCalculator
+from app.services.vat_service import VATService
 
 router = APIRouter(prefix="/tax", tags=["tax-vat"])
 

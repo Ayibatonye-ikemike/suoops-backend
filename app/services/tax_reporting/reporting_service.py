@@ -4,7 +4,7 @@ Main service class for generating and managing tax reports
 with multi-period aggregation support.
 """
 import logging
-from datetime import datetime, timezone, date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -14,12 +14,12 @@ from app.models.tax_models import MonthlyTaxReport
 from app.services.tax_service import TaxProfileService
 
 from .computations import (
-    compute_personal_income_tax,
-    compute_company_income_tax,
     compute_actual_profit_by_date_range,
+    compute_company_income_tax,
+    compute_personal_income_tax,
 )
-from .period_utils import calculate_period_range
 from .inventory_integration import get_inventory_cogs
+from .period_utils import calculate_period_range
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ class TaxReportingService:
         end_date: date,
     ) -> dict:
         """Compute Company Income Tax (CIT) for PRO plan."""
-        from app.models.models import User, SubscriptionPlan
+        from app.models.models import SubscriptionPlan, User
         
         user = self.db.query(User).filter(User.id == user_id).first()
         user_plan = user.plan if user else SubscriptionPlan.FREE
@@ -218,7 +218,7 @@ class TaxReportingService:
         basis: str,
     ) -> dict:
         """Compute VAT aggregation data for eligible plans."""
-        from app.models.models import Invoice, User, SubscriptionPlan
+        from app.models.models import Invoice, SubscriptionPlan, User
         
         user = self.db.query(User).filter(User.id == user_id).first()
         user_plan = user.plan if user else SubscriptionPlan.FREE

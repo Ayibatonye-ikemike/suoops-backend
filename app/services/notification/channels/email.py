@@ -16,12 +16,12 @@ if TYPE_CHECKING:  # pragma: no cover
 class EmailChannel:
     """Encapsulates email send operations used by NotificationService."""
 
-    def __init__(self, service: "NotificationService") -> None:
+    def __init__(self, service: NotificationService) -> None:
         self._service = service
 
     async def send_invoice(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_email: str,
         pdf_url: str | None,
         subject: str = "New Invoice",
@@ -30,7 +30,7 @@ class EmailChannel:
 
     async def send_receipt(
         self,
-        invoice: "models.Invoice",
+        invoice: models.Invoice,
         recipient_email: str,
         pdf_url: str | None,
     ) -> bool:

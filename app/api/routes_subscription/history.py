@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
-from app.models.payment_models import PaymentTransaction, PaymentStatus
+from app.models.payment_models import PaymentStatus, PaymentTransaction
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -50,7 +50,7 @@ async def get_payment_history(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid status filter. Choose: pending, success, failed, cancelled, refunded"
+                detail="Invalid status filter. Choose: pending, success, failed, cancelled, refunded"
             )
     
     # Get total count

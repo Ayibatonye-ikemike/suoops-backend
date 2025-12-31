@@ -1,21 +1,18 @@
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 import logging
-import ssl
+import threading
 
-import certifi
 import redis
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
-import threading
 
 try:  # pragma: no cover
     from prometheus_client import Counter
     _PROM_RATE_LIMIT = Counter("suoops_rate_limit_exceeded_events", "Rate limit exceeded events (handler invocations)")
 except Exception:  # noqa: BLE001
     _PROM_RATE_LIMIT = None
-from app.core.config import settings
 from app.api.rate_limit_strategies import get_plan_from_token
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +153,7 @@ def get_dynamic_limit(request: Request) -> str:
         async def create_invoice(...):
             ...
     """
-    from app.api.rate_limit_strategies import get_rate_limit_strategy, get_plan_from_token
+    from app.api.rate_limit_strategies import get_plan_from_token, get_rate_limit_strategy
     
     # Extract Bearer token
     auth_header = request.headers.get("Authorization", "")

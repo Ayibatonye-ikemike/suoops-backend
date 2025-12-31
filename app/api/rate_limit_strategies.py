@@ -125,7 +125,7 @@ def get_plan_from_token(token: str | None) -> str:
         return "free"
     
     try:
-        from app.core.security import decode_token, TokenType
+        from app.core.security import TokenType, decode_token
         payload = decode_token(token, expected_type=TokenType.ACCESS)
         return payload.get("plan", "free").lower()
     except Exception:

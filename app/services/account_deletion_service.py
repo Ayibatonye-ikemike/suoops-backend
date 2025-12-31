@@ -9,15 +9,15 @@ GDPR and data privacy compliance:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from sqlalchemy.orm import Session
-from sqlalchemy import delete, select
 
-from app.models.models import User, Invoice, InvoiceLine, Customer
-from app.models.referral_models import ReferralCode, Referral, ReferralReward
-from app.models.team_models import Team, TeamMember, TeamInvitation
-from app.models.expense import Expense
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
+
 from app.core.audit import log_audit_event
+from app.models.expense import Expense
+from app.models.models import Invoice, InvoiceLine, User
+from app.models.referral_models import Referral, ReferralCode, ReferralReward
+from app.models.team_models import Team, TeamMember
 
 logger = logging.getLogger(__name__)
 

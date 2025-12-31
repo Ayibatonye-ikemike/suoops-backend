@@ -7,8 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Expense Categories
 ExpenseCategoryType = Literal[
@@ -77,8 +76,7 @@ class ExpenseOut(ExpenseBase):
     created_at: datetime
     updated_at: datetime | None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ExpenseSummary(BaseModel):

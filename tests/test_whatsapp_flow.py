@@ -213,7 +213,7 @@ class TestWhatsAppThreeWayFlow:
         db_session,
         whatsapp_voice_payload
     ):
-        """Voice note messages should create invoices after transcription."""
+        """Voice notes are currently disabled; bot should guide user to text."""
 
         mock_transcribe.return_value = (
             "invoice jane doe zero eight zero eight seven six five four three two one "
@@ -229,7 +229,7 @@ class TestWhatsAppThreeWayFlow:
         handler = WhatsAppHandler(mock_client, NLPService(), db_session)
         handler.handle_webhook(whatsapp_voice_payload)
 
-        mock_transcribe.assert_called_once()
+        mock_transcribe.assert_not_called()
         mock_client.send_text.assert_called()
         business_messages = [
             call.args
@@ -237,19 +237,7 @@ class TestWhatsAppThreeWayFlow:
             if call.args and call.args[0] == "+2348012345678"
         ]
         assert business_messages, "Expected at least one message to the business owner"
-        assert any("Invoice" in msg[1] for msg in business_messages)
-
-        from app.models.models import Invoice
-
-        invoice = (
-            db_session.query(Invoice)
-            .filter(Invoice.issuer_id == business_user.id)
-            .first()
-        )
-
-        assert invoice is not None
-        assert invoice.customer is not None
-        assert invoice.customer.phone == "+2348087654321"
+        assert any("currently unavailable" in msg[1].lower() for msg in business_messages)
 
     def test_unregistered_business_rejected(
         self,
@@ -268,12 +256,12 @@ class TestWhatsAppThreeWayFlow:
         assert "Unable to identify your business account" in message
         assert "suoops.com/dashboard/settings" in message
 
-    def test_missing_customer_phone_rejected(
+    def test_missing_customer_phone_allows_invoice_creation(
         self,
         business_user,
         db_session,
     ):
-        """Missing customer phone numbers should trigger validation help."""
+        """Invoices can be created without customer phone; user gets clear guidance."""
         mock_client = MagicMock(spec=WhatsAppClient)
         mock_client.send_template.return_value = False
 
@@ -307,9 +295,9 @@ class TestWhatsAppThreeWayFlow:
 
         mock_client.send_text.assert_called()
         message = mock_client.send_text.call_args[0][1]
-        assert "⚠️" in message
-        assert "customer's phone number" in message
-        assert "Example:" in message
+        assert "✅" in message
+        assert "no phone/email provided" in message.lower()
+        assert "mark paid" in message.lower()
 
 
 class TestPhoneExtraction:

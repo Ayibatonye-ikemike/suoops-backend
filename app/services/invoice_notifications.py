@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
 from sqlalchemy.orm import Session
 
 from app.models import models

@@ -67,6 +67,15 @@ class NLPService:
         "eight": "8",
         "nine": "9",
     }
+    
+    # Common Nigerian names for smarter extraction
+    COMMON_NAMES = {
+        "joy", "ada", "mike", "john", "mary", "grace", "blessing", "favour",
+        "chidi", "emeka", "ngozi", "chioma", "uche", "eze", "amara", "kemi",
+        "tunde", "segun", "bola", "funke", "yemi", "femi", "bukky", "tobi",
+        "dayo", "kunle", "sade", "wale", "ayo", "ola", "tola", "shade",
+        "monica", "peter", "paul", "james", "david", "sarah", "ruth", "esther",
+    }
 
     def parse_text(self, text: str, is_speech: bool = False) -> ParseResult:
         """
@@ -154,6 +163,48 @@ class NLPService:
         else:
             return '+234' + phone  # Add country code
     
+    def _extract_name_from_text(self, text: str) -> str:
+        """
+        Extract customer name from text when format is non-standard.
+        
+        Handles cases like 'Invoice 500, Monica fish' where amount comes before name.
+        Looks for known names or capitalized words that aren't amounts/items.
+        
+        Returns:
+            Extracted name or 'Customer' as fallback.
+        """
+        # Remove 'invoice' prefix and split
+        clean = re.sub(r"^invoice\s+", "", text.lower())
+        tokens = clean.replace(",", " ").split()
+        
+        # First pass: look for known common names
+        for token in tokens:
+            if token in self.COMMON_NAMES:
+                return token.capitalize()
+        
+        # Second pass: find first alphabetic token that's not a common item word
+        item_words = {
+            "wig", "hair", "braids", "gel", "shoe", "shoes", "shirt", "dress",
+            "bag", "phone", "laptop", "service", "consulting", "design", "food",
+            "fish", "rice", "item", "product", "goods", "delivery", "transport",
+        }
+        
+        for token in tokens:
+            # Skip if it's a number, phone-like, or common item word
+            if token.isdigit():
+                continue
+            if token.replace("+", "").replace("-", "").isdigit():
+                continue
+            if token in item_words:
+                continue
+            if len(token) < 2:
+                continue
+            # Found a potential name
+            if token.isalpha():
+                return token.capitalize()
+        
+        return "Customer"
+    
     def _extract_email(self, text: str) -> str | None:
         """
         Extract email address from text.
@@ -172,15 +223,31 @@ class NLPService:
         Extract invoice data including support for multiple items.
         
         Supported formats:
-            Single item:
+            Standard (name first):
                 "invoice Joy 08012345678, 12000 wig"
+                "invoice Joy 12000 wig"
+            
+            Alternate (amount first - common user mistake):
+                "invoice 500, Monica fish"
+                "invoice 12000 Joy wig"
             
             Multiple items (comma separated, amount before item):
                 "invoice Joy 08012345678, 2000 boxers, 5000 hair"
                 "invoice Joy 08012345678, 1000 wig, 2000 shoe, 4000 belt"
         """
         tokens = text.split()
-        name = tokens[1] if len(tokens) > 1 else "Customer"
+        
+        # Smart name extraction: check if second token looks like amount
+        # If so, look for name elsewhere in the text
+        name = "Customer"
+        if len(tokens) > 1:
+            second_token = tokens[1].replace(",", "").replace("₦", "").replace("ngn", "")
+            if second_token.isdigit() and len(second_token) >= 3:
+                # Amount came first - look for name after the comma or amount
+                name = self._extract_name_from_text(text)
+            else:
+                # Standard format - name is second token
+                name = tokens[1]
         
         # Extract phone number first so we can avoid treating it as amount
         phone = self._extract_phone(text)
@@ -246,8 +313,10 @@ class NLPService:
             2. Item first: "wig 1000, shoe 2000" (fallback)
         
         Examples:
-            "1000 wig, 2000 shoe" → [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
-            "wig 1000, shoe 2000" → [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
+            "1000 wig, 2000 shoe" →
+                [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
+            "wig 1000, shoe 2000" →
+                [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
         """
         lines = []
         
