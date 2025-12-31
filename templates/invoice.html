@@ -106,6 +106,9 @@
       {{ watermark_text }}
     </div>
     {% endif %}
+    {% if business_name %}
+    <p style="font-size: 18px; font-weight: bold; color: #0B3318; margin: 0 0 8px 0;">{{ business_name }}</p>
+    {% endif %}
     <h1>Invoice {{ invoice.invoice_id }}</h1>
     <p><strong>Customer:</strong> {{ invoice.customer.name }}</p>
     {% if invoice.customer.phone %}

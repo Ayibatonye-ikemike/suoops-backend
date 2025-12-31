@@ -277,10 +277,16 @@ class PDFService:
         if hasattr(invoice, 'created_by') and invoice.created_by:
             created_by_name = invoice.created_by.name
         
+        # Get business name from issuer
+        business_name = None
+        if hasattr(invoice, 'issuer') and invoice.issuer:
+            business_name = getattr(invoice.issuer, 'business_name', None)
+        
         return template.render(
             invoice=invoice,
             bank_details=bank_details,
             logo_url=logo_url,
+            business_name=business_name,
             customer_portal_url=customer_portal_url,
             qr_code=qr_code_data,
             watermark_text=watermark_text,
@@ -430,7 +436,11 @@ class PDFService:
             
             # Convert to base64
             img_base64 = base64.b64encode(image_data).decode('utf-8')
-            logger.info("Successfully fetched and encoded receipt image from %s (size: %d bytes)", receipt_url, len(image_data))
+            logger.info(
+                "Successfully fetched and encoded receipt image from %s (size: %d bytes)",
+                receipt_url,
+                len(image_data),
+            )
             return f"data:{mime_type};base64,{img_base64}"
             
         except Exception as e:  # noqa: BLE001

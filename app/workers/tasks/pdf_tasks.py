@@ -55,6 +55,7 @@ def generate_invoice_pdf_async(
                 db.query(Invoice)
                 .options(
                     joinedload(Invoice.customer),
+                    joinedload(Invoice.issuer),  # Load issuer for business name
                     joinedload(Invoice.created_by),  # Load creator for PDF
                     selectinload(Invoice.lines),
                 )
@@ -126,7 +127,19 @@ def generate_receipt_pdf_async(
 
     try:
         with session_scope() as db:
-            invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+            from sqlalchemy.orm import joinedload, selectinload
+            invoice = (
+                db.query(Invoice)
+                .options(
+                    joinedload(Invoice.customer),
+                    joinedload(Invoice.issuer),  # Load issuer for business name
+                    joinedload(Invoice.created_by),
+                    joinedload(Invoice.status_updated_by),
+                    selectinload(Invoice.lines),
+                )
+                .filter(Invoice.id == invoice_id)
+                .first()
+            )
 
             if not invoice:
                 logger.error("Invoice %s not found in database", invoice_id)
