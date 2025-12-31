@@ -24,6 +24,7 @@ from app.services.marketing_campaigns import (
     CampaignType,
     MarketingCampaignService,
     CAMPAIGN_TEMPLATES,
+    EMAIL_CAMPAIGNS,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ async def list_campaigns(
             "description": config["description"],
             "parameters": config["params"],
             "goal": config.get("goal", "Engage users"),
+            "channel": config.get("channel", "whatsapp"),  # Default to whatsapp
         }
         for campaign_type, config in CAMPAIGN_TEMPLATES.items()
     ]
@@ -310,6 +312,27 @@ async def get_campaign_candidates(
                         "id": u.id,
                         "name": u.name,
                         "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
+                        "signed_up": u.created_at.isoformat() if u.created_at else None,
+                    }
+                    for u in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.EMAIL_WHATSAPP_PROMOTION:
+            # Email campaign - show users without verified WhatsApp
+            candidates = service.get_whatsapp_unverified_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "channel": "email",
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "email": u.email[:3] + "***" + u.email[u.email.index("@"):] if u.email and "@" in u.email else u.email,
+                        "phone": u.phone if u.phone else "Not connected",
+                        "phone_verified": u.phone_verified,
                         "signed_up": u.created_at.isoformat() if u.created_at else None,
                     }
                     for u in candidates

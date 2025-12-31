@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unlock WhatsApp Invoicing</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #0B3318 0%, #0F766E 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 10px;
+            letter-spacing: -0.5px;
+        }
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: #ffffff;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tagline {
+            color: #E8F5EC;
+            font-size: 14px;
+            margin: 0;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .greeting {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a202c;
+            margin-bottom: 20px;
+        }
+        .message {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #4a5568;
+            margin-bottom: 25px;
+        }
+        .whatsapp-box {
+            background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+            border-radius: 16px;
+            padding: 28px;
+            margin: 30px 0;
+            text-align: center;
+            color: #ffffff;
+        }
+        .whatsapp-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        .whatsapp-title {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .whatsapp-subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .benefits-box {
+            background-color: #f8fafc;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 25px 0;
+        }
+        .benefits-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #0B3318;
+            margin-bottom: 16px;
+        }
+        .benefit-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 15px;
+            color: #4a5568;
+            margin-bottom: 14px;
+            line-height: 1.5;
+        }
+        .benefit-icon {
+            color: #25D366;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .steps-box {
+            background: linear-gradient(135deg, #E8F5EC 0%, #f0fdf4 100%);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 25px 0;
+            border: 1px solid #14B56A30;
+        }
+        .steps-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #0B3318;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 16px;
+        }
+        .step-number {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #14B56A 0%, #0F766E 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .step-text {
+            font-size: 14px;
+            color: #4a5568;
+            line-height: 1.5;
+        }
+        .step-text strong {
+            color: #0B3318;
+        }
+        .cta-container {
+            text-align: center;
+            margin: 35px 0;
+        }
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 16px 40px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
+            transition: all 0.2s ease;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(37, 211, 102, 0.4);
+        }
+        .secondary-cta {
+            display: inline-block;
+            background: linear-gradient(135deg, #14B56A 0%, #0F766E 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 14px 30px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 15px;
+        }
+        .phone-number-box {
+            background-color: #fff7ed;
+            border: 2px dashed #f97316;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 25px 0;
+            text-align: center;
+        }
+        .phone-number-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #c2410c;
+            margin-bottom: 10px;
+        }
+        .phone-number {
+            font-size: 22px;
+            font-weight: 700;
+            color: #0B3318;
+            letter-spacing: 1px;
+        }
+        .phone-hint {
+            font-size: 12px;
+            color: #9a3412;
+            margin-top: 8px;
+        }
+        .testimonial-box {
+            background-color: #f8fafc;
+            border-left: 4px solid #14B56A;
+            border-radius: 0 8px 8px 0;
+            padding: 20px;
+            margin: 25px 0;
+            font-style: italic;
+        }
+        .testimonial-text {
+            font-size: 15px;
+            color: #4a5568;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        .testimonial-author {
+            font-size: 13px;
+            color: #718096;
+            font-style: normal;
+            font-weight: 600;
+        }
+        .footer {
+            background-color: #E8F5EC;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #0F766E20;
+        }
+        .footer-text {
+            font-size: 14px;
+            color: #0F1E17;
+            margin-bottom: 15px;
+        }
+        .social-links {
+            margin: 20px 0;
+        }
+        .social-link {
+            display: inline-block;
+            margin: 0 10px;
+            color: #14B56A;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .social-link:hover {
+            color: #0F766E;
+        }
+        .copyright {
+            font-size: 12px;
+            color: #0F1E1780;
+            margin-top: 20px;
+        }
+        .unsubscribe {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 15px;
+        }
+        .unsubscribe a {
+            color: #6b7280;
+        }
+        @media only screen and (max-width: 600px) {
+            .email-container {
+                margin: 0;
+                border-radius: 0;
+            }
+            .header {
+                padding: 30px 20px;
+            }
+            .content {
+                padding: 30px 20px;
+            }
+            .cta-button {
+                padding: 14px 30px;
+                font-size: 15px;
+            }
+            .step-item {
+                gap: 12px;
+            }
+            .phone-number {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <span class="logo-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 12h6M9 16h6M9 8h6M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="#0B3318" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M16 4v4M8 4v4" stroke="#14B56A" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </span>
+                SuoOps
+            </div>
+            <p class="tagline">Professional Invoicing & Expense Management</p>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <div class="greeting">Hi {{ user_name }}! 👋</div>
+            
+            <p class="message">
+                We noticed you signed up for SuoOps but haven't connected your WhatsApp yet. 
+                You're missing out on the <strong>fastest way to create professional invoices</strong>!
+            </p>
+
+            <!-- WhatsApp Feature Box -->
+            <div class="whatsapp-box">
+                <div class="whatsapp-icon">📱💬</div>
+                <div class="whatsapp-title">Create Invoices via WhatsApp</div>
+                <div class="whatsapp-subtitle">Just send a message. We'll create your invoice in seconds!</div>
+            </div>
+
+            <!-- Benefits -->
+            <div class="benefits-box">
+                <div class="benefits-title">Why Use the WhatsApp Bot?</div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">⚡</span>
+                    <span><strong>10x Faster:</strong> Create invoices in seconds by just sending a message - no forms, no clicks</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">📸</span>
+                    <span><strong>Receipt Scanning:</strong> Snap a photo of any receipt and we'll extract all the details automatically</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">🔔</span>
+                    <span><strong>Instant Notifications:</strong> Get payment alerts and reminders directly in WhatsApp</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">📊</span>
+                    <span><strong>Quick Reports:</strong> Ask for your daily sales or expense summary anytime</span>
+                </div>
+                <div class="benefit-item">
+                    <span class="benefit-icon">🌍</span>
+                    <span><strong>Works Anywhere:</strong> No internet? No problem. Works even on slow connections</span>
+                </div>
+            </div>
+
+            <!-- Testimonial -->
+            <div class="testimonial-box">
+                <div class="testimonial-text">
+                    "I create 10+ invoices daily just by chatting. It's like having an assistant in my pocket!"
+                </div>
+                <div class="testimonial-author">— Happy SuoOps User</div>
+            </div>
+
+            <!-- How to Activate -->
+            <div class="steps-box">
+                <div class="steps-title">🚀 Get Started in 3 Simple Steps</div>
+                <div class="step-item">
+                    <div class="step-number">1</div>
+                    <div class="step-text">
+                        <strong>Log in to SuoOps</strong> at suoops.com and go to your Dashboard
+                    </div>
+                </div>
+                <div class="step-item">
+                    <div class="step-number">2</div>
+                    <div class="step-text">
+                        <strong>Click "Connect WhatsApp"</strong> in the settings or verification section
+                    </div>
+                </div>
+                <div class="step-item">
+                    <div class="step-number">3</div>
+                    <div class="step-text">
+                        <strong>Enter your phone number</strong> and verify with the OTP we send you
+                    </div>
+                </div>
+            </div>
+
+            <!-- Our WhatsApp Number -->
+            <div class="phone-number-box">
+                <div class="phone-number-title">📞 Our WhatsApp Number</div>
+                <div class="phone-number">+234 818 376 3636</div>
+                <div class="phone-hint">Save this number to your contacts!</div>
+            </div>
+
+            <!-- CTAs -->
+            <div class="cta-container">
+                <a href="{{ dashboard_url }}" class="cta-button">Connect WhatsApp Now →</a>
+                <br>
+                <a href="{{ help_url }}" class="secondary-cta">Learn How to Use the Bot</a>
+            </div>
+
+            <p class="message" style="margin-top: 30px; font-size: 14px; text-align: center;">
+                Have questions? Just reply to this email or WhatsApp us at the number above!
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p class="footer-text">
+                Need help? Contact our support team at 
+                <a href="mailto:support@suoops.com" style="color: #14B56A; text-decoration: none;">support@suoops.com</a>
+            </p>
+            
+            <div class="social-links">
+                <a href="https://suoops.com" class="social-link">🌐 Website</a>
+                <a href="https://twitter.com/suoops" class="social-link">🐦 Twitter</a>
+                <a href="https://instagram.com/suoops" class="social-link">📸 Instagram</a>
+            </div>
+
+            <p class="copyright">
+                © {{ current_year }} SuoOps. All rights reserved.<br>
+                Professional Invoicing & Expense Management Platform
+            </p>
+
+            <p class="unsubscribe">
+                You received this email because you have a SuoOps account.<br>
+                <a href="{{ unsubscribe_url }}">Unsubscribe</a> from marketing emails
+            </p>
+        </div>
+    </div>
+</body>
+</html>
