@@ -44,6 +44,7 @@ class SingleUserCampaignRequest(BaseModel):
     campaign_type: CampaignType
     user_name: str = "there"
     remaining_invoices: int | None = None  # For low_balance_reminder
+    invoice_count: int | None = None  # For pro_upgrade
 
 
 class CampaignResponse(BaseModel):
@@ -93,6 +94,7 @@ async def list_campaigns(
             "template": config["template_name"],
             "description": config["description"],
             "parameters": config["params"],
+            "goal": config.get("goal", "Engage users"),
         }
         for campaign_type, config in CAMPAIGN_TEMPLATES.items()
     ]
@@ -195,15 +197,17 @@ async def send_to_single_user(
         
         service = MarketingCampaignService(db)
         
-        extra_params = None
+        extra_params = {}
         if request.remaining_invoices is not None:
-            extra_params = {"remaining_invoices": str(request.remaining_invoices)}
+            extra_params["remaining_invoices"] = str(request.remaining_invoices)
+        if request.invoice_count is not None:
+            extra_params["invoice_count"] = str(request.invoice_count)
         
         result = service.send_to_single_user(
             phone=request.phone,
             campaign_type=request.campaign_type,
             user_name=request.user_name,
-            extra_params=extra_params,
+            extra_params=extra_params if extra_params else None,
         )
         
         # send_to_single_user now returns a dict
@@ -276,6 +280,58 @@ async def get_campaign_candidates(
                         "invoice_balance": balance,
                     }
                     for u, balance in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.PRO_UPGRADE:
+            candidates = service.get_pro_upgrade_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
+                        "plan": u.plan.value if u.plan else "free",
+                        "invoice_count": count,
+                    }
+                    for u, count in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.INVOICE_PACK_PROMO:
+            candidates = service.get_zero_balance_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
+                        "invoice_balance": u.invoice_balance,
+                    }
+                    for u in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.FIRST_INVOICE_FOLLOWUP:
+            candidates = service.get_first_invoice_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
+                        "signed_up": u.created_at.isoformat() if u.created_at else None,
+                    }
+                    for u in candidates
                 ],
             }
         
