@@ -22,9 +22,15 @@ class NLPService:
     
     AMOUNT_PATTERN = re.compile(r"(?:₦|ngn)?\s?([0-9]{3,}(?:,[0-9]{3})*|[0-9]+)(?:\.[0-9]{1,2})?")
     
-    # Nigerian phone number patterns
-    # Matches: +2348012345678, 2348012345678, 08012345678, 8012345678
-    PHONE_PATTERN = re.compile(r"(\+?234[7-9]\d{9}|\+?[7-9]\d{9}|0[7-9]\d{9})")
+    # Phone number patterns - supports Nigerian and international formats
+    # Nigerian: +2348012345678, 2348012345678, 08012345678, 8012345678
+    # International: +1234567890, +447123456789, +33612345678, etc.
+    NIGERIAN_PHONE_PATTERN = re.compile(r"(\+?234[7-9]\d{9}|\+?[7-9]\d{9}|0[7-9]\d{9})")
+    INTL_PHONE_PATTERN = re.compile(r"(\+[1-9]\d{6,14})")
+    # Combined pattern for extraction - Nigerian first (more specific), then international
+    PHONE_PATTERN = re.compile(
+        r"(\+?234[7-9]\d{9}|0[7-9]\d{9}|[7-9]\d{9}|\+[1-9]\d{6,14})"
+    )
     
     # Email pattern
     # Matches: user@example.com, name.surname@company.co.uk
@@ -137,15 +143,20 @@ class NLPService:
     
     def _extract_phone(self, text: str) -> str | None:
         """
-        Extract Nigerian phone number from text.
+        Extract phone number from text - supports Nigerian and international formats.
         
-        Returns normalized phone number with +234 prefix or None if not found.
+        Returns normalized phone number with + prefix or None if not found.
         
-        Examples:
+        Nigerian Examples:
             "+2348012345678" → "+2348012345678"
             "2348012345678"  → "+2348012345678"
             "08012345678"    → "+2348012345678"
             "8012345678"     → "+2348012345678"
+        
+        International Examples:
+            "+14155551234"   → "+14155551234" (US)
+            "+447911123456"  → "+447911123456" (UK)
+            "+33612345678"   → "+33612345678" (France)
         """
         match = self.PHONE_PATTERN.search(text)
         if not match:
@@ -153,15 +164,21 @@ class NLPService:
         
         phone = match.group(1)
         
-        # Normalize to international format
-        if phone.startswith('+234'):
+        # If already has +, it's properly formatted
+        if phone.startswith('+'):
             return phone
-        elif phone.startswith('234'):
+        
+        # Check if it's a Nigerian number format
+        if phone.startswith('234') and len(phone) == 13:
             return '+' + phone
-        elif phone.startswith('0'):
-            return '+234' + phone[1:]  # Remove leading 0
-        else:
-            return '+234' + phone  # Add country code
+        elif phone.startswith('0') and len(phone) == 11 and phone[1] in '789':
+            return '+234' + phone[1:]  # Remove leading 0, add +234
+        elif len(phone) == 10 and phone[0] in '789':
+            return '+234' + phone  # Add +234 country code
+        
+        # For other international formats without +, return as-is with + prefix
+        # This handles cases like "14155551234" → "+14155551234"
+        return '+' + phone
     
     def _extract_name_from_text(self, text: str) -> str:
         """

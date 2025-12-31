@@ -320,6 +320,33 @@ class TestPhoneExtraction:
             extracted = nlp._extract_phone(text)
             assert extracted == expected_phone, f"Failed for: {text}"
 
+    def test_extract_international_phone_formats(self):
+        """Test extraction of international phone numbers"""
+        from app.bot.nlp_service import NLPService
+        
+        nlp = NLPService()
+        
+        test_cases = [
+            # US numbers
+            ("Invoice John +14155551234 100", "+14155551234"),
+            # UK numbers
+            ("Invoice Emma +447911123456 250", "+447911123456"),
+            # France numbers
+            ("Invoice Pierre +33612345678 500", "+33612345678"),
+            # Germany numbers
+            ("Invoice Hans +491512345678 300", "+491512345678"),
+            # India numbers
+            ("Invoice Raj +919876543210 150", "+919876543210"),
+            # Ghana numbers
+            ("Invoice Kofi +233201234567 200", "+233201234567"),
+            # South Africa numbers
+            ("Invoice Thabo +27821234567 400", "+27821234567"),
+        ]
+        
+        for text, expected_phone in test_cases:
+            extracted = nlp._extract_phone(text)
+            assert extracted == expected_phone, f"Failed for: {text}"
+
 
 class TestBusinessLookup:
     """Test business identification by phone number"""
