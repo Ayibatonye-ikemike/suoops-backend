@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Running Low on Invoices</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; }
+        .email-container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .header { background: linear-gradient(135deg, #0B3318 0%, #0F766E 100%); padding: 40px 30px; text-align: center; }
+        .logo { display: inline-flex; align-items: center; gap: 12px; font-size: 32px; font-weight: 700; color: #ffffff; margin-bottom: 10px; }
+        .tagline { color: #E8F5EC; font-size: 14px; margin: 0; }
+        .content { padding: 40px 30px; }
+        .greeting { font-size: 24px; font-weight: 600; color: #1a202c; margin-bottom: 20px; }
+        .message { font-size: 16px; line-height: 1.6; color: #4a5568; margin-bottom: 25px; }
+        .warning-box { background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border: 2px solid #f97316; border-radius: 16px; padding: 28px; margin: 30px 0; text-align: center; }
+        .warning-icon { font-size: 48px; margin-bottom: 15px; }
+        .warning-title { font-size: 22px; font-weight: 700; color: #c2410c; margin-bottom: 10px; }
+        .balance-number { font-size: 48px; font-weight: 700; color: #ea580c; }
+        .balance-label { font-size: 14px; color: #9a3412; }
+        .option-box { background-color: #f8fafc; border-radius: 12px; padding: 24px; margin: 20px 0; border: 2px solid #e2e8f0; }
+        .option-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .option-name { font-size: 18px; font-weight: 600; color: #0B3318; }
+        .option-price { font-size: 18px; font-weight: 700; color: #14B56A; }
+        .option-description { font-size: 14px; color: #4a5568; margin-bottom: 12px; }
+        .benefit-item { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #4a5568; margin-bottom: 10px; }
+        .benefit-icon { color: #14B56A; font-size: 16px; flex-shrink: 0; }
+        .pro-option { background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); border: none; }
+        .pro-badge { background: #1a202c; color: #FFD700; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; margin-bottom: 10px; }
+        .cta-container { text-align: center; margin: 35px 0; }
+        .cta-button { display: inline-block; background: linear-gradient(135deg, #14B56A 0%, #0F766E 100%); color: #ffffff !important; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; margin: 5px; }
+        .secondary-btn { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
+        .footer { background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0; }
+        .footer-text { font-size: 13px; color: #718096; margin-bottom: 15px; }
+        .social-links { margin: 15px 0; }
+        .social-link { color: #14B56A; text-decoration: none; margin: 0 10px; font-size: 14px; }
+        .copyright { font-size: 12px; color: #a0aec0; margin-top: 15px; }
+        .unsubscribe { font-size: 11px; color: #a0aec0; margin-top: 15px; }
+        .unsubscribe a { color: #14B56A; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="logo">🧾 SuoOps</div>
+            <p class="tagline">Professional Invoicing & Expense Management</p>
+        </div>
+        <div class="content">
+            <h1 class="greeting">Hi {{ user_name }}!</h1>
+            
+            <div class="warning-box">
+                <div class="warning-icon">⚠️</div>
+                <div class="warning-title">Running Low on Invoices!</div>
+                <div class="balance-number">{{ remaining_invoices }}</div>
+                <div class="balance-label">invoices remaining</div>
+            </div>
+
+            <p class="message">Don't get caught short! Top up your invoice balance now so you can keep invoicing your customers without interruption.</p>
+
+            <div class="option-box">
+                <div class="option-header">
+                    <div class="option-name">📦 Buy Invoice Pack</div>
+                    <div class="option-price">₦2,500</div>
+                </div>
+                <div class="option-description">Get 100 more invoices instantly</div>
+                <div class="benefit-item"><span class="benefit-icon">✓</span><span>100 invoices added to your balance</span></div>
+                <div class="benefit-item"><span class="benefit-icon">✓</span><span>Never expires</span></div>
+                <div class="benefit-item"><span class="benefit-icon">✓</span><span>Instant activation</span></div>
+            </div>
+
+            <div class="option-box pro-option">
+                <div class="pro-badge">👑 BEST VALUE</div>
+                <div class="option-header" style="margin-top: 10px;">
+                    <div class="option-name" style="color: #1a202c;">🚀 Upgrade to Pro</div>
+                    <div class="option-price" style="color: #1a202c;">₦5,000/month</div>
+                </div>
+                <div class="option-description" style="color: #1a202c;">Never worry about invoice limits again!</div>
+                <div class="benefit-item" style="color: #1a202c;"><span class="benefit-icon" style="color: #1a202c;">✓</span><span><strong>UNLIMITED</strong> invoices forever</span></div>
+                <div class="benefit-item" style="color: #1a202c;"><span class="benefit-icon" style="color: #1a202c;">✓</span><span>Priority support</span></div>
+                <div class="benefit-item" style="color: #1a202c;"><span class="benefit-icon" style="color: #1a202c;">✓</span><span>Advanced analytics</span></div>
+            </div>
+
+            <div class="cta-container">
+                <a href="{{ pricing_url }}" class="cta-button">Top Up Now →</a>
+            </div>
+
+            <p class="message" style="margin-top: 30px; font-size: 14px; text-align: center;">
+                Questions? Reply to this email - we're happy to help!
+            </p>
+        </div>
+
+        <div class="footer">
+            <p class="footer-text">Need help? Contact us at <a href="mailto:support@suoops.com" style="color: #14B56A;">support@suoops.com</a></p>
+            <div class="social-links">
+                <a href="https://suoops.com" class="social-link">🌐 Website</a>
+                <a href="https://twitter.com/suoops4" class="social-link">🐦 Twitter</a>
+                <a href="https://instagram.com/suoops4" class="social-link">📸 Instagram</a>
+            </div>
+            <p class="copyright">© {{ current_year }} SuoOps. All rights reserved.</p>
+            <p class="unsubscribe">You received this email because you have a SuoOps account.<br><a href="{{ unsubscribe_url }}">Unsubscribe</a> from marketing emails</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thank You for Being a Pro User!</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; }
+        .email-container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .header { background: linear-gradient(135deg, #0B3318 0%, #0F766E 100%); padding: 40px 30px; text-align: center; }
+        .logo { display: inline-flex; align-items: center; gap: 12px; font-size: 32px; font-weight: 700; color: #ffffff; margin-bottom: 10px; }
+        .tagline { color: #E8F5EC; font-size: 14px; margin: 0; }
+        .content { padding: 40px 30px; }
+        .greeting { font-size: 24px; font-weight: 600; color: #1a202c; margin-bottom: 20px; }
+        .message { font-size: 16px; line-height: 1.6; color: #4a5568; margin-bottom: 25px; }
+        .pro-badge { background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); border-radius: 16px; padding: 28px; margin: 30px 0; text-align: center; color: #1a202c; }
+        .pro-title { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+        .benefits-box { background-color: #f8fafc; border-radius: 12px; padding: 24px; margin: 25px 0; }
+        .benefits-title { font-size: 16px; font-weight: 600; color: #0B3318; margin-bottom: 16px; }
+        .benefit-item { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; color: #4a5568; margin-bottom: 14px; line-height: 1.5; }
+        .benefit-icon { color: #14B56A; font-size: 20px; flex-shrink: 0; }
+        .cta-container { text-align: center; margin: 35px 0; }
+        .cta-button { display: inline-block; background: linear-gradient(135deg, #14B56A 0%, #0F766E 100%); color: #ffffff !important; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; }
+        .footer { background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0; }
+        .footer-text { font-size: 13px; color: #718096; margin-bottom: 15px; }
+        .social-links { margin: 15px 0; }
+        .social-link { color: #14B56A; text-decoration: none; margin: 0 10px; font-size: 14px; }
+        .copyright { font-size: 12px; color: #a0aec0; margin-top: 15px; }
+        .unsubscribe { font-size: 11px; color: #a0aec0; margin-top: 15px; }
+        .unsubscribe a { color: #14B56A; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="logo">🧾 SuoOps</div>
+            <p class="tagline">Professional Invoicing & Expense Management</p>
+        </div>
+        <div class="content">
+            <h1 class="greeting">Hi {{ user_name }}! 🌟</h1>
+            <p class="message">Thank you for being a Pro user! We truly appreciate your trust in SuoOps for your business invoicing needs.</p>
+            
+            <div class="pro-badge">
+                <div style="font-size: 48px; margin-bottom: 15px;">👑</div>
+                <div class="pro-title">You're a Pro!</div>
+                <div style="font-size: 14px;">Enjoy unlimited invoices & premium features</div>
+            </div>
+
+            <div class="benefits-box">
+                <div class="benefits-title">Your Pro Benefits</div>
+                <div class="benefit-item"><span class="benefit-icon">✅</span><span><strong>Unlimited invoices</strong> - create as many as you need</span></div>
+                <div class="benefit-item"><span class="benefit-icon">✅</span><span><strong>Priority support</strong> - we're here when you need us</span></div>
+                <div class="benefit-item"><span class="benefit-icon">✅</span><span><strong>Advanced analytics</strong> - insights into your business</span></div>
+                <div class="benefit-item"><span class="benefit-icon">✅</span><span><strong>WhatsApp bot access</strong> - invoice on the go</span></div>
+                <div class="benefit-item"><span class="benefit-icon">✅</span><span><strong>Team collaboration</strong> - add team members</span></div>
+            </div>
+
+            <div class="benefits-box">
+                <div class="benefits-title">💡 Pro Tips to Maximize SuoOps</div>
+                <div class="benefit-item"><span class="benefit-icon">📊</span><span>Check your dashboard regularly for business insights</span></div>
+                <div class="benefit-item"><span class="benefit-icon">📱</span><span>Use the WhatsApp bot for quick invoicing anywhere</span></div>
+                <div class="benefit-item"><span class="benefit-icon">📈</span><span>Review your monthly reports to track growth</span></div>
+            </div>
+
+            <div class="cta-container">
+                <a href="{{ dashboard_url }}" class="cta-button">Go to Dashboard →</a>
+            </div>
+
+            <p class="message" style="margin-top: 30px; font-size: 14px; text-align: center;">
+                We're constantly improving SuoOps for you. Got feedback? Reply to this email!
+            </p>
+        </div>
+
+        <div class="footer">
+            <p class="footer-text">Need help? Contact us at <a href="mailto:support@suoops.com" style="color: #14B56A;">support@suoops.com</a></p>
+            <div class="social-links">
+                <a href="https://suoops.com" class="social-link">🌐 Website</a>
+                <a href="https://twitter.com/suoops4" class="social-link">🐦 Twitter</a>
+                <a href="https://instagram.com/suoops4" class="social-link">📸 Instagram</a>
+            </div>
+            <p class="copyright">© {{ current_year }} SuoOps. All rights reserved.</p>
+            <p class="unsubscribe">You received this email because you're a SuoOps Pro user.<br><a href="{{ unsubscribe_url }}">Unsubscribe</a> from marketing emails</p>
+        </div>
+    </div>
+</body>
+</html>

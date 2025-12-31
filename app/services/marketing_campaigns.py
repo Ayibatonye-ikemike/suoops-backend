@@ -53,6 +53,12 @@ class CampaignType(str, Enum):
     FIRST_INVOICE_FOLLOWUP = "first_invoice_followup"
     # Email campaigns
     EMAIL_WHATSAPP_PROMOTION = "email_whatsapp_promotion"
+    EMAIL_PRO_RETENTION = "email_pro_retention"
+    EMAIL_STARTER_TO_PRO = "email_starter_to_pro"
+    EMAIL_ACTIVE_FREE_USERS = "email_active_free_users"
+    EMAIL_CHURNED_USERS = "email_churned_users"
+    EMAIL_LOW_BALANCE = "email_low_balance"
+    EMAIL_INACTIVE_USERS = "email_inactive_users"
 
 
 # Template configurations
@@ -110,11 +116,73 @@ CAMPAIGN_TEMPLATES = {
         "goal": "Get users to connect WhatsApp for faster invoicing",
         "subject": "Unlock WhatsApp Invoicing - Create Invoices in Seconds! 📱",
     },
+    CampaignType.EMAIL_PRO_RETENTION: {
+        "template_name": "pro_retention",
+        "channel": "email",
+        "language": "en",
+        "description": "Pro users - keep them engaged and retained",
+        "params": ["user_name", "dashboard_url"],
+        "goal": "Retain Pro subscribers and encourage continued usage",
+        "subject": "Thank You for Being a Pro User! 🌟 Here's What's New",
+    },
+    CampaignType.EMAIL_STARTER_TO_PRO: {
+        "template_name": "starter_to_pro_upsell",
+        "channel": "email",
+        "language": "en",
+        "description": "Starter users who are ready to upgrade to Pro",
+        "params": ["user_name", "dashboard_url", "invoice_count"],
+        "goal": "Convert Starter users to Pro subscription",
+        "subject": "Ready for Unlimited Invoices? Upgrade to Pro! 🚀",
+    },
+    CampaignType.EMAIL_ACTIVE_FREE_USERS: {
+        "template_name": "active_free_users",
+        "channel": "email",
+        "language": "en",
+        "description": "Active free users with 7+ days of activity",
+        "params": ["user_name", "dashboard_url", "invoice_count"],
+        "goal": "Convert active free users to paid plans",
+        "subject": "You're Crushing It! Time to Unlock More Features 💪",
+    },
+    CampaignType.EMAIL_CHURNED_USERS: {
+        "template_name": "churned_users",
+        "channel": "email",
+        "language": "en",
+        "description": "Users who stopped using SuoOps after initial activity",
+        "params": ["user_name", "dashboard_url"],
+        "goal": "Win back churned users",
+        "subject": "We Miss You! Come Back to SuoOps 💔",
+    },
+    CampaignType.EMAIL_LOW_BALANCE: {
+        "template_name": "low_balance_email",
+        "channel": "email",
+        "language": "en",
+        "description": "Users with low invoice balance (5 or fewer remaining)",
+        "params": ["user_name", "dashboard_url", "remaining_invoices"],
+        "goal": "Drive invoice pack purchases or Pro upgrades",
+        "subject": "Running Low on Invoices? Top Up Now! ⚠️",
+    },
+    CampaignType.EMAIL_INACTIVE_USERS: {
+        "template_name": "inactive_users",
+        "channel": "email",
+        "language": "en",
+        "description": "Users who haven't been active for 14+ days",
+        "params": ["user_name", "dashboard_url"],
+        "goal": "Re-engage inactive users",
+        "subject": "Your Business Needs You! Get Back to Invoicing 📊",
+    },
 }
 
 
 # Identify which campaigns are email vs WhatsApp
-EMAIL_CAMPAIGNS = {CampaignType.EMAIL_WHATSAPP_PROMOTION}
+EMAIL_CAMPAIGNS = {
+    CampaignType.EMAIL_WHATSAPP_PROMOTION,
+    CampaignType.EMAIL_PRO_RETENTION,
+    CampaignType.EMAIL_STARTER_TO_PRO,
+    CampaignType.EMAIL_ACTIVE_FREE_USERS,
+    CampaignType.EMAIL_CHURNED_USERS,
+    CampaignType.EMAIL_LOW_BALANCE,
+    CampaignType.EMAIL_INACTIVE_USERS,
+}
 WHATSAPP_CAMPAIGNS = {
     CampaignType.ACTIVATION_WELCOME,
     CampaignType.WIN_BACK_REMINDER,
@@ -411,6 +479,226 @@ class MarketingCampaignService:
             return result
         except Exception as e:
             logger.exception("[CAMPAIGN] Failed to fetch WhatsApp unverified candidates: %s", e)
+            raise
+
+    def get_pro_retention_candidates(self, limit: int = 100) -> list[User]:
+        """Get Pro users for retention campaigns.
+        
+        Args:
+            limit: Maximum users to return
+            
+        Returns:
+            List of Pro users with email
+        """
+        try:
+            stmt = (
+                select(User)
+                .where(User.email.isnot(None))
+                .where(User.email != "")
+                .where(User.email.like("%@%"))
+                .where(User.plan == SubscriptionPlan.PRO)
+                .order_by(User.created_at.desc())
+                .limit(limit)
+            )
+            
+            result = list(self.db.execute(stmt).scalars().all())
+            logger.info("[CAMPAIGN] Found %d Pro retention candidates", len(result))
+            return result
+        except Exception as e:
+            logger.exception("[CAMPAIGN] Failed to fetch Pro retention candidates: %s", e)
+            raise
+
+    def get_starter_to_pro_candidates(self, min_invoices: int = 3, limit: int = 100) -> list[tuple[User, int]]:
+        """Get Starter users who are ready to upgrade to Pro.
+        
+        Args:
+            min_invoices: Minimum invoices created to qualify
+            limit: Maximum users to return
+            
+        Returns:
+            List of (User, invoice_count) tuples
+        """
+        try:
+            # Subquery to count invoices per user
+            invoice_count_subq = (
+                select(Invoice.issuer_id, func.count(Invoice.id).label("invoice_count"))
+                .where(Invoice.issuer_id.isnot(None))
+                .group_by(Invoice.issuer_id)
+                .having(func.count(Invoice.id) >= min_invoices)
+                .subquery()
+            )
+            
+            stmt = (
+                select(User, invoice_count_subq.c.invoice_count)
+                .join(invoice_count_subq, User.id == invoice_count_subq.c.issuer_id)
+                .where(User.email.isnot(None))
+                .where(User.email != "")
+                .where(User.email.like("%@%"))
+                .where(User.plan == SubscriptionPlan.STARTER)
+                .order_by(invoice_count_subq.c.invoice_count.desc())
+                .limit(limit)
+            )
+            
+            results = self.db.execute(stmt).all()
+            logger.info("[CAMPAIGN] Found %d Starter to Pro candidates", len(results))
+            return [(row[0], row[1]) for row in results]
+        except Exception as e:
+            logger.exception("[CAMPAIGN] Failed to fetch Starter to Pro candidates: %s", e)
+            raise
+
+    def get_active_free_users_candidates(self, min_days_active: int = 7, limit: int = 100) -> list[tuple[User, int]]:
+        """Get active free users with significant activity.
+        
+        Args:
+            min_days_active: Minimum days since signup
+            limit: Maximum users to return
+            
+        Returns:
+            List of (User, invoice_count) tuples
+        """
+        try:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=min_days_active)
+            
+            # Subquery to count invoices per user
+            invoice_count_subq = (
+                select(Invoice.issuer_id, func.count(Invoice.id).label("invoice_count"))
+                .where(Invoice.issuer_id.isnot(None))
+                .group_by(Invoice.issuer_id)
+                .having(func.count(Invoice.id) >= 1)
+                .subquery()
+            )
+            
+            stmt = (
+                select(User, invoice_count_subq.c.invoice_count)
+                .join(invoice_count_subq, User.id == invoice_count_subq.c.issuer_id)
+                .where(User.email.isnot(None))
+                .where(User.email != "")
+                .where(User.email.like("%@%"))
+                .where(User.plan == SubscriptionPlan.FREE)
+                .where(User.created_at <= cutoff_date)
+                .order_by(invoice_count_subq.c.invoice_count.desc())
+                .limit(limit)
+            )
+            
+            results = self.db.execute(stmt).all()
+            logger.info("[CAMPAIGN] Found %d active free users candidates", len(results))
+            return [(row[0], row[1]) for row in results]
+        except Exception as e:
+            logger.exception("[CAMPAIGN] Failed to fetch active free users: %s", e)
+            raise
+
+    def get_churned_users_candidates(self, inactive_days: int = 30, limit: int = 100) -> list[User]:
+        """Get users who stopped using SuoOps after initial activity.
+        
+        Args:
+            inactive_days: Days since last activity to consider churned
+            limit: Maximum users to return
+            
+        Returns:
+            List of churned users
+        """
+        try:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=inactive_days)
+            
+            # Users who created at least one invoice but none in the last X days
+            stmt = (
+                select(User)
+                .where(User.email.isnot(None))
+                .where(User.email != "")
+                .where(User.email.like("%@%"))
+                .where(
+                    User.id.in_(
+                        select(Invoice.issuer_id)
+                        .where(Invoice.issuer_id.isnot(None))
+                        .where(Invoice.created_at < cutoff_date)
+                        .distinct()
+                    )
+                )
+                .where(
+                    ~User.id.in_(
+                        select(Invoice.issuer_id)
+                        .where(Invoice.issuer_id.isnot(None))
+                        .where(Invoice.created_at >= cutoff_date)
+                        .distinct()
+                    )
+                )
+                .order_by(User.created_at.desc())
+                .limit(limit)
+            )
+            
+            result = list(self.db.execute(stmt).scalars().all())
+            logger.info("[CAMPAIGN] Found %d churned users candidates", len(result))
+            return result
+        except Exception as e:
+            logger.exception("[CAMPAIGN] Failed to fetch churned users: %s", e)
+            raise
+
+    def get_low_balance_email_candidates(self, threshold: int = 5, limit: int = 100) -> list[tuple[User, int]]:
+        """Get users with low invoice balance for email campaign.
+        
+        Args:
+            threshold: Users with this many or fewer invoices remaining
+            limit: Maximum users to return
+            
+        Returns:
+            List of (User, remaining_count) tuples
+        """
+        try:
+            stmt = (
+                select(User)
+                .where(User.email.isnot(None))
+                .where(User.email != "")
+                .where(User.email.like("%@%"))
+                .where(User.invoice_balance <= threshold)
+                .where(User.invoice_balance > 0)
+                .order_by(User.invoice_balance.asc())
+                .limit(limit)
+            )
+            
+            users = list(self.db.execute(stmt).scalars().all())
+            logger.info("[CAMPAIGN] Found %d low balance email candidates", len(users))
+            return [(user, user.invoice_balance) for user in users]
+        except Exception as e:
+            logger.exception("[CAMPAIGN] Failed to fetch low balance email candidates: %s", e)
+            raise
+
+    def get_inactive_email_candidates(self, inactive_days: int = 14, limit: int = 100) -> list[User]:
+        """Get users who haven't been active for X days.
+        
+        Args:
+            inactive_days: Days since last activity
+            limit: Maximum users to return
+            
+        Returns:
+            List of inactive users
+        """
+        try:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=inactive_days)
+            
+            # Users who haven't created invoices recently
+            stmt = (
+                select(User)
+                .where(User.email.isnot(None))
+                .where(User.email != "")
+                .where(User.email.like("%@%"))
+                .where(
+                    ~User.id.in_(
+                        select(Invoice.issuer_id)
+                        .where(Invoice.issuer_id.isnot(None))
+                        .where(Invoice.created_at >= cutoff_date)
+                        .distinct()
+                    )
+                )
+                .where(User.created_at <= cutoff_date)  # Signed up before cutoff
+                .order_by(User.created_at.desc())
+                .limit(limit)
+            )
+            
+            result = list(self.db.execute(stmt).scalars().all())
+            logger.info("[CAMPAIGN] Found %d inactive email candidates", len(result))
+            return result
+        except Exception as e:
+            logger.exception("[CAMPAIGN] Failed to fetch inactive email candidates: %s", e)
             raise
 
     def send_campaign(
@@ -754,6 +1042,221 @@ class MarketingCampaignService:
         
         return result
 
+    def _get_plain_text_email(
+        self,
+        campaign_type: CampaignType,
+        user_name: str,
+        dashboard_url: str,
+        help_url: str,
+        unsubscribe_url: str,
+        pricing_url: str,
+        current_year: int,
+        invoice_count: int = 0,
+        remaining_invoices: int = 0,
+    ) -> str:
+        """Generate plain text fallback for email campaigns."""
+        
+        if campaign_type == CampaignType.EMAIL_WHATSAPP_PROMOTION:
+            return f"""Hi {user_name}!
+
+We noticed you signed up for SuoOps but haven't connected your WhatsApp yet.
+You're missing out on the fastest way to create professional invoices!
+
+🚀 Why Use the WhatsApp Bot?
+
+⚡ 10x Faster: Create invoices in seconds by just sending a message
+🔔 Instant Notifications: Get payment alerts directly in WhatsApp
+📊 Quick Reports: Ask for your daily sales or expense summary anytime
+
+📱 Our WhatsApp Number: +234 818 376 3636
+
+Get Started in 3 Simple Steps:
+1. Log in to SuoOps at {dashboard_url}
+2. Click "Connect WhatsApp" in settings
+3. Enter your phone number and verify with the OTP
+
+Connect WhatsApp Now: {dashboard_url}
+
+Have questions? Reply to this email or WhatsApp us!
+
+Follow us: @suoops4 on Twitter and Instagram
+
+---
+© {current_year} SuoOps. All rights reserved.
+Professional Invoicing & Expense Management Platform
+
+Unsubscribe: {unsubscribe_url}
+"""
+        
+        elif campaign_type == CampaignType.EMAIL_PRO_RETENTION:
+            return f"""Hi {user_name}! 🌟
+
+Thank you for being a Pro user! We appreciate your trust in SuoOps.
+
+Here's a quick reminder of your Pro benefits:
+✅ Unlimited invoices
+✅ Priority support
+✅ Advanced analytics
+✅ WhatsApp bot access
+✅ Team collaboration
+
+Pro Tips:
+📊 Check your dashboard for insights: {dashboard_url}
+📱 Use the WhatsApp bot for quick invoicing
+
+We're constantly improving SuoOps for you. Got feedback? Reply to this email!
+
+Follow us: @suoops4 on Twitter and Instagram
+
+---
+© {current_year} SuoOps. All rights reserved.
+
+Unsubscribe: {unsubscribe_url}
+"""
+        
+        elif campaign_type == CampaignType.EMAIL_STARTER_TO_PRO:
+            return f"""Hi {user_name}! 🚀
+
+You've created {invoice_count} invoices - you're really using SuoOps!
+
+Ready to unlock more? Upgrade to Pro for:
+✅ Unlimited invoices (no more buying packs)
+✅ Priority customer support
+✅ Advanced business analytics
+✅ Team member access
+✅ All future Pro features
+
+Upgrade now: {pricing_url}
+
+Current plan: Starter
+Your invoice count: {invoice_count}
+
+Questions? Reply to this email!
+
+Follow us: @suoops4 on Twitter and Instagram
+
+---
+© {current_year} SuoOps. All rights reserved.
+
+Unsubscribe: {unsubscribe_url}
+"""
+        
+        elif campaign_type == CampaignType.EMAIL_ACTIVE_FREE_USERS:
+            return f"""Hi {user_name}! 💪
+
+You're crushing it! You've created {invoice_count} invoices on the free plan.
+
+Ready to level up? Here's what you're missing:
+
+Starter Plan (₦2,500/month):
+✅ 100 invoices included
+✅ Email support
+✅ Basic analytics
+
+Pro Plan (₦5,000/month):
+✅ UNLIMITED invoices
+✅ Priority support
+✅ Advanced analytics
+✅ Team access
+
+View plans: {pricing_url}
+Go to Dashboard: {dashboard_url}
+
+Questions? Reply to this email!
+
+Follow us: @suoops4 on Twitter and Instagram
+
+---
+© {current_year} SuoOps. All rights reserved.
+
+Unsubscribe: {unsubscribe_url}
+"""
+        
+        elif campaign_type == CampaignType.EMAIL_CHURNED_USERS:
+            return f"""Hi {user_name}! 💔
+
+We miss you! It's been a while since you used SuoOps.
+
+We've made lots of improvements:
+🚀 Faster invoice creation
+📱 WhatsApp bot for instant invoicing
+📊 Better business insights
+💳 More payment options
+
+Come back and see what's new: {dashboard_url}
+
+Need help getting started again? Reply to this email!
+
+Follow us: @suoops4 on Twitter and Instagram
+
+---
+© {current_year} SuoOps. All rights reserved.
+
+Unsubscribe: {unsubscribe_url}
+"""
+        
+        elif campaign_type == CampaignType.EMAIL_LOW_BALANCE:
+            return f"""Hi {user_name}! ⚠️
+
+Heads up! You only have {remaining_invoices} invoices remaining.
+
+Don't get caught short! Top up now:
+
+Option 1: Buy Invoice Pack
+💰 100 invoices for ₦2,500
+
+Option 2: Upgrade to Pro
+🚀 UNLIMITED invoices for ₦5,000/month
+
+Top up now: {pricing_url}
+Dashboard: {dashboard_url}
+
+Questions? Reply to this email!
+
+Follow us: @suoops4 on Twitter and Instagram
+
+---
+© {current_year} SuoOps. All rights reserved.
+
+Unsubscribe: {unsubscribe_url}
+"""
+        
+        elif campaign_type == CampaignType.EMAIL_INACTIVE_USERS:
+            return f"""Hi {user_name}! 📊
+
+Your business needs you! It's been a while since you logged into SuoOps.
+
+Quick reminder of what you can do:
+📝 Create professional invoices in seconds
+💰 Track payments and expenses
+📊 View business insights
+📱 Use WhatsApp for quick invoicing
+
+Log in now: {dashboard_url}
+
+Having trouble? Reply to this email and we'll help!
+
+Follow us: @suoops4 on Twitter and Instagram
+
+---
+© {current_year} SuoOps. All rights reserved.
+
+Unsubscribe: {unsubscribe_url}
+"""
+        
+        # Default fallback
+        return f"""Hi {user_name}!
+
+This is a message from SuoOps.
+
+Visit your dashboard: {dashboard_url}
+
+---
+© {current_year} SuoOps. All rights reserved.
+
+Unsubscribe: {unsubscribe_url}
+"""
+
     def _send_email_campaign(
         self,
         campaign_type: CampaignType,
@@ -801,10 +1304,28 @@ class MarketingCampaignService:
             "details": [],
         }
         
-        # Get candidates
+        # Get candidates - different structure based on campaign type
+        candidates = []
+        candidates_with_data = []  # For campaigns that return tuples
+        
         try:
             if campaign_type == CampaignType.EMAIL_WHATSAPP_PROMOTION:
                 candidates = self.get_whatsapp_unverified_candidates(limit=limit)
+            elif campaign_type == CampaignType.EMAIL_PRO_RETENTION:
+                candidates = self.get_pro_retention_candidates(limit=limit)
+            elif campaign_type == CampaignType.EMAIL_STARTER_TO_PRO:
+                candidates_with_data = self.get_starter_to_pro_candidates(limit=limit)
+                candidates = [c[0] for c in candidates_with_data]
+            elif campaign_type == CampaignType.EMAIL_ACTIVE_FREE_USERS:
+                candidates_with_data = self.get_active_free_users_candidates(limit=limit)
+                candidates = [c[0] for c in candidates_with_data]
+            elif campaign_type == CampaignType.EMAIL_CHURNED_USERS:
+                candidates = self.get_churned_users_candidates(limit=limit)
+            elif campaign_type == CampaignType.EMAIL_LOW_BALANCE:
+                candidates_with_data = self.get_low_balance_email_candidates(limit=limit)
+                candidates = [c[0] for c in candidates_with_data]
+            elif campaign_type == CampaignType.EMAIL_INACTIVE_USERS:
+                candidates = self.get_inactive_email_candidates(limit=limit)
             else:
                 results["error"] = f"Unsupported email campaign type: {campaign_type}"
                 return results
@@ -812,6 +1333,11 @@ class MarketingCampaignService:
             logger.exception("[EMAIL_CAMPAIGN] Failed to fetch candidates: %s", e)
             results["error"] = f"Database error fetching candidates: {str(e)}"
             return results
+        
+        # Create lookup for extra data (invoice_count, remaining_invoices)
+        user_data_lookup = {}
+        if candidates_with_data:
+            user_data_lookup = {c[0].id: c[1] for c in candidates_with_data}
         
         results["candidates"] = len(candidates)
         
@@ -850,6 +1376,7 @@ class MarketingCampaignService:
         dashboard_url = f"{frontend_url}/dashboard"
         help_url = f"{frontend_url}/help/whatsapp-bot"
         unsubscribe_url = f"{frontend_url}/unsubscribe"
+        pricing_url = f"{frontend_url}/pricing"
         current_year = datetime.now(timezone.utc).year
         
         # Rate limiting: 1 email per 0.5 seconds
@@ -872,6 +1399,10 @@ class MarketingCampaignService:
             user_name = user.name or "there"
             email = user.email.strip()
             
+            # Get extra data for this user if available
+            invoice_count = user_data_lookup.get(user.id, 0)
+            remaining_invoices = getattr(user, 'invoice_balance', 0) or 0
+            
             # Render the email template
             try:
                 html_body = email_template.render(
@@ -879,42 +1410,25 @@ class MarketingCampaignService:
                     dashboard_url=dashboard_url,
                     help_url=help_url,
                     unsubscribe_url=unsubscribe_url,
+                    pricing_url=pricing_url,
                     current_year=current_year,
+                    invoice_count=invoice_count,
+                    remaining_invoices=remaining_invoices,
                 )
                 
-                # Plain text fallback
-                plain_body = f"""
-Hi {user_name}!
+                # Plain text fallback using helper method
+                plain_body = self._get_plain_text_email(
+                    campaign_type=campaign_type,
+                    user_name=user_name,
+                    dashboard_url=dashboard_url,
+                    help_url=help_url,
+                    unsubscribe_url=unsubscribe_url,
+                    pricing_url=pricing_url,
+                    current_year=current_year,
+                    invoice_count=invoice_count,
+                    remaining_invoices=remaining_invoices,
+                )
 
-We noticed you signed up for SuoOps but haven't connected your WhatsApp yet.
-You're missing out on the fastest way to create professional invoices!
-
-🚀 Why Use the WhatsApp Bot?
-
-⚡ 10x Faster: Create invoices in seconds by just sending a message
-� Instant Notifications: Get payment alerts directly in WhatsApp
-📊 Quick Reports: Ask for your daily sales or expense summary anytime
-
-📱 Our WhatsApp Number: +234 818 376 3636
-
-Get Started in 3 Simple Steps:
-1. Log in to SuoOps at {dashboard_url}
-2. Click "Connect WhatsApp" in settings
-3. Enter your phone number and verify with the OTP
-
-Connect WhatsApp Now: {dashboard_url}
-Learn How to Use the Bot: {help_url}
-
-Have questions? Reply to this email or WhatsApp us!
-
-Follow us: @suoops4 on Twitter and Instagram
-
----
-© {current_year} SuoOps. All rights reserved.
-Professional Invoicing & Expense Management Platform
-
-Unsubscribe: {unsubscribe_url}
-"""
             except Exception as e:
                 logger.error("[EMAIL_CAMPAIGN] Template render error for user %s: %s", user.id, e)
                 results["failed"] += 1

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>You're Crushing It!</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; }
+        .email-container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .header { background: linear-gradient(135deg, #0B3318 0%, #0F766E 100%); padding: 40px 30px; text-align: center; }
+        .logo { display: inline-flex; align-items: center; gap: 12px; font-size: 32px; font-weight: 700; color: #ffffff; margin-bottom: 10px; }
+        .tagline { color: #E8F5EC; font-size: 14px; margin: 0; }
+        .content { padding: 40px 30px; }
+        .greeting { font-size: 24px; font-weight: 600; color: #1a202c; margin-bottom: 20px; }
+        .message { font-size: 16px; line-height: 1.6; color: #4a5568; margin-bottom: 25px; }
+        .celebration-box { background: linear-gradient(135deg, #14B56A 0%, #0F766E 100%); border-radius: 16px; padding: 28px; margin: 30px 0; text-align: center; color: #ffffff; }
+        .celebration-icon { font-size: 48px; margin-bottom: 15px; }
+        .celebration-title { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+        .stats-row { display: flex; justify-content: center; gap: 30px; margin: 20px 0; }
+        .stat-item { text-align: center; }
+        .stat-number { font-size: 32px; font-weight: 700; }
+        .stat-label { font-size: 12px; opacity: 0.9; }
+        .plan-box { background-color: #f8fafc; border-radius: 12px; padding: 24px; margin: 25px 0; border: 2px solid #e2e8f0; }
+        .plan-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .plan-name { font-size: 18px; font-weight: 600; color: #0B3318; }
+        .plan-price { font-size: 18px; font-weight: 700; color: #14B56A; }
+        .benefit-item { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; color: #4a5568; margin-bottom: 12px; line-height: 1.5; }
+        .benefit-icon { color: #14B56A; font-size: 18px; flex-shrink: 0; }
+        .pro-box { background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); border-radius: 12px; padding: 24px; margin: 25px 0; }
+        .pro-badge { background: #1a202c; color: #FFD700; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; margin-bottom: 10px; }
+        .cta-container { text-align: center; margin: 35px 0; }
+        .cta-button { display: inline-block; background: linear-gradient(135deg, #14B56A 0%, #0F766E 100%); color: #ffffff !important; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; }
+        .footer { background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0; }
+        .footer-text { font-size: 13px; color: #718096; margin-bottom: 15px; }
+        .social-links { margin: 15px 0; }
+        .social-link { color: #14B56A; text-decoration: none; margin: 0 10px; font-size: 14px; }
+        .copyright { font-size: 12px; color: #a0aec0; margin-top: 15px; }
+        .unsubscribe { font-size: 11px; color: #a0aec0; margin-top: 15px; }
+        .unsubscribe a { color: #14B56A; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="logo">🧾 SuoOps</div>
+            <p class="tagline">Professional Invoicing & Expense Management</p>
+        </div>
+        <div class="content">
+            <h1 class="greeting">Hi {{ user_name }}! 💪</h1>
+            
+            <div class="celebration-box">
+                <div class="celebration-icon">🎉</div>
+                <div class="celebration-title">You're Crushing It!</div>
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <div class="stat-number">{{ invoice_count }}</div>
+                        <div class="stat-label">Invoices Created</div>
+                    </div>
+                </div>
+            </div>
+
+            <p class="message">You've been using SuoOps like a pro! Ready to unlock even more features?</p>
+
+            <div class="plan-box">
+                <div class="plan-header">
+                    <div class="plan-name">Starter Plan</div>
+                    <div class="plan-price">₦2,500/month</div>
+                </div>
+                <div class="benefit-item"><span class="benefit-icon">✅</span><span>100 invoices included monthly</span></div>
+                <div class="benefit-item"><span class="benefit-icon">✅</span><span>Email support</span></div>
+                <div class="benefit-item"><span class="benefit-icon">✅</span><span>Basic analytics</span></div>
+            </div>
+
+            <div class="pro-box">
+                <div class="pro-badge">👑 RECOMMENDED</div>
+                <div class="plan-header" style="margin-top: 10px;">
+                    <div class="plan-name" style="color: #1a202c;">Pro Plan</div>
+                    <div class="plan-price" style="color: #1a202c;">₦5,000/month</div>
+                </div>
+                <div class="benefit-item" style="color: #1a202c;"><span class="benefit-icon" style="color: #1a202c;">✅</span><span><strong>UNLIMITED</strong> invoices</span></div>
+                <div class="benefit-item" style="color: #1a202c;"><span class="benefit-icon" style="color: #1a202c;">✅</span><span>Priority support</span></div>
+                <div class="benefit-item" style="color: #1a202c;"><span class="benefit-icon" style="color: #1a202c;">✅</span><span>Advanced analytics</span></div>
+                <div class="benefit-item" style="color: #1a202c;"><span class="benefit-icon" style="color: #1a202c;">✅</span><span>Team access</span></div>
+            </div>
+
+            <div class="cta-container">
+                <a href="{{ pricing_url }}" class="cta-button">View Plans & Upgrade →</a>
+            </div>
+
+            <p class="message" style="margin-top: 30px; font-size: 14px; text-align: center;">
+                Questions? Reply to this email - we're happy to help!
+            </p>
+        </div>
+
+        <div class="footer">
+            <p class="footer-text">Need help? Contact us at <a href="mailto:support@suoops.com" style="color: #14B56A;">support@suoops.com</a></p>
+            <div class="social-links">
+                <a href="https://suoops.com" class="social-link">🌐 Website</a>
+                <a href="https://twitter.com/suoops4" class="social-link">🐦 Twitter</a>
+                <a href="https://instagram.com/suoops4" class="social-link">📸 Instagram</a>
+            </div>
+            <p class="copyright">© {{ current_year }} SuoOps. All rights reserved.</p>
+            <p class="unsubscribe">You received this email because you have a SuoOps account.<br><a href="{{ unsubscribe_url }}">Unsubscribe</a> from marketing emails</p>
+        </div>
+    </div>
+</body>
+</html>
