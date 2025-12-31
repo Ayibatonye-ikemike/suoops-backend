@@ -424,13 +424,13 @@ class MarketingCampaignService:
         Args:
             campaign_type: Type of campaign to send
             dry_run: If True, only simulate sending (default: True for safety)
-            limit: Maximum messages to send (capped at 100 for rate limiting)
+            limit: Maximum messages to send (capped at 500 for async processing)
             
         Returns:
             Summary of campaign results
         """
-        # Cap limit to prevent rate limiting issues
-        limit = min(limit, 100)
+        # Cap limit to prevent abuse (async processing handles larger batches)
+        limit = min(limit, 500)
         
         config = CAMPAIGN_TEMPLATES.get(campaign_type)
         if not config:
