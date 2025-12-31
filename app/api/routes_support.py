@@ -101,12 +101,12 @@ class AdminDashboardStats(BaseModel):
 
 def _get_smtp_config() -> dict | None:
     """Get SMTP configuration from settings."""
-    if settings.BREVO_SMTP_HOST and settings.BREVO_SMTP_USER and settings.BREVO_SMTP_PASSWORD:
+    if settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD:
         return {
-            "host": settings.BREVO_SMTP_HOST,
-            "port": int(settings.BREVO_SMTP_PORT or 587),
-            "user": settings.BREVO_SMTP_USER,
-            "password": settings.BREVO_SMTP_PASSWORD,
+            "host": settings.SMTP_HOST,
+            "port": int(settings.SMTP_PORT or 587),
+            "user": settings.SMTP_USER,
+            "password": settings.SMTP_PASSWORD,
         }
     return None
 
@@ -315,12 +315,16 @@ async def submit_contact_form(
     db.refresh(ticket)
 
     # Send emails (don't fail if email fails)
-    _send_contact_email(contact, ticket.id)
-    
-    smtp_config = _get_smtp_config()
-    if smtp_config:
-        from_email = getattr(settings, "FROM_EMAIL", smtp_config["user"])
-        _send_confirmation_email(contact, ticket.id, smtp_config, from_email)
+    try:
+        _send_contact_email(contact, ticket.id)
+        
+        smtp_config = _get_smtp_config()
+        if smtp_config:
+            from_email = getattr(settings, "FROM_EMAIL", smtp_config["user"])
+            _send_confirmation_email(contact, ticket.id, smtp_config, from_email)
+    except Exception as e:
+        logger.error("Failed to send contact/confirmation emails: %s", e)
+        # Continue anyway - ticket is already created
 
     return ContactResponse(
         success=True,
