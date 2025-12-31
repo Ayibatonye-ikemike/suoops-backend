@@ -27,6 +27,10 @@ from app.core.config import settings
 from app.models import models
 from app.models.models import SubscriptionPlan
 
+# Aliases for cleaner code
+User = models.User
+Invoice = models.Invoice
+
 logger = logging.getLogger(__name__)
 
 
