@@ -892,8 +892,7 @@ You're missing out on the fastest way to create professional invoices!
 🚀 Why Use the WhatsApp Bot?
 
 ⚡ 10x Faster: Create invoices in seconds by just sending a message
-📸 Receipt Scanning: Snap a photo and we extract all details automatically
-🔔 Instant Notifications: Get payment alerts directly in WhatsApp
+� Instant Notifications: Get payment alerts directly in WhatsApp
 📊 Quick Reports: Ask for your daily sales or expense summary anytime
 
 📱 Our WhatsApp Number: +234 818 376 3636
@@ -907,6 +906,8 @@ Connect WhatsApp Now: {dashboard_url}
 Learn How to Use the Bot: {help_url}
 
 Have questions? Reply to this email or WhatsApp us!
+
+Follow us: @suoops4 on Twitter and Instagram
 
 ---
 © {current_year} SuoOps. All rights reserved.
