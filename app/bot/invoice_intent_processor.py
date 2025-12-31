@@ -283,7 +283,7 @@ class InvoiceIntentProcessor:
             business_message += (
                 "\n📝 No phone/email provided.\n"
                 "⏳ Awaiting payment confirmation.\n"
-                "💡 Click 'Mark Paid' when customer pays: suoops.com/dashboard/invoices"
+                f"💡 Click 'Mark Paid' when customer pays: suoops.com/dashboard/invoices/{invoice.invoice_id}"
             )
         elif whatsapp_pending:
             business_message += (
