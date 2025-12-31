@@ -997,8 +997,10 @@ Unsubscribe: {unsubscribe_url}
             campaign_type.value, results["sent"], results["failed"], results["skipped"], results["candidates"]
         )
         
-        if results["failed"] > 0:
-            results["message"] = f"Email campaign completed with {results['failed']} failures."
+        if dry_run:
+            results["message"] = f"Preview: {results['sent']} users would receive this email."
+        elif results["failed"] > 0:
+            results["message"] = f"Email campaign completed with {results['failed']} failures. {results['sent']} emails sent."
         else:
             results["message"] = f"Email campaign completed successfully. {results['sent']} emails sent."
         
