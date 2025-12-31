@@ -5,7 +5,7 @@ Provides endpoints to:
 - Send marketing campaigns
 - Send to individual users
 
-Note: These endpoints require admin authentication.
+Note: These endpoints require admin authentication (support admin).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.routes_auth import get_current_user_id
+from app.api.routes_admin_auth import get_current_admin, AdminUser
 from app.db.session import get_db
 from app.models import models
 from app.services.marketing_campaigns import (
@@ -64,28 +64,9 @@ class CampaignListResponse(BaseModel):
     campaigns: list[dict]
 
 
-def get_current_user(user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)) -> models.User:
-    """Get the current user object from user_id."""
-    user = db.get(models.User, user_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
-
-
-def require_admin(user: models.User = Depends(get_current_user)) -> models.User:
-    """Ensure user has admin privileges."""
-    # Check if user is admin (you may have a different admin check)
-    if not getattr(user, "is_admin", False) and user.email not in [
-        "admin@suoops.com",
-        "ayibatonyeikemike@gmail.com",  # Add admin emails
-    ]:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return user
-
-
 @router.get("/", response_model=CampaignListResponse)
 async def list_campaigns(
-    _admin: Annotated[models.User, Depends(require_admin)],
+    _admin: Annotated[AdminUser, Depends(get_current_admin)],
 ) -> CampaignListResponse:
     """List all available marketing campaigns."""
     campaigns = [
@@ -105,7 +86,7 @@ async def list_campaigns(
 async def preview_campaign(
     request: CampaignRequest,
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[models.User, Depends(require_admin)],
+    _admin: Annotated[AdminUser, Depends(get_current_admin)],
 ) -> dict:
     """Preview campaign candidates without sending (always dry run)."""
     try:
@@ -134,7 +115,7 @@ async def preview_campaign(
 async def send_campaign(
     request: CampaignRequest,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[models.User, Depends(require_admin)],
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
 ) -> dict:
     """Send a marketing campaign to eligible users.
     
@@ -181,7 +162,7 @@ async def send_campaign(
 async def send_to_single_user(
     request: SingleUserCampaignRequest,
     db: Annotated[Session, Depends(get_db)],
-    admin: Annotated[models.User, Depends(require_admin)],
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
 ) -> dict:
     """Send a marketing template to a single user.
     
@@ -224,7 +205,7 @@ async def send_to_single_user(
 async def get_campaign_candidates(
     campaign_type: CampaignType,
     db: Annotated[Session, Depends(get_db)],
-    _admin: Annotated[models.User, Depends(require_admin)],
+    _admin: Annotated[AdminUser, Depends(get_current_admin)],
     limit: int = Query(default=20, le=100),
 ) -> dict:
     """Get list of candidates for a specific campaign type."""
