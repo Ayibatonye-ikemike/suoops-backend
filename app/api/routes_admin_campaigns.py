@@ -400,6 +400,117 @@ async def get_campaign_candidates(
                 ],
             }
         
+        elif campaign_type == CampaignType.EMAIL_PRO_RETENTION:
+            candidates = service.get_pro_retention_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "channel": "email",
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "email": u.email[:3] + "***" + u.email[u.email.index("@"):] if u.email and "@" in u.email else u.email,
+                        "plan": u.plan.value if u.plan else "free",
+                        "signed_up": u.created_at.isoformat() if u.created_at else None,
+                    }
+                    for u in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.EMAIL_STARTER_TO_PRO:
+            candidates = service.get_starter_to_pro_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "channel": "email",
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "email": u.email[:3] + "***" + u.email[u.email.index("@"):] if u.email and "@" in u.email else u.email,
+                        "plan": u.plan.value if u.plan else "starter",
+                        "invoice_count": count,
+                    }
+                    for u, count in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.EMAIL_ACTIVE_FREE_USERS:
+            candidates = service.get_active_free_users_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "channel": "email",
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "email": u.email[:3] + "***" + u.email[u.email.index("@"):] if u.email and "@" in u.email else u.email,
+                        "plan": u.plan.value if u.plan else "free",
+                        "invoice_count": count,
+                    }
+                    for u, count in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.EMAIL_CHURNED_USERS:
+            candidates = service.get_churned_users_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "channel": "email",
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "email": u.email[:3] + "***" + u.email[u.email.index("@"):] if u.email and "@" in u.email else u.email,
+                        "signed_up": u.created_at.isoformat() if u.created_at else None,
+                    }
+                    for u in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.EMAIL_LOW_BALANCE:
+            candidates = service.get_low_balance_email_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "channel": "email",
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "email": u.email[:3] + "***" + u.email[u.email.index("@"):] if u.email and "@" in u.email else u.email,
+                        "invoice_balance": balance,
+                    }
+                    for u, balance in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.EMAIL_INACTIVE_USERS:
+            candidates = service.get_inactive_email_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "channel": "email",
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "email": u.email[:3] + "***" + u.email[u.email.index("@"):] if u.email and "@" in u.email else u.email,
+                        "signed_up": u.created_at.isoformat() if u.created_at else None,
+                    }
+                    for u in candidates
+                ],
+            }
+        
         return {"success": True, "campaign": campaign_type.value, "count": 0, "candidates": []}
     except Exception as e:
         logger.exception("[CAMPAIGN] Failed to get candidates: %s", e)
