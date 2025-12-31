@@ -99,53 +99,80 @@ async def list_campaigns(
     return CampaignListResponse(campaigns=campaigns)
 
 
-@router.post("/preview", response_model=CampaignResponse)
+@router.post("/preview")
 async def preview_campaign(
     request: CampaignRequest,
     db: Annotated[Session, Depends(get_db)],
     _admin: Annotated[models.User, Depends(require_admin)],
-) -> CampaignResponse:
+) -> dict:
     """Preview campaign candidates without sending (always dry run)."""
-    service = MarketingCampaignService(db)
-    
-    # Force dry run for preview
-    result = service.send_campaign(
-        campaign_type=request.campaign_type,
-        dry_run=True,
-        limit=request.limit,
-    )
-    
-    return CampaignResponse(**result)
+    try:
+        service = MarketingCampaignService(db)
+        
+        # Force dry run for preview
+        result = service.send_campaign(
+            campaign_type=request.campaign_type,
+            dry_run=True,
+            limit=request.limit,
+        )
+        
+        return {
+            "success": True,
+            **result,
+        }
+    except Exception as e:
+        logger.exception("[CAMPAIGN] Preview failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to preview campaign: {str(e)}"
+        )
 
 
-@router.post("/send", response_model=CampaignResponse)
+@router.post("/send")
 async def send_campaign(
     request: CampaignRequest,
     db: Annotated[Session, Depends(get_db)],
     admin: Annotated[models.User, Depends(require_admin)],
-) -> CampaignResponse:
+) -> dict:
     """Send a marketing campaign to eligible users.
     
     WARNING: Set dry_run=False to actually send messages.
     This will send WhatsApp messages to real users!
     """
-    logger.info(
-        "[CAMPAIGN] Admin %s initiating %s campaign, dry_run=%s, limit=%d",
-        admin.email,
-        request.campaign_type.value,
-        request.dry_run,
-        request.limit,
-    )
-    
-    service = MarketingCampaignService(db)
-    
-    result = service.send_campaign(
-        campaign_type=request.campaign_type,
-        dry_run=request.dry_run,
-        limit=request.limit,
-    )
-    
-    return CampaignResponse(**result)
+    try:
+        logger.info(
+            "[CAMPAIGN] Admin %s initiating %s campaign, dry_run=%s, limit=%d",
+            admin.email,
+            request.campaign_type.value,
+            request.dry_run,
+            request.limit,
+        )
+        
+        service = MarketingCampaignService(db)
+        
+        result = service.send_campaign(
+            campaign_type=request.campaign_type,
+            dry_run=request.dry_run,
+            limit=request.limit,
+        )
+        
+        # Check for errors in result
+        if result.get("error"):
+            return {
+                "success": False,
+                **result,
+            }
+        
+        return {
+            "success": True,
+            **result,
+        }
+    except Exception as e:
+        logger.exception("[CAMPAIGN] Send failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send campaign: {str(e)}"
+        )
 
 
 @router.post("/send-single")
@@ -158,32 +185,35 @@ async def send_to_single_user(
     
     Useful for testing templates before running full campaigns.
     """
-    logger.info(
-        "[CAMPAIGN] Admin %s sending %s to %s",
-        admin.email,
-        request.campaign_type.value,
-        request.phone,
-    )
-    
-    service = MarketingCampaignService(db)
-    
-    extra_params = None
-    if request.remaining_invoices is not None:
-        extra_params = {"remaining_invoices": str(request.remaining_invoices)}
-    
-    success = service.send_to_single_user(
-        phone=request.phone,
-        campaign_type=request.campaign_type,
-        user_name=request.user_name,
-        extra_params=extra_params,
-    )
-    
-    return {
-        "success": success,
-        "phone": request.phone,
-        "campaign_type": request.campaign_type.value,
-        "message": "Message sent successfully" if success else "Failed to send message",
-    }
+    try:
+        logger.info(
+            "[CAMPAIGN] Admin %s sending %s to %s",
+            admin.email,
+            request.campaign_type.value,
+            request.phone[-4:] if request.phone else "N/A",
+        )
+        
+        service = MarketingCampaignService(db)
+        
+        extra_params = None
+        if request.remaining_invoices is not None:
+            extra_params = {"remaining_invoices": str(request.remaining_invoices)}
+        
+        result = service.send_to_single_user(
+            phone=request.phone,
+            campaign_type=request.campaign_type,
+            user_name=request.user_name,
+            extra_params=extra_params,
+        )
+        
+        # send_to_single_user now returns a dict
+        return result
+    except Exception as e:
+        logger.exception("[CAMPAIGN] Single user send failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send message: {str(e)}"
+        )
 
 
 @router.get("/candidates/{campaign_type}")
@@ -194,55 +224,65 @@ async def get_campaign_candidates(
     limit: int = Query(default=20, le=100),
 ) -> dict:
     """Get list of candidates for a specific campaign type."""
-    service = MarketingCampaignService(db)
-    
-    if campaign_type == CampaignType.ACTIVATION_WELCOME:
-        candidates = service.get_activation_candidates(limit=limit)
-        return {
-            "campaign": campaign_type.value,
-            "count": len(candidates),
-            "candidates": [
-                {
-                    "id": u.id,
-                    "name": u.name,
-                    "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
-                    "email": u.email,
-                    "signed_up": u.created_at.isoformat() if u.created_at else None,
-                }
-                for u in candidates
-            ],
-        }
-    
-    elif campaign_type == CampaignType.WIN_BACK_REMINDER:
-        candidates = service.get_winback_candidates(limit=limit)
-        return {
-            "campaign": campaign_type.value,
-            "count": len(candidates),
-            "candidates": [
-                {
-                    "id": u.id,
-                    "name": u.name,
-                    "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
-                    "email": u.email,
-                }
-                for u in candidates
-            ],
-        }
-    
-    elif campaign_type == CampaignType.LOW_BALANCE_REMINDER:
-        candidates = service.get_low_balance_candidates(limit=limit)
-        return {
-            "campaign": campaign_type.value,
-            "count": len(candidates),
-            "candidates": [
-                {
-                    "id": u.id,
-                    "name": u.name,
-                    "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
-                    "invoice_balance": balance,
-                }
-                for u, balance in candidates
-            ],
-        }
-    
-    return {"campaign": campaign_type.value, "count": 0, "candidates": []}
+    try:
+        service = MarketingCampaignService(db)
+        
+        if campaign_type == CampaignType.ACTIVATION_WELCOME:
+            candidates = service.get_activation_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
+                        "email": u.email,
+                        "signed_up": u.created_at.isoformat() if u.created_at else None,
+                    }
+                    for u in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.WIN_BACK_REMINDER:
+            candidates = service.get_winback_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
+                        "email": u.email,
+                    }
+                    for u in candidates
+                ],
+            }
+        
+        elif campaign_type == CampaignType.LOW_BALANCE_REMINDER:
+            candidates = service.get_low_balance_candidates(limit=limit)
+            return {
+                "success": True,
+                "campaign": campaign_type.value,
+                "count": len(candidates),
+                "candidates": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "phone": u.phone[-4:].rjust(len(u.phone), "*") if u.phone else None,
+                        "invoice_balance": balance,
+                    }
+                    for u, balance in candidates
+                ],
+            }
+        
+        return {"success": True, "campaign": campaign_type.value, "count": 0, "candidates": []}
+    except Exception as e:
+        logger.exception("[CAMPAIGN] Failed to get candidates: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch candidates: {str(e)}"
+        )
