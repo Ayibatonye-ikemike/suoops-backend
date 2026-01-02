@@ -1,8 +1,8 @@
-# Tax & Fiscalization System – FIRS Readiness (Pre-Accreditation)
+# Tax & Fiscalization System – FIRS Readiness (NTA 2025)
 
 > DISCLAIMER: This document describes provisional fiscalization capabilities. External transmission to Federal Inland Revenue Service (FIRS) systems is DISABLED until accreditation is granted and live credentials are issued. All references to gateway interaction are forward-looking roadmap items, not active production features.
 
-SuoOps tax compliance foundation for Nigeria's evolving 2026 tax reforms and emerging e-invoicing/fiscalization standards.
+SuoOps tax compliance foundation for Nigeria Tax Act 2025 (NTA 2025) effective January 1, 2026, and emerging e-invoicing/fiscalization standards.
 
 ## Overview
 
@@ -10,10 +10,12 @@ This module provides core tax modeling, VAT calculation, and provisional (locall
 
 ## Features
 
-### 1. Business Tax Classification
+### 1. Business Tax Classification (NTA 2025)
 - Automatic classification based on configurable thresholds
-- Small business: Turnover ≤ ₦100M AND Assets ≤ ₦250M (CIT/CGT/Dev Levy exempt; VAT may still apply if turnover ≥ VAT registration threshold)
-- Medium/Large: Above thresholds (standard rates)
+- **Small business:** Turnover ≤ ₦100M AND Assets ≤ ₦250M (CIT exempt - 0%)
+- **Medium business:** Turnover ₦100M-₦250M (CIT 20%)
+- **Large business:** Turnover > ₦250M (CIT 30%)
+- VAT registration required separately when turnover > ₦25M
 - Dynamic tax rate profile surface
 
 ### 2. VAT Management
@@ -196,19 +198,25 @@ pytest tests/test_fiscalization.py
 pytest tests/test_tax_service.py
 ```
 
-## Tax Considerations by Business Size
+## Tax Considerations by Business Size (NTA 2025)
 
 ### Small Business (≤₦100M turnover & ≤₦250M assets)
-- CIT: Exempt
-- CGT: Exempt
-- Development Levy: Exempt
-- VAT: Applicable if surpassing VAT registration threshold (currently ₦25M taxable supplies/year)
+- **CIT:** 0% (Exempt)
+- **CGT:** Exempt
+- **Development Levy:** Exempt
+- **VAT:** Applicable if turnover exceeds ₦25M (separate threshold)
 
-### Medium/Large Business
-- CIT: Standard rate
-- CGT: Standard rate
-- Development Levy: Applicable
-- VAT: 7.5% standard (with zero-rated/exempt nuances)
+### Medium Business (₦100M-₦250M turnover)
+- **CIT:** 20%
+- **CGT:** Applicable
+- **Development Levy:** 4%
+- **VAT:** 7.5% standard rate
+
+### Large Business (>₦250M turnover)
+- **CIT:** 30%
+- **CGT:** Applicable
+- **Development Levy:** 4%
+- **VAT:** 7.5% standard (with zero-rated/exempt nuances)
 
 ## Compliance Readiness Checklist
 - [ ] Business classified correctly

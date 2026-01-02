@@ -28,18 +28,19 @@ PIT_BANDS = [
 
 
 # Nigerian Company Income Tax (CIT) Rates
-# Based on annual gross turnover thresholds
+# Based on Nigeria Tax Act 2025 (NTA 2025) - effective January 1, 2026
+# Thresholds based on annual gross turnover
 CIT_THRESHOLDS = {
     "small": {
-        "max_turnover": 25_000_000,   # ≤₦25M
+        "max_turnover": 100_000_000,  # ≤₦100M (increased from ₦25M under NTA 2025)
         "rate": 0.00,                  # 0% (Exempt from CIT)
     },
     "medium": {
-        "max_turnover": 100_000_000,  # >₦25M and <₦100M
+        "max_turnover": 250_000_000,  # >₦100M and ≤₦250M
         "rate": 0.20,                  # 20%
     },
     "large": {
-        "max_turnover": float('inf'), # ≥₦100M
+        "max_turnover": float('inf'), # >₦250M
         "rate": 0.30,                  # 30%
     },
 }
@@ -72,10 +73,10 @@ def compute_company_income_tax(
     3. Deduct capital allowances (capped at 66.67% of assessable profit)
     4. Apply CIT rate based on company size (turnover threshold)
     
-    CIT Rates (Nigerian Tax Law):
-    - Small Company (turnover ≤₦25M): 0% (EXEMPT)
-    - Medium Company (turnover >₦25M and <₦100M): 20%
-    - Large Company (turnover ≥₦100M): 30%
+    CIT Rates (Nigeria Tax Act 2025 - NTA 2025):
+    - Small Company (turnover ≤₦100M): 0% (EXEMPT)
+    - Medium Company (turnover >₦100M and ≤₦250M): 20%
+    - Large Company (turnover >₦250M): 30%
     
     Additional Levies:
     - Development Levy: 4% of assessable profits (non-small companies)

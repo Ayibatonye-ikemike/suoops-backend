@@ -1,45 +1,39 @@
-# Nigerian Tax Law Compliance - 2026 Updates
+# Nigerian Tax Law Compliance - NTA 2025 (Effective January 1, 2026)
 
-## Critical Issues Identified
+## ✅ Implementation Updated for NTA 2025
 
-### ❌ Current Implementation Issues
+This document reflects the Nigeria Tax Act 2025 (NTA 2025) which came into effect on January 1, 2026.
 
-1. **Wrong Small Business Threshold**
+### Key Tax Thresholds
+
+| Tax Type | Threshold | Rate |
+|----------|-----------|------|
+| **VAT Exemption** | ≤₦25,000,000 (₦25M) | 0% (exempt) |
+| **CIT - Small Company** | ≤₦100,000,000 (₦100M) | 0% (exempt) |
+| **CIT - Medium Company** | ₦100M - ₦250M | 20% |
+| **CIT - Large Company** | >₦250,000,000 (₦250M) | 30% |
+
+### Current Implementation Status
+
+1. **Small Business Threshold** ✅
    - Current: ₦100,000,000 (₦100M)
-   - Correct: ₦50,000,000 (₦50M)
-   - Impact: Businesses between ₦50M-₦100M wrongly classified as small
+   - Correct per NTA 2025: ₦100,000,000 (₦100M)
 
-2. **Missing Profit vs Revenue Distinction**
-   - Current: "Assessable Profit" = Total Revenue (no expense deduction)
-   - Correct: Profit = Revenue - Allowable Expenses
-   - Impact: Tax calculated on gross sales instead of net profit
+2. **VAT Threshold** ✅
+   - Current: ₦25,000,000 (₦25M)
+   - Correct per NTA 2025: ₦25,000,000 (₦25M) (unchanged)
 
-3. **Wrong Tax Type for Small Businesses**
-   - Current: Company Income Tax (CIT) framework
-   - Correct: Personal Income Tax (PIT) with progressive rates
-   - Impact: Wrong tax calculation for sole proprietors/freelancers
+3. **CIT Rates** ✅
+   - Small: 0% (exempt)
+   - Medium: 20%
+   - Large: 30%
 
-4. **Development Levy Calculation**
-   - Current: 4% levy for businesses > ₦100M
-   - Correct: Not mentioned in informal/micro business tax laws
-   - Impact: May be incorrectly applying corporate tax rules
-
-### ✅ Correct 2026 Tax Law (Effective Jan 1, 2026)
-
-#### Small Business Exemption
+### Personal Income Tax (PIT) Progressive Rates (NTA 2025)
 ```
 Annual Turnover ≤ ₦50,000,000 → EXEMPT from Company Income Tax (CIT)
 ```
 
-#### Personal Income Tax (PIT) Progressive Rates
-```
-First ₦800,000:      0%    (Tax-free)
-Next ₦2,200,000:    15%    (₦800K - ₦3M)
-Next ₦9,000,000:    18%    (₦3M - ₦12M)
-Next ₦13,000,000:   21%    (₦12M - ₦25M)
-Next ₦25,000,000:   23%    (₦25M - ₦50M)
-Above ₦50,000,000:  25%    (₦50M+)
-```
+These PIT rates apply to freelancers and sole proprietors (not registered companies).
 
 #### Profit Calculation
 ```
@@ -59,32 +53,35 @@ Allowable Expenses:
 2. **Record-Keeping**: Maintain accurate records of income & expenses
 3. **Presumptive Taxation**: If no records, tax authority estimates income
 
-## Required Changes
+## Implementation Status
 
-### Phase 1: Update Thresholds (Immediate)
+### ✅ Completed Updates
 
-**Files to Update:**
+**Files Updated:**
 1. `app/services/tax_service.py`
-   - Change `SMALL_BUSINESS_TURNOVER_LIMIT` from ₦100M to ₦50M
-   - Update `BusinessClassifier.SMALL_TURNOVER_THRESHOLD`
+   - ✅ `SMALL_BUSINESS_TURNOVER_LIMIT` = ₦100M
+   - ✅ `BusinessClassifier.SMALL_TURNOVER_THRESHOLD` = ₦100M
+   - ✅ `MEDIUM_TURNOVER_THRESHOLD` = ₦250M
 
 2. `app/models/tax_models.py`
-   - Update tax rate constants
+   - ✅ BusinessSize enum updated for NTA 2025
+   - ✅ Tax rates: Small 0%, Medium 20%, Large 30%
 
 3. `app/services/tax_profile_service.py`
-   - Update threshold constants
+   - ✅ Threshold constants updated
 
-**Migration:**
-```sql
--- Reclassify businesses between ₦50M-₦100M
-UPDATE tax_profiles
-SET business_size = 'medium'
-WHERE annual_turnover > 50000000 
-  AND annual_turnover <= 100000000
-  AND business_size = 'small';
-```
+4. `support-suoops/app/articles/tax/exemptions/page.tsx`
+   - ✅ Complete rewrite with NTA 2025 thresholds
 
-### Phase 2: Add Expense Tracking (Critical)
+5. `src/config/tax.ts`
+   - ✅ All NTA 2025 thresholds and rates
+
+6. `src/components/landing/features.tsx`
+   - ✅ Updated ₦100M CIT exemption
+
+### 🔄 Future Enhancements
+
+**Phase 2: Add Expense Tracking**
 
 **New Models:**
 ```python
@@ -151,17 +148,12 @@ class PersonalIncomeTaxCalculator:
 "⚠️ Tax calculation will be updated for 2026 law compliance."
 ```
 
-## Implementation Priority
-
-### 🔴 Critical (Do Now)
-1. Update threshold from ₦100M → ₦50M
-2. Add UI warning about revenue vs profit
-3. Rename misleading labels
+## Future Enhancements
 
 ### 🟡 High Priority (Next Sprint)
 1. Add expense tracking model & API
 2. Update profit calculation to include expenses
-3. Implement PIT progressive tax calculator
+3. Implement PIT progressive tax calculator for sole proprietors
 
 ### 🟢 Medium Priority (Future)
 1. Add expense categories and receipt uploads
@@ -170,29 +162,30 @@ class PersonalIncomeTaxCalculator:
 
 ## Testing Checklist
 
-- [ ] Businesses at ₦49M classified as small
-- [ ] Businesses at ₦51M classified as medium
-- [ ] PIT calculated correctly for all brackets
-- [ ] Expense deduction reduces taxable profit
-- [ ] UI shows clear revenue vs profit distinction
-- [ ] Tax reports accurate for 2026 law
+- [x] Businesses at ₦99M classified as small (CIT exempt)
+- [x] Businesses at ₦101M classified as medium (20% CIT)
+- [x] Businesses at ₦251M classified as large (30% CIT)
+- [ ] PIT calculated correctly for all brackets (future)
+- [ ] Expense deduction reduces taxable profit (future)
+- [x] UI shows correct ₦100M CIT threshold
+- [x] Support articles updated for NTA 2025
 
 ## References
 
-- Nigeria Tax Laws 2026 (Effective Jan 1, 2026)
-- FIRS Guidelines for Informal/Micro Businesses
+- Nigeria Tax Act 2025 (NTA 2025) - Effective Jan 1, 2026
+- Federal Inland Revenue Service (FIRS) Guidelines
 - Personal Income Tax (PIT) Progressive Rates
-- Small Business Exemption Rules
+- Small Business CIT Exemption Rules
 
 ## Notes
 
-**Why Current Implementation is Wrong:**
-1. We're using **Company Income Tax (CIT)** framework for sole proprietors
-2. CIT applies to registered companies, not freelancers/influencers
-3. Informal businesses pay **Personal Income Tax (PIT)**
-4. PIT is progressive (0%-25%), not flat rate
+**Current Implementation:**
+- Supports both CIT (registered companies) and PIT (individuals/freelancers)
+- CIT exemption for turnover ≤₦100M (NTA 2025)
+- VAT exemption for turnover ≤₦25M (unchanged)
+- Development levy at 4% for non-exempt businesses
 
-**Impact:**
-- Users between ₦50M-₦100M getting wrong tax calculations
-- No expense tracking means overpaying taxes
-- Wrong tax type (CIT vs PIT) for target market
+**Future Improvements:**
+- Add expense tracking for accurate profit calculation
+- Implement full PIT progressive calculator
+- Add tax planning recommendations

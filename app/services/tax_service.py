@@ -24,18 +24,19 @@ class BusinessClassifier:
     """
     Business size classification (SRP: Classification logic only).
     
-    Based on 2026 Nigerian Tax Law:
-    - Small: Turnover ≤ ₦50M (EXEMPT from CIT, pays PIT)
-    - Medium: ₦50M < Turnover < ₦500M
-    - Large: Turnover ≥ ₦500M
+    Based on Nigeria Tax Act 2025 (NTA 2025) effective January 1, 2026:
+    - Small: Turnover ≤ ₦100M (EXEMPT from CIT - 0%)
+    - Medium: ₦100M < Turnover ≤ ₦250M (20% CIT)
+    - Large: Turnover > ₦250M (30% CIT)
     
-    Note: Small businesses owned by individuals pay Personal Income Tax (PIT)
-    using progressive rates, not Company Income Tax (CIT).
+    Note: VAT exemption threshold remains at ₦25M separately.
+    Small businesses owned by individuals may pay Personal Income Tax (PIT)
+    using progressive rates instead of Company Income Tax (CIT).
     """
     
-    SMALL_TURNOVER_THRESHOLD = Decimal("50000000")    # ₦50M (2026 law)
+    SMALL_TURNOVER_THRESHOLD = Decimal("100000000")   # ₦100M (NTA 2025)
     SMALL_ASSETS_THRESHOLD = Decimal("250000000")     # ₦250M
-    MEDIUM_TURNOVER_THRESHOLD = Decimal("500000000")  # ₦500M
+    MEDIUM_TURNOVER_THRESHOLD = Decimal("250000000")  # ₦250M (medium/large boundary)
     
     @classmethod
     def classify(cls, turnover: Decimal, assets: Decimal) -> str:
@@ -228,7 +229,7 @@ class TaxProfileService:
 
     # ---------------- Compliance & Eligibility (merged from legacy service) -----------------
 
-    SMALL_BUSINESS_TURNOVER_LIMIT = Decimal("50000000")   # ₦50M (2026 Nigerian Tax Law)
+    SMALL_BUSINESS_TURNOVER_LIMIT = Decimal("100000000")  # ₦100M (NTA 2025 - effective Jan 1, 2026)
     SMALL_BUSINESS_ASSETS_LIMIT = Decimal("250000000")    # ₦250M
 
     def check_small_business_eligibility(self, user_id: int) -> Dict[str, object]:
@@ -286,7 +287,7 @@ class TaxProfileService:
         if not profile.tin:
             next_actions.append("Register for Tax Identification Number (TIN)")
         if not profile.vat_registered and profile.annual_turnover > Decimal("25000000"):
-            next_actions.append("Register for VAT (turnover exceeds ₦25M)")
+            next_actions.append("Register for VAT (turnover exceeds ₦25M - VAT threshold unchanged under NTA 2025)")
         if not profile.firs_registered:
             next_actions.append("Register for forthcoming FIRS fiscalization/e-invoicing")
         return {

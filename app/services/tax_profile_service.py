@@ -27,8 +27,8 @@ class TaxProfileService:
     - FIRS fiscalization registration management (pending external API)
     """
     
-    # Small business thresholds per 2026 Nigerian Tax Law
-    SMALL_BUSINESS_TURNOVER_LIMIT = Decimal("50000000")   # ₦50M (updated for 2026)
+    # Small business thresholds per Nigeria Tax Act 2025 (NTA 2025) effective Jan 1, 2026
+    SMALL_BUSINESS_TURNOVER_LIMIT = Decimal("100000000")  # ₦100M (CIT exempt)
     SMALL_BUSINESS_ASSETS_LIMIT = Decimal("250000000")    # ₦250M
     
     def __init__(self, db: Session):

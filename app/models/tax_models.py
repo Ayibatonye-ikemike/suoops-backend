@@ -32,10 +32,10 @@ from app.db.base_class import Base
 
 
 class BusinessSize(str, Enum):
-    """Business size classification based on draft 2026 FIRS thresholds (subject to change)"""
-    SMALL = "small"      # Turnover ≤ ₦100M, Assets ≤ ₦250M (Tax exempt)
-    MEDIUM = "medium"    # Above small but below large
-    LARGE = "large"      # Major corporations
+    """Business size classification based on Nigeria Tax Act 2025 (NTA 2025) effective Jan 1, 2026"""
+    SMALL = "small"      # Turnover ≤ ₦100M, Assets ≤ ₦250M (CIT exempt - 0%)
+    MEDIUM = "medium"    # Turnover ₦100M-₦250M (CIT 20%)
+    LARGE = "large"      # Turnover > ₦250M (CIT 30%)
 
 
 class VATCategory(str, Enum):
@@ -98,7 +98,7 @@ class TaxProfile(Base):
     
     @property
     def is_small_business(self) -> bool:
-        """Check if qualifies as small business (≤ ₦100M turnover and ≤ ₦250M assets)"""
+        """Check if qualifies as small business per NTA 2025 (≤ ₦100M turnover and ≤ ₦250M assets)"""
         return (
             float(self.annual_turnover or 0) <= 100_000_000 and 
             float(self.fixed_assets or 0) <= 250_000_000
@@ -106,19 +106,19 @@ class TaxProfile(Base):
     
     @property
     def tax_rates(self) -> Dict[str, float]:
-        """Get applicable tax rates based on business size (provisional 2026 adjustments)"""
+        """Get applicable tax rates based on business size (NTA 2025 rates)"""
         if self.is_small_business:
             return {
-                "CIT": 0,           # Company Income Tax - EXEMPT
+                "CIT": 0,           # Company Income Tax - EXEMPT (≤₦100M)
                 "CGT": 0,           # Capital Gains Tax - EXEMPT
                 "DEV_LEVY": 0,      # Development Levy - EXEMPT
-                "VAT": 7.5          # VAT still applicable
+                "VAT": 7.5          # VAT still applicable (exemption at ₦25M separately)
             }
         else:
             return {
-                "CIT": 25,          # Company Income Tax
-                "CGT": 30,          # Capital Gains Tax (increased 2026)
-                "DEV_LEVY": 4,      # New 4% Development Levy
+                "CIT": 20,          # Company Income Tax (medium: 20%, large: 30%)
+                "CGT": 30,          # Capital Gains Tax
+                "DEV_LEVY": 4,      # 4% Development Levy
                 "VAT": 7.5          # Standard VAT rate
             }
 
