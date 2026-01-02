@@ -157,15 +157,15 @@ def compute_company_income_tax(
     # Generate notes based on company size
     notes = []
     if company_size == "small":
-        notes.append("Small company (turnover ≤₦25M): CIT exempt")
+        notes.append("Small company (turnover ≤₦100M): CIT exempt (NTA 2025)")
     elif company_size == "medium":
-        notes.append(f"Medium company (₦25M-₦100M): CIT rate {int(cit_rate * 100)}%")
+        notes.append(f"Medium company (₦100M-₦250M): CIT rate {int(cit_rate * 100)}%")
         if development_levy > 0:
             notes.append("Development levy: 4% of assessable profit")
         if minimum_tax > 0:
             notes.append("Minimum tax applies (CIT < 0.5% of turnover)")
     else:
-        notes.append(f"Large company (≥₦100M): CIT rate {int(cit_rate * 100)}%")
+        notes.append(f"Large company (>₦250M): CIT rate {int(cit_rate * 100)}%")
         if development_levy > 0:
             notes.append("Development levy: 4% of assessable profit")
         if minimum_tax > 0:
