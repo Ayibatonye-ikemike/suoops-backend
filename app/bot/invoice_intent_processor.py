@@ -126,6 +126,50 @@ class InvoiceIntentProcessor:
         data: dict[str, Any],
         payload: dict[str, Any],
     ) -> None:
+        # Check for potentially malformed amounts BEFORE creating invoice
+        amount = data.get("amount", 0)
+        lines = data.get("lines", [])
+        
+        # Detect suspicious patterns that suggest parsing errors
+        is_suspicious = False
+        suspicious_reason = ""
+        
+        # 1. Very small amount with multiple line items could mean comma-formatting issues
+        if amount < 500 and len(lines) >= 2:
+            is_suspicious = True
+            suspicious_reason = "very small total with multiple items"
+        
+        # 2. Amount that looks like a partial number (e.g., 244 instead of 11,244)
+        if 100 <= amount < 1000 and len(lines) == 1:
+            # Could be intentional (small item) or parsing error - just log
+            logger.info("Small invoice amount ₦%s - may be intentional or parsing issue", amount)
+        
+        # 3. Suspiciously large amounts (possible concatenation error like 9,422,244)
+        if amount > 5_000_000:
+            is_suspicious = True
+            suspicious_reason = "unusually large amount"
+        
+        if is_suspicious:
+            logger.warning(
+                "Suspicious invoice amount ₦%s (%s) - raw data: %s",
+                amount, suspicious_reason, data
+            )
+            # Send format reminder but continue with creation (user may know what they're doing)
+            self.client.send_text(
+                sender,
+                f"⚠️ Heads up: The total is ₦{amount:,.2f}\n\n"
+                "If this looks wrong, cancel and try again with this format:\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "✅ *CORRECT FORMAT:*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "`Invoice [Name] [Phone] [Amount] [Item], [Amount] [Item]`\n\n"
+                "📋 *EXAMPLES:*\n"
+                "• `Invoice Joy 08012345678 11000 Design, 10000 Printing, 1000 Delivery`\n"
+                "• `Invoice Ada 08098765432 5000 braids, 2000 gel`\n\n"
+                "💡 *TIP:* Put amount BEFORE item name, separate items with commas\n\n"
+                "Creating invoice anyway..."
+            )
+        
         try:
             invoice = invoice_service.create_invoice(issuer_id=issuer_id, data=data)
         except InvoiceBalanceExhaustedError as exc:
