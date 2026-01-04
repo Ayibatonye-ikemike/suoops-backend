@@ -1,6 +1,6 @@
 """Initialize subscription payment endpoint."""
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
@@ -82,7 +82,7 @@ async def initialize_subscription_payment(
     amount_kobo = amount_naira * 100  # Paystack uses kobo (smallest unit)
     
     # Generate unique reference with current timestamp to avoid duplicates
-    timestamp = int(datetime.now(datetime.UTC).timestamp() * 1000)  # milliseconds for uniqueness
+    timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)  # milliseconds for uniqueness
     reference = f"SUB-{current_user_id}-{plan}-{timestamp}"
     
     # Initialize Paystack transaction
