@@ -328,12 +328,13 @@ class NLPService:
         Supports two patterns:
             1. Amount first: "1000 wig, 2000 shoe, 4000 belt"
             2. Item first: "wig 1000, shoe 2000" (fallback)
+            3. Comma-formatted amounts: "11,000 Design, 10,000 Printing"
         
         Examples:
             "1000 wig, 2000 shoe" →
                 [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
-            "wig 1000, shoe 2000" →
-                [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
+            "11,000 Design, 10,000 Printing, 1000 Delivery" →
+                [{"description": "Design", "unit_price": 11000}, {"description": "Printing", "unit_price": 10000}, ...]
         """
         lines = []
         
@@ -346,18 +347,24 @@ class NLPService:
         for word in ["for", "due", "tomorrow", "today", "next week"]:
             clean_text = clean_text.replace(word, " ")
         
-        # Remove phone number from text
+        # Remove phone number from text (include +prefix)
         for variant in phone_variants:
+            clean_text = clean_text.replace("+" + variant.lower(), " ")
             clean_text = clean_text.replace(variant.lower(), " ")
         
-        # Also remove phone patterns directly
-        clean_text = self.PHONE_PATTERN.sub(" ", clean_text)
+        # Also remove phone patterns directly (including + prefix)
+        clean_text = re.sub(r"\+?" + self.PHONE_PATTERN.pattern, " ", clean_text)
         
         # Remove email from text
         clean_text = self.EMAIL_PATTERN.sub(" ", clean_text)
         
-        # Split by comma to get individual items
-        # "1000 wig, 2000 shoe, 4000 belt" → ["1000 wig", "2000 shoe", "4000 belt"]
+        # IMPORTANT: Handle comma-formatted numbers BEFORE splitting by comma
+        # Convert "11,000" to "11000" but only for number patterns
+        # Pattern: digit,digit (e.g., "11,000" but not "wig, shoe")
+        clean_text = re.sub(r"(\d),(\d{3})", r"\1\2", clean_text)
+        
+        # Split by comma (now safe since comma-formatted numbers are normalized)
+        # "11000 Design, 10000 Printing" → ["11000 Design", "10000 Printing"]
         parts = [p.strip() for p in clean_text.split(",") if p.strip()]
         
         for part in parts:
@@ -366,7 +373,7 @@ class NLPService:
                 continue
             
             # Try pattern 1: <amount> <item_name>
-            # e.g., "1000 wig" or "2000 running shoes"
+            # e.g., "11000 Design" or "2000 running shoes"
             first_token = tokens[0].replace(",", "")
             if first_token.isdigit() and len(first_token) >= 3:
                 if first_token not in phone_variants:
