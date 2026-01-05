@@ -61,7 +61,17 @@ class WhatsAppChannel:
             
             # Check if customer is already opted-in (returning customer)
             customer = getattr(invoice, "customer", None)
-            is_opted_in = customer and getattr(customer, "whatsapp_opted_in", False)
+            is_opted_in = False
+            if customer:
+                is_opted_in = getattr(customer, "whatsapp_opted_in", False)
+                logger.info(
+                    "[WHATSAPP] Customer check: id=%s, phone=%s, whatsapp_opted_in=%s",
+                    getattr(customer, "id", "?"),
+                    getattr(customer, "phone", "?"),
+                    is_opted_in
+                )
+            else:
+                logger.warning("[WHATSAPP] No customer object on invoice %s", invoice.invoice_id)
             
             if is_opted_in:
                 # Returning customer - send full invoice directly (they're in 24-hour window)
