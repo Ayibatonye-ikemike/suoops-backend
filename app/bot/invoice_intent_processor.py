@@ -362,13 +362,15 @@ class InvoiceIntentProcessor:
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> bool:
         """
-        Notify customer about their invoice using WhatsApp template.
+        Notify customer about their invoice.
         
-        Always uses template message because Meta's 24-hour messaging window
-        expires, so regular messages may fail even for previously engaged customers.
-        Templates work anytime.
+        For RETURNING customers (already opted-in):
+        - Send full invoice directly as regular message + PDF
+        - Returns False (no template pending, full invoice sent)
         
-        Returns True (template sent, customer can reply for payment details).
+        For NEW customers (not opted-in):
+        - Send template message (works outside 24-hour window)
+        - Returns True (template sent, customer can reply for PDF)
         """
         customer_phone = data.get("customer_phone")
         logger.info("[NOTIFY] customer_phone from data: %s, invoice: %s", customer_phone, invoice.invoice_id)
@@ -376,8 +378,34 @@ class InvoiceIntentProcessor:
             logger.warning("No customer phone for invoice %s", invoice.invoice_id)
             return False
 
-        # Always use template for invoice notifications
-        # This ensures delivery regardless of 24-hour messaging window
+        # Check if customer is already opted-in (returning customer)
+        customer = getattr(invoice, "customer", None)
+        is_opted_in = False
+        if customer:
+            is_opted_in = getattr(customer, "whatsapp_opted_in", False)
+            logger.info(
+                "[NOTIFY] Customer check: id=%s, phone=%s, whatsapp_opted_in=%s",
+                getattr(customer, "id", "?"),
+                getattr(customer, "phone", "?"),
+                is_opted_in
+            )
+        else:
+            logger.warning("[NOTIFY] No customer object on invoice %s", invoice.invoice_id)
+        
+        if is_opted_in:
+            # Returning customer - send full invoice directly (they're in 24-hour window)
+            logger.info(
+                "[NOTIFY] Customer %s is opted-in, sending full invoice directly",
+                customer_phone
+            )
+            self._send_full_invoice(invoice, customer_phone, issuer_id)
+            return False  # No template pending - full invoice sent
+        
+        # New customer - use template (works outside 24-hour window)
+        logger.info(
+            "[NOTIFY] Customer %s is not opted-in, using template",
+            customer_phone
+        )
         self._send_template_only(invoice, customer_phone, issuer_id)
         return True  # Template sent - customer can reply for full details
     
