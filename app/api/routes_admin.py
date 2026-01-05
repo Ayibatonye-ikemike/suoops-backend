@@ -417,7 +417,7 @@ class PaidUserInfo(BaseModel):
     id: int
     name: str
     email: str | None
-    phone: str
+    phone: str | None
     plan: str
     business_name: str | None
     created_at: dt.datetime
