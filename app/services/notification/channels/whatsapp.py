@@ -33,18 +33,17 @@ class WhatsAppChannel:
         recipient_phone: str,
         pdf_url: str | None,
     ) -> bool:
-        """Send invoice notification to customer via WhatsApp using template.
+        """Send invoice notification to customer via WhatsApp.
         
-        Always uses template message for invoice notifications because:
-        - Meta's 24-hour messaging window expires, so regular messages may fail
-        - Templates work anytime, regardless of when customer last messaged
-        - Provides consistent experience for all customers
+        For RETURNING customers (already opted-in):
+        - Send full invoice as regular message with PDF immediately
+        - They're within 24-hour window since they've interacted before
         
-        After sending template, attempts to send PDF immediately as a regular message.
-        If PDF send fails (outside 24-hour window), marks invoice as pending delivery
-        so PDF is sent when customer replies.
+        For NEW customers (not opted-in):
+        - Send template message (works outside 24-hour window)
+        - Mark invoice as pending, PDF sent when they reply "OK"
         
-        Returns True if template was sent successfully.
+        Returns True if message was sent successfully.
         """
         logger.info(
             "[WHATSAPP CHANNEL] send_invoice called for %s to phone=%s, pdf_url=%s",
@@ -60,14 +59,30 @@ class WhatsAppChannel:
             from app.bot.whatsapp_client import WhatsAppClient
             client = WhatsAppClient(self._service.whatsapp_key)
             
-            # Send template for invoice notification (always works, no 24-hour limit)
+            # Check if customer is already opted-in (returning customer)
+            customer = getattr(invoice, "customer", None)
+            is_opted_in = customer and getattr(customer, "whatsapp_opted_in", False)
+            
+            if is_opted_in:
+                # Returning customer - send full invoice directly (they're in 24-hour window)
+                logger.info(
+                    "[WHATSAPP] Customer %s is opted-in, sending full invoice directly",
+                    recipient_phone
+                )
+                return await self._send_full_invoice(client, invoice, recipient_phone, pdf_url)
+            
+            # New customer - use template (works outside 24-hour window)
+            logger.info(
+                "[WHATSAPP] Customer %s is not opted-in, using template",
+                recipient_phone
+            )
             template_sent = await self._send_template_only(client, invoice, recipient_phone)
             
             if not template_sent:
                 return False
             
             # Try to send PDF immediately as a regular message
-            # This will succeed if customer messaged within last 24 hours
+            # This will succeed if customer happens to have messaged within last 24 hours
             if pdf_url and pdf_url.startswith("http"):
                 try:
                     logger.info("[WHATSAPP] Attempting to send PDF immediately to %s", recipient_phone)
