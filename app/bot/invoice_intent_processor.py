@@ -562,14 +562,14 @@ class InvoiceIntentProcessor:
         # We'll exclude invoices where they're BOTH the issuer and customer (self-invoices/tests)
         issuer_id = self._resolve_issuer_id(customer_phone)
         
-        # Find recent unpaid invoices for ANY of these customer records
-        seven_days_ago = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)
+        # Find invoices with whatsapp_delivery_pending=True - these are the ones just sent
+        # via template that the customer is replying "OK" to
         recent_invoices_query = (
             self.db.query(models.Invoice)
             .filter(
                 models.Invoice.customer_id.in_(customer_ids),
                 models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
-                models.Invoice.created_at >= seven_days_ago,
+                models.Invoice.whatsapp_delivery_pending == True,  # noqa: E712
             )
         )
         
@@ -583,7 +583,7 @@ class InvoiceIntentProcessor:
         recent_invoices = (
             recent_invoices_query
             .order_by(models.Invoice.created_at.desc())
-            .limit(3)  # Max 3 recent invoices to avoid spam
+            .limit(1)  # Only the most recent invoice awaiting PDF delivery
             .all()
         )
         
@@ -606,47 +606,34 @@ class InvoiceIntentProcessor:
                 )
             return True
         
-        # Send payment details for recent invoices
-        self.client.send_text(
-            customer_phone,
-            "👋 Thanks for your reply!\n\n"
-            "📄 Here are your pending invoice(s):"
-        )
+        # Send the invoice PDF - customer already has payment details from template
+        invoice = recent_invoices[0]  # We only query 1 now
+        amount_text = f"₦{invoice.amount:,.2f}"
         
-        # Send each invoice's payment details AND PDF
-        for invoice in recent_invoices:
-            issuer = self._load_issuer(invoice.issuer_id)
-            amount_text = f"₦{invoice.amount:,.2f}"
-            
-            # Check if this invoice already had template sent (pending delivery)
-            # If so, only send PDF (payment details already in template)
-            # If not, send full payment details + PDF
-            if invoice.whatsapp_delivery_pending:
-                logger.info("[OPTIN] Invoice %s had pending delivery, sending PDF only", invoice.invoice_id)
-                # Just send PDF - they already got payment details in template
-                if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-                    self.client.send_document(
-                        customer_phone,
-                        invoice.pdf_url,
-                        f"Invoice_{invoice.invoice_id}.pdf",
-                        f"Invoice {invoice.invoice_id} - {amount_text}",
-                    )
-                invoice.whatsapp_delivery_pending = False
-            else:
-                logger.info("[OPTIN] Sending full payment details for invoice %s", invoice.invoice_id)
-                # Send payment link and bank details
-                payment_msg = self._build_payment_link_message(invoice, issuer)
-                self.client.send_text(customer_phone, f"📄 {invoice.invoice_id} - {amount_text}\n\n{payment_msg}")
-                
-                # Send invoice PDF document if available
-                if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-                    self.client.send_document(
-                        customer_phone,
-                        invoice.pdf_url,
-                        f"Invoice_{invoice.invoice_id}.pdf",
-                        f"Invoice {invoice.invoice_id} - {amount_text}",
-                    )
+        logger.info("[OPTIN] Sending PDF for invoice %s", invoice.invoice_id)
         
+        # Send a simple confirmation with the PDF
+        if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+            self.client.send_text(
+                customer_phone,
+                f"📄 Here's your invoice:"
+            )
+            self.client.send_document(
+                customer_phone,
+                invoice.pdf_url,
+                f"Invoice_{invoice.invoice_id}.pdf",
+                f"Invoice {invoice.invoice_id} - {amount_text}",
+            )
+        else:
+            # No PDF available - just acknowledge
+            self.client.send_text(
+                customer_phone,
+                f"✅ Thanks! Invoice {invoice.invoice_id} for {amount_text} is ready.\n\n"
+                "Use the payment link above to pay."
+            )
+        
+        # Mark as delivered
+        invoice.whatsapp_delivery_pending = False
         self.db.commit()
         
         # If they're also a business, remind them they can create invoices too
