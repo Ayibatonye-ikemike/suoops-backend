@@ -18,7 +18,6 @@ from starlette.types import ASGIApp
 from app.api.rate_limit import increment_rate_limit_exceeded, limiter
 from app.api.routes_admin import router as admin_router
 from app.api.routes_admin_auth import router as admin_auth_router
-from app.api.routes_admin_campaigns import router as admin_campaigns_router
 from app.api.routes_analytics import router as analytics_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_expense import router as expense_router
@@ -199,7 +198,6 @@ def create_app() -> FastAPI:
     app.include_router(referral_router, tags=["referrals"])
     app.include_router(support_router, tags=["support"])
     app.include_router(admin_auth_router, tags=["admin-auth"])
-    app.include_router(admin_campaigns_router)  # Marketing campaigns admin API
     app.include_router(admin_router)
     app.include_router(health_router)
     
