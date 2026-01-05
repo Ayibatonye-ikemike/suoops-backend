@@ -1,41 +1,55 @@
 # ✅ Production Status - SuoOps Platform
 
-**Last Updated:** October 29, 2025  
-**Version:** Backend v89, Frontend (latest)
+**Last Updated:** January 4, 2026  
+**Version:** Backend v95+, Frontend (latest)
 
 ---
 
 ## 🎯 Core Features - ALL WORKING
 
-### ✅ Authentication (v88-v89)
+### ✅ Authentication
 - **Email OTP Signup:** Working ✅
-  - Test: `POST https://api.suoops.com/auth/signup/request`
-  - Users can signup with email while WhatsApp is in sandbox
   - OTP sent via Brevo SMTP (info@suoops.com)
   
-- **Login:** Working ✅
-  - Email-based login functional
-  - Session management with JWT tokens
+- **WhatsApp OTP Signup:** Working ✅
+  - Meta approval complete
+  - OTP sent via WhatsApp Business API
   
-- **Frontend → Backend:** Fixed ✅
-  - API URL: `api.suoops.com` (was api.suopay.io)
-  - Updated via Vercel environment variable
+- **Google OAuth:** Working ✅
+  - One-click Google sign-in
+
+- **Login:** Working ✅
+  - Email, WhatsApp, and Google login options
+  - Session management with JWT tokens
 
 ### ✅ Dashboard
 - Invoice creation ✅
 - Invoice listing ✅
 - Settings page ✅
 - Subscription management ✅
+- Tax reports (PIT + CIT) ✅
+- Inventory management ✅
+- Team member management ✅
 
 ### ✅ Invoice System
 - Create invoices via Dashboard ✅
+- Create invoices via WhatsApp text ✅
 - Generate PDF invoices ✅
 - Email invoices to customers ✅
+- WhatsApp invoice delivery ✅
 - Track invoice status ✅
+- QR code payment verification ✅
+
+### ✅ WhatsApp Integration (Meta Approved)
+- WhatsApp Business API active ✅
+- Text invoice creation ✅
+- Customer notifications ✅
+- WhatsApp OTP authentication ✅
 
 ### ✅ Payment Integration
 - Paystack subscription payments ✅
-- Upgrade plans (STARTER/PRO/BUSINESS/ENTERPRISE) ✅
+- Invoice pack purchases ✅
+- Upgrade plans (STARTER/PRO) ✅
 - Payment verification ✅
 
 ### ✅ Storage
@@ -47,29 +61,22 @@
 - SMTP configured (Brevo) ✅
 - Invoice emails with PDF attachments ✅
 - OTP emails for signup/login ✅
-- 300 emails/day free tier ✅
+- Brevo contact sync for marketing ✅
 
 ---
 
-## ⏳ WhatsApp Integration (Pending Meta Approval)
+## ⏳ Features Not Yet Enabled
 
-### 🔶 Status: Sandbox Mode
-- WhatsApp Business API configured
-- Webhook: `https://api.suoops.com/webhooks/whatsapp`
-- Bot working in test mode
-- **Blocked:** Meta business verification pending
+### 🔶 Voice Invoices
+- **Status:** Code ready, feature flag OFF
+- `FEATURE_VOICE_ENABLED: False` in config.py
+- Requires Pro plan when enabled
+- OpenAI Whisper integration ready
 
-### 📱 Features (Ready, Not Live)
-- Text invoice creation
-- Voice note invoice creation (OpenAI Whisper)
-- WhatsApp OTP authentication
-- Customer notifications
-
-### 🚀 When Meta Approves:
-1. WhatsApp OTP will work
-2. Users can create invoices via WhatsApp
-3. Automatic customer notifications
-4. Voice + text invoice flows active
+### 🔶 OCR Receipt Scanning
+- **Status:** Code ready, not exposed in UI
+- OpenAI Vision (GPT-4o) integration ready
+- Requires Pro/Business plan when enabled
 
 ---
 
@@ -79,55 +86,11 @@
 |---------|-----|--------|
 | **Frontend** | https://suoops.com | ✅ Live |
 | **API** | https://api.suoops.com | ✅ Live |
-| **Backend** | Heroku (suoops-backend) | ✅ v89 |
-| **Database** | PostgreSQL on Heroku | ✅ Connected |
-| **Redis** | Heroku Redis | ✅ Connected |
+| **Backend** | Render (suoops-backend) | ✅ Latest |
+| **Database** | PostgreSQL on Render | ✅ Connected |
 | **S3** | suoops-s3-bucket (AWS) | ✅ Active |
 | **Email** | Brevo SMTP | ✅ Working |
-
----
-
-## 📊 Current Limitations
-
-### Pre-Launch Mode
-1. ✅ **Users can signup with EMAIL** (temporary solution)
-2. ⏳ WhatsApp OTP not working (sandbox mode)
-3. ⏳ WhatsApp bot not accessible (pending Meta approval)
-4. ✅ Dashboard fully functional
-5. ✅ Invoice creation working
-6. ✅ Payment system working
-
-### Migration Plan
-- **NOW:** Email-based signups
-- **After Meta Approval:** Switch to WhatsApp as primary
-- **Future:** Both email + WhatsApp supported
-
----
-
-## 🧪 Testing Results
-
-### Backend API (v89)
-```bash
-# Email signup - WORKS ✅
-curl -X POST https://api.suoops.com/auth/signup/request \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","name":"Test User"}'
-
-Response: {"detail":"OTP sent to email"}
-```
-
-### Frontend (Latest)
-- ✅ Landing page loads
-- ✅ API calls go to api.suoops.com
-- ✅ Signup form functional
-- ✅ Login form functional
-- ✅ Dashboard accessible
-- ✅ Settings page working
-
-### Database
-- ✅ User table has email field (migration 0012)
-- ✅ All migrations applied
-- ✅ Constraints working
+| **WhatsApp** | Meta Business API | ✅ Active |
 
 ---
 
@@ -145,96 +108,48 @@ Response: {"detail":"OTP sent to email"}
 
 ---
 
-## 🚀 Ready for Launch
+## 🎯 User Flows
 
-### ✅ Can Launch NOW With:
-- Email-based signups
-- Full dashboard functionality
-- Invoice creation and management
-- Payment processing
-- Email notifications
-- Subscription tiers
-- Bank account management
-- Logo branding
-
-### ⏳ Need for WhatsApp Features:
-- Meta business verification
-- WhatsApp production access
-- Then enable WhatsApp OTP + bot
-
----
-
-## 📝 Known Issues - NONE
-
-All reported issues resolved:
-- ✅ API domain mismatch (fixed v89)
-- ✅ Email field missing (migration 0012)
-- ✅ Button visibility (no actual issue - CSS working)
-- ✅ OTP system working via email
-
----
-
-## 🎯 User Flow (Current)
-
-### Signup
-1. User visits https://suoops.com
-2. Clicks "Get Started" or "Sign Up"
-3. Enters email, name, business name
-4. Receives OTP via email
-5. Verifies OTP
-6. Redirected to dashboard ✅
+### Signup Options
+1. **Email OTP** - Enter email, receive OTP, verify
+2. **WhatsApp OTP** - Enter phone, receive OTP via WhatsApp, verify
+3. **Google OAuth** - One-click Google sign-in
 
 ### Create Invoice
-1. Dashboard → New Invoice
-2. Fill customer details (name, email optional)
-3. Add line items
-4. Generate PDF
-5. Email sent to customer (if email provided) ✅
+1. **Dashboard** - New Invoice → Fill details → Generate PDF → Email/WhatsApp
+2. **WhatsApp** - Text bot: "Invoice Joy 50000 for logo design" → Invoice created
 
 ### Upgrade Plan
-1. Settings → Subscription
-2. Click "Upgrade Plan"
-3. Select plan
-4. Redirected to Paystack
-5. Complete payment
-6. Plan upgraded ✅
+1. Settings → Subscription → Upgrade to Pro
+2. Or: `/dashboard/upgrade/pro` (direct link for email campaigns)
+3. Redirects to Paystack → Complete payment → Plan upgraded
 
 ---
 
-## 🔧 Quick Troubleshooting
+## 📊 Subscription Plans
 
-### If signup fails:
-1. Check Heroku logs: `heroku logs --tail`
-2. Verify SMTP config: `heroku config | grep SMTP`
-3. Test API directly: See testing section above
-
-### If API calls fail:
-1. Verify frontend uses api.suoops.com (not api.suopay.io)
-2. Check Vercel env: NEXT_PUBLIC_API_BASE_URL=https://api.suoops.com
-3. Redeploy if needed
-
-### If emails not sending:
-1. Check Brevo dashboard for quota
-2. Verify FROM_EMAIL=info@suoops.com
-3. Test SMTP: `heroku run python test_email.py`
+| Plan | Price | Invoices | Features |
+|------|-------|----------|----------|
+| **FREE** | ₦0 | 5 to start | Basic invoicing, PDF, QR |
+| **STARTER** | Pay per pack | 100 = ₦2,500 | + Tax reports |
+| **PRO** | ₦5,000/month | 100 included | + Logo, Inventory, Team (3), Priority Support |
 
 ---
 
 ## 🎉 Summary
 
-**Platform Status:** ✅ PRODUCTION READY  
-**Can Accept Users:** ✅ YES (via email)  
+**Platform Status:** ✅ FULLY OPERATIONAL  
+**Can Accept Users:** ✅ YES (Email, WhatsApp, Google)  
 **Can Process Payments:** ✅ YES  
-**Can Generate Invoices:** ✅ YES  
+**Can Generate Invoices:** ✅ YES (Dashboard + WhatsApp)  
 **Can Send Emails:** ✅ YES  
-**WhatsApp Features:** ⏳ Pending Meta approval  
-
-**Bottom Line:** The platform is fully functional for users to signup, create invoices, manage subscriptions, and run their business. WhatsApp features are bonus capabilities that will enhance the experience once Meta approves.
+**WhatsApp Features:** ✅ LIVE (Meta approved)
 
 ---
 
-**Next Steps:**
-1. Monitor Meta WhatsApp approval status
-2. Notify early users when WhatsApp goes live
-3. Optional: Add onboarding tutorial for dashboard
-4. Optional: Add video demos on landing page
+## 📋 Future Features (Code Ready)
+
+| Feature | Status | When Enabled |
+|---------|--------|--------------|
+| Voice Invoices | `FEATURE_VOICE_ENABLED=False` | Pro plan, 15/month quota |
+| OCR Receipt Scanning | Not exposed in UI | Pro/Business plan |

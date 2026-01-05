@@ -1,116 +1,311 @@
-# MVP Timeline Roadmap (Weeks 1–12)
+# WhatsInvoice - Development Roadmap
 
-Principles: Each deliverable maps cleanly to one service or module (SRP), avoids duplicated logic (DRY), and keeps files < 400 LOC by layering domain services (`InvoiceService`, `PaymentService`, etc.).
+## ✅ Completed Features
 
-## Week 1 – Foundations & Skeleton
-Deliverables:
-- FastAPI app shell (`app/api/main.py`) & base routers.
-- Core config & logging (`core.config`, `core.logger`).
-- DB base + session + initial Alembic migration.
-- User auth models/schemas (no UI yet).
-Exit Gate:
-- Health endpoint responds.
-- Alembic upgrade runs cleanly.
+### Authentication & User Management
+- [x] User registration with phone/name/password
+- [x] Login with JWT access tokens + HTTP-only refresh cookies
+- [x] Session management with automatic refresh
+- [x] Protected routes and auth middleware
+- [x] Logout functionality
 
-## Week 2 – Basic Invoicing Domain
-Deliverables:
-- `Invoice` + `InvoiceLine` models stable.
-- `InvoiceService.create_invoice` happy path with stub payment + PDF.
-- Rule-based `NLPService` minimal invoice parse.
-- WhatsApp webhook draft route (echo / parse). 
-Exit Gate:
-- Manual POST or WhatsApp JSON → invoice persisted; PDF stub URL produced.
+### Invoice Management
+- [x] Create invoices with customer info and line items
+- [x] List all invoices with status indicators
+- [x] View invoice details
+- [x] Update invoice status (pending → paid → failed)
+- [x] Real-time invoice updates
+- [x] PDF generation (basic with ReportLab)
+- [x] Invoice webhook event tracking
 
-## Week 3 – Real Payment Integration (Paystack)
-Deliverables:
-- Paystack link creation + webhook signature verify.
-- Update `InvoiceService` to persist payment_ref (if returned) & mark paid.
-- Basic retry/backoff strategy (idempotent webhook handler).
-Exit Gate:
-- Sandbox payment marks status `paid` within <10s median.
+### Banking & Manual Confirmation
+- [x] Bank profile storage (business name, account details)
+- [x] Manual payment confirmation flow for bank transfers
+- [x] Awaiting confirmation status handling
+- [x] Dashboard settings surfaces bank and plan information
 
-## Week 4 – PDF Hardening & Receipt Flow
-Deliverables:
-- Improved PDF layout (switch to HTML/Jinja rendered then to PDF OR refine ReportLab composition module — keep under 300 LOC).
-- Automatic receipt generation stub (future `Receipt` model optional) or reuse invoice with `status=paid` and deliver event.
-- Notification service hooks for invoice + receipt events.
-Exit Gate:
-- Payment webhook triggers PDF generation exactly once (idempotent test passes).
+### Infrastructure
+- [x] FastAPI backend with SQLAlchemy ORM
+- [x] PostgreSQL database with migrations
+- [x] Redis for caching/tasks
+- [x] Next.js 15 frontend with TypeScript
+- [x] Tailwind CSS v4 for styling
+- [x] React Query for data fetching
+- [x] Zustand for state management
+- [x] Comprehensive test suite (pytest)
 
-## Week 5 – Dashboard Minimal (Read-Only)
-Deliverables:
-- Auth-protected endpoints (list invoices, retrieve one) with issuer scoping (replace explicit `issuer_id`).
-- JWT dependency injection & removal of external issuer_id in create route.
-- Basic metrics counters.
-Exit Gate:
-- Create invoice with Bearer token, list shows it with correct issuer filtering.
+---
 
-## Week 6 – Bank Details & Confirmation Flow
-Deliverables:
-- Bank details storage with issuer-scoped CRUD endpoints.
-- Manual payment confirmation flow (bank transfer reference capture, awaiting_confirmation status).
-- Settings UI section for business banking profile + plan overview.
-Exit Gate:
-- Invoice marked `awaiting_confirmation` transitions to `paid` once confirmation endpoint is called.
+## 🚀 Next Steps - Prioritized
 
-## Week 7 – Reminders & Overdue Logic
-Deliverables:
-- Overdue status transition job (background task scanning due_date < now & unpaid).
-- Structured logging for transitions.
-- Add `due_in_days` parsing phrases (NLP enrichment).
-Exit Gate:
-- Test set of sample invoices -> overdue classification job passes.
+### Phase 1: Core Functionality Completion (1-2 weeks)
 
-## Week 8 – QR Verification & Short Links
-Deliverables:
-- QR code embed in invoice PDF (verification URL endpoint `/invoices/{id}/verify`).
-- Short verification JSON structure (status, amount, customer name fragment masked).
-Exit Gate:
-- Scanning QR (manually hitting URL) returns correct state for paid/pending.
+#### 1.1 Testing & Bug Fixes
+**Priority: CRITICAL**
+- [ ] Test full invoice creation flow in browser
+- [ ] Test invoice status updates
+-- [ ] Test bank details update and manual confirmation flow
+- [ ] Fix any UI/UX issues discovered
+- [ ] Test registration and login flows thoroughly
+- [ ] Test session expiry and refresh
 
-## Week 9 – OCR Draft Invoices (Prototype)
-Deliverables:
-- `OCRService.parse_receipt` integrating Tesseract or placeholder stub returning partial fields.
-- Endpoint to upload image -> returns parsed draft invoice object (not persisted until confirmed).
-Exit Gate:
-- At least total amount extracted for >=70% of clean sample images.
+#### 1.2 PDF Enhancement
+**Priority: HIGH**
+- [ ] Enable WeasyPrint for HTML-to-PDF conversion
+- [ ] Design professional invoice PDF template
+- [ ] Add company logo support
+- [ ] Include payment QR code on invoice
+- [ ] Implement S3/storage upload for PDFs
+- [ ] Create `/invoices/{id}/download` endpoint to serve PDFs
+- [ ] Remove file:// path issues
 
-## Week 10 – Hardening & Observability
-Deliverables:
-- Prometheus metrics endpoint (/metrics) or custom counters.
-- Structured error response format (problem JSON) middleware.
-- Rate limiting (basic in-memory or Redis token bucket) for WhatsApp ingress.
-Exit Gate:
-- Load test 100 create requests: P95 < 500ms (local baseline) & no duplicate invoices.
+**Files to modify:**
+- `app/services/pdf_service.py` - Enable WeasyPrint
+- `templates/invoice.html` - Improve styling
+- `app/api/routes_invoices.py` - Add download endpoint
 
-## Week 11 – Multi-Line Item Parsing & Discounts
-Deliverables:
-- NLP pattern for `2x Wig @ 12500` → line items.
-- Optional discount field (safe migration; backward compatible).
-Exit Gate:
-- Multi-line invoice PDF shows correct total & rounding.
+#### 1.3 Invoice Details Page
+**Priority: HIGH**
+- [ ] Create `/dashboard/invoices/{id}` route
+- [ ] Show full invoice details with customer info
+- [ ] Display all line items in table
+- [ ] Show payment link (if unpaid)
+- [ ] Add status update UI
+- [ ] Show audit trail/timeline of changes
+- [ ] Add "Download PDF" button
 
-## Week 12 – Pilot Readiness & Documentation
-Deliverables:
-- Updated API spec + postman collection.
-- Runbooks: payment webhook replay, invoice recovery, overdue job manual run.
-- Security checklist (JWT secret rotation steps).
-Exit Gate:
-- Pilot checklist signed off (auth, payments, data retention, logging).
+**New files:**
+- `frontend/app/(dashboard)/dashboard/invoices/[id]/page.tsx`
+- `frontend/src/features/invoices/invoice-detail-page.tsx`
 
-## Post-MVP (Phase 2 & 3 Preview)
-- Branded invoice themes and scheduled reminders.
-- Bulk payment reconciliation dashboard.
-- Microloan scoring service subscribing to invoice paid events.
+---
 
-## OOP / SRP Mapping Reference
-| Concern | Class / Module | Rationale |
-|---------|----------------|-----------|
-| Invoice business rules | `InvoiceService` | Isolates domain logic from transport/webhooks |
-| Payments integration | `PaymentService` | Paystack provider abstraction |
-| Parsing user text | `NLPService` | Keeps rule patterns isolated & testable |
-| WhatsApp transport | `WhatsAppHandler` / `WhatsAppClient` | Avoids coupling to invoice logic |
-| PDF rendering | `PDFService` | Single responsibility: HTML/PDF + upload |
-| Auth & tokens | `AuthService` / `core.security` | Separation of identity concerns |
+### Phase 2: WhatsApp Integration (2-3 weeks)
 
-All roadmap items expand these classes or add orthogonal modules—preventing any file from exceeding ~400 LOC; when growth approaches threshold, split by sub-domain (e.g., `invoice_service_payments.py`).
+#### 2.1 WhatsApp Setup
+**Priority: HIGH**
+- [ ] Register with Meta for WhatsApp Business API
+- [ ] Set up webhook endpoint
+- [ ] Configure verification token
+- [ ] Test connection with Meta's test numbers
+
+#### 2.2 Message Handling
+**Priority: HIGH**
+- [ ] Implement webhook receiver at `/webhooks/whatsapp`
+- [ ] Parse incoming text messages
+- [ ] Implement NLP/intent detection for invoice commands
+- [ ] Extract customer name, amount, items from message
+- [ ] Send confirmation messages
+
+**Example commands to parse:**
+- "Create invoice for John Doe, ₦5000 for website design"
+- "Invoice customer Mary, ₦3500 for 2x logo design"
+
+#### 2.3 Outbound Messages
+**Priority: HIGH**
+- [ ] Send invoice details via WhatsApp
+- [ ] Send PDF as attachment
+- [ ] Send payment link
+- [ ] Send payment confirmation
+- [ ] Handle template messages for notifications
+
+**Files to modify:**
+- `app/bot/whatsapp_adapter.py` - Implement actual API calls
+- `app/bot/nlp.py` - Improve intent parsing
+- `app/services/notify_service.py` - Add WhatsApp notifications
+
+---
+
+### Phase 3: Payment Integration (2-3 weeks)
+
+#### 3.1 Payment Provider Setup
+**Priority: HIGH**
+- [ ] Finalize Paystack provider configuration
+- [ ] Register account and get API keys
+- [ ] Configure webhook URL
+- [ ] Test in sandbox mode
+
+#### 3.2 Payment Flow
+**Priority: HIGH**
+- [ ] Generate payment links via provider API
+- [ ] Store payment reference on invoice
+- [ ] Implement webhook handler for payment events
+- [ ] Update invoice status on successful payment
+- [ ] Handle failed payments
+- [ ] Send payment confirmation
+
+**Files to modify:**
+- `app/services/payment_service.py` - Implement actual provider calls
+- `app/api/routes_webhooks.py` - Add payment webhook handler
+- `app/services/invoice_service.py` - Link payment flow
+
+#### 3.3 Payment History
+**Priority: MEDIUM**
+- [ ] Track all payment attempts
+- [ ] Show payment history in invoice details
+- [ ] Add payment method info
+- [ ] Show transaction IDs
+
+---
+
+### Phase 4: Enhanced Features (3-4 weeks)
+
+#### 4.1 Payment Confirmation History
+**Priority: MEDIUM**
+- [ ] Create `/dashboard/payments/history` page
+- [ ] List all manual confirmations and webhook events
+- [ ] Show details per confirmation (invoice, actor, timestamp)
+- [ ] Calculate totals and summaries
+- [ ] Add filtering by date range
+- [ ] Export to CSV/Excel
+
+#### 4.2 User Profile & Settings
+**Priority: MEDIUM**
+- [ ] Create `/dashboard/settings` page
+- [ ] Edit profile (name, phone, email)
+- [ ] Change password
+- [ ] Business settings (company name, logo, tax info)
+- [ ] WhatsApp settings (phone number, templates)
+- [ ] Payment preferences
+- [ ] Notification preferences
+
+#### 4.3 Analytics Dashboard
+**Priority: MEDIUM**
+- [ ] Revenue trends chart (last 30/90 days)
+- [ ] Invoice statistics (pending/paid/failed counts)
+- [ ] Manual confirmation vs webhook success rate
+- [ ] Top customers by revenue
+- [ ] Payment timing distribution (avg days to pay)
+- [ ] Monthly/yearly summaries
+
+**New files:**
+- `frontend/app/(dashboard)/dashboard/analytics/page.tsx`
+- `frontend/src/features/analytics/` - Chart components
+
+#### 4.4 Email Notifications
+**Priority: MEDIUM**
+- [ ] Set up email service (SendGrid/AWS SES)
+- [ ] Send invoice created notification
+- [ ] Send payment received notification
+- [ ] Add email preferences in settings
+- [ ] Email templates with branding
+
+---
+
+### Phase 5: Advanced Features (4+ weeks)
+
+#### 5.1 Multi-Currency Support
+- [ ] Add currency field to invoices
+- [ ] Support USD, GBP, EUR alongside NGN
+- [ ] Currency conversion rates
+- [ ] Display amounts in user's preferred currency
+
+#### 5.2 Recurring Invoices
+- [ ] Set up recurring invoice schedules
+- [ ] Automatic invoice generation
+- [ ] Send reminders before due date
+- [ ] Track subscription-like customers
+
+#### 5.3 Customer Management
+- [ ] Create `/dashboard/customers` page
+- [ ] Add/edit customer details
+- [ ] View customer invoice history
+- [ ] Track customer lifetime value
+- [ ] Add notes/tags to customers
+
+#### 5.4 Expense Tracking
+- [ ] Record business expenses
+- [ ] Categorize expenses
+- [ ] Link expenses to invoices/projects
+- [ ] Generate expense reports
+- [ ] Calculate profit margins
+
+#### 5.5 Mobile App
+- [ ] React Native mobile app
+- [ ] Push notifications
+- [ ] Offline mode
+- [ ] Camera for receipt scanning (OCR)
+
+---
+
+## 🔧 Technical Improvements
+
+### Infrastructure
+- [ ] Set up CI/CD pipeline (GitHub Actions)
+- [ ] Configure production environment
+- [ ] Set up monitoring (Sentry, DataDog)
+- [ ] Add rate limiting to API
+- [ ] Implement API versioning
+- [ ] Add caching strategies
+- [ ] Database optimization (indexes, queries)
+- [ ] Add database backups
+
+### Security
+- [ ] Implement 2FA for login
+- [ ] Add CORS configuration
+- [ ] Set up CSP headers
+- [ ] Implement rate limiting per user
+- [ ] Add audit logging for sensitive actions
+- [ ] Encrypt sensitive data at rest
+- [ ] Security audit and penetration testing
+
+### Testing
+- [ ] Increase test coverage to >80%
+- [ ] Add E2E tests with Playwright
+- [ ] Add frontend unit tests (Vitest)
+- [ ] Add load testing (Locust)
+- [ ] Add integration tests for WhatsApp
+- [ ] Add integration tests for payments
+
+### Documentation
+- [ ] API documentation (auto-generated from OpenAPI)
+- [ ] User guide/help center
+- [ ] Video tutorials
+- [ ] Developer onboarding docs
+- [ ] Deployment guide
+- [ ] Architecture diagrams
+
+---
+
+## 📊 Metrics to Track
+
+### Business Metrics
+- Total invoices created
+- Total revenue processed
+- Average invoice value
+- Payment success rate
+- Customer retention rate
+- Manual confirmation volume
+
+### Technical Metrics
+- API response times
+- Error rates
+- Uptime/availability
+- Database query performance
+- PDF generation time
+- WhatsApp message delivery rate
+
+---
+
+## 🎯 Suggested Focus for Next Sprint
+
+**Week 1-2: Core Completion**
+1. Complete browser testing
+2. Implement PDF download endpoint
+3. Create invoice detail page
+4. Fix any critical bugs
+
+**Week 3-4: WhatsApp MVP**
+1. Set up WhatsApp Business API
+2. Implement basic webhook
+3. Parse simple invoice commands
+4. Send invoice via WhatsApp
+
+**Week 5-6: Payment Integration**
+1. Choose and set up payment provider
+2. Generate payment links
+3. Handle payment webhooks
+4. Update invoice status on payment
+
+This roadmap will take your MVP to a production-ready state in ~12-16 weeks of focused development!
+

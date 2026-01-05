@@ -1,0 +1,62 @@
+# Namecheap Quick Copy-Paste Reference
+
+## Login & Navigate
+1. https://www.namecheap.com/myaccount/login/
+2. Domain List → MANAGE suoops.com → Advanced DNS tab
+
+---
+
+## Record 1: CNAME (DKIM)
+Type: CNAME Record
+Host: iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey
+Value: iu5cwz57dsyf2d4owslq3dg3dvw6verk.dkim.amazonses.com
+TTL: Automatic
+
+## Record 2: CNAME (DKIM)
+Type: CNAME Record
+Host: flhynideglr2zsjvynjv3j4w2i5hjzcl._domainkey
+Value: flhynideglr2zsjvynjv3j4w2i5hjzcl.dkim.amazonses.com
+TTL: Automatic
+
+## Record 3: CNAME (DKIM)
+Type: CNAME Record
+Host: 6dc424alpsfgha7hbqoomnfdfsnzbdfx._domainkey
+Value: 6dc424alpsfgha7hbqoomnfdfsnzbdfx.dkim.amazonses.com
+TTL: Automatic
+
+## Record 4: MX
+Type: MX Record
+Host: mail
+Value: feedback-smtp.eu-north-1.amazonses.com
+Priority: 10
+TTL: Automatic
+
+## Record 5: TXT (SPF)
+Type: TXT Record
+Host: mail
+Value: v=spf1 include:amazonses.com ~all
+TTL: Automatic
+(NO QUOTES - Namecheap adds them!)
+
+## Record 6: TXT (DMARC)
+Type: TXT Record
+Host: _dmarc
+Value: v=DMARC1; p=none;
+TTL: Automatic
+(NO QUOTES - Namecheap adds them!)
+
+---
+
+## Important
+- Click ✓ (checkmark) after EACH record to save
+- Do NOT include .suoops.com in Host field
+- Do NOT add quotes to TXT values
+- Wait 15 mins - 48 hours for DNS propagation
+
+## Verify
+dig iu5cwz57dsyf2d4owslq3dg3dvw6verk._domainkey.suoops.com CNAME
+dig mail.suoops.com MX
+dig mail.suoops.com TXT
+dig _dmarc.suoops.com TXT
+
+Full guide: docs/NAMECHEAP_SES_SETUP.md
