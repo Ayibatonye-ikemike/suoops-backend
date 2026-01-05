@@ -246,7 +246,8 @@ class InvoiceStatusMixin:
                             whatsapp_message += (
                                 f"\n🔗 Verify & Mark as Paid:\n{verify_link}\n\n"
                                 f"✅ Please verify the funds in your bank account "
-                                f"and mark the invoice as PAID to send the customer their receipt."
+                                f"and mark the invoice as PAID to send the customer their receipt.\n\n"
+                                f"💡 _Tip: If link doesn't load, long-press and select 'Open in Browser'_"
                             )
                             client.send_text(user.phone, whatsapp_message)
                             results["whatsapp"] = True

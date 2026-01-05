@@ -114,7 +114,8 @@ def notify_business_of_customer_confirmation(db: Session, invoice: models.Invoic
                     whatsapp_message += (
                         f"\n🔗 Verify & Mark as Paid:\n{verify_link}\n\n"
                         f"✅ Please verify the funds in your bank account "
-                        f"and mark the invoice as PAID to send the customer their receipt."
+                        f"and mark the invoice as PAID to send the customer their receipt.\n\n"
+                        f"💡 _Tip: Make sure you're logged in at suoops.com on this device_"
                     )
                     client.send_text(user.phone, whatsapp_message)
                     results["whatsapp"] = True
