@@ -55,14 +55,16 @@ def request_phone_otp(
     
     normalized_phone = _normalize_phone(payload.phone)
     
-    # Check if phone is already used by another user
+    # Check if phone is already used by another user (verified or not - unique constraint)
     existing = db.query(models.User).filter(
         models.User.phone == normalized_phone,
         models.User.id != current_user_id,
-        models.User.phone_verified.is_(True),
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Phone number already in use")
+        raise HTTPException(
+            status_code=400, 
+            detail="This phone number is already linked to another account"
+        )
     
     # Generate OTP
     otp = f"{random.randint(100000, 999999)}"
