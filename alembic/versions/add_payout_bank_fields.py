@@ -1,7 +1,7 @@
 """add payout bank fields to user
 
 Revision ID: add_payout_bank_fields
-Revises: 
+Revises: 20251229_phone_nullable
 Create Date: 2026-01-06
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_payout_bank_fields'
-down_revision: Union[str, None] = None  # Update this to your latest migration
+down_revision: Union[str, None] = '20251229_phone_nullable'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
