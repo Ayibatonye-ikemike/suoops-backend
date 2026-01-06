@@ -67,6 +67,21 @@ class ValidateCodeResponse(BaseModel):
     error: str | None = None
 
 
+class PayoutBankDetailsResponse(BaseModel):
+    """Response with payout bank details."""
+    bank_name: str | None = None
+    account_number: str | None = None
+    account_name: str | None = None
+    is_complete: bool = False
+
+
+class PayoutBankDetailsUpdate(BaseModel):
+    """Request to update payout bank details."""
+    bank_name: str = Field(..., min_length=2, max_length=100)
+    account_number: str = Field(..., min_length=10, max_length=10, pattern=r"^\d{10}$")
+    account_name: str = Field(..., min_length=2, max_length=255)
+
+
 # ==================== ENDPOINTS ====================
 
 @router.get("/code", response_model=ReferralCodeResponse)
@@ -188,3 +203,91 @@ async def validate_referral_code(
         valid=True,
         referrer_name=referrer.name if referrer else None,
     )
+
+
+@router.get("/payout-bank", response_model=PayoutBankDetailsResponse)
+async def get_payout_bank_details(
+    user_id: CurrentUserDep,
+    db: DbDep,
+):
+    """
+    Get the current user's payout bank details for referral commissions.
+    
+    This is separate from the business bank account shown on invoices.
+    """
+    from sqlalchemy import select
+    from app.models.models import User
+    
+    user = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one()
+    
+    is_complete = all([
+        user.payout_bank_name,
+        user.payout_account_number,
+        user.payout_account_name,
+    ])
+    
+    return PayoutBankDetailsResponse(
+        bank_name=user.payout_bank_name,
+        account_number=user.payout_account_number,
+        account_name=user.payout_account_name,
+        is_complete=is_complete,
+    )
+
+
+@router.patch("/payout-bank", response_model=PayoutBankDetailsResponse)
+async def update_payout_bank_details(
+    user_id: CurrentUserDep,
+    db: DbDep,
+    request: PayoutBankDetailsUpdate,
+):
+    """
+    Update the current user's payout bank details for referral commissions.
+    
+    This is where commission payouts will be sent at the end of each month.
+    """
+    from sqlalchemy import select
+    from app.models.models import User
+    
+    user = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one()
+    
+    user.payout_bank_name = request.bank_name
+    user.payout_account_number = request.account_number
+    user.payout_account_name = request.account_name
+    
+    db.commit()
+    db.refresh(user)
+    
+    return PayoutBankDetailsResponse(
+        bank_name=user.payout_bank_name,
+        account_number=user.payout_account_number,
+        account_name=user.payout_account_name,
+        is_complete=True,
+    )
+
+
+@router.delete("/payout-bank")
+async def delete_payout_bank_details(
+    user_id: CurrentUserDep,
+    db: DbDep,
+):
+    """
+    Clear the current user's payout bank details.
+    """
+    from sqlalchemy import select
+    from app.models.models import User
+    
+    user = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one()
+    
+    user.payout_bank_name = None
+    user.payout_account_number = None
+    user.payout_account_name = None
+    
+    db.commit()
+    
+    return {"message": "Payout bank details cleared"}

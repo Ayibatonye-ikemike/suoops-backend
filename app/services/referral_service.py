@@ -1,12 +1,13 @@
 """
 Referral service for managing referral codes, tracking referrals, and distributing rewards.
 
-Business rules:
+COMMISSION-BASED MODEL (Updated January 2026):
 - Each user gets a unique 8-character referral code
-- Free signup referrals: 8 signups → 100 free invoices (₦2,500 value)
-- Paid subscription referrals: 2 Pro signups → 100 free invoices (₦2,500 value)
+- Paid referral commission: 10% = ₦500 per Pro subscriber (instant reward)
+- Free signup referrals: No reward (focus on quality paid referrals)
 - Note: Starter has no monthly subscription - only Pro counts as paid referrals
-- Rewards expire after 90 days if not applied
+- CASH PAYOUT: Commissions are paid out at the end of each month
+- Rewards expire after 90 days if not claimed for payout
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.models import User
 from app.models.referral_models import (
     REFERRAL_THRESHOLDS,
+    REFERRAL_COMMISSION_AMOUNT,
     Referral,
     ReferralCode,
     ReferralReward,
@@ -177,7 +179,8 @@ class ReferralService:
 
     def upgrade_referral_to_paid(self, referred_user_id: int) -> bool:
         """
-        Upgrade a referral from free to paid when referred user subscribes.
+        Upgrade a referral from free to paid when referred user subscribes to Pro.
+        COMMISSION MODEL: Creates instant ₦500 commission reward for the referrer.
         """
         referral = self.db.execute(
             select(Referral)
@@ -196,16 +199,51 @@ class ReferralService:
 
         logger.info(f"Upgraded referral for user {referred_user_id} to paid")
 
-        # Re-check rewards (paid referrals have lower threshold)
-        self._check_and_create_reward(referral.referrer_id)
+        # COMMISSION MODEL: Create immediate reward for the referrer
+        self._create_commission_reward(referral.referrer_id, referred_user_id)
 
         return True
 
     # ==================== REWARD MANAGEMENT ====================
 
+    def _create_commission_reward(self, referrer_id: int, referred_user_id: int) -> ReferralReward | None:
+        """
+        Create an instant commission reward when a referred user subscribes to Pro.
+        COMMISSION MODEL: ₦500 (10% of ₦5,000 Pro plan) per paid referral.
+        CASH PAYOUT: Commissions are paid out at the end of each month.
+        """
+        # Get referred user name for reward description
+        referred_user = self.db.execute(
+            select(User).where(User.id == referred_user_id)
+        ).scalar_one_or_none()
+        
+        referred_name = referred_user.name if referred_user else "a user"
+        
+        # Create commission reward
+        reward = ReferralReward(
+            user_id=referrer_id,
+            reward_type="commission",
+            reward_description=f"₦500 cash commission for {referred_name}'s Pro subscription",
+            free_referrals_count=0,
+            paid_referrals_count=1,
+            status=RewardStatus.PENDING,
+            expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=90),
+        )
+        self.db.add(reward)
+        self.db.commit()
+        self.db.refresh(reward)
+
+        logger.info(
+            f"Created commission reward for user {referrer_id}: ₦{REFERRAL_COMMISSION_AMOUNT} "
+            f"(referred user {referred_user_id} subscribed to Pro)"
+        )
+        return reward
+
     def _check_and_create_reward(self, referrer_id: int) -> ReferralReward | None:
         """
         Check if referrer has earned a new reward and create it.
+        NOTE: This method is kept for backward compatibility but commission rewards
+        are now created immediately via _create_commission_reward when a referral upgrades to paid.
         """
         # Get counts of completed referrals
         free_count = self._get_completed_referral_count(referrer_id, ReferralType.FREE_SIGNUP)
@@ -214,34 +252,12 @@ class ReferralService:
         # Get count of rewards already earned
         rewards_earned = self._get_rewards_count(referrer_id)
 
-        # Calculate how many rewards should be earned based on thresholds
-        # Paid referrals (2 = 1 reward)
-        paid_rewards = paid_count // REFERRAL_THRESHOLDS["paid_signup"]["required"]
-        # Free referrals (8 = 1 reward)
-        free_rewards = free_count // REFERRAL_THRESHOLDS["free_signup"]["required"]
-
-        total_rewards_deserved = paid_rewards + free_rewards
-
-        if total_rewards_deserved > rewards_earned:
-            # Create new reward
-            reward = ReferralReward(
-                user_id=referrer_id,
-                reward_type=REFERRAL_THRESHOLDS["free_signup"]["reward_type"],
-                reward_description=REFERRAL_THRESHOLDS["free_signup"]["reward_description"],
-                free_referrals_count=free_count,
-                paid_referrals_count=paid_count,
-                status=RewardStatus.PENDING,
-                expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=90),
-            )
-            self.db.add(reward)
-            self.db.commit()
-            self.db.refresh(reward)
-
-            logger.info(
-                f"Created reward for user {referrer_id}: {reward.reward_description} "
-                f"(free: {free_count}, paid: {paid_count})"
-            )
-            return reward
+        # COMMISSION MODEL: Paid referrals create instant rewards via _create_commission_reward
+        # This method now only logs stats, rewards are created immediately on upgrade
+        logger.debug(
+            f"Referral stats for user {referrer_id}: "
+            f"free={free_count}, paid={paid_count}, rewards_earned={rewards_earned}"
+        )
 
         return None
 
@@ -279,8 +295,8 @@ class ReferralService:
 
     def apply_reward(self, user_id: int, reward_id: int) -> tuple[bool, str]:
         """
-        Apply a pending reward to user's account.
-        NEW BILLING MODEL: Rewards add invoices to balance instead of subscription time.
+        Mark a pending reward as claimed for cash payout.
+        CASH PAYOUT MODEL: Commissions are paid out at the end of each month.
         Returns (success, message).
         """
         reward = self.db.execute(
@@ -299,41 +315,28 @@ class ReferralService:
             self.db.commit()
             return False, "Reward has expired"
 
-        # Get user
-        user = self.db.execute(
-            select(User).where(User.id == user_id)
-        ).scalar_one()
-
         now = dt.datetime.now(dt.timezone.utc)
 
-        # NEW BILLING MODEL: Add invoices to balance instead of subscription time
-        invoices_to_add = REFERRAL_THRESHOLDS["free_signup"].get("invoices_reward", 100)
-        old_balance = getattr(user, 'invoice_balance', 5)
-        
-        if hasattr(user, 'invoice_balance'):
-            user.invoice_balance += invoices_to_add
-            new_balance = user.invoice_balance
-        else:
-            new_balance = old_balance + invoices_to_add
-
-        # Mark reward as applied
+        # CASH PAYOUT MODEL: Mark as applied (pending payout at end of month)
+        # The actual cash transfer happens in a separate monthly payout process
         reward.status = RewardStatus.APPLIED
         reward.applied_at = now
 
         self.db.commit()
 
         logger.info(
-            f"Applied referral reward {reward_id} for user {user_id}: "
-            f"+{invoices_to_add} invoices (balance: {old_balance} → {new_balance})"
+            f"Claimed referral reward {reward_id} for user {user_id}: "
+            f"₦{REFERRAL_COMMISSION_AMOUNT} cash payout pending"
         )
 
-        return True, f"Reward applied! You received {invoices_to_add} free invoices. Your new balance is {new_balance} invoices."
+        return True, f"Reward claimed! ₦{REFERRAL_COMMISSION_AMOUNT} will be paid out at the end of this month."
 
     # ==================== STATISTICS ====================
 
     def get_referral_stats(self, user_id: int) -> dict:
         """
         Get referral statistics for a user.
+        COMMISSION MODEL: Shows earnings from paid referrals (₦500 each).
         """
         referral_code = self.get_or_create_referral_code(user_id)
 
@@ -352,12 +355,8 @@ class ReferralService:
         pending_rewards = self.get_pending_rewards(user_id)
         total_rewards = self._get_rewards_count(user_id)
 
-        # Calculate progress to next reward
-        free_threshold = REFERRAL_THRESHOLDS["free_signup"]["required"]
-        paid_threshold = REFERRAL_THRESHOLDS["paid_signup"]["required"]
-
-        free_progress = free_completed % free_threshold
-        paid_progress = paid_completed % paid_threshold
+        # COMMISSION MODEL: Calculate total earnings
+        total_commission_earned = paid_completed * REFERRAL_COMMISSION_AMOUNT  # ₦500 per paid referral
 
         return {
             "referral_code": referral_code.code,
@@ -376,16 +375,18 @@ class ReferralService:
                 }
                 for r in pending_rewards
             ],
+            # CASH PAYOUT MODEL: Commission info
+            "commission": {
+                "rate_percentage": 10,  # 10% commission
+                "amount_per_referral": REFERRAL_COMMISSION_AMOUNT,  # ₦500
+                "total_earned": total_commission_earned,
+                "payout_schedule": "monthly",  # Cash paid at end of month
+            },
+            # Simplified progress (no thresholds needed for commission model)
             "progress": {
-                "free_signups": {
-                    "current": free_progress,
-                    "required": free_threshold,
-                    "remaining": free_threshold - free_progress,
-                },
                 "paid_signups": {
-                    "current": paid_progress,
-                    "required": paid_threshold,
-                    "remaining": paid_threshold - paid_progress,
+                    "current": paid_completed,
+                    "earnings": total_commission_earned,
                 },
             },
         }

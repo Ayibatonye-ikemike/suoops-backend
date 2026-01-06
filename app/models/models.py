@@ -296,6 +296,11 @@ class User(Base):
     bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     account_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     account_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    
+    # Referral payout bank account (separate from business bank for commission payouts)
+    payout_bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    payout_account_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    payout_account_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Role-based access control (RBAC) role; defaults to 'user'.

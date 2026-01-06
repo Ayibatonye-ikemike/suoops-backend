@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import desc, func
+from sqlalchemy import case, desc, func
 from sqlalchemy.orm import Session
 
 from app.api.routes_admin_auth import get_current_admin
@@ -319,6 +319,10 @@ class ReferralStats(BaseModel):
     referrals_today: int
     referrals_this_week: int
     referrals_this_month: int
+    # Commission/Payout fields
+    total_commission_earned: int  # Total commission from all paid referrals (₦500 each)
+    pending_payout_amount: int  # Sum of pending rewards to be paid out
+    users_with_payout_bank: int  # Number of users who have set up payout bank
 
 
 @router.get("/referrals/stats", response_model=ReferralStats)
@@ -334,6 +338,7 @@ async def get_referral_stats(
         ReferralStatus,
         ReferralType,
         RewardStatus,
+        REFERRAL_COMMISSION_AMOUNT,
     )
     
     log_audit_event("admin.referrals.stats", user_id=admin_user.id)
@@ -367,10 +372,16 @@ async def get_referral_stats(
     referrals_week = db.query(Referral).filter(Referral.created_at >= week_start).count()
     referrals_month = db.query(Referral).filter(Referral.created_at >= month_start).count()
     
-    # Top referrers
+    # Top referrers (with paid referral count for commission calculation)
     top_referrers_query = db.query(
         Referral.referrer_id,
-        func.count(Referral.id).label("referral_count")
+        func.count(Referral.id).label("referral_count"),
+        func.sum(
+            case(
+                (Referral.referral_type == ReferralType.PAID_SIGNUP, 1),
+                else_=0
+            )
+        ).label("paid_count")
     ).filter(
         Referral.status == ReferralStatus.COMPLETED
     ).group_by(Referral.referrer_id).order_by(
@@ -378,7 +389,7 @@ async def get_referral_stats(
     ).limit(10).all()
     
     top_referrers = []
-    for referrer_id, count in top_referrers_query:
+    for referrer_id, count, paid_count in top_referrers_query:
         user = db.query(models.User).filter(models.User.id == referrer_id).first()
         if user:
             top_referrers.append({
@@ -386,8 +397,22 @@ async def get_referral_stats(
                 "name": user.name,
                 "email": user.email,
                 "phone": user.phone,
-                "referral_count": count
+                "referral_count": count,
+                "commission_earned": (paid_count or 0) * REFERRAL_COMMISSION_AMOUNT,
+                "payout_bank_name": user.payout_bank_name
             })
+    
+    # Commission/Payout stats
+    total_commission_earned = paid * REFERRAL_COMMISSION_AMOUNT  # ₦500 per paid referral
+    
+    # Count users with payout bank set up
+    users_with_payout_bank = db.query(models.User).filter(
+        models.User.payout_bank_name.isnot(None),
+        models.User.payout_account_number.isnot(None)
+    ).count()
+    
+    # Calculate pending payout amount (pending rewards * commission)
+    pending_payout_amount = pending_rewards * REFERRAL_COMMISSION_AMOUNT
     
     return ReferralStats(
         total_referral_codes=total_codes,
@@ -404,7 +429,10 @@ async def get_referral_stats(
         top_referrers=top_referrers,
         referrals_today=referrals_today,
         referrals_this_week=referrals_week,
-        referrals_this_month=referrals_month
+        referrals_this_month=referrals_month,
+        total_commission_earned=total_commission_earned,
+        pending_payout_amount=pending_payout_amount,
+        users_with_payout_bank=users_with_payout_bank
     )
 
 
