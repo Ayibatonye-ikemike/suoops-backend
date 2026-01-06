@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
 from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
+from app.services.payment_providers import calculate_amount_with_paystack_fee
 
 from .constants import PLAN_PRICES
 
@@ -77,9 +78,10 @@ async def initialize_subscription_payment(
     if user.plan.value.upper() == plan:
         raise HTTPException(status_code=400, detail=f"Already subscribed to {plan} plan")
     
-    # Get price
-    amount_naira = PLAN_PRICES[plan]
-    amount_kobo = amount_naira * 100  # Paystack uses kobo (smallest unit)
+    # Get price - add Paystack fees so customer pays them
+    base_amount_naira = PLAN_PRICES[plan]
+    amount_with_fees = calculate_amount_with_paystack_fee(base_amount_naira)
+    amount_kobo = int(amount_with_fees * 100)  # Paystack uses kobo (smallest unit)
     
     # Generate unique reference with current timestamp to avoid duplicates
     timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)  # milliseconds for uniqueness
@@ -160,7 +162,8 @@ async def initialize_subscription_payment(
                 "authorization_url": payment_data["authorization_url"],
                 "access_code": payment_data["access_code"],
                 "reference": payment_data["reference"],
-                "amount": amount_naira,
+                "amount": int(amount_with_fees),  # Customer pays this (includes fees)
+                "base_amount": base_amount_naira,  # Original plan price
                 "plan": plan,
             }
             

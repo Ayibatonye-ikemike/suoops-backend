@@ -405,6 +405,7 @@ async def initialize_invoice_pack_purchase(
 
     from app.core.config import settings
     from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
+    from app.services.payment_providers import calculate_amount_with_paystack_fee
     from app.utils.feature_gate import INVOICE_PACK_PRICE, INVOICE_PACK_SIZE
     
     if quantity < 1 or quantity > 10:
@@ -414,8 +415,9 @@ async def initialize_invoice_pack_purchase(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Calculate total
-    total_amount = INVOICE_PACK_PRICE * quantity
+    # Calculate total - add Paystack fees so customer pays them
+    base_amount = INVOICE_PACK_PRICE * quantity
+    total_amount = calculate_amount_with_paystack_fee(base_amount)
     invoices_to_add = INVOICE_PACK_SIZE * quantity
     
     # Generate unique reference
@@ -454,7 +456,7 @@ async def initialize_invoice_pack_purchase(
                 },
                 json={
                     "email": user.email or f"{user.phone}@suoops.com",
-                    "amount": total_amount * 100,  # Paystack expects kobo
+                    "amount": int(total_amount * 100),  # Paystack expects kobo (includes fees)
                     "reference": reference,
                     "callback_url": f"{settings.FRONTEND_URL}/dashboard/billing/success?reference={reference}",
                     "metadata": {
