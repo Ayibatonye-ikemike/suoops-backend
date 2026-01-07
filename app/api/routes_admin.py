@@ -437,6 +437,131 @@ async def get_referral_stats(
 
 
 # ============================================================================
+# Referral Payouts Management
+# ============================================================================
+
+class PayoutUserInfo(BaseModel):
+    """User with pending referral payout."""
+    user_id: int
+    name: str
+    email: str | None
+    phone: str
+    payout_bank_name: str | None
+    payout_account_number: str | None
+    payout_account_name: str | None
+    paid_referrals: int
+    commission_amount: int  # In Naira
+    has_bank_details: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PayoutListResponse(BaseModel):
+    """Response for payout list endpoint."""
+    total_users: int
+    total_amount: int
+    users_with_bank: int
+    users_without_bank: int
+    payouts: list[PayoutUserInfo]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/referrals/payouts", response_model=PayoutListResponse)
+async def get_referral_payouts(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    month: int | None = Query(None, description="Month (1-12), defaults to current"),
+    year: int | None = Query(None, description="Year, defaults to current"),
+) -> Any:
+    """
+    Get list of all users with pending referral commission payouts.
+    
+    Shows all users who have referred Pro subscribers and are owed commission.
+    Use month/year to filter to a specific period (for monthly payouts).
+    
+    Returns bank account details for each user so you can process payments.
+    """
+    from app.models.referral_models import (
+        Referral,
+        ReferralStatus,
+        ReferralType,
+        REFERRAL_COMMISSION_AMOUNT,
+    )
+    
+    log_audit_event("admin.referrals.payouts", user_id=admin_user.id, month=month, year=year)
+    
+    now = dt.datetime.now(dt.timezone.utc)
+    
+    # Filter by month/year if specified
+    if month and year:
+        start_date = dt.datetime(year, month, 1, tzinfo=dt.timezone.utc)
+        if month == 12:
+            end_date = dt.datetime(year + 1, 1, 1, tzinfo=dt.timezone.utc)
+        else:
+            end_date = dt.datetime(year, month + 1, 1, tzinfo=dt.timezone.utc)
+    else:
+        # Default to current month
+        start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if now.month == 12:
+            end_date = dt.datetime(now.year + 1, 1, 1, tzinfo=dt.timezone.utc)
+        else:
+            end_date = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Get all users with paid referrals in the period
+    paid_referrals_query = db.query(
+        Referral.referrer_id,
+        func.count(Referral.id).label("paid_count")
+    ).filter(
+        Referral.status == ReferralStatus.COMPLETED,
+        Referral.referral_type == ReferralType.PAID_SIGNUP,
+        Referral.created_at >= start_date,
+        Referral.created_at < end_date
+    ).group_by(Referral.referrer_id).all()
+    
+    payouts = []
+    total_amount = 0
+    users_with_bank = 0
+    users_without_bank = 0
+    
+    for referrer_id, paid_count in paid_referrals_query:
+        user = db.query(models.User).filter(models.User.id == referrer_id).first()
+        if user and paid_count > 0:
+            commission = paid_count * REFERRAL_COMMISSION_AMOUNT
+            has_bank = bool(user.payout_bank_name and user.payout_account_number)
+            
+            payouts.append(PayoutUserInfo(
+                user_id=user.id,
+                name=user.name,
+                email=user.email,
+                phone=user.phone,
+                payout_bank_name=user.payout_bank_name,
+                payout_account_number=user.payout_account_number,
+                payout_account_name=user.payout_account_name,
+                paid_referrals=paid_count,
+                commission_amount=commission,
+                has_bank_details=has_bank
+            ))
+            
+            total_amount += commission
+            if has_bank:
+                users_with_bank += 1
+            else:
+                users_without_bank += 1
+    
+    # Sort by commission amount descending
+    payouts.sort(key=lambda x: x.commission_amount, reverse=True)
+    
+    return PayoutListResponse(
+        total_users=len(payouts),
+        total_amount=total_amount,
+        users_with_bank=users_with_bank,
+        users_without_bank=users_without_bank,
+        payouts=payouts
+    )
+
+
+# ============================================================================
 # Platform Metrics
 # ============================================================================
 
