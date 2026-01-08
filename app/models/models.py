@@ -366,13 +366,11 @@ class User(Base):
         cascade="all, delete-orphan",
     )  # type: ignore
     
-    # NOTE: purchase_orders relationship removed - table not migrated to production yet
-    # Re-add when inventory module is fully deployed:
-    # purchase_orders: Mapped[list[PurchaseOrder]] = relationship(
-    #     "PurchaseOrder",
-    #     back_populates="user",
-    #     cascade="all, delete-orphan",
-    # )  # type: ignore
+    purchase_orders: Mapped[list[PurchaseOrder]] = relationship(
+        "PurchaseOrder",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )  # type: ignore
     
     # Referral system relationships
     referral_code: Mapped[ReferralCode | None] = relationship(
