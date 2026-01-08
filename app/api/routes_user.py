@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.api.routes_admin_auth import get_current_admin
 from app.core.cache import cached
 from app.core.encryption import decrypt_value
 from app.db.session import get_db
@@ -211,8 +212,8 @@ def delete_own_account(
 def admin_delete_account(
     user_id: int,
     request: DeleteAccountRequest,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
+    admin_user=Depends(get_current_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Admin endpoint to delete any user account.
@@ -221,7 +222,7 @@ def admin_delete_account(
     """
     # Check admin permission
     service = AccountDeletionService(db)
-    can_delete, reason = service.can_delete_account(current_user_id, user_id)
+    can_delete, reason = service.can_delete_account(admin_user.id, user_id)
     
     if not can_delete:
         raise HTTPException(status_code=403, detail=reason)
@@ -236,7 +237,7 @@ def admin_delete_account(
     try:
         result = service.delete_account(
             user_id=user_id,
-            deleted_by_user_id=current_user_id
+            deleted_by_user_id=admin_user.id
         )
         
         return DeleteAccountResponse(
