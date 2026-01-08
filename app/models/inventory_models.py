@@ -385,7 +385,8 @@ class PurchaseOrder(Base):
     )
 
     # Relationships
-    user: Mapped[User] = relationship("User", back_populates="purchase_orders")
+    # NOTE: back_populates commented out - User.purchase_orders not active until table is migrated
+    user: Mapped[User] = relationship("User")  # back_populates="purchase_orders"
     supplier: Mapped[Supplier | None] = relationship("Supplier")
     lines: Mapped[list[PurchaseOrderLine]] = relationship(
         "PurchaseOrderLine",
