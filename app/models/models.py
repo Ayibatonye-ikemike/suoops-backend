@@ -312,16 +312,19 @@ class User(Base):
         "TaxProfile",
         back_populates="user",
         uselist=False,
+        cascade="all, delete-orphan",
     )  # type: ignore
     vat_returns: Mapped[list[VATReturn]] = relationship(
         "VATReturn",
         back_populates="user",
+        cascade="all, delete-orphan",
     )  # type: ignore
     # Invoices issued by this user (as business)
     issued_invoices: Mapped[list[Invoice]] = relationship(
         "Invoice",
         back_populates="issuer",
         foreign_keys="Invoice.issuer_id",
+        cascade="all, delete-orphan",
     )  # type: ignore
     # Note: Expenses are now tracked as invoices with invoice_type='expense'
     # The separate Expense table is deprecated but kept for backward compatibility
