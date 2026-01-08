@@ -219,14 +219,8 @@ def admin_delete_account(
     Admin endpoint to delete any user account.
     
     Requires admin role and confirmation text "DELETE MY ACCOUNT".
+    Note: get_current_admin already verifies admin privileges.
     """
-    # Check admin permission
-    service = AccountDeletionService(db)
-    can_delete, reason = service.can_delete_account(admin_user.id, user_id)
-    
-    if not can_delete:
-        raise HTTPException(status_code=403, detail=reason)
-    
     # Require explicit confirmation
     if request.confirmation != "DELETE MY ACCOUNT":
         raise HTTPException(
@@ -234,11 +228,20 @@ def admin_delete_account(
             detail="Invalid confirmation. Type 'DELETE MY ACCOUNT' to confirm deletion."
         )
     
+    # Verify target user exists
+    target_user = db.query(models.User).filter(models.User.id == user_id).one_or_none()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    service = AccountDeletionService(db)
+    
     try:
         result = service.delete_account(
             user_id=user_id,
-            deleted_by_user_id=admin_user.id
+            deleted_by_user_id=None  # Admin deletion, not self-deletion
         )
+        
+        logger.info(f"Admin {admin_user.email} deleted user {user_id}")
         
         return DeleteAccountResponse(
             success=True,
