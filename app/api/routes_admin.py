@@ -46,7 +46,7 @@ class UserListItem(BaseModel):
     id: int
     name: str
     email: str | None
-    phone: str
+    phone: str | None
     plan: str
     phone_verified: bool
     created_at: dt.datetime
