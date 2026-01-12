@@ -329,12 +329,15 @@ class NLPService:
             1. Amount first: "1000 wig, 2000 shoe, 4000 belt"
             2. Item first: "wig 1000, shoe 2000" (fallback)
             3. Comma-formatted amounts: "11,000 Design, 10,000 Printing"
+            4. Typo handling: "20,00" treated as "2000" (2 digits after comma)
         
         Examples:
             "1000 wig, 2000 shoe" →
                 [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
             "11,000 Design, 10,000 Printing, 1000 Delivery" →
                 [{"description": "Design", "unit_price": 11000}, {"description": "Printing", "unit_price": 10000}, ...]
+            "10000 design, 20,00 printing, 5000 press" →
+                [{"description": "Design", "unit_price": 10000}, {"description": "Printing", "unit_price": 2000}, ...]
         """
         lines = []
         
@@ -348,7 +351,9 @@ class NLPService:
             clean_text = clean_text.replace(word, " ")
         
         # Remove phone number from text (include +prefix)
-        for variant in phone_variants:
+        # IMPORTANT: Sort by length descending to avoid partial replacements
+        # e.g., "08078557662" should be replaced before "8078557662" to avoid leaving "0" behind
+        for variant in sorted(phone_variants, key=len, reverse=True):
             clean_text = clean_text.replace("+" + variant.lower(), " ")
             clean_text = clean_text.replace(variant.lower(), " ")
         
@@ -361,7 +366,10 @@ class NLPService:
         # IMPORTANT: Handle comma-formatted numbers BEFORE splitting by comma
         # Convert "11,000" to "11000" but only for number patterns
         # Pattern: digit,digit (e.g., "11,000" but not "wig, shoe")
-        clean_text = re.sub(r"(\d),(\d{3})", r"\1\2", clean_text)
+        # Also handle typos like "20,00" (2 digits after comma) → "2000"
+        clean_text = re.sub(r"(\d),(\d{3})\b", r"\1\2", clean_text)  # 11,000 → 11000
+        clean_text = re.sub(r"(\d),(\d{2})\b", r"\1\2", clean_text)  # 20,00 → 2000 (typo)
+        clean_text = re.sub(r"(\d),(\d{1})\b", r"\1\2", clean_text)  # 5,0 → 50 (edge case)
         
         # Split by comma (now safe since comma-formatted numbers are normalized)
         # "11000 Design, 10000 Printing" → ["11000 Design", "10000 Printing"]
