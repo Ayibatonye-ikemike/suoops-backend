@@ -165,7 +165,7 @@ def send_admin_invite_email(to_email: str, name: str, invite_link: str) -> bool:
         
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "You've been invited to SuoOps Admin"
-        msg["From"] = settings.SMTP_FROM or "noreply@suoops.com"
+        msg["From"] = settings.FROM_EMAIL or "noreply@suoops.com"
         msg["To"] = to_email
         
         html = f"""
@@ -214,8 +214,7 @@ def send_admin_invite_email(to_email: str, name: str, invite_link: str) -> bool:
         msg.attach(MIMEText(html, "html"))
         
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-            if settings.SMTP_TLS:
-                server.starttls()
+            server.starttls()  # Always use TLS for security
             if settings.SMTP_USER and settings.SMTP_PASSWORD:
                 server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             server.send_message(msg)
