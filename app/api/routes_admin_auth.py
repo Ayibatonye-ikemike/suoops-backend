@@ -426,6 +426,51 @@ def list_admins(db: Session = Depends(get_db)):
     return admins
 
 
+@router.delete("/admins/{admin_id}")
+async def remove_admin(
+    admin_id: int,
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove an admin user. Only super admins can perform this action."""
+    # Only super admins can remove admins
+    if not current_admin.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins can remove admin users",
+        )
+    
+    # Find the admin to remove
+    admin_to_remove = db.query(AdminUser).filter(AdminUser.id == admin_id).first()
+    if not admin_to_remove:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found",
+        )
+    
+    # Prevent self-deletion
+    if admin_to_remove.id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove yourself",
+        )
+    
+    # Prevent removing other super admins
+    if admin_to_remove.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove another super admin",
+        )
+    
+    # Hard delete the admin
+    db.delete(admin_to_remove)
+    db.commit()
+    
+    logger.info(f"Admin {current_admin.email} removed admin {admin_to_remove.email}")
+    
+    return {"success": True, "message": f"Admin {admin_to_remove.email} has been removed"}
+
+
 @router.post("/change-password")
 def change_password(
     payload: ChangePasswordRequest,
