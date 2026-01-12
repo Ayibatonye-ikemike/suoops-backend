@@ -232,8 +232,16 @@ def send_admin_invite_email(to_email: str, name: str, invite_link: str) -> bool:
 @router.post("/login", response_model=AdminLoginResponse)
 def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
     """Login to admin dashboard."""
+    # Validate email domain - only @suoops.com emails allowed
+    email_lower = payload.email.lower()
+    if not email_lower.endswith("@suoops.com"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only @suoops.com email addresses can access the admin panel",
+        )
+    
     # Try to find admin user
-    admin = db.query(AdminUser).filter(AdminUser.email == payload.email.lower()).first()
+    admin = db.query(AdminUser).filter(AdminUser.email == email_lower).first()
     
     # If no admins exist and this is the default admin email, create it
     if not admin and payload.email.lower() == DEFAULT_ADMIN_EMAIL:
@@ -295,11 +303,16 @@ def invite_admin(
     Note: Requires authentication - must be called with valid admin token.
     """
     
-    # For now, we'll validate the caller is an admin in the route
-    # In production, this should use proper dependency injection
+    # Validate email domain - only @suoops.com emails can be invited
+    email_lower = payload.email.lower()
+    if not email_lower.endswith("@suoops.com"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only @suoops.com email addresses can be invited as admins",
+        )
     
     # Check if email already exists
-    existing = db.query(AdminUser).filter(AdminUser.email == payload.email.lower()).first()
+    existing = db.query(AdminUser).filter(AdminUser.email == email_lower).first()
     if existing:
         # If the admin is active, don't allow re-invite
         if existing.is_active:
