@@ -301,9 +301,31 @@ def invite_admin(
     # Check if email already exists
     existing = db.query(AdminUser).filter(AdminUser.email == payload.email.lower()).first()
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="An admin with this email already exists",
+        # If the admin is active, don't allow re-invite
+        if existing.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An active admin with this email already exists",
+            )
+        # If pending (not active), allow re-invite - update the token and resend
+        invite_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        existing.name = payload.name
+        existing.invite_token = invite_token
+        existing.invite_expires_at = expires_at
+        existing.can_manage_tickets = payload.can_manage_tickets
+        existing.can_view_users = payload.can_view_users
+        existing.can_view_analytics = payload.can_view_analytics
+        existing.can_invite_admins = payload.can_invite_admins
+        db.commit()
+        
+        invite_link = f"https://support.suoops.com/admin/accept-invite?token={invite_token}"
+        email_sent = send_admin_invite_email(payload.email, payload.name, invite_link)
+        
+        return AdminInviteResponse(
+            success=True,
+            message="Invitation re-sent successfully" if email_sent else "Invitation updated (email not sent)",
+            invite_link=invite_link,
         )
     
     # Generate invite token
