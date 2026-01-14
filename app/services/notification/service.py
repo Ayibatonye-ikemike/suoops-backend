@@ -116,13 +116,21 @@ class NotificationService:
         pdf_url: str | None = None,
     ) -> dict[str, bool]:
         """Send invoice notification via Email and/or WhatsApp."""
+        logger.info(
+            "[NOTIFY SERVICE] send_invoice_notification called - invoice=%s, email=%s, phone=%s, pdf_url=%s",
+            invoice.invoice_id,
+            customer_email,
+            customer_phone[:6] + "..." if customer_phone else None,
+            pdf_url[:50] + "..." if pdf_url else None,
+        )
         results = {"email": False, "whatsapp": False}
         if customer_email:
             results["email"] = await self.send_invoice_email(invoice, customer_email, pdf_url)
         if customer_phone:
             results["whatsapp"] = await self.send_invoice_whatsapp(invoice, customer_phone, pdf_url)
         logger.info(
-            "Invoice notification sent - Email: %s, WhatsApp: %s",
+            "[NOTIFY SERVICE] Invoice notification complete - invoice=%s, Email=%s, WhatsApp=%s",
+            invoice.invoice_id,
             results["email"],
             results["whatsapp"],
         )

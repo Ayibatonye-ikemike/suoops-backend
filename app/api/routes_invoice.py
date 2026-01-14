@@ -112,6 +112,14 @@ async def create_invoice(
                 results["email"],
                 results["whatsapp"],
             )
+        else:
+            logger.info(
+                "[INVOICE SKIP NOTIFY] Skipping notification for %s - invoice_type=%s, has_email=%s, has_phone=%s",
+                invoice.invoice_id,
+                invoice.invoice_type,
+                bool(data.customer_email),
+                bool(data.customer_phone),
+            )
         
         return invoice
     except ValueError as e:
