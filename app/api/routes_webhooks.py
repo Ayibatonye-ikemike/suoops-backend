@@ -62,48 +62,164 @@ def _record_webhook(db: Session, provider: str, external_id: str, signature: str
 
 
 def _handle_paystack_subscription(payload: dict, db: Session, signature: str | None) -> dict:
+    """Handle Paystack subscription and charge events for recurring billing."""
     event_type = (payload.get("event") or "").lower()
     data = payload.get("data") or {}
-    reference = data.get("reference") or data.get("id") or data.get("subscription_code")
-
+    
+    # Get reference - could be transaction reference or subscription code
+    reference = data.get("reference") or data.get("subscription_code") or data.get("id")
+    subscription_code = data.get("subscription_code")
+    
+    # For subscription.create events, get subscription code from data
+    if event_type == "subscription.create":
+        subscription_code = data.get("subscription_code")
+        reference = subscription_code
+    
     duplicate = False
     if reference:
-        duplicate = _record_webhook(db, "paystack:subscription", reference, signature)
+        duplicate = _record_webhook(db, "paystack:subscription", f"{event_type}:{reference}", signature)
         if duplicate:
-            logger.info("Paystack subscription webhook duplicate for %s", reference)
+            logger.info("Paystack subscription webhook duplicate for %s:%s", event_type, reference)
             return {"status": "duplicate", "reference": reference}
 
-    if event_type != "charge.success":
+    # Handle different subscription events
+    if event_type == "subscription.create":
+        # New subscription created - store subscription code
+        return _handle_subscription_created(data, db)
+    elif event_type == "subscription.disable":
+        # Subscription cancelled
+        return _handle_subscription_disabled(data, db)
+    elif event_type == "subscription.not_renew":
+        # Subscription won't renew (user requested cancellation)
+        return _handle_subscription_not_renew(data, db)
+    elif event_type == "invoice.payment_failed":
+        # Recurring payment failed
+        return _handle_invoice_payment_failed(data, db)
+    elif event_type == "charge.success":
+        # Successful payment (initial or recurring)
+        return _handle_charge_success(data, db)
+    else:
         db.commit()
         return {"status": "ignored", "event": event_type}
 
+
+def _handle_subscription_created(data: dict, db: Session) -> dict:
+    """Handle subscription.create event - user successfully subscribed."""
+    subscription_code = data.get("subscription_code")
+    customer = data.get("customer") or {}
+    customer_email = customer.get("email")
+    plan = data.get("plan") or {}
+    plan_name = plan.get("name", "").upper()
+    
+    # Map plan name to our plan enum
+    if "PRO" in plan_name:
+        target_plan = "PRO"
+    elif "BUSINESS" in plan_name:
+        target_plan = "BUSINESS"
+    else:
+        logger.warning("Unknown plan in subscription.create: %s", plan_name)
+        db.commit()
+        return {"status": "error", "message": f"Unknown plan: {plan_name}"}
+    
+    # Find user by email
+    user = db.query(models.User).filter(
+        (models.User.email == customer_email) | 
+        (models.User.email == customer_email.lower())
+    ).first()
+    
+    if not user:
+        logger.error("Subscription created but user not found: %s", customer_email)
+        db.commit()
+        return {"status": "error", "message": "User not found"}
+    
+    # Store subscription code on user (we'll add this field)
+    if hasattr(user, 'paystack_subscription_code'):
+        user.paystack_subscription_code = subscription_code
+    if hasattr(user, 'paystack_customer_code'):
+        user.paystack_customer_code = customer.get("customer_code")
+    
+    db.commit()
+    
+    logger.info(
+        "✅ Subscription created: user %s, plan %s, subscription_code %s",
+        user.id, target_plan, subscription_code
+    )
+    
+    return {
+        "status": "success",
+        "event": "subscription.create",
+        "user_id": user.id,
+        "subscription_code": subscription_code,
+        "plan": target_plan,
+    }
+
+
+def _handle_charge_success(data: dict, db: Session) -> dict:
+    """Handle charge.success event - payment completed (initial or recurring)."""
+    reference = data.get("reference")
     metadata = data.get("metadata") or {}
     user_id = metadata.get("user_id")
     plan = metadata.get("plan")
-
-    if not user_id or not plan:
-        logger.error("Paystack subscription webhook missing metadata: %s", metadata)
+    
+    # Check if this is a subscription payment
+    subscription_code = data.get("subscription_code")
+    is_subscription = subscription_code is not None or metadata.get("subscription_type") == "recurring"
+    
+    # If no user_id in metadata, try to find by email
+    if not user_id:
+        customer = data.get("customer") or {}
+        customer_email = customer.get("email")
+        if customer_email:
+            user = db.query(models.User).filter(
+                (models.User.email == customer_email) | 
+                (models.User.email == customer_email.lower())
+            ).first()
+            if user:
+                user_id = user.id
+    
+    if not user_id:
+        logger.error("Paystack charge.success webhook missing user_id: %s", metadata)
         db.commit()
-        return {"status": "error", "message": "Missing metadata"}
+        return {"status": "error", "message": "Missing user_id"}
 
     user = db.query(models.User).filter(models.User.id == user_id).one_or_none()
     if not user:
-        logger.error("Paystack subscription webhook user %s not found", user_id)
+        logger.error("Paystack charge.success webhook user %s not found", user_id)
         db.commit()
         return {"status": "error", "message": "User not found"}
+
+    # Determine plan from metadata or existing subscription
+    if not plan:
+        # Try to get plan from subscription if available
+        if is_subscription and user.plan.value.upper() in ["PRO", "BUSINESS"]:
+            plan = user.plan.value.upper()
+        else:
+            plan = "PRO"  # Default to PRO for subscription charges
 
     try:
         new_plan = models.SubscriptionPlan[plan.upper()]
     except KeyError:
-        logger.error("Paystack subscription webhook invalid plan '%s'", plan)
+        logger.error("Paystack charge.success invalid plan '%s'", plan)
         db.commit()
         return {"status": "error", "message": "Invalid plan"}
 
     old_plan = user.plan.value
     old_balance = getattr(user, 'invoice_balance', 5)
+    
+    # Update user plan
     user.plan = new_plan
     
-    # Pro and Business plans include 100 invoices with subscription
+    # Store subscription code if available
+    if subscription_code and hasattr(user, 'paystack_subscription_code'):
+        user.paystack_subscription_code = subscription_code
+    
+    # Set subscription dates
+    from datetime import datetime, timedelta, timezone as tz
+    now = datetime.now(tz.utc)
+    user.subscription_started_at = now
+    user.subscription_expires_at = now + timedelta(days=32)  # ~1 month buffer
+    
+    # Add invoices included with plan
     invoices_added = new_plan.invoices_included
     if invoices_added > 0 and hasattr(user, 'invoice_balance'):
         user.invoice_balance += invoices_added
@@ -112,25 +228,108 @@ def _handle_paystack_subscription(payload: dict, db: Session, signature: str | N
             invoices_added, user_id, getattr(user, 'invoice_balance', 0)
         )
     
+    # Update payment transaction if exists
+    from app.models.payment_models import PaymentStatus, PaymentTransaction
+    transaction = (
+        db.query(PaymentTransaction)
+        .filter(PaymentTransaction.reference == reference)
+        .one_or_none()
+    )
+    if transaction:
+        transaction.status = PaymentStatus.SUCCESS
+    
     db.commit()
 
     logger.info(
-        "✅ Paystack subscription: user %s %s -> %s, +%d invoices (ref: %s)",
+        "✅ Paystack charge.success: user %s %s -> %s, +%d invoices (ref: %s, subscription: %s)",
         user_id,
         old_plan,
         new_plan.value,
         invoices_added,
         reference,
+        "recurring" if is_subscription else "one-time",
     )
 
     return {
         "status": "success",
+        "event": "charge.success",
         "old_plan": old_plan,
         "new_plan": new_plan.value,
         "invoices_added": invoices_added,
         "invoice_balance": getattr(user, 'invoice_balance', old_balance),
         "reference": reference,
+        "is_recurring": is_subscription,
     }
+
+
+def _handle_subscription_disabled(data: dict, db: Session) -> dict:
+    """Handle subscription.disable event - subscription cancelled."""
+    subscription_code = data.get("subscription_code")
+    customer = data.get("customer") or {}
+    customer_email = customer.get("email")
+    
+    user = db.query(models.User).filter(
+        (models.User.email == customer_email) | 
+        (models.User.email == customer_email.lower())
+    ).first()
+    
+    if user:
+        # Clear subscription code but keep plan until expiry
+        if hasattr(user, 'paystack_subscription_code'):
+            user.paystack_subscription_code = None
+        
+        db.commit()
+        logger.info("Subscription disabled for user %s (keeps plan until expiry)", user.id)
+        return {"status": "success", "event": "subscription.disable", "user_id": user.id}
+    
+    db.commit()
+    return {"status": "ignored", "event": "subscription.disable", "reason": "user not found"}
+
+
+def _handle_subscription_not_renew(data: dict, db: Session) -> dict:
+    """Handle subscription.not_renew event - subscription will not auto-renew."""
+    subscription_code = data.get("subscription_code")
+    customer = data.get("customer") or {}
+    customer_email = customer.get("email")
+    
+    user = db.query(models.User).filter(
+        (models.User.email == customer_email) | 
+        (models.User.email == customer_email.lower())
+    ).first()
+    
+    if user:
+        logger.info("Subscription will not renew for user %s", user.id)
+        db.commit()
+        return {"status": "success", "event": "subscription.not_renew", "user_id": user.id}
+    
+    db.commit()
+    return {"status": "ignored", "event": "subscription.not_renew", "reason": "user not found"}
+
+
+def _handle_invoice_payment_failed(data: dict, db: Session) -> dict:
+    """Handle invoice.payment_failed event - recurring charge failed."""
+    subscription = data.get("subscription") or {}
+    subscription_code = subscription.get("subscription_code")
+    customer = data.get("customer") or {}
+    customer_email = customer.get("email")
+    
+    user = db.query(models.User).filter(
+        (models.User.email == customer_email) | 
+        (models.User.email == customer_email.lower())
+    ).first()
+    
+    if user:
+        logger.warning(
+            "⚠️ Payment failed for user %s subscription %s - Paystack will retry",
+            user.id, subscription_code
+        )
+        # Paystack will retry, so we don't immediately downgrade
+        # They handle dunning (retry attempts) automatically
+        db.commit()
+        return {"status": "success", "event": "invoice.payment_failed", "user_id": user.id}
+    
+    db.commit()
+    return {"status": "ignored", "event": "invoice.payment_failed", "reason": "user not found"}
 
 
 def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | None) -> dict:
@@ -258,7 +457,17 @@ async def paystack_webhook(
     data = payload.get("data") or {}
     reference = data.get("reference") or ""
     
+    # Route to appropriate handler based on reference or event type
     if reference.startswith("INVPACK-"):
         return _handle_paystack_invoice_pack(payload, db, signature)
-    else:
+    elif event_type in [
+        "subscription.create", 
+        "subscription.disable", 
+        "subscription.not_renew",
+        "invoice.payment_failed",
+        "charge.success",
+    ]:
         return _handle_paystack_subscription(payload, db, signature)
+    else:
+        logger.info("Paystack webhook event %s not handled", event_type)
+        return {"status": "ignored", "event": event_type}

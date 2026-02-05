@@ -86,7 +86,7 @@ class SubscriptionPlan(str, enum.Enum):
         prices = {
             SubscriptionPlan.FREE: 0,
             SubscriptionPlan.STARTER: 0,  # No monthly fee, pay per invoice pack
-            SubscriptionPlan.PRO: 5000,  # 100 invoices + all premium features
+            SubscriptionPlan.PRO: 3250,  # 50 invoices + all premium features
         }
         return prices.get(self, 0)
     
@@ -99,11 +99,11 @@ class SubscriptionPlan(str, enum.Enum):
     def invoices_included(self) -> int:
         """Number of invoices included with monthly subscription.
         
-        Pro and Business plans include 100 invoices per month.
+        Pro plan includes 50 invoices per month.
         Free/Starter don't have monthly subscription, use invoice packs.
         """
         if self == SubscriptionPlan.PRO:
-            return 100
+            return 50
         return 0
 
     @property
@@ -301,6 +301,11 @@ class User(Base):
     payout_bank_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     payout_account_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     payout_account_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    
+    # Paystack subscription tracking (for auto-recurring billing)
+    paystack_subscription_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    paystack_customer_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Role-based access control (RBAC) role; defaults to 'user'.

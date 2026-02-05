@@ -2,10 +2,10 @@
 Feature gating utilities for subscription-based access control.
 
 NEW BILLING MODEL:
-- Invoice Packs: 100 invoices for ₦2,500 (one-time purchase, never expires)
+- Invoice Packs: 50 invoices for ₦1,250 (one-time purchase, never expires)
 - FREE: 5 free invoices to start, then purchase packs
 - STARTER: No monthly fee, just buy invoice packs + tax features
-- PRO (₦5,000/mo): Premium features (branding, inventory, team, voice, API) + buy invoice packs
+- PRO (₦3,250/mo): Premium features (branding, inventory, team, voice, API) + buy invoice packs
 
 Invoice balance is decremented per use. All plans can purchase more packs.
 Pro users keep features even when invoices are exhausted.
@@ -24,8 +24,8 @@ from app.models import models
 logger = logging.getLogger(__name__)
 
 # Invoice pack pricing
-INVOICE_PACK_SIZE = 100
-INVOICE_PACK_PRICE = 2500  # ₦2,500
+INVOICE_PACK_SIZE = 50
+INVOICE_PACK_PRICE = 1250  # ₦1,250
 
 
 class FeatureGate:
