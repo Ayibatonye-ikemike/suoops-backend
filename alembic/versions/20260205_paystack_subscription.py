@@ -20,24 +20,24 @@ depends_on = None
 def upgrade() -> None:
     # Add Paystack subscription tracking fields
     op.add_column(
-        'users',
+        'user',
         sa.Column('paystack_subscription_code', sa.String(100), nullable=True)
     )
     op.add_column(
-        'users',
+        'user',
         sa.Column('paystack_customer_code', sa.String(100), nullable=True)
     )
     
     # Index for efficient subscription lookup
     op.create_index(
-        'ix_users_paystack_subscription_code',
-        'users',
+        'ix_user_paystack_subscription_code',
+        'user',
         ['paystack_subscription_code'],
         unique=False
     )
 
 
 def downgrade() -> None:
-    op.drop_index('ix_users_paystack_subscription_code', table_name='users')
-    op.drop_column('users', 'paystack_customer_code')
-    op.drop_column('users', 'paystack_subscription_code')
+    op.drop_index('ix_user_paystack_subscription_code', table_name='user')
+    op.drop_column('user', 'paystack_customer_code')
+    op.drop_column('user', 'paystack_subscription_code')
