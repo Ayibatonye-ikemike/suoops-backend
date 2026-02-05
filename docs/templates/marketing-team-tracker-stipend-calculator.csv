@@ -1,0 +1,9 @@
+Week,Marketer ID,Name,Role,Pro Sales,Target Met?,Stipend,L1 Team Sales,L1 Override,L2 Team Sales,L2 Override,Active Team Members,Team Bonus,TOTAL EXTRA PAY,Bank,Status
+W1,SUO-SSR-001,Emeka Okonkwo,Sr. Supervisor,8,NO,0,20,1000,56,1400,2,0,2400,Access Bank ****1234,Pending
+W1,SUO-SUP-001,Chidi Nwosu,Supervisor,12,YES,15000,34,1700,0,0,3,0,16700,GTBank ****5678,Pending
+W1,SUO-SUP-002,Ada Obi,Supervisor,10,YES,15000,22,1100,0,0,2,0,16100,UBA ****9012,Pending
+W1,SUO-MKT-001,John Doe,Marketer,15,YES,10000,8,400,0,0,0,0,10400,Zenith ****3456,Pending
+W1,SUO-MKT-002,Mary Eze,Marketer,11,YES,10000,0,0,0,0,0,0,10000,First Bank ****7890,Pending
+W1,SUO-MKT-003,Peter Okafor,Marketer,8,NO,0,0,0,0,0,0,0,0,Kuda ****1111,N/A - No target
+W1,SUO-MKT-004,Grace Udoh,Marketer,10,YES,10000,0,0,0,0,0,0,10000,Access Bank ****2222,Pending
+W1,SUO-MKT-005,David Amadi,Marketer,12,YES,10000,0,0,0,0,0,0,10000,GTBank ****3333,Pending

@@ -1,0 +1,9 @@
+Marketer ID,Full Name,Phone,Email,Referral Code,City,Role,Recruited By,Supervisor ID,Sr. Supervisor ID,Date Joined,Status
+SUO-SSR-001,Emeka Okonkwo,08012345678,emeka@email.com,REF-EEE001,Lagos,Sr. Supervisor,-,-,-,04/02/2026,Active
+SUO-SUP-001,Chidi Nwosu,08023456789,chidi@email.com,REF-CCC001,Lagos,Supervisor,SUO-SSR-001,SUO-SSR-001,SUO-SSR-001,04/02/2026,Active
+SUO-SUP-002,Ada Obi,08034567890,ada@email.com,REF-AAA001,Port Harcourt,Supervisor,SUO-SSR-001,SUO-SSR-001,SUO-SSR-001,04/02/2026,Active
+SUO-MKT-001,John Doe,08045678901,john@email.com,REF-JJJ001,Lagos,Marketer,SUO-SUP-001,SUO-SUP-001,SUO-SSR-001,04/02/2026,Active
+SUO-MKT-002,Mary Eze,08056789012,mary@email.com,REF-MMM001,Lagos,Marketer,SUO-SUP-001,SUO-SUP-001,SUO-SSR-001,04/02/2026,Active
+SUO-MKT-003,Peter Okafor,08067890123,peter@email.com,REF-PPP001,Lagos,Marketer,SUO-MKT-001,SUO-SUP-001,SUO-SSR-001,04/02/2026,Active
+SUO-MKT-004,Grace Udoh,08078901234,grace@email.com,REF-GGG001,Port Harcourt,Marketer,SUO-SUP-002,SUO-SUP-002,SUO-SSR-001,04/02/2026,Active
+SUO-MKT-005,David Amadi,08089012345,david@email.com,REF-DDD001,Port Harcourt,Marketer,SUO-SUP-002,SUO-SUP-002,SUO-SSR-001,04/02/2026,Active

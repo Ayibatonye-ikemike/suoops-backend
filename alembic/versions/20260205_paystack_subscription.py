@@ -3,7 +3,7 @@
 Supports auto-recurring Paystack subscriptions for Pro/Business plans.
 
 Revision ID: 20260205_paystack_subscription
-Revises: add_payout_bank_fields
+Revises: invoice_user_set_null
 Create Date: 2026-02-05
 """
 from alembic import op
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20260205_paystack_subscription'
-down_revision = 'add_payout_bank_fields'  # Update this to your latest migration
+down_revision = 'invoice_user_set_null'
 branch_labels = None
 depends_on = None
 
