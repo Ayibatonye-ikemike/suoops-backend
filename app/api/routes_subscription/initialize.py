@@ -123,6 +123,9 @@ async def initialize_subscription_payment(
             timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
             reference = f"SUBSCRIP-{current_user_id}-{plan}-{timestamp}"
             
+            # Get plan amount in kobo
+            plan_amount_kobo = PLAN_PRICES[plan] * 100
+            
             response = await client.post(
                 "https://api.paystack.co/transaction/initialize",
                 headers={
@@ -131,6 +134,7 @@ async def initialize_subscription_payment(
                 },
                 json={
                     "email": user_email,
+                    "amount": plan_amount_kobo,  # Amount in kobo (required even with plan)
                     "plan": plan_code,  # This makes it a subscription!
                     "callback_url": f"{settings.FRONTEND_URL}/dashboard/subscription/success",
                     "metadata": {
