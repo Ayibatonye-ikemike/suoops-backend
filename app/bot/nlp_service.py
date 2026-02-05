@@ -81,6 +81,8 @@ class NLPService:
         "tunde", "segun", "bola", "funke", "yemi", "femi", "bukky", "tobi",
         "dayo", "kunle", "sade", "wale", "ayo", "ola", "tola", "shade",
         "monica", "peter", "paul", "james", "david", "sarah", "ruth", "esther",
+        "fatimah", "fatima", "aisha", "musa", "ibrahim", "yusuf", "abdullahi",
+        "solomon", "daniel", "samuel", "joshua", "rachel", "rebecca", "hannah",
     }
 
     def parse_text(self, text: str, is_speech: bool = False) -> ParseResult:
@@ -325,19 +327,21 @@ class NLPService:
         """
         Extract multiple line items from text.
         
-        Supports two patterns:
+        Supports formats:
             1. Amount first: "1000 wig, 2000 shoe, 4000 belt"
             2. Item first: "wig 1000, shoe 2000" (fallback)
             3. Comma-formatted amounts: "11,000 Design, 10,000 Printing"
-            4. Typo handling: "20,00" treated as "2000" (2 digits after comma)
+            4. Space-separated items: "40,000 shoe 50,000 bag"
+            5. Comma after amount: "40,000, shoe, 50,000 bag"
+            6. Typo handling: "20,00" treated as "2000" (2 digits after comma)
         
         Examples:
             "1000 wig, 2000 shoe" →
                 [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
-            "11,000 Design, 10,000 Printing, 1000 Delivery" →
-                [{"description": "Design", "unit_price": 11000}, {"description": "Printing", "unit_price": 10000}, ...]
-            "10000 design, 20,00 printing, 5000 press" →
-                [{"description": "Design", "unit_price": 10000}, {"description": "Printing", "unit_price": 2000}, ...]
+            "40,000 shoe 50,000 bag" →
+                [{"description": "Shoe", "unit_price": 40000}, {"description": "Bag", "unit_price": 50000}]
+            "40,000, shoe, 50,000 bag" →
+                [{"description": "Shoe", "unit_price": 40000}, {"description": "Bag", "unit_price": 50000}]
         """
         lines = []
         
@@ -352,7 +356,6 @@ class NLPService:
         
         # Remove phone number from text (include +prefix)
         # IMPORTANT: Sort by length descending to avoid partial replacements
-        # e.g., "08078557662" should be replaced before "8078557662" to avoid leaving "0" behind
         for variant in sorted(phone_variants, key=len, reverse=True):
             clean_text = clean_text.replace("+" + variant.lower(), " ")
             clean_text = clean_text.replace(variant.lower(), " ")
@@ -363,49 +366,79 @@ class NLPService:
         # Remove email from text
         clean_text = self.EMAIL_PATTERN.sub(" ", clean_text)
         
-        # IMPORTANT: Handle comma-formatted numbers BEFORE splitting by comma
-        # Convert "11,000" to "11000" but only for number patterns
+        # Normalize comma-formatted numbers FIRST
+        # Convert "11,000" to "11000" but handle edge cases
         # Pattern: digit,digit (e.g., "11,000" but not "wig, shoe")
         # Also handle typos like "20,00" (2 digits after comma) → "2000"
         clean_text = re.sub(r"(\d),(\d{3})\b", r"\1\2", clean_text)  # 11,000 → 11000
         clean_text = re.sub(r"(\d),(\d{2})\b", r"\1\2", clean_text)  # 20,00 → 2000 (typo)
         clean_text = re.sub(r"(\d),(\d{1})\b", r"\1\2", clean_text)  # 5,0 → 50 (edge case)
         
-        # Split by comma (now safe since comma-formatted numbers are normalized)
-        # "11000 Design, 10000 Printing" → ["11000 Design", "10000 Printing"]
-        parts = [p.strip() for p in clean_text.split(",") if p.strip()]
+        # Remove any remaining commas (now safe since amounts are normalized)
+        clean_text = clean_text.replace(",", " ")
         
-        for part in parts:
-            tokens = part.split()
-            if len(tokens) < 2:
+        # Normalize whitespace
+        clean_text = re.sub(r"\s+", " ", clean_text).strip()
+        
+        # Strategy: Use regex to find all <amount> <description> pairs
+        # Pattern: number (3+ digits) followed by non-numeric words until next number
+        # This handles both comma-separated and space-separated items
+        
+        # Find all amounts and their positions
+        amount_pattern = re.compile(r"\b(\d{3,})\b")
+        matches = list(amount_pattern.finditer(clean_text))
+        
+        if not matches:
+            return lines
+        
+        for i, match in enumerate(matches):
+            amount_str = match.group(1)
+            
+            # Skip if it looks like a phone number
+            if amount_str in phone_variants:
                 continue
             
-            # Try pattern 1: <amount> <item_name>
-            # e.g., "11000 Design" or "2000 running shoes"
-            first_token = tokens[0].replace(",", "")
-            if first_token.isdigit() and len(first_token) >= 3:
-                if first_token not in phone_variants:
-                    item_name = " ".join(tokens[1:]).strip()
-                    if item_name and not item_name.isdigit():
-                        lines.append({
-                            "description": item_name.capitalize(),
-                            "quantity": 1,
-                            "unit_price": Decimal(first_token),
-                        })
-                        continue
+            amount_start = match.end()
             
-            # Try pattern 2: <item_name> <amount>
-            # e.g., "wig 1000" or "running shoes 2000"
-            last_token = tokens[-1].replace(",", "")
-            if last_token.isdigit() and len(last_token) >= 3:
-                if last_token not in phone_variants:
-                    item_name = " ".join(tokens[:-1]).strip()
-                    if item_name and not item_name[0].isdigit():
+            # Description ends at next amount or end of string
+            if i + 1 < len(matches):
+                desc_end = matches[i + 1].start()
+            else:
+                desc_end = len(clean_text)
+            
+            # Extract description between this amount and the next
+            description = clean_text[amount_start:desc_end].strip()
+            
+            # Clean up description - remove leading/trailing punctuation
+            description = re.sub(r"^[\s,]+|[\s,]+$", "", description)
+            
+            if description and not description.isdigit():
+                lines.append({
+                    "description": description.capitalize(),
+                    "quantity": 1,
+                    "unit_price": Decimal(amount_str),
+                })
+        
+        # Fallback: if no lines found with amount-first, try item-first pattern
+        # e.g., "wig 1000, shoe 2000"
+        if not lines:
+            tokens = clean_text.split()
+            i = 0
+            while i < len(tokens) - 1:
+                # Check if current token is non-numeric and next is amount
+                current = tokens[i]
+                next_token = tokens[i + 1]
+                
+                if not current[0].isdigit() and next_token.isdigit() and len(next_token) >= 3:
+                    if next_token not in phone_variants:
                         lines.append({
-                            "description": item_name.capitalize(),
+                            "description": current.capitalize(),
                             "quantity": 1,
-                            "unit_price": Decimal(last_token),
+                            "unit_price": Decimal(next_token),
                         })
+                        i += 2
+                        continue
+                i += 1
         
         return lines
     
