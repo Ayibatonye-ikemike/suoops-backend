@@ -149,22 +149,38 @@ class NLPService:
         
         Returns normalized phone number with + prefix or None if not found.
         
+        Handles:
+            - Spaces in phone numbers: "0902018 0595" → "+2349020180595"
+            - Standard formats: "08012345678" → "+2348012345678"
+            - With country code: "2348012345678" → "+2348012345678"
+        
         Nigerian Examples:
             "+2348012345678" → "+2348012345678"
             "2348012345678"  → "+2348012345678"
             "08012345678"    → "+2348012345678"
             "8012345678"     → "+2348012345678"
+            "0902018 0595"   → "+2349020180595"
         
         International Examples:
             "+14155551234"   → "+14155551234" (US)
             "+447911123456"  → "+447911123456" (UK)
             "+33612345678"   → "+33612345678" (France)
         """
+        # First try standard pattern
         match = self.PHONE_PATTERN.search(text)
-        if not match:
-            return None
-        
-        phone = match.group(1)
+        if match:
+            phone = match.group(1)
+        else:
+            # Try to find phone with spaces: look for digit sequences that form a phone
+            # Pattern: starts with 0 or +, followed by digits (possibly with spaces)
+            # E.g., "0902018 0595" or "090 2018 0595"
+            space_phone_pattern = re.compile(r"(0[789][\d\s]{8,12})")
+            space_match = space_phone_pattern.search(text)
+            if space_match:
+                # Remove all spaces to get clean phone number
+                phone = space_match.group(1).replace(" ", "")
+            else:
+                return None
         
         # If already has +, it's properly formatted
         if phone.startswith('+'):

@@ -46,7 +46,7 @@ class InvoiceIntentProcessor:
         await self._create_invoice(invoice_service, issuer_id, sender, data, payload)
 
     def _enforce_quota(self, invoice_service, issuer_id: int, sender: str) -> bool:
-        """Check invoice balance before creating invoice."""
+        """Check invoice balance before creating invoice. Returns (can_create, balance)."""
         try:
             quota_check = invoice_service.check_invoice_quota(issuer_id)
         except Exception as exc:  # noqa: BLE001
@@ -55,17 +55,8 @@ class InvoiceIntentProcessor:
 
         balance = quota_check.get("invoice_balance", 0)
 
-        # Warn if balance is getting low
-        if quota_check.get("can_create") and 0 < balance <= 10:
-            self.client.send_text(
-                sender, 
-                (
-                    f"⚠️ Only {balance} invoices left!\n\n"
-                    f"Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} "
-                    f"for {quota_check.get('pack_size', 100)} invoices\n"
-                    "Visit: suoops.com/dashboard/billing/purchase"
-                ),
-            )
+        # Don't show warning here - we'll show remaining count AFTER successful creation
+        # This prevents confusing UX when invoice creation succeeds
 
         if quota_check.get("can_create"):
             return True
@@ -295,12 +286,14 @@ class InvoiceIntentProcessor:
                 logger.error("Failed to send invoice email: %s", exc)
 
         whatsapp_pending = self._notify_customer(invoice, data, issuer_id) if customer_phone else False
-        self._notify_business(sender, invoice, customer_email, results, whatsapp_pending, no_contact_info)
+        self._notify_business(sender, invoice, invoice_service, issuer_id, customer_email, results, whatsapp_pending, no_contact_info)
 
     def _notify_business(
         self,
         sender: str,
         invoice,
+        invoice_service,
+        issuer_id: int,
         customer_email: str | None = None,
         notification_results: dict[str, bool] | None = None,
         whatsapp_pending: bool = False,
@@ -315,12 +308,27 @@ class InvoiceIntentProcessor:
             else invoice.status.replace("_", " ").title()
         )
         
+        # Get remaining invoice balance
+        remaining_balance = None
+        try:
+            quota_check = invoice_service.check_invoice_quota(issuer_id)
+            remaining_balance = quota_check.get("invoice_balance", 0)
+        except Exception:
+            pass
+        
         business_message = (
             f"✅ Invoice {invoice.invoice_id} created!\n\n"
             f"💰 Amount: ₦{invoice.amount:,.2f}\n"
             f"👤 Customer: {customer_name}\n"
             f"📊 Status: {status_display}\n"
         )
+        
+        # Show remaining invoice count
+        if remaining_balance is not None:
+            if remaining_balance <= 5:
+                business_message += f"📉 Invoices remaining: {remaining_balance}\n"
+            else:
+                business_message += f"📊 Invoices remaining: {remaining_balance}\n"
         
         # Show notification status
         if no_contact_info:
@@ -358,6 +366,16 @@ class InvoiceIntentProcessor:
                 invoice.pdf_url,
                 f"Invoice_{invoice.invoice_id}.pdf",
                 f"📄 Invoice {invoice.invoice_id} - ₦{invoice.amount:,.2f}",
+            )
+        
+        # Show low balance warning AFTER successful creation (better UX)
+        if remaining_balance is not None and 0 < remaining_balance <= 5:
+            self.client.send_text(
+                sender,
+                f"⚠️ Running low on invoices!\n\n"
+                f"You have {remaining_balance} invoice{'s' if remaining_balance != 1 else ''} left.\n\n"
+                "💳 Buy 50 more for ₦1,250\n"
+                "Visit: suoops.com/dashboard/billing/purchase"
             )
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> bool:
