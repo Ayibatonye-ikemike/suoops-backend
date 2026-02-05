@@ -15,7 +15,7 @@ from app.models import models
 from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
 from app.services.payment_providers import calculate_amount_with_paystack_fee
 
-from .constants import PLAN_PRICES, PAYSTACK_PLAN_CODES
+from .constants import PLAN_PRICES, PAYSTACK_PLAN_CODES, PAYSTACK_PLAN_AMOUNTS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -123,8 +123,9 @@ async def initialize_subscription_payment(
             timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
             reference = f"SUBSCRIP-{current_user_id}-{plan}-{timestamp}"
             
-            # Get plan amount in kobo
-            plan_amount_kobo = PLAN_PRICES[plan] * 100
+            # Get Paystack plan amount in kobo (includes fees)
+            # This must match the plan amount in Paystack dashboard
+            plan_amount_kobo = PAYSTACK_PLAN_AMOUNTS.get(plan, PLAN_PRICES[plan]) * 100
             
             response = await client.post(
                 "https://api.paystack.co/transaction/initialize",
