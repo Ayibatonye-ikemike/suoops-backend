@@ -131,8 +131,13 @@ class BaseAppSettings(BaseSettings):
                 default_violations.append("JWT_SECRET uses default placeholder")
             if self.OAUTH_STATE_SECRET == "change_me_oauth_state":
                 default_violations.append("OAUTH_STATE_SECRET uses default placeholder")
+            # WhatsApp verify token is non-critical (webhook handshake only) — warn, don't block.
             if self.WHATSAPP_VERIFY_TOKEN in ("suoops_verify_2025", "suoops_verify_token_2024"):
-                default_violations.append("WHATSAPP_VERIFY_TOKEN uses default placeholder")
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "WHATSAPP_VERIFY_TOKEN uses a default placeholder — "
+                    "set a unique value in production env vars."
+                )
             if missing:
                 raise ValueError(f"Missing required production settings: {', '.join(missing)}")
             if default_violations:
