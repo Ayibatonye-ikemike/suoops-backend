@@ -32,6 +32,8 @@ class PDFService:
             loader=FileSystemLoader("templates"),
             autoescape=select_autoescape(["html", "xml"]),
         )
+        # Expose Python builtins the templates need
+        self.jinja.globals["float"] = float
 
     def generate_invoice_pdf(
         self,
@@ -332,17 +334,20 @@ class PDFService:
         buf = BytesIO()
         c = canvas.Canvas(buf, pagesize=A4)
         c.setFont("Helvetica-Bold", 16)
-        title = f"Monthly Tax Report {report.year}-{report.month:02d}"
+        month_part = f"-{report.month:02d}" if report.month else ""
+        title = f"Tax Report {report.year}{month_part}"
+        if getattr(report, "period_type", "month") != "month":
+            title = f"Tax Report ({report.period_type}) {report.start_date} to {report.end_date}"
         c.drawString(40, 800, title)
         c.setFont("Helvetica", 11)
         y = 770
         lines = [
-            f"Assessable Profit: ₦{float(report.assessable_profit):,.2f}",
-            f"Development Levy: ₦{float(report.levy_amount):,.2f}",
-            f"VAT Collected: ₦{float(report.vat_collected):,.2f}",
-            f"Taxable Sales: ₦{float(report.taxable_sales):,.2f}",
-            f"Zero-rated Sales: ₦{float(report.zero_rated_sales):,.2f}",
-            f"Exempt Sales: ₦{float(report.exempt_sales):,.2f}",
+            f"Assessable Profit: ₦{float(report.assessable_profit or 0):,.2f}",
+            f"Development Levy: ₦{float(report.levy_amount or 0):,.2f}",
+            f"VAT Collected: ₦{float(report.vat_collected or 0):,.2f}",
+            f"Taxable Sales: ₦{float(report.taxable_sales or 0):,.2f}",
+            f"Zero-rated Sales: ₦{float(report.zero_rated_sales or 0):,.2f}",
+            f"Exempt Sales: ₦{float(report.exempt_sales or 0):,.2f}",
             f"Profit Basis: {basis}",
         ]
         for line in lines:

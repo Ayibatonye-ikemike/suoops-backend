@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Monthly Tax Report {{ report.year }}-{{ '%02d'|format(report.month) }}</title>
+  <title>Tax Report {{ report.year }}{% if report.month %}-{{ '%02d'|format(report.month) }}{% endif %}</title>
   <style>
     body { font-family: Helvetica, Arial, sans-serif; font-size: 13px; margin: 28px; color: #222; }
     h1 { font-size: 20px; margin-bottom: 4px; }
@@ -21,18 +21,18 @@
   </div>
   {% endif %}
   <h1>Monthly Tax Report</h1>
-  <div class="meta">Period: {{ report.year }}-{{ '%02d'|format(report.month) }} &mdash; Generated {{ report.generated_at }}</div>
+  <div class="meta">Period: {% if report.start_date and report.end_date %}{{ report.start_date }} to {{ report.end_date }}{% elif report.month %}{{ report.year }}-{{ '%02d'|format(report.month) }}{% else %}{{ report.year }}{% endif %} &mdash; Generated {{ report.generated_at }}</div>
   <h2 class="section-title">Profit & Levy</h2>
   <table>
-    <tr><th>Assessable Profit (basis: {{ basis }})</th><td>₦{{ '%.2f'|format(float(report.assessable_profit or 0)) }}</td></tr>
-    <tr><th>Development Levy</th><td>₦{{ '%.2f'|format(float(report.levy_amount or 0)) }}</td></tr>
+    <tr><th>Assessable Profit (basis: {{ basis }})</th><td>₦{{ '{:,.2f}'.format((report.assessable_profit or 0)|float) }}</td></tr>
+    <tr><th>Development Levy</th><td>₦{{ '{:,.2f}'.format((report.levy_amount or 0)|float) }}</td></tr>
   </table>
   <h2 class="section-title">VAT Breakdown</h2>
   <table>
-    <tr><th>VAT Collected</th><td>₦{{ '%.2f'|format(float(report.vat_collected or 0)) }}</td></tr>
-    <tr><th>Taxable Sales</th><td>₦{{ '%.2f'|format(float(report.taxable_sales or 0)) }}</td></tr>
-    <tr><th>Zero-rated Sales</th><td>₦{{ '%.2f'|format(float(report.zero_rated_sales or 0)) }}</td></tr>
-    <tr><th>Exempt Sales</th><td>₦{{ '%.2f'|format(float(report.exempt_sales or 0)) }}</td></tr>
+    <tr><th>VAT Collected</th><td>₦{{ '{:,.2f}'.format((report.vat_collected or 0)|float) }}</td></tr>
+    <tr><th>Taxable Sales</th><td>₦{{ '{:,.2f}'.format((report.taxable_sales or 0)|float) }}</td></tr>
+    <tr><th>Zero-rated Sales</th><td>₦{{ '{:,.2f}'.format((report.zero_rated_sales or 0)|float) }}</td></tr>
+    <tr><th>Exempt Sales</th><td>₦{{ '{:,.2f}'.format((report.exempt_sales or 0)|float) }}</td></tr>
   </table>
   <div class="footer">This internal compliance report was generated automatically by Suoops. Figures exclude refunded invoices and are provisional, subject to FIRS guidance updates.</div>
 </body>
