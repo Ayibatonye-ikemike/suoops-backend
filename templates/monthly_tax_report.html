@@ -22,9 +22,15 @@
   {% endif %}
   <h1>Monthly Tax Report</h1>
   <div class="meta">Period: {% if report.start_date and report.end_date %}{{ report.start_date }} to {{ report.end_date }}{% elif report.month %}{{ report.year }}-{{ '%02d'|format(report.month) }}{% else %}{{ report.year }}{% endif %} &mdash; Generated {{ report.generated_at }}</div>
-  <h2 class="section-title">Profit & Levy</h2>
+  <h2 class="section-title">Income Summary</h2>
   <table>
-    <tr><th>Assessable Profit (basis: {{ basis }})</th><td>₦{{ '{:,.2f}'.format((report.assessable_profit or 0)|float) }}</td></tr>
+    <tr><th>Total Revenue</th><td>₦{{ '{:,.2f}'.format((total_revenue or 0)|float) }}</td></tr>
+    <tr><th>Total Expenses</th><td>₦{{ '{:,.2f}'.format((total_expenses or 0)|float) }}</td></tr>
+    <tr><th>Cost of Goods Sold (COGS)</th><td>₦{{ '{:,.2f}'.format((cogs_amount or 0)|float) }}</td></tr>
+    <tr style="font-weight:bold"><th>Assessable Profit (basis: {{ basis }})</th><td>₦{{ '{:,.2f}'.format((report.assessable_profit or 0)|float) }}</td></tr>
+  </table>
+  <h2 class="section-title">Tax & Levy</h2>
+  <table>
     <tr><th>Development Levy</th><td>₦{{ '{:,.2f}'.format((report.levy_amount or 0)|float) }}</td></tr>
   </table>
   <h2 class="section-title">VAT Breakdown</h2>

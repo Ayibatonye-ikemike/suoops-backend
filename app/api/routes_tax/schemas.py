@@ -168,6 +168,9 @@ class TaxReportOut(BaseModel):
     end_date: str | None = None
     year: int | None = None
     month: int | None = None
+    total_revenue: float
+    total_expenses: float
+    cogs_amount: float
     assessable_profit: float
     levy_amount: float
     pit_amount: float

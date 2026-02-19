@@ -59,13 +59,33 @@ def generate_tax_report(
             force_regenerate=force,
         )
 
+        # Compute revenue & expenses separately so the frontend and PDF can display them
+        from app.services.tax_reporting.computations import (
+            compute_expenses_by_date_range,
+            compute_revenue_by_date_range,
+        )
+        total_revenue = float(
+            compute_revenue_by_date_range(
+                db, current_user_id, report.start_date, report.end_date, basis
+            )
+        )
+        total_expenses = float(
+            compute_expenses_by_date_range(
+                db, current_user_id, report.start_date, report.end_date
+            )
+        )
+        cogs_amount = float(report.cogs_amount or 0)
+
         # Always generate PDF on-demand if not present
         # (ensures PDF is available for download button)
         if not report.pdf_url:
             try:
                 from app.storage.s3_client import S3Client
                 pdf_service = PDFService(S3Client())
-                pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis=basis)
+                pdf_url = pdf_service.generate_monthly_tax_report_pdf(
+                    report, basis=basis,
+                    total_revenue=total_revenue, total_expenses=total_expenses,
+                )
                 reporting_service.attach_report_pdf(report, pdf_url)
                 report.pdf_url = pdf_url
                 db.commit()  # Persist the pdf_url
@@ -96,6 +116,9 @@ def generate_tax_report(
             "end_date": report.end_date.isoformat() if report.end_date else None,
             "year": report.year,
             "month": report.month,
+            "total_revenue": total_revenue,
+            "total_expenses": total_expenses,
+            "cogs_amount": cogs_amount,
             "assessable_profit": float(report.assessable_profit or 0),
             "levy_amount": float(report.levy_amount or 0),
             "pit_amount": float(report.pit_amount or 0),
@@ -402,6 +425,7 @@ def _generate_csv_content(report: MonthlyTaxReport, basis: str) -> bytes:
     buf = StringIO()
     headers = [
         "period_type", "start_date", "end_date", "year", "month", "basis",
+        "total_revenue", "total_expenses", "cogs_amount",
         "assessable_profit", "levy_amount", "vat_collected",
         "taxable_sales", "zero_rated_sales", "exempt_sales", "generated_at",
     ]
@@ -414,6 +438,9 @@ def _generate_csv_content(report: MonthlyTaxReport, basis: str) -> bytes:
         str(report.year) if report.year else "",
         f"{report.month:02d}" if report.month else "",
         basis,
+        "",  # total_revenue — computed on-the-fly, not stored on report
+        "",  # total_expenses — computed on-the-fly, not stored on report
+        f"{float(report.cogs_amount or 0):.2f}",
         f"{float(report.assessable_profit or 0):.2f}",
         f"{float(report.levy_amount or 0):.2f}",
         f"{float(report.vat_collected or 0):.2f}",

@@ -303,6 +303,8 @@ class PDFService:
         self,
         report: MonthlyTaxReport,  # forward reference resolved under TYPE_CHECKING
         basis: str,
+        total_revenue: float = 0,
+        total_expenses: float = 0,
     ) -> str:
         """Generate monthly tax compliance PDF (levy + VAT breakdown).
 
@@ -310,6 +312,7 @@ class PDFService:
         """
         from app.models.tax_models import MonthlyTaxReport  # local import to avoid circular
         assert isinstance(report, MonthlyTaxReport)
+        cogs = float(report.cogs_amount or 0)
         # Attempt HTML path first
         if settings.HTML_PDF_ENABLED and _WEASY_AVAILABLE:
             try:
@@ -323,6 +326,9 @@ class PDFService:
                     report=report,
                     basis=basis,
                     watermark_text=watermark_text,
+                    total_revenue=total_revenue,
+                    total_expenses=total_expenses,
+                    cogs_amount=cogs,
                 )
                 from weasyprint import HTML  # type: ignore
                 pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
@@ -342,6 +348,9 @@ class PDFService:
         c.setFont("Helvetica", 11)
         y = 770
         lines = [
+            f"Total Revenue: ₦{total_revenue:,.2f}",
+            f"Total Expenses: ₦{total_expenses:,.2f}",
+            f"Cost of Goods Sold (COGS): ₦{cogs:,.2f}",
             f"Assessable Profit: ₦{float(report.assessable_profit or 0):,.2f}",
             f"Development Levy: ₦{float(report.levy_amount or 0):,.2f}",
             f"VAT Collected: ₦{float(report.vat_collected or 0):,.2f}",
