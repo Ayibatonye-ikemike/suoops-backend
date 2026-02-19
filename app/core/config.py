@@ -76,6 +76,7 @@ class BaseAppSettings(BaseSettings):
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_ORIGIN_REGEX: str | None = None  # Starlette allow_origin_regex for preview deploys
+    CSRF_COOKIE_DOMAIN: str | None = None  # Set to ".suoops.com" in prod so frontend JS can read it
     CONTENT_SECURITY_POLICY: str = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
@@ -173,6 +174,7 @@ class ProdSettings(BaseAppSettings):
         # NOTE: localhost removed from production — use DevSettings for local dev
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
+    CSRF_COOKIE_DOMAIN: str | None = ".suoops.com"  # Share CSRF cookie between suoops.com and api.suoops.com
     # Allow Vercel preview deployments (e.g. suoops-frontend-abc123-ikemike.vercel.app)
     CORS_ALLOW_ORIGIN_REGEX: str | None = r"https://suoops-(frontend|support)(-[a-z0-9]+)?(-ikemike)?\.vercel\.app"
     LOG_FORMAT: str = "json"

@@ -53,20 +53,31 @@ def generate_csrf_token() -> str:
 
 def set_csrf_cookie(response: Response, token: str, secure: bool = True) -> None:
     """
-    Set CSRF token in HTTP-only cookie.
+    Set CSRF token as a cookie readable by frontend JavaScript.
+    
+    Uses double-submit cookie pattern: JS reads cookie → sends value as
+    X-CSRF-Token header → server compares cookie vs header.
+    
+    The cookie domain MUST cover both api.suoops.com (sender) and
+    suoops.com (JS reader), so we set domain=".suoops.com" in production
+    via settings.CSRF_COOKIE_DOMAIN.
     
     Args:
         response: FastAPI Response object
         token: CSRF token string
         secure: Whether to set Secure flag (True in production)
     """
+    from app.core.config import settings  # local import to avoid circular
+
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
         value=token,
         httponly=False,  # JavaScript needs to read this to set header
         secure=secure,
-        samesite="lax",  # Protects against CSRF while allowing normal navigation
+        samesite="lax",  # Same-site protection (api.suoops.com & suoops.com share eTLD+1)
         max_age=86400,  # 24 hours
+        path="/",
+        domain=settings.CSRF_COOKIE_DOMAIN,  # ".suoops.com" in prod, None in dev
     )
 
 
