@@ -34,12 +34,20 @@ KEY = "whatsapp:inbound"
 
 def _process_synchronously(payload: dict[str, Any]) -> None:
     """Process WhatsApp message synchronously when Celery is unavailable."""
-    # Import here to avoid circular imports
-    from app.bot.whatsapp_adapter import WhatsAppHandler
-    
+    import asyncio
+
+    from app.bot.nlp_service import NLPService
+    from app.bot.whatsapp_adapter import WhatsAppClient, WhatsAppHandler
+    from app.db.session import session_scope
+
     try:
-        handler = WhatsAppHandler()
-        handler.handle_webhook(payload)
+        with session_scope() as db:
+            handler = WhatsAppHandler(
+                client=WhatsAppClient(settings.WHATSAPP_API_KEY),
+                nlp=NLPService(),
+                db=db,
+            )
+            asyncio.run(handler.handle_incoming(payload))
         logger.info("WhatsApp message processed synchronously")
     except Exception:  # noqa: BLE001
         logger.exception("Failed to process WhatsApp message synchronously")

@@ -23,6 +23,27 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any] | None:
         value = change.get("value", {})
         messages = value.get("messages", [])
         if not messages:
+            # Status webhooks (sent/delivered/read/failed) don't contain
+            # messages -- they are delivery receipts, not inbound messages.
+            statuses = value.get("statuses", [])
+            if statuses:
+                status = statuses[0]
+                logger.debug(
+                    "[STATUS] recipient=%s status=%s timestamp=%s",
+                    status.get("recipient_id"),
+                    status.get("status"),
+                    status.get("timestamp"),
+                )
+                errors = status.get("errors", [])
+                if errors:
+                    err = errors[0]
+                    logger.warning(
+                        "[STATUS] Delivery FAILED to %s: code=%s title=%s -- %s",
+                        status.get("recipient_id"),
+                        err.get("code"),
+                        err.get("title"),
+                        err.get("error_data", {}).get("details", ""),
+                    )
             return None
 
         message = messages[0]

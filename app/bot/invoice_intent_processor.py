@@ -380,15 +380,14 @@ class InvoiceIntentProcessor:
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> bool:
         """
-        Notify customer about their invoice.
-        
-        For RETURNING customers (already opted-in):
-        - Send full invoice directly as regular message + PDF
-        - Returns False (no template pending, full invoice sent)
-        
-        For NEW customers (not opted-in):
-        - Send template message (works outside 24-hour window)
-        - Returns True (template sent, customer can reply for PDF)
+        Notify customer about their invoice via WhatsApp.
+
+        ALWAYS uses template messages when configured because we cannot know
+        server-side whether Meta's 24-hour messaging window is open.  Regular
+        (non-template) messages silently fail with error 131047 when the
+        window is closed.
+
+        Returns True when a template was sent, False otherwise.
         """
         customer_phone = data.get("customer_phone")
         logger.info("[NOTIFY] customer_phone from data: %s, invoice: %s", customer_phone, invoice.invoice_id)
@@ -396,30 +395,21 @@ class InvoiceIntentProcessor:
             logger.warning("No customer phone for invoice %s", invoice.invoice_id)
             return False
 
-        # Check if customer is already opted-in (returning customer)
+        # Log opt-in status for debugging (but don't branch on it)
         customer = getattr(invoice, "customer", None)
-        is_opted_in = False
         if customer:
-            is_opted_in = getattr(customer, "whatsapp_opted_in", False)
             logger.info(
                 "[NOTIFY] Customer check: id=%s, phone=%s, whatsapp_opted_in=%s",
                 getattr(customer, "id", "?"),
                 getattr(customer, "phone", "?"),
-                is_opted_in
+                getattr(customer, "whatsapp_opted_in", False),
             )
         else:
             logger.warning("[NOTIFY] No customer object on invoice %s", invoice.invoice_id)
-        
-        if is_opted_in:
-            # Returning customer - send full invoice directly (they're in 24-hour window)
-            logger.info(
-                "[NOTIFY] Customer %s is opted-in, sending full invoice directly",
-                customer_phone
-            )
-            self._send_full_invoice(invoice, customer_phone, issuer_id)
-            return False  # No template pending - full invoice sent
-        
-        # New customer — check if templates are configured
+
+        # Always prefer template messages -- they work outside the 24-hour
+        # messaging window.  The template opens a new window so the PDF
+        # document sent right after will also be delivered.
         has_template = bool(
             getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
             or getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
@@ -427,27 +417,25 @@ class InvoiceIntentProcessor:
 
         if has_template:
             logger.info(
-                "[NOTIFY] Customer %s is not opted-in, using template",
+                "[NOTIFY] Sending template to customer %s for invoice %s",
                 customer_phone,
+                invoice.invoice_id,
             )
             self._send_template_only(invoice, customer_phone, issuer_id)
-            # Mark invoice so handle_customer_optin can deliver the PDF later
             invoice.whatsapp_delivery_pending = True
             self.db.commit()
-            return True  # Template sent - customer can reply for full details
+            return True
 
-        # No templates configured — fall back to regular messages.
-        # Regular messages work if the customer has an active conversation
-        # window.  Even if WhatsApp rejects them the business still gets the
-        # PDF and the customer can view the invoice via the payment link.
+        # No templates configured -- fall back to regular messages (best effort).
         logger.warning(
             "[NOTIFY] No WhatsApp templates configured. "
-            "Falling back to regular message for customer %s (invoice %s)",
+            "Falling back to regular message for customer %s (invoice %s). "
+            "Set WHATSAPP_TEMPLATE_INVOICE_PAYMENT or WHATSAPP_TEMPLATE_INVOICE env vars.",
             customer_phone,
             invoice.invoice_id,
         )
         self._send_full_invoice(invoice, customer_phone, issuer_id)
-        return False  # No template pending — attempted direct send
+        return False
     
     def _is_registered_user(self, phone: str) -> bool:
         """Check if a phone number belongs to a registered business user."""
