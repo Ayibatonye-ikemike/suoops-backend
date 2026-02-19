@@ -419,13 +419,35 @@ class InvoiceIntentProcessor:
             self._send_full_invoice(invoice, customer_phone, issuer_id)
             return False  # No template pending - full invoice sent
         
-        # New customer - use template (works outside 24-hour window)
-        logger.info(
-            "[NOTIFY] Customer %s is not opted-in, using template",
-            customer_phone
+        # New customer — check if templates are configured
+        has_template = bool(
+            getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
+            or getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
         )
-        self._send_template_only(invoice, customer_phone, issuer_id)
-        return True  # Template sent - customer can reply for full details
+
+        if has_template:
+            logger.info(
+                "[NOTIFY] Customer %s is not opted-in, using template",
+                customer_phone,
+            )
+            self._send_template_only(invoice, customer_phone, issuer_id)
+            # Mark invoice so handle_customer_optin can deliver the PDF later
+            invoice.whatsapp_delivery_pending = True
+            self.db.commit()
+            return True  # Template sent - customer can reply for full details
+
+        # No templates configured — fall back to regular messages.
+        # Regular messages work if the customer has an active conversation
+        # window.  Even if WhatsApp rejects them the business still gets the
+        # PDF and the customer can view the invoice via the payment link.
+        logger.warning(
+            "[NOTIFY] No WhatsApp templates configured. "
+            "Falling back to regular message for customer %s (invoice %s)",
+            customer_phone,
+            invoice.invoice_id,
+        )
+        self._send_full_invoice(invoice, customer_phone, issuer_id)
+        return False  # No template pending — attempted direct send
     
     def _is_registered_user(self, phone: str) -> bool:
         """Check if a phone number belongs to a registered business user."""
@@ -513,8 +535,27 @@ class InvoiceIntentProcessor:
         
         if template_sent:
             logger.info("[TEMPLATE] Template sent successfully to %s", customer_phone)
+            # Send the PDF document right after the template.
+            # The template opens a 24-hour messaging window, so the document
+            # send is allowed immediately after the template is delivered.
+            if invoice.pdf_url and invoice.pdf_url.startswith("http"):
+                amount_text_pdf = f"₦{invoice.amount:,.2f}"
+                self.client.send_document(
+                    customer_phone,
+                    invoice.pdf_url,
+                    f"Invoice_{invoice.invoice_id}.pdf",
+                    f"Invoice {invoice.invoice_id} - {amount_text_pdf}",
+                )
+                logger.info("[TEMPLATE] PDF sent to customer %s for invoice %s", customer_phone, invoice.invoice_id)
+            else:
+                logger.warning("[TEMPLATE] No PDF URL available for invoice %s, skipping PDF send", invoice.invoice_id)
         else:
-            logger.warning("[TEMPLATE] Failed to send template to %s", customer_phone)
+            logger.error(
+                "[TEMPLATE] Failed to send template to %s for invoice %s. "
+                "Check WHATSAPP_TEMPLATE_INVOICE / WHATSAPP_TEMPLATE_INVOICE_PAYMENT env vars.",
+                customer_phone,
+                invoice.invoice_id,
+            )
 
     def _send_full_invoice(self, invoice, customer_phone: str, issuer_id: int) -> None:
         """Send full invoice with payment details to opted-in customers.
