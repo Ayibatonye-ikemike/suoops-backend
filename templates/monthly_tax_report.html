@@ -4,42 +4,184 @@
   <meta charset="utf-8" />
   <title>Tax Report {{ report.year }}{% if report.month %}-{{ '%02d'|format(report.month) }}{% endif %}</title>
   <style>
-    body { font-family: Helvetica, Arial, sans-serif; font-size: 13px; margin: 28px; color: #222; }
-    h1 { font-size: 20px; margin-bottom: 4px; }
-    .meta { color: #555; margin-bottom: 16px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-    th { background: #f5f5f5; }
-    .section-title { margin-top: 24px; font-size: 15px; }
-    .footer { margin-top: 40px; font-size: 11px; color: #777; }
+    /* ── SuoOps Brand Palette ──
+       Evergreen  #0B3318   (primary dark)
+       Charcoal   #0F1E17   (body text)
+       Jade       #14B56A   (accent / CTA green)
+       Teal       #0F766E   (secondary)
+       Mint       #E8F5EC   (light surface)
+       Citrus     #BFF74A   (highlight sparingly)
+    */
+    @page { margin: 20mm 18mm 22mm 18mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 12px; color: #0F1E17; margin: 0; padding: 0; }
+
+    /* ── Header banner ── */
+    .header-bar { background: #0B3318; color: #fff; padding: 18px 28px 14px; margin: -0px -0px 0 -0px; }
+    .header-bar h1 { font-size: 22px; margin: 0 0 2px; font-weight: 700; letter-spacing: 0.3px; }
+    .header-bar .brand { color: #14B56A; }
+    .header-bar .subtitle { font-size: 11px; color: #E8F5EC; opacity: 0.85; margin-top: 2px; }
+
+    /* ── Period meta line ── */
+    .meta-bar { background: #E8F5EC; border-left: 4px solid #14B56A; padding: 8px 14px; margin: 16px 0; font-size: 11px; color: #0F766E; }
+
+    /* ── Section titles ── */
+    .section-title { font-size: 14px; font-weight: 700; color: #0B3318; margin: 22px 0 6px; padding-bottom: 4px; border-bottom: 2px solid #14B56A; display: inline-block; }
+
+    /* ── Data tables ── */
+    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    th, td { padding: 7px 10px; text-align: left; font-size: 12px; }
+    th { background: #0B3318; color: #E8F5EC; font-weight: 600; border: 1px solid #0B3318; }
+    td { border: 1px solid #cde5d4; }
+    tr:nth-child(even) td { background: #f4faf6; }
+    tr.row-total td, tr.row-total th { background: #E8F5EC; color: #0B3318; font-weight: 700; border-color: #14B56A; }
+
+    /* ── Footer / disclaimer ── */
+    .footer { margin-top: 36px; padding-top: 10px; border-top: 1px solid #cde5d4; font-size: 10px; color: #0F766E; line-height: 1.5; }
+    .footer strong { color: #0B3318; }
+
+    /* ── Page 2 — Guidance section ── */
+    .page-break { page-break-before: always; }
+    .guidance-header { font-size: 16px; font-weight: 700; color: #0B3318; margin-bottom: 4px; }
+    .guidance-intro { font-size: 10.5px; color: #0F766E; margin-bottom: 16px; line-height: 1.55; border-left: 3px solid #14B56A; padding-left: 10px; }
+    .guidance-section { margin-top: 18px; }
+    .guidance-section h3 { font-size: 12.5px; font-weight: 700; color: #0B3318; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px solid #14B56A; display: inline-block; }
+    .guidance-section p { font-size: 10.5px; color: #555; margin: 2px 0 8px 0; }
+    /* Form fields for user to fill */
+    .fill-line { border-bottom: 1px solid #0F766E; display: inline-block; min-width: 250px; height: 14px; margin-left: 4px; }
+    .checkbox { font-size: 13px; color: #0B3318; }
+    .checkbox-row { margin: 4px 0; font-size: 11.5px; color: #0F1E17; }
+    .declaration-box { border: 1.5px solid #0F766E; border-radius: 4px; padding: 14px 16px; margin-top: 10px; background: #f4faf6; }
+    /* Guidance tables (lighter style) */
+    .guidance-section table th { background: #E8F5EC; color: #0B3318; border: 1px solid #cde5d4; font-weight: 600; }
+    .guidance-section table td { background: #fff; }
   </style>
 </head>
 <body>
   {% if watermark_text %}
-  <div style="position:fixed; top:38%; left:5%; right:5%; text-align:center; opacity:0.06; font-size:110px; transform:rotate(-30deg); pointer-events:none; z-index:-1; color:#0b4f9f;">
+  <div style="position:fixed; top:38%; left:5%; right:5%; text-align:center; opacity:0.05; font-size:100px; font-weight:900; transform:rotate(-30deg); pointer-events:none; z-index:-1; color:#0B3318;">
     {{ watermark_text }}
   </div>
   {% endif %}
-  <h1>Monthly Tax Report</h1>
-  <div class="meta">Period: {% if report.start_date and report.end_date %}{{ report.start_date }} to {{ report.end_date }}{% elif report.month %}{{ report.year }}-{{ '%02d'|format(report.month) }}{% else %}{{ report.year }}{% endif %} &mdash; Generated {{ report.generated_at }}</div>
+
+  {# ==================== PAGE 1 — AUTO-GENERATED REPORT ==================== #}
+  <div class="header-bar">
+    <h1><span class="brand">Suo</span>Ops &mdash; Tax Report</h1>
+    <div class="subtitle">Internal Compliance Report &bull; NTA 2025</div>
+  </div>
+
+  <div class="meta-bar">
+    <strong>Period:</strong>
+    {% if report.start_date and report.end_date %}{{ report.start_date }} to {{ report.end_date }}{% elif report.month %}{{ report.year }}-{{ '%02d'|format(report.month) }}{% else %}{{ report.year }}{% endif %}
+    &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Basis:</strong> {{ basis|capitalize }}
+    &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Generated:</strong> {{ report.generated_at }}
+  </div>
+
   <h2 class="section-title">Income Summary</h2>
   <table>
-    <tr><th>Total Revenue</th><td>₦{{ '{:,.2f}'.format((total_revenue or 0)|float) }}</td></tr>
-    <tr><th>Total Expenses</th><td>₦{{ '{:,.2f}'.format((total_expenses or 0)|float) }}</td></tr>
-    <tr><th>Cost of Goods Sold (COGS)</th><td>₦{{ '{:,.2f}'.format((cogs_amount or 0)|float) }}</td></tr>
-    <tr style="font-weight:bold"><th>Assessable Profit (basis: {{ basis }})</th><td>₦{{ '{:,.2f}'.format((report.assessable_profit or 0)|float) }}</td></tr>
+    <tr><th style="width:55%">Item</th><th>Amount (₦)</th></tr>
+    <tr><td>Total Revenue</td><td>{{ '{:,.2f}'.format((total_revenue or 0)|float) }}</td></tr>
+    <tr><td>Total Expenses</td><td>{{ '{:,.2f}'.format((total_expenses or 0)|float) }}</td></tr>
+    <tr><td>Cost of Goods Sold (COGS)</td><td>{{ '{:,.2f}'.format((cogs_amount or 0)|float) }}</td></tr>
+    <tr class="row-total"><td>Assessable Profit</td><td>{{ '{:,.2f}'.format((report.assessable_profit or 0)|float) }}</td></tr>
   </table>
-  <h2 class="section-title">Tax & Levy</h2>
+
+  <h2 class="section-title">Tax &amp; Levy</h2>
   <table>
-    <tr><th>Development Levy</th><td>₦{{ '{:,.2f}'.format((report.levy_amount or 0)|float) }}</td></tr>
+    <tr><th style="width:55%">Tax Type</th><th>Amount (₦)</th></tr>
+    <tr><td>Development Levy</td><td>{{ '{:,.2f}'.format((report.levy_amount or 0)|float) }}</td></tr>
   </table>
+
   <h2 class="section-title">VAT Breakdown</h2>
   <table>
-    <tr><th>VAT Collected</th><td>₦{{ '{:,.2f}'.format((report.vat_collected or 0)|float) }}</td></tr>
-    <tr><th>Taxable Sales</th><td>₦{{ '{:,.2f}'.format((report.taxable_sales or 0)|float) }}</td></tr>
-    <tr><th>Zero-rated Sales</th><td>₦{{ '{:,.2f}'.format((report.zero_rated_sales or 0)|float) }}</td></tr>
-    <tr><th>Exempt Sales</th><td>₦{{ '{:,.2f}'.format((report.exempt_sales or 0)|float) }}</td></tr>
+    <tr><th style="width:55%">Category</th><th>Amount (₦)</th></tr>
+    <tr><td>VAT Collected</td><td>{{ '{:,.2f}'.format((report.vat_collected or 0)|float) }}</td></tr>
+    <tr><td>Taxable Sales</td><td>{{ '{:,.2f}'.format((report.taxable_sales or 0)|float) }}</td></tr>
+    <tr><td>Zero-rated Sales</td><td>{{ '{:,.2f}'.format((report.zero_rated_sales or 0)|float) }}</td></tr>
+    <tr><td>Exempt Sales</td><td>{{ '{:,.2f}'.format((report.exempt_sales or 0)|float) }}</td></tr>
   </table>
-  <div class="footer">This internal compliance report was generated automatically by Suoops. Figures exclude refunded invoices and are provisional, subject to FIRS guidance updates.</div>
+
+  <div class="footer">
+    <strong>Disclaimer:</strong> This internal compliance report was generated automatically by SuoOps. Figures exclude refunded invoices and are provisional, subject to FIRS review and guidance updates. This document supports — but does not replace — statutory filings.
+  </div>
+
+  {# ==================== PAGE 2 — GUIDANCE (USER TO FILL) ==================== #}
+  <div class="page-break"></div>
+
+  <div class="header-bar" style="padding: 14px 28px 10px;">
+    <h1 style="font-size:17px;"><span class="brand">Suo</span>Ops &mdash; Filing Guidance</h1>
+  </div>
+
+  <div style="padding: 0 4px;">
+    <h2 class="guidance-header" style="margin-top:16px;">Additional Details to Be Completed by the Business Owner</h2>
+    <p class="guidance-intro">
+      The sections below are required when submitting this report to your accountant or FIRS.<br>
+      SuoOps does not generate, verify, or file any of this information. Please print and complete by hand, or fill digitally before submission.
+    </p>
+
+    {# --- 1. Business Identification --- #}
+    <div class="guidance-section">
+      <h3>1. Business Identification</h3>
+      <p>These details are required by your accountant or FIRS. SuoOps does not generate or verify this information.</p>
+      <table>
+        <tr><th style="width:40%">Registered Business Name</th><td><span class="fill-line"></span></td></tr>
+        <tr>
+          <th>Business Type (tick one)</th>
+          <td>
+            <span class="checkbox">☐</span> Sole Proprietor &nbsp;&nbsp;
+            <span class="checkbox">☐</span> Partnership &nbsp;&nbsp;
+            <span class="checkbox">☐</span> Limited Company
+          </td>
+        </tr>
+        <tr><th>CAC Registration Number</th><td><span class="fill-line"></span></td></tr>
+        <tr><th>Tax Identification Number (TIN)</th><td><span class="fill-line"></span></td></tr>
+        <tr><th>FIRS Tax Office / Jurisdiction</th><td><span class="fill-line"></span></td></tr>
+        <tr><th>Business Address</th><td><span class="fill-line"></span></td></tr>
+        <tr><th>Contact Email / Phone</th><td><span class="fill-line"></span></td></tr>
+      </table>
+    </div>
+
+    {# --- 2. VAT Status Declaration --- #}
+    <div class="guidance-section">
+      <h3>2. VAT Status Declaration</h3>
+      <p>Tick the option that applies to your business.</p>
+      <div class="checkbox-row"><span class="checkbox">☐</span> VAT Registered</div>
+      <div class="checkbox-row"><span class="checkbox">☐</span> VAT Exempt</div>
+      <div class="checkbox-row"><span class="checkbox">☐</span> Below VAT Threshold</div>
+      <p style="margin-top:10px; font-size:10.5px;">
+        If VAT collected is ₦0.00, please state reason: <span class="fill-line"></span>
+      </p>
+    </div>
+
+    {# --- 3. Monthly Filings Note --- #}
+    <div class="guidance-section">
+      <h3>3. Monthly Filings</h3>
+      <p>This report is a summary. Nigerian tax laws require monthly filings for some taxes.<br>
+      Before submission, confirm separately with your accountant:</p>
+      <div class="checkbox-row"><span class="checkbox">☐</span> Monthly VAT Returns (Jan–Dec)</div>
+      <div class="checkbox-row"><span class="checkbox">☐</span> PAYE Returns (if you have employees)</div>
+      <div class="checkbox-row"><span class="checkbox">☐</span> Withholding Tax (if applicable)</div>
+    </div>
+
+    {# --- 4. Declaration --- #}
+    <div class="guidance-section">
+      <h3>4. Declaration</h3>
+      <div class="declaration-box">
+        <p style="font-size:10.5px; margin-bottom:12px; color:#0F1E17;">
+          I declare that the information in this report is true and complete to the best of my knowledge.
+        </p>
+        <table style="border:none; margin-top:0;">
+          <tr><th style="border:none; background:none; width:28%; color:#0B3318;">Name:</th><td style="border:none; background:none;"><span class="fill-line"></span></td></tr>
+          <tr><th style="border:none; background:none; color:#0B3318;">Designation:</th><td style="border:none; background:none;"><span class="fill-line"></span></td></tr>
+          <tr><th style="border:none; background:none; color:#0B3318;">Signature:</th><td style="border:none; background:none;"><span class="fill-line"></span></td></tr>
+          <tr><th style="border:none; background:none; color:#0B3318;">Date:</th><td style="border:none; background:none;"><span class="fill-line"></span></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer" style="margin-top:24px;">
+      <strong>Disclaimer:</strong> This internal compliance report was generated automatically by SuoOps. Figures exclude refunded invoices and are provisional, subject to FIRS review and guidance updates. This document supports — but does not replace — statutory filings.
+    </div>
+  </div>
 </body>
 </html>

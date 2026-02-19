@@ -330,6 +330,8 @@ class TaxReportingService:
         report.cogs_amount = cogs_data.get("cogs_amount", Decimal(0))
         report.inventory_purchases = cogs_data.get("purchases_amount", Decimal(0))
         report.inventory_value = cogs_data.get("current_inventory_value", Decimal(0))
+        # Clear old PDF so it gets regenerated with the latest template
+        report.pdf_url = None
         return report
 
     def generate_monthly_report(

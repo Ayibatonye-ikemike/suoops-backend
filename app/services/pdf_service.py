@@ -336,47 +336,219 @@ class PDFService:
                 return self.s3.upload_bytes(pdf_bytes, key)
             except Exception as e:  # noqa: BLE001
                 logger.warning("Monthly tax report HTML generation failed (%s); using fallback", e)
-        # Fallback ReportLab rendering
+        # Fallback ReportLab rendering — SuoOps brand colors
+        # Evergreen #0B3318, Jade #14B56A, Teal #0F766E, Mint #E8F5EC
         buf = BytesIO()
         c = canvas.Canvas(buf, pagesize=A4)
-        c.setFont("Helvetica-Bold", 16)
+        page_w, page_h = A4  # 595, 842
+
+        # ── Header bar (evergreen background) ──
+        c.setFillColorRGB(0.043, 0.2, 0.094)  # #0B3318
+        c.rect(0, page_h - 60, page_w, 60, fill=True, stroke=False)
+        c.setFillColorRGB(0.078, 0.71, 0.416)  # #14B56A for "Suo"
+        c.setFont("Helvetica-Bold", 18)
+        c.drawString(40, page_h - 38, "Suo")
+        c.setFillColorRGB(1, 1, 1)
+        c.drawString(72, page_h - 38, "Ops")
+        # Title
         month_part = f"-{report.month:02d}" if report.month else ""
-        title = f"Tax Report {report.year}{month_part}"
+        title = f" — Tax Report {report.year}{month_part}"
         if getattr(report, "period_type", "month") != "month":
-            title = f"Tax Report ({report.period_type}) {report.start_date} to {report.end_date}"
-        c.drawString(40, 800, title)
-        c.setFont("Helvetica", 11)
-        y = 770
-        lines = [
-            f"Total Revenue: ₦{total_revenue:,.2f}",
-            f"Total Expenses: ₦{total_expenses:,.2f}",
-            f"Cost of Goods Sold (COGS): ₦{cogs:,.2f}",
-            f"Assessable Profit: ₦{float(report.assessable_profit or 0):,.2f}",
-            f"Development Levy: ₦{float(report.levy_amount or 0):,.2f}",
-            f"VAT Collected: ₦{float(report.vat_collected or 0):,.2f}",
-            f"Taxable Sales: ₦{float(report.taxable_sales or 0):,.2f}",
-            f"Zero-rated Sales: ₦{float(report.zero_rated_sales or 0):,.2f}",
-            f"Exempt Sales: ₦{float(report.exempt_sales or 0):,.2f}",
-            f"Profit Basis: {basis}",
+            title = f" — Tax Report {report.start_date} to {report.end_date}"
+        c.setFont("Helvetica", 14)
+        c.drawString(100, page_h - 38, title)
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(0.91, 0.96, 0.925)  # #E8F5EC
+        c.drawString(40, page_h - 54, f"Internal Compliance Report  |  NTA 2025  |  Basis: {basis}")
+
+        # ── Period meta bar (mint bg, jade left border) ──
+        y_meta = page_h - 80
+        c.setFillColorRGB(0.91, 0.96, 0.925)  # mint
+        c.rect(40, y_meta - 4, page_w - 80, 20, fill=True, stroke=False)
+        c.setFillColorRGB(0.078, 0.71, 0.416)  # jade accent
+        c.rect(40, y_meta - 4, 3, 20, fill=True, stroke=False)
+        c.setFillColorRGB(0.059, 0.463, 0.431)  # teal text
+        c.setFont("Helvetica", 9)
+        period_str = f"{report.start_date} to {report.end_date}" if report.start_date and report.end_date else f"{report.year}-{report.month:02d}" if report.month else str(report.year)
+        c.drawString(50, y_meta + 2, f"Period: {period_str}   |   Generated: {getattr(report, 'generated_at', '')}")
+
+        # ── Section helper ──
+        def draw_section_title(canvas_obj, ypos, text):
+            canvas_obj.setFillColorRGB(0.043, 0.2, 0.094)  # evergreen
+            canvas_obj.setFont("Helvetica-Bold", 12)
+            canvas_obj.drawString(40, ypos, text)
+            # jade underline
+            tw = canvas_obj.stringWidth(text, "Helvetica-Bold", 12)
+            canvas_obj.setStrokeColorRGB(0.078, 0.71, 0.416)
+            canvas_obj.setLineWidth(1.5)
+            canvas_obj.line(40, ypos - 3, 40 + tw + 4, ypos - 3)
+            canvas_obj.setStrokeColorRGB(0, 0, 0)
+            canvas_obj.setLineWidth(1)
+            return ypos - 20
+
+        # ── Income Summary ──
+        y = draw_section_title(c, y_meta - 30, "Income Summary")
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0.059, 0.118, 0.09)  # charcoal
+        income_rows = [
+            ("Total Revenue", f"₦{total_revenue:,.2f}"),
+            ("Total Expenses", f"₦{total_expenses:,.2f}"),
+            ("Cost of Goods Sold (COGS)", f"₦{cogs:,.2f}"),
         ]
-        for line in lines:
-            c.drawString(40, y, line)
-            y -= 18
-        # Watermark (diagonal) if enabled
+        for label, val in income_rows:
+            c.drawString(50, y, label)
+            c.drawRightString(page_w - 60, y, val)
+            y -= 16
+        # Assessable Profit row (bold, mint bg)
+        c.setFillColorRGB(0.91, 0.96, 0.925)
+        c.rect(42, y - 4, page_w - 102, 16, fill=True, stroke=False)
+        c.setFillColorRGB(0.043, 0.2, 0.094)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(50, y, "Assessable Profit")
+        c.drawRightString(page_w - 60, y, f"₦{float(report.assessable_profit or 0):,.2f}")
+        y -= 26
+
+        # ── Tax & Levy ──
+        y = draw_section_title(c, y, "Tax & Levy")
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0.059, 0.118, 0.09)
+        c.drawString(50, y, "Development Levy")
+        c.drawRightString(page_w - 60, y, f"₦{float(report.levy_amount or 0):,.2f}")
+        y -= 26
+
+        # ── VAT Breakdown ──
+        y = draw_section_title(c, y, "VAT Breakdown")
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0.059, 0.118, 0.09)
+        vat_rows = [
+            ("VAT Collected", f"₦{float(report.vat_collected or 0):,.2f}"),
+            ("Taxable Sales", f"₦{float(report.taxable_sales or 0):,.2f}"),
+            ("Zero-rated Sales", f"₦{float(report.zero_rated_sales or 0):,.2f}"),
+            ("Exempt Sales", f"₦{float(report.exempt_sales or 0):,.2f}"),
+        ]
+        for label, val in vat_rows:
+            c.drawString(50, y, label)
+            c.drawRightString(page_w - 60, y, val)
+            y -= 16
+
+        # ── Watermark ──
         if getattr(settings, "PDF_WATERMARK_ENABLED", False):
             c.saveState()
             c.setFont("Helvetica", 60)
-            # Simulate lighter watermark by using a mid-tone color; alpha unsupported
-            c.setFillColorRGB(0.7, 0.85, 1.0) if hasattr(c, 'setFillColorRGB') else None
+            c.setFillColorRGB(0.043, 0.2, 0.094, 0.04)
             c.translate(300, 400)
             c.rotate(30)
             c.drawString(-200, 0, settings.PDF_WATERMARK_TEXT[:30])
             c.restoreState()
-        c.setFont("Helvetica-Oblique", 9)
+
+        # ── Footer ──
+        c.setFillColorRGB(0.059, 0.463, 0.431)  # teal
+        c.setFont("Helvetica-Oblique", 8)
         c.drawString(
-            40,
-            y - 10,
-            "Generated by Suoops tax automation module (refunded invoices excluded)",
+            40, 40,
+            "Disclaimer: Generated by SuoOps. Figures exclude refunded invoices, provisional, subject to FIRS guidance.",
+        )
+
+        # ════════════════ Page 2: Filing Guidance ════════════════
+        c.showPage()
+        # Header bar
+        c.setFillColorRGB(0.043, 0.2, 0.094)
+        c.rect(0, page_h - 50, page_w, 50, fill=True, stroke=False)
+        c.setFillColorRGB(0.078, 0.71, 0.416)
+        c.setFont("Helvetica-Bold", 15)
+        c.drawString(40, page_h - 34, "Suo")
+        c.setFillColorRGB(1, 1, 1)
+        c.drawString(68, page_h - 34, "Ops — Filing Guidance")
+
+        y = page_h - 74
+        c.setFillColorRGB(0.043, 0.2, 0.094)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawString(40, y, "Additional Details to Be Completed by the Business Owner")
+        y -= 16
+        c.setFillColorRGB(0.059, 0.463, 0.431)
+        c.setFont("Helvetica", 8.5)
+        c.drawString(40, y, "The sections below are required when submitting to your accountant or FIRS.")
+        y -= 12
+        c.drawString(40, y, "SuoOps does not generate, verify, or file any of this information.")
+        y -= 22
+
+        # 1. Business Identification
+        y = draw_section_title(c, y, "1. Business Identification")
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(0.059, 0.118, 0.09)
+        c.drawString(40, y, "These details are required by your accountant or FIRS.")
+        y -= 18
+        id_fields = [
+            "Registered Business Name:",
+            "Business Type:  [ ] Sole Proprietor  [ ] Partnership  [ ] Limited Company",
+            "CAC Registration Number:",
+            "Tax Identification Number (TIN):",
+            "FIRS Tax Office / Jurisdiction:",
+            "Business Address:",
+            "Contact Email / Phone:",
+        ]
+        for field in id_fields:
+            c.drawString(50, y, field)
+            if not field.startswith("Business Type"):
+                c.setStrokeColorRGB(0.059, 0.463, 0.431)  # teal lines
+                c.line(280, y - 2, 540, y - 2)
+            y -= 18
+
+        # 2. VAT Status Declaration
+        y -= 8
+        y = draw_section_title(c, y, "2. VAT Status Declaration")
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(0.059, 0.118, 0.09)
+        c.drawString(40, y, "Tick the option that applies to your business.")
+        y -= 16
+        for opt in ["[ ] VAT Registered", "[ ] VAT Exempt", "[ ] Below VAT Threshold"]:
+            c.drawString(50, y, opt)
+            y -= 14
+        y -= 2
+        c.drawString(50, y, "If VAT collected is N0.00, state reason:")
+        c.setStrokeColorRGB(0.059, 0.463, 0.431)
+        c.line(260, y - 2, 540, y - 2)
+        y -= 22
+
+        # 3. Monthly Filings
+        y = draw_section_title(c, y, "3. Monthly Filings")
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(0.059, 0.118, 0.09)
+        c.drawString(40, y, "This report is a summary. Confirm separately with your accountant:")
+        y -= 16
+        for item in [
+            "[ ] Monthly VAT Returns (Jan-Dec)",
+            "[ ] PAYE Returns (if you have employees)",
+            "[ ] Withholding Tax (if applicable)",
+        ]:
+            c.drawString(50, y, item)
+            y -= 14
+
+        # 4. Declaration
+        y -= 10
+        y = draw_section_title(c, y, "4. Declaration")
+        # Declaration box (mint bg, teal border)
+        box_h = 100
+        c.setStrokeColorRGB(0.059, 0.463, 0.431)
+        c.setFillColorRGB(0.957, 0.98, 0.965)  # #f4faf6
+        c.roundRect(40, y - box_h + 10, page_w - 80, box_h, 3, fill=True, stroke=True)
+        c.setFillColorRGB(0.059, 0.118, 0.09)
+        c.setFont("Helvetica", 9)
+        c.drawString(50, y - 4, "I declare that the information in this report is true and complete")
+        c.drawString(50, y - 16, "to the best of my knowledge.")
+        y -= 36
+        for label in ["Name:", "Designation:", "Signature:", "Date:"]:
+            c.drawString(50, y, label)
+            c.setStrokeColorRGB(0.059, 0.463, 0.431)
+            c.line(140, y - 2, 400, y - 2)
+            y -= 18
+
+        # Footer
+        c.setFillColorRGB(0.059, 0.463, 0.431)
+        c.setFont("Helvetica-Oblique", 8)
+        c.drawString(
+            40, 40,
+            "Disclaimer: Generated by SuoOps. Figures exclude refunded invoices, provisional, subject to FIRS guidance.",
         )
         c.showPage()
         c.save()
