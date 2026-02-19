@@ -49,7 +49,7 @@ class TaxProfileService:
         ).first()
         
         if not profile:
-            logger.info(f"Creating default tax profile for user {user_id}")
+            logger.info("Creating default tax profile for user %s", user_id)
             profile = self._create_default_profile(user_id)
         
         return profile
@@ -70,7 +70,7 @@ class TaxProfileService:
         self.db.commit()
         self.db.refresh(profile)
         
-        logger.info(f"Default tax profile created for user {user_id}")
+        logger.info("Default tax profile created for user %s", user_id)
         return profile
     
     def update_profile(
@@ -131,8 +131,9 @@ class TaxProfileService:
         self.db.refresh(profile)
         
         logger.info(
-            f"Tax profile updated for user {user_id}: "
-            f"fields={', '.join(updated_fields)}"
+            "Tax profile updated for user %s: fields=%s",
+            user_id,
+            ', '.join(updated_fields),
         )
         
         return profile
@@ -188,9 +189,11 @@ class TaxProfileService:
         # Log if business size changed
         if old_size != profile.business_size:
             logger.warning(
-                f"User {user_id} business size changed: "
-                f"{old_size} → {profile.business_size}. "
-                f"Turnover: ₦{profile.annual_turnover:,}"
+                "User %s business size changed: %s → %s. Turnover: ₦%s",
+                user_id,
+                old_size,
+                profile.business_size,
+                f"{profile.annual_turnover:,}",
             )
         
         self.db.commit()
@@ -303,7 +306,7 @@ class TaxProfileService:
         self.db.commit()
         self.db.refresh(profile)
         
-        logger.info(f"User {user_id} registered for VAT: {vat_number}")
+        logger.info("User %s registered for VAT: %s", user_id, vat_number)
         
         return profile
     

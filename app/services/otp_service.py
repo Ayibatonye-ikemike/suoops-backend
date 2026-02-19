@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-import random
+import secrets
 import smtplib
 import string
 import time
@@ -241,7 +241,7 @@ Powered by SuoOps
             msg.attach(MIMEText(html_body, 'html'))
             
             # Send email via SMTP
-            logger.info(f"Attempting SMTP connection to {smtp_host}:{smtp_port} as {smtp_user}")
+            logger.info("Attempting SMTP connection to %s:%s as %s", smtp_host, smtp_port, smtp_user)
             with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
                 server.set_debuglevel(0)  # Set to 1 for verbose SMTP debugging
                 server.starttls()
@@ -251,13 +251,13 @@ Powered by SuoOps
             logger.info("Successfully sent email OTP to %s", email)
             
         except smtplib.SMTPAuthenticationError as e:
-            logger.error(f"SMTP authentication failed for {smtp_user}: {e}")
+            logger.error("SMTP authentication failed for %s: %s", smtp_user, e)
             raise ValueError("Email authentication failed. Please contact support.") from e
         except smtplib.SMTPException as e:
-            logger.error(f"SMTP error sending OTP to {email}: {e}")
+            logger.error("SMTP error sending OTP to %s: %s", email, e)
             raise ValueError(f"Failed to send OTP email: {e}") from e
         except Exception as e:
-            logger.error(f"Unexpected error sending email OTP: {type(e).__name__}: {e}")
+            logger.error("Unexpected error sending email OTP: %s: %s", type(e).__name__, e)
             raise ValueError(f"Failed to send OTP email: {e}") from e
 
     def request_signup(self, identifier: str, payload: dict[str, Any]) -> None:
@@ -290,20 +290,20 @@ Powered by SuoOps
     def verify_otp(self, identifier: str, otp: str, purpose: str) -> bool:
         key = self._otp_key(identifier, purpose)
         raw_record = self._store.get(key)
-        logger.info(f"OTP verify | key={key} found={bool(raw_record)} otp_input={otp}")
+        logger.info("OTP verify | key=%s found=%s", key, bool(raw_record))
         if not raw_record:
-            logger.warning(f"OTP not found in Redis | key={key}")
+            logger.warning("OTP not found in Redis | key=%s", key)
             metrics.otp_invalid_attempt()
             return False
         record = OTPRecord.deserialize(raw_record)
-        logger.info(f"OTP record | stored_code={record.code} attempts={record.attempts}")
+        logger.info("OTP record | attempts=%d", record.attempts)
         if record.attempts >= self.MAX_ATTEMPTS:
-            logger.warning(f"OTP max attempts exceeded | key={key}")
+            logger.warning("OTP max attempts exceeded | key=%s", key)
             self._store.delete(key)
             metrics.otp_invalid_attempt()
             return False
         if record.code != otp:
-            logger.warning(f"OTP mismatch | expected={record.code} got={otp}")
+            logger.warning("OTP mismatch | key=%s attempt=%d", key, record.attempts + 1)
             record.attempts += 1
             self._store.set(key, record.serialize(), int(self.OTP_TTL))
             metrics.otp_invalid_attempt()
@@ -382,7 +382,7 @@ Powered by SuoOps
                 raise
 
     def _generate_code(self) -> str:
-        return "".join(random.choices(string.digits, k=self._otp_length))
+        return "".join(secrets.choice(string.digits) for _ in range(self._otp_length))
 
     def _format_message(self, otp: str, purpose: str) -> str:
         action = "complete your signup" if purpose == "signup" else "login securely"

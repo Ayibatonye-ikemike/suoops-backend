@@ -41,8 +41,39 @@ async def whatsapp_webhook(request: Request):
     """Handle incoming WhatsApp messages.
     
     Messages are enqueued for async processing via Celery worker.
+    Verifies X-Hub-Signature-256 header from Meta to prevent spoofing.
     """
-    payload = await request.json()
+    raw_body = await request.body()
+    
+    # Verify Meta's webhook signature (X-Hub-Signature-256)
+    app_secret = getattr(settings, "WHATSAPP_APP_SECRET", None)
+    if app_secret:
+        signature_header = request.headers.get("x-hub-signature-256", "")
+        if not signature_header.startswith("sha256="):
+            logger.warning("WhatsApp webhook missing or malformed signature")
+            raise HTTPException(status_code=401, detail="Missing signature")
+        
+        expected_sig = hmac.new(
+            app_secret.encode(),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        received_sig = signature_header.removeprefix("sha256=")
+        
+        if not hmac.compare_digest(expected_sig, received_sig):
+            logger.warning("WhatsApp webhook signature verification failed")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+    else:
+        logger.warning(
+            "WHATSAPP_APP_SECRET not configured — webhook signature verification SKIPPED. "
+            "Set this in production to prevent spoofed messages."
+        )
+    
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    
     # enqueue for async processing via Celery worker
     whatsapp_queue.enqueue_message(payload)
     return {"ok": True, "queued": True}

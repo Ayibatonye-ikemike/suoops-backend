@@ -7,11 +7,26 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel
+
 from app.db.session import get_db
 from app.storage.s3_client import s3_client
 from app.workers.celery_app import celery_app
 
 router = APIRouter(tags=["health"])
+
+
+class HealthOut(BaseModel):
+    status: str
+
+
+class ReadyOut(BaseModel):
+    status: str
+    db: bool
+    redis: bool
+    s3: bool
+    celery: bool
+    latency_ms: int
 
 
 def _check_db(db: Session) -> bool:
@@ -49,8 +64,8 @@ def _check_celery() -> bool:
         return False
 
 
-@router.get("/healthz")
-async def healthz(db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
+@router.get("/healthz", response_model=HealthOut)
+def healthz(db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
     """Basic liveness probe (cheap)."""
     try:
         _check_db(db)
@@ -59,14 +74,14 @@ async def healthz(db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/live")
+@router.get("/live", response_model=HealthOut)
 async def live() -> dict[str, str]:
     """Kubernetes-style liveness endpoint (no dependencies)."""
     return {"status": "alive"}
 
 
-@router.get("/ready")
-async def ready(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
+@router.get("/ready", response_model=ReadyOut)
+def ready(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
     """Readiness probe aggregating critical dependencies."""
     start = time.time()
     db_ok = redis_ok = s3_ok = celery_ok = False

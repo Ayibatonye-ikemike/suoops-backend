@@ -39,7 +39,7 @@ class SupplierService(InventoryServiceBase):
         self._db.add(supplier)
         self._db.commit()
         self._db.refresh(supplier)
-        logger.info(f"Created supplier: {supplier.name} (id={supplier.id})")
+        logger.info("Created supplier: %s (id=%s)", supplier.name, supplier.id)
         return supplier
 
     def get(self, supplier_id: int) -> Supplier | None:

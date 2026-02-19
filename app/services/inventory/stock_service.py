@@ -121,7 +121,7 @@ class StockMovementService(InventoryServiceBase):
             created_by="system",
         )
 
-        logger.info(f"Sale recorded for {product.name}: {quantity_before} -> {quantity_after}")
+        logger.info("Sale recorded for %s: %s -> %s", product.name, quantity_before, quantity_after)
         return movement
 
     # ========================================================================
@@ -167,7 +167,7 @@ class StockMovementService(InventoryServiceBase):
             created_by="system",
         )
 
-        logger.info(f"Purchase recorded for {product.name}: {quantity_before} -> {quantity_after}")
+        logger.info("Purchase recorded for %s: %s -> %s", product.name, quantity_before, quantity_after)
         return movement
 
     # ========================================================================
@@ -211,7 +211,7 @@ class StockMovementService(InventoryServiceBase):
                 if movement:
                     movements.append(movement)
             except ValueError as e:
-                logger.warning(f"Inventory processing error for product {product_id}: {e}")
+                logger.warning("Inventory processing error for product %s: %s", product_id, e)
 
         return movements
 

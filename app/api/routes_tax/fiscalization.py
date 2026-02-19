@@ -18,7 +18,7 @@ from app.models.models import Invoice
 from app.services.fiscalization_service import FiscalizationService
 from app.services.tax_service import TaxProfileService
 
-from .schemas import DevelopmentLevyResponse, FiscalizationStatus
+from .schemas import DevelopmentLevyResponse, FiscalizeInvoiceOut, FiscalizationStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -101,7 +101,7 @@ async def development_levy(
         raise HTTPException(status_code=500, detail="Failed levy calculation") from e
 
 
-@router.post("/invoice/{invoice_id}/fiscalize")
+@router.post("/invoice/{invoice_id}/fiscalize", response_model=FiscalizeInvoiceOut)
 async def fiscalize_invoice(
     invoice_id: int,
     current_user_id: int = Depends(get_current_user_id),

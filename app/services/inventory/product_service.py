@@ -86,7 +86,7 @@ class ProductService(BaseInventoryService):
 
         self._db.commit()
         self._db.refresh(product)
-        logger.info(f"Created product: {product.name} (sku={product.sku}) for user {self._user_id}")
+        logger.info("Created product: %s (sku=%s) for user %s", product.name, product.sku, self._user_id)
         return product
 
     def get_product(self, product_id: int) -> Product | None:
@@ -202,7 +202,7 @@ class ProductService(BaseInventoryService):
 
         self._db.commit()
         self._db.refresh(product)
-        logger.info(f"Updated product: {product.name} (id={product.id})")
+        logger.info("Updated product: %s (id=%s)", product.name, product.id)
         return product
 
     def delete_product(self, product_id: int) -> bool:
@@ -213,5 +213,5 @@ class ProductService(BaseInventoryService):
 
         product.is_active = False
         self._db.commit()
-        logger.info(f"Deleted product: {product.name} (id={product.id})")
+        logger.info("Deleted product: %s (id=%s)", product.name, product.id)
         return True

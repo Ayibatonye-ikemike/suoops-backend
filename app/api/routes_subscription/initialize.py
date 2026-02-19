@@ -16,12 +16,13 @@ from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTra
 from app.services.payment_providers import calculate_amount_with_paystack_fee
 
 from .constants import PLAN_PRICES, PAYSTACK_PLAN_CODES
+from .schemas import PaymentInitOut
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/initialize")
+@router.post("/initialize", response_model=PaymentInitOut)
 async def initialize_subscription_payment(
     plan: str,
     current_user_id: Annotated[int, Depends(get_current_user_id)],

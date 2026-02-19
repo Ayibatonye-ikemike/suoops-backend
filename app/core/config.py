@@ -40,6 +40,7 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
     WHATSAPP_VERIFY_TOKEN: str = "suoops_verify_2025"
+    WHATSAPP_APP_SECRET: str | None = None  # Meta app secret for webhook signature verification
     # WhatsApp Message Templates
     WHATSAPP_TEMPLATE_INVOICE: str | None = None  # Basic invoice notification
     WHATSAPP_TEMPLATE_INVOICE_PAYMENT: str | None = None  # Invoice with bank details
@@ -66,9 +67,14 @@ class BaseAppSettings(BaseSettings):
     FRONTEND_URL: str = "https://suoops.com"
     BACKEND_URL: str = "https://api.suoops.com"  # Used for QR code verification URLs
     CORS_ALLOW_ORIGINS: list[str] = ["https://suoops.com", "https://www.suoops.com", "http://localhost:3000"]
-    CORS_ALLOW_METHODS: list[str] = ["*"]
-    CORS_ALLOW_HEADERS: list[str] = ["*"]
+    CORS_ALLOW_METHODS: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    CORS_ALLOW_HEADERS: list[str] = [
+        "Authorization", "Content-Type", "Accept", "Origin",
+        "X-Requested-With", "X-CSRF-Token", "X-Telemetry-Key",
+        "Sentry-Trace", "Baggage",
+    ]
     CORS_ALLOW_CREDENTIALS: bool = True
+    CORS_ALLOW_ORIGIN_REGEX: str | None = None  # Starlette allow_origin_regex for preview deploys
     CONTENT_SECURITY_POLICY: str = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
@@ -110,6 +116,7 @@ class BaseAppSettings(BaseSettings):
         required_in_prod = (
             "DATABASE_URL",
             "WHATSAPP_API_KEY",
+            "WHATSAPP_APP_SECRET",  # Required for webhook signature verification
             "PAYSTACK_SECRET",
             "JWT_SECRET",
             "BREVO_API_KEY",  # Ensure email capability secrets present
@@ -124,6 +131,8 @@ class BaseAppSettings(BaseSettings):
                 default_violations.append("JWT_SECRET uses default placeholder")
             if self.OAUTH_STATE_SECRET == "change_me_oauth_state":
                 default_violations.append("OAUTH_STATE_SECRET uses default placeholder")
+            if self.WHATSAPP_VERIFY_TOKEN in ("suoops_verify_2025", "suoops_verify_token_2024"):
+                default_violations.append("WHATSAPP_VERIFY_TOKEN uses default placeholder")
             if missing:
                 raise ValueError(f"Missing required production settings: {', '.join(missing)}")
             if default_violations:
@@ -155,10 +164,11 @@ class ProdSettings(BaseAppSettings):
         "https://suoops-frontend.vercel.app",
         "https://suoops-frontend-ikemike.vercel.app",
         "https://suoops-support.vercel.app",
-        "http://localhost:3000",  # Local development
-        "http://127.0.0.1:3000",  # Local development (alt)
+        # NOTE: localhost removed from production — use DevSettings for local dev
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
+    # Allow Vercel preview deployments (e.g. suoops-frontend-abc123-ikemike.vercel.app)
+    CORS_ALLOW_ORIGIN_REGEX: str | None = r"https://suoops-(frontend|support)(-[a-z0-9]+)?(-ikemike)?\.vercel\.app"
     LOG_FORMAT: str = "json"
 
 

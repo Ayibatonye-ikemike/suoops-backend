@@ -294,10 +294,17 @@ class TestWhatsAppThreeWayFlow:
         handler.handle_webhook(payload)
 
         mock_client.send_text.assert_called()
-        message = mock_client.send_text.call_args[0][1]
-        assert "✅" in message
-        assert "no phone/email provided" in message.lower()
-        assert "mark paid" in message.lower()
+        # Find the invoice confirmation message (may not be the last call
+        # because low-balance or other notifications can follow).
+        messages = [
+            call[0][1] for call in mock_client.send_text.call_args_list
+        ]
+        confirm = next((m for m in messages if "✅" in m), None)
+        assert confirm is not None, (
+            f"No confirmation message with ✅ found. Messages: {messages}"
+        )
+        assert "no phone/email provided" in confirm.lower()
+        assert "mark paid" in confirm.lower()
 
 
 class TestPhoneExtraction:

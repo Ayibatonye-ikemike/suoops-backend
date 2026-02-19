@@ -72,7 +72,7 @@ class ExpenseOCRService:
         )
         
         if not ocr_result.get("success"):
-            logger.error(f"OCR failed for user {user_id}: {ocr_result.get('error')}")
+            logger.error("OCR failed for user %s: %s", user_id, ocr_result.get('error'))
             raise ValueError(f"Could not read receipt: {ocr_result.get('error', 'Unknown error')}")
         
         # 3. Parse receipt data
@@ -99,8 +99,10 @@ class ExpenseOCRService:
         self.db.refresh(expense)
         
         logger.info(
-            f"Created expense from receipt for user {user_id}: "
-            f"₦{expense.amount}, category={expense.category}"
+            "Created expense from receipt for user %s: ₦%s, category=%s",
+            user_id,
+            expense.amount,
+            expense.category,
         )
         
         return expense
@@ -212,6 +214,6 @@ class ExpenseOCRService:
         # Download receipt from S3
         # (Would need S3Client.download_file method)
         # For now, just log
-        logger.info(f"Would reprocess receipt for expense {expense_id}")
+        logger.info("Would reprocess receipt for expense %s", expense_id)
         
         return expense

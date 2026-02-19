@@ -9,11 +9,13 @@ from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models.payment_models import PaymentStatus, PaymentTransaction
 
+from .schemas import PaymentDetailOut, PaymentHistoryOut
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/history")
+@router.get("/history", response_model=PaymentHistoryOut)
 async def get_payment_history(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
@@ -112,7 +114,7 @@ async def get_payment_history(
     }
 
 
-@router.get("/history/{payment_id}")
+@router.get("/history/{payment_id}", response_model=PaymentDetailOut)
 async def get_payment_detail(
     payment_id: int,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
@@ -121,7 +123,8 @@ async def get_payment_detail(
     """
     Get detailed information about a specific payment transaction.
     
-    Includes full metadata from Paystack webhook.
+    Note: Paystack internal fields (transaction_id, metadata, ip_address)
+    are excluded from the response to prevent data leakage.
     """
     payment = db.query(PaymentTransaction).filter(
         PaymentTransaction.id == payment_id,
@@ -145,14 +148,10 @@ async def get_payment_detail(
         "card_brand": payment.card_brand,
         "bank_name": payment.bank_name,
         "customer_email": payment.customer_email,
-        "customer_phone": payment.customer_phone,
-        "paystack_transaction_id": payment.paystack_transaction_id,
         "created_at": payment.created_at.isoformat(),
         "updated_at": payment.updated_at.isoformat(),
         "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
         "billing_start_date": payment.billing_start_date.isoformat() if payment.billing_start_date else None,
         "billing_end_date": payment.billing_end_date.isoformat() if payment.billing_end_date else None,
         "failure_reason": payment.failure_reason,
-        "metadata": payment.payment_metadata,
-        "ip_address": payment.ip_address,
     }

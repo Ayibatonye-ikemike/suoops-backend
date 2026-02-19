@@ -367,12 +367,14 @@ class InvoiceStatusMixin:
                 except ValueError as e:
                     # Log insufficient stock but don't block payment
                     logger.warning(
-                        f"Insufficient stock for product {line.product_id} "
-                        f"on invoice {invoice.invoice_id}: {e}"
+                        "Insufficient stock for product %s on invoice %s: %s",
+                        line.product_id,
+                        invoice.invoice_id,
+                        e,
                     )
                     
         except Exception as e:
-            logger.error(f"Inventory processing failed for invoice {invoice.invoice_id}: {e}")
+            logger.error("Inventory processing failed for invoice %s: %s", invoice.invoice_id, e)
 
     def _check_and_send_low_stock_alerts(self, invoice: models.Invoice) -> None:
         """
@@ -434,13 +436,14 @@ class InvoiceStatusMixin:
                 )
                 if purchase_order:
                     logger.info(
-                        f"Draft purchase order {purchase_order.order_number} generated for "
-                        f"{len(low_stock_products)} low stock products"
+                        "Draft purchase order %s generated for %s low stock products",
+                        purchase_order.order_number,
+                        len(low_stock_products),
                     )
             except Exception as e:
                 # Rollback to clear any pending rollback state from failed PO creation
                 self.db.rollback()
-                logger.warning(f"Could not generate purchase order: {e}")
+                logger.warning("Could not generate purchase order: %s", e)
             
             po_message = ""
             if purchase_order:
@@ -459,8 +462,9 @@ class InvoiceStatusMixin:
             self._send_low_stock_notification(issuer_id, message, low_stock_products, po_id)
             
             logger.info(
-                f"Low stock alert sent for {len(low_stock_products)} products "
-                f"after invoice {invoice_id}"
+                "Low stock alert sent for %s products after invoice %s",
+                len(low_stock_products),
+                invoice_id,
             )
             
         except Exception as e:
@@ -469,7 +473,7 @@ class InvoiceStatusMixin:
                 self.db.rollback()
             except Exception:
                 pass
-            logger.error(f"Low stock check failed for invoice {invoice_id}: {e}")
+            logger.error("Low stock check failed for invoice %s: %s", invoice_id, e)
 
     def _send_low_stock_notification(
         self, 
@@ -499,10 +503,10 @@ class InvoiceStatusMixin:
                             body=message,
                         )
                     except Exception as exc:
-                        logger.error(f"Failed to send low stock email: {exc}")
+                        logger.error("Failed to send low stock email: %s", exc)
             
             asyncio.run(_run())
             
         except Exception as e:
-            logger.error(f"Low stock notification failed: {e}")
+            logger.error("Low stock notification failed: %s", e)
 

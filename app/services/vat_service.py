@@ -189,9 +189,9 @@ class VATService:
                 for key, value in vat_data.items():
                     if hasattr(vat_return, key):
                         setattr(vat_return, key, value)
-                logger.info(f"Updated VAT return for user {user_id}, period {tax_period}")
+                logger.info("Updated VAT return for user %s, period %s", user_id, tax_period)
             else:
-                logger.warning(f"Cannot update submitted VAT return: {tax_period}")
+                logger.warning("Cannot update submitted VAT return: %s", tax_period)
         else:
             # Create new return
             vat_return = VATReturn(
@@ -199,7 +199,7 @@ class VATService:
                 **vat_data
             )
             self.db.add(vat_return)
-            logger.info(f"Created VAT return for user {user_id}, period {tax_period}")
+            logger.info("Created VAT return for user %s, period %s", user_id, tax_period)
         
         self.db.commit()
         self.db.refresh(vat_return)

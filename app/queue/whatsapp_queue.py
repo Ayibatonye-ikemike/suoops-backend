@@ -15,6 +15,7 @@ from app.core.redis_utils import prepare_redis_url
 
 logger = logging.getLogger(__name__)
 
+_MAX_FALLBACK_BUFFER = 100  # Cap to prevent unbounded memory growth
 _fallback_buffer: list[dict[str, Any]] = []
 
 
@@ -76,6 +77,12 @@ def enqueue_message(payload: dict[str, Any]) -> None:
 
     # Celery unavailable - process synchronously for immediate response
     _process_synchronously(payload)
+
+    # Trim buffer if it has grown beyond cap (defensive)
+    if len(_fallback_buffer) > _MAX_FALLBACK_BUFFER:
+        dropped = len(_fallback_buffer) - _MAX_FALLBACK_BUFFER
+        del _fallback_buffer[:dropped]
+        logger.warning("Dropped %d oldest fallback-queue entries (cap=%d)", dropped, _MAX_FALLBACK_BUFFER)
 
 
 def drain_fallback() -> list[dict]:  # utility for tests

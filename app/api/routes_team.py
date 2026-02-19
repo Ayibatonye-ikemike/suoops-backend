@@ -4,7 +4,13 @@ from typing import Annotated, TypeAlias
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel as PydanticBaseModel
+
 from app.api.routes_auth import get_current_user_id
+
+
+class MessageOut(PydanticBaseModel):
+    detail: str
 from app.core.security import create_access_token, create_refresh_token
 from app.db.session import get_db
 from app.models.models import User
@@ -369,14 +375,14 @@ def accept_invitation_direct(data: InvitationAcceptDirect, db: DbDep):
 # Member Management
 # ============================================================================
 
-@router.delete("/members/{user_id}")
+@router.delete("/members/{user_id}", response_model=MessageOut)
 def remove_team_member(user_id: int, service: TeamServiceDep):
     """Remove a member from the team (admin only)."""
     service.remove_member(user_id)
     return {"detail": "Member removed from team"}
 
 
-@router.post("/leave")
+@router.post("/leave", response_model=MessageOut)
 def leave_team(current_user_id: CurrentUserDep, db: DbDep):
     """
     Leave the current team (for members, not admins).

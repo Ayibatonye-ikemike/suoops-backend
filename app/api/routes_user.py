@@ -2,10 +2,11 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.api.rate_limit import limiter
 from app.api.routes_auth import get_current_user_id
 from app.api.routes_admin_auth import get_current_admin
 from app.core.cache import cached
@@ -18,6 +19,25 @@ from app.services.otp_service import OTPService
 logger = logging.getLogger(__name__)
 router = APIRouter()
 otp_service = OTPService()
+
+
+class InvoiceUsage(BaseModel):
+    used_this_month: int
+    limit: int | None = None
+    remaining: int | None = None
+    can_create_more: bool
+    limit_message: str | None = None
+
+
+class FeatureAccessOut(BaseModel):
+    """GET /me/features — excludes internal user_id."""
+    current_plan: str
+    plan_price: float | None = None
+    is_free_tier: bool
+    features: dict[str, object]
+    invoice_usage: InvoiceUsage
+    upgrade_available: bool
+    upgrade_url: str | None = None
 
 
 
@@ -60,7 +80,7 @@ def get_profile(
     )
 
 
-@router.get("/me/features")
+@router.get("/me/features", response_model=FeatureAccessOut)
 async def get_feature_access(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
@@ -145,7 +165,7 @@ def update_profile(
             name=user.name
         )
     except Exception as e:
-        logger.error(f"Profile update failed for user {current_user_id}: {e}", exc_info=True)
+        logger.error("Profile update failed for user %s: %s", current_user_id, e, exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=500,
@@ -166,8 +186,10 @@ class DeleteAccountResponse(BaseModel):
 
 
 @router.delete("/me", response_model=DeleteAccountResponse)
+@limiter.limit("3/hour")
 def delete_own_account(
-    request: DeleteAccountRequest,
+    request: Request,
+    request_body: DeleteAccountRequest,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -180,7 +202,7 @@ def delete_own_account(
     Requires confirmation text "DELETE MY ACCOUNT" to proceed.
     """
     # Require explicit confirmation
-    if request.confirmation != "DELETE MY ACCOUNT":
+    if request_body.confirmation != "DELETE MY ACCOUNT":
         raise HTTPException(
             status_code=400,
             detail="Invalid confirmation. Type 'DELETE MY ACCOUNT' to confirm deletion."
@@ -201,7 +223,7 @@ def delete_own_account(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"Account deletion failed: {e}", exc_info=True)
+        logger.error("Account deletion failed: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to delete account. Please contact support."
@@ -241,7 +263,7 @@ def admin_delete_account(
             deleted_by_user_id=None  # Admin deletion, not self-deletion
         )
         
-        logger.info(f"Admin {admin_user.email} deleted user {user_id}")
+        logger.info("Admin %s deleted user %s", admin_user.email, user_id)
         
         return DeleteAccountResponse(
             success=True,
@@ -251,7 +273,7 @@ def admin_delete_account(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"Admin account deletion failed: {e}", exc_info=True)
+        logger.error("Admin account deletion failed: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to delete account. Please check logs."

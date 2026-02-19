@@ -15,13 +15,20 @@ from app.db.session import get_db
 from app.metrics import compliance_check_record, tax_profile_updated
 from app.services.tax_service import TaxProfileService
 
-from .schemas import TaxProfileUpdate
+from .schemas import (
+    ComplianceSummaryOut,
+    SmallBusinessCheckOut,
+    TaxConfigOut,
+    TaxProfileUpdate,
+    TaxProfileUpdateOut,
+    TaxSummaryOut,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/profile")
+@router.get("/profile", response_model=TaxSummaryOut)
 async def get_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
@@ -35,7 +42,7 @@ async def get_tax_profile(
         raise HTTPException(status_code=500, detail="Failed to fetch tax profile") from e
 
 
-@router.post("/profile")
+@router.post("/profile", response_model=TaxProfileUpdateOut)
 async def update_tax_profile(
     data: TaxProfileUpdate,
     current_user_id: int = Depends(get_current_user_id),
@@ -64,7 +71,7 @@ async def update_tax_profile(
         raise HTTPException(status_code=500, detail="Failed to update tax profile") from e
 
 
-@router.get("/small-business-check")
+@router.get("/small-business-check", response_model=SmallBusinessCheckOut)
 async def small_business_check(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
@@ -78,7 +85,7 @@ async def small_business_check(
         raise HTTPException(status_code=500, detail="Failed small business check") from e
 
 
-@router.get("/compliance")
+@router.get("/compliance", response_model=ComplianceSummaryOut)
 async def tax_compliance(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
@@ -95,7 +102,7 @@ async def tax_compliance(
         raise HTTPException(status_code=500, detail="Failed compliance summary") from e
 
 
-@router.get("/config")
+@router.get("/config", response_model=TaxConfigOut)
 async def tax_config(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),

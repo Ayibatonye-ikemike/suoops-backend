@@ -1,5 +1,4 @@
 """Support routes for contact form, tickets, and admin dashboard."""
-from __future__ import annotations
 
 import logging
 import smtplib
@@ -8,11 +7,12 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
+from app.api.rate_limit import limiter
 from app.api.routes_admin_auth import get_current_admin
 from app.core.config import settings
 from app.db.session import get_db
@@ -266,7 +266,9 @@ SuoOps Support Team
 # ============================================================================
 
 @router.post("/contact", response_model=ContactResponse)
+@limiter.limit("5/minute")
 async def submit_contact_form(
+    request: Request,
     contact: ContactRequest,
     db: Session = Depends(get_db),
 ) -> ContactResponse:

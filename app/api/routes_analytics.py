@@ -25,6 +25,8 @@ from app.services.analytics_service import (
     get_date_range,
 )
 
+from pydantic import BaseModel
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,40 @@ logger = logging.getLogger(__name__)
 CurrentUserDep = Annotated[int, Depends(get_current_user_id)]
 DataOwnerDep = Annotated[int, Depends(get_data_owner_id)]
 DbDep = Annotated[Session, Depends(get_db)]
+
+
+# ── Analytics response schemas ─────────────────────────────────────────
+
+class CustomerRevenueItem(BaseModel):
+    name: str
+    total_revenue: float
+    invoice_count: int
+
+
+class RevenueByCustomerOut(BaseModel):
+    period: str
+    customers: list[CustomerRevenueItem]
+
+
+class ConversionFunnel(BaseModel):
+    created: int
+    sent: int
+    viewed: int
+    awaiting_confirmation: int
+    paid: int
+    cancelled: int
+
+
+class ConversionRates(BaseModel):
+    sent_to_viewed: float
+    viewed_to_paid: float
+    overall: float
+
+
+class ConversionFunnelOut(BaseModel):
+    period: str
+    funnel: ConversionFunnel
+    conversion_rates: ConversionRates
 
 
 @router.get("/dashboard", response_model=AnalyticsDashboard)
@@ -93,7 +129,7 @@ async def get_analytics_dashboard(
     )
 
 
-@router.get("/revenue-by-customer")
+@router.get("/revenue-by-customer", response_model=RevenueByCustomerOut)
 async def get_revenue_by_customer(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
@@ -138,7 +174,7 @@ async def get_revenue_by_customer(
     }
 
 
-@router.get("/conversion-funnel")
+@router.get("/conversion-funnel", response_model=ConversionFunnelOut)
 async def get_conversion_funnel(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,

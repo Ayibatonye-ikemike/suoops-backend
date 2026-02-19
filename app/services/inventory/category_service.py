@@ -34,7 +34,7 @@ class CategoryService(BaseInventoryService):
         self._db.add(category)
         self._db.commit()
         self._db.refresh(category)
-        logger.info(f"Created category: {category.name} (id={category.id}) for user {self._user_id}")
+        logger.info("Created category: %s (id=%s) for user %s", category.name, category.id, self._user_id)
         return category
 
     def get_category(self, category_id: int) -> ProductCategory | None:
@@ -65,7 +65,7 @@ class CategoryService(BaseInventoryService):
         
         self._db.commit()
         self._db.refresh(category)
-        logger.info(f"Updated category: {category.name} (id={category.id})")
+        logger.info("Updated category: %s (id=%s)", category.name, category.id)
         return category
 
     def delete_category(self, category_id: int) -> bool:
@@ -76,5 +76,5 @@ class CategoryService(BaseInventoryService):
         
         category.is_active = False
         self._db.commit()
-        logger.info(f"Deleted category: {category.name} (id={category.id})")
+        logger.info("Deleted category: %s (id=%s)", category.name, category.id)
         return True

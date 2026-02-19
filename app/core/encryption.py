@@ -1,7 +1,8 @@
 """Simple Fernet-based encryption utilities for pilot column encryption.
 
-If ENCRYPTION_KEY not set, functions fall back to passthrough (no-op) to avoid
-runtime failures during gradual rollout.
+In production (APP_ENV=prod), ENCRYPTION_KEY is REQUIRED — missing key will
+raise an error to prevent storing sensitive data as plaintext.
+In dev/test, functions fall back to passthrough (no-op) for convenience.
 """
 from __future__ import annotations
 
@@ -19,10 +20,20 @@ except Exception:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
+def _is_production() -> bool:
+    env = (os.getenv("APP_ENV") or os.getenv("ENV") or "dev").lower()
+    return env in ("prod", "production")
+
+
 @lru_cache
 def _get_cipher() -> Fernet | None:
     key = os.getenv("ENCRYPTION_KEY")
     if not key or Fernet is None:
+        if _is_production():
+            logger.error(
+                "ENCRYPTION_KEY is not set in PRODUCTION — sensitive data will NOT be encrypted. "
+                "Set ENCRYPTION_KEY env var immediately."
+            )
         return None
     try:
         # Support raw 32-byte key or urlsafe base64 encoded
@@ -30,7 +41,7 @@ def _get_cipher() -> Fernet | None:
             key = base64.urlsafe_b64encode(key.encode()).decode()
         return Fernet(key)
     except Exception:  # noqa: BLE001
-        logger.warning("Invalid ENCRYPTION_KEY; encryption disabled")
+        logger.error("Invalid ENCRYPTION_KEY; encryption disabled")
         return None
 
 
@@ -39,11 +50,13 @@ def encrypt_value(value: str | None) -> str | None:
         return None
     cipher = _get_cipher()
     if not cipher:
+        if _is_production():
+            logger.warning("Encryption unavailable in production — storing value as plaintext")
         return value
     try:
         return cipher.encrypt(value.encode()).decode()
     except Exception:  # noqa: BLE001
-        logger.debug("Encryption failed; returning plaintext")
+        logger.error("Encryption failed for value — returning plaintext")
         return value
 
 

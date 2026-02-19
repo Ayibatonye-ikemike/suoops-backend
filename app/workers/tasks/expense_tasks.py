@@ -52,7 +52,7 @@ def send_expense_summary(
     with session_scope() as db:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
-            logger.error(f"User {user_id} not found for expense summary")
+            logger.error("User %s not found for expense summary", user_id)
             return {"success": False, "error": "User not found"}
 
         start_date, end_date = _calculate_period_range(period)
@@ -135,9 +135,9 @@ def send_expense_reminders(self: Task) -> dict[str, Any]:
                 try:
                     client.send_text(user.phone, message)
                     sent_count += 1
-                    logger.info(f"Sent expense reminder to user {user.id}")
+                    logger.info("Sent expense reminder to user %s", user.id)
                 except Exception as e:
-                    logger.error(f"Failed to send reminder to user {user.id}: {e}")
+                    logger.error("Failed to send reminder to user %s: %s", user.id, e)
 
         return {
             "success": True,
@@ -227,6 +227,6 @@ def _send_whatsapp_message(phone: str, message: str, user_id: int, period: str) 
     try:
         client = WhatsAppClient(settings.WHATSAPP_API_KEY)
         client.send_text(phone, message)
-        logger.info(f"Sent {period} expense summary to user {user_id}")
+        logger.info("Sent %s expense summary to user %s", period, user_id)
     except Exception as e:
-        logger.error(f"Failed to send WhatsApp summary to {user_id}: {e}")
+        logger.error("Failed to send WhatsApp summary to %s: %s", user_id, e)

@@ -29,8 +29,8 @@ class PaymentService:
             raise ValueError("Paystack secret key is required")
         self.router = PaymentRouter(secret)
 
-    def create_payment_link(self, reference: str, amount: Decimal) -> str:
-        return self.router.create_payment_link(reference, amount)
+    async def create_payment_link(self, reference: str, amount: Decimal) -> str:
+        return await self.router.create_payment_link(reference, amount)
 
     def verify_webhook(
         self,

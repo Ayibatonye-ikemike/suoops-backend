@@ -91,7 +91,7 @@ class TaxProfileService:
             self.db.add(profile)
             self.db.commit()
             self.db.refresh(profile)
-            logger.info(f"Created default tax profile for user {user_id}")
+            logger.info("Created default tax profile for user %s", user_id)
         
         return profile
     
@@ -313,13 +313,15 @@ class TaxProfileService:
         """Persist a simple alert event (best-effort)."""
         try:
             from app.models.alert_models import AlertEvent  # type: ignore
-        except Exception:
+        except Exception:  # noqa: BLE001
+            logger.debug("AlertEvent model not available, skipping alert")
             return
         evt = AlertEvent(category=category, message=message, severity=severity)
         self.db.add(evt)
         try:
             self.db.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to persist alert: %s", message)
             self.db.rollback()
 
     # ---------------- Development Levy Computation (minimal compliance helper) -----------------

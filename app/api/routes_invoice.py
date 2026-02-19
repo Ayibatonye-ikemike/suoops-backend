@@ -3,11 +3,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, TypeAlias
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_data_owner_id
+from app.api.rate_limit import limiter
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models, schemas
@@ -29,8 +30,10 @@ def get_invoice_service_for_user(data_owner_id: DataOwnerDep, db: DbDep) -> Invo
 
 
 @router.post("/", response_model=schemas.InvoiceOut)
+@limiter.limit("30/minute")
 async def create_invoice(
     data: schemas.InvoiceCreate,
+    request: Request,
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     db: DbDep,
@@ -177,7 +180,7 @@ async def upload_expense_receipt(
             content_type=file.content_type
         )
         
-        logger.info(f"Uploaded expense receipt for data_owner {data_owner_id} by user {current_user_id}: {receipt_url}")
+        logger.info("Uploaded expense receipt for data_owner %s by user %s: %s", data_owner_id, current_user_id, receipt_url)
         
         return schemas.ReceiptUploadOut(
             receipt_url=receipt_url,
@@ -185,7 +188,7 @@ async def upload_expense_receipt(
         )
     
     except Exception as e:
-        logger.error(f"Failed to upload receipt: {str(e)}")
+        logger.error("Failed to upload receipt: %s", e)
         raise HTTPException(status_code=500, detail="Failed to upload receipt. Please try again.")
 
 
@@ -385,7 +388,9 @@ def verify_invoice(invoice_id: str, db: DbDep):
 
 
 @router.post("/purchase-pack", response_model=schemas.InvoicePackPurchaseInitOut)
+@limiter.limit("10/minute")
 async def initialize_invoice_pack_purchase(
+    request: Request,
     current_user_id: CurrentUserDep,
     db: DbDep,
     quantity: int = 1,
@@ -478,7 +483,7 @@ async def initialize_invoice_pack_purchase(
             resp.raise_for_status()
             data = resp.json()
     except httpx.HTTPError as e:
-        logger.error(f"Paystack API error: {e}")
+        logger.error("Paystack API error: %s", e)
         transaction.status = PaymentStatus.FAILED
         db.commit()
         raise HTTPException(status_code=502, detail="Payment gateway error. Please try again.")

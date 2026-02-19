@@ -88,7 +88,7 @@ class PurchaseOrderService(InventoryServiceBase):
         self._db.commit()
         self._db.refresh(po)
 
-        logger.info(f"Purchase order {po.order_number} received, inventory updated")
+        logger.info("Purchase order %s received, inventory updated", po.order_number)
         return po
 
     def get(self, order_id: int) -> PurchaseOrder | None:
@@ -132,7 +132,7 @@ class PurchaseOrderService(InventoryServiceBase):
         self._db.commit()
         self._db.refresh(po)
 
-        logger.info(f"Purchase order {po.order_number} cancelled")
+        logger.info("Purchase order %s cancelled", po.order_number)
         return po
 
     # ========================================================================

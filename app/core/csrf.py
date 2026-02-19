@@ -26,29 +26,23 @@ CSRF_HEADER_NAME = "x-csrf-token"
 # Safe HTTP methods that don't require CSRF protection
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 
-# Paths exempt from CSRF protection (matched with 'in' for flexibility with API prefixes)
+# Paths exempt from CSRF protection:
+# - Only external webhook endpoints (they have their own signature verification)
+# - Public read-only endpoints
+# - Health/metrics endpoints
+# - Auth endpoints (login/signup use OTP, not session cookies)
+# All other state-changing routes MUST include X-CSRF-Token header.
 EXEMPT_PATHS = {
     "/health",
     "/metrics",
-    "/auth/",              # Auth endpoints use secure tokens (JWT/OAuth)
-    "/tax/",               # Tax endpoints use JWT authentication
-    "/invoices/",          # Invoice endpoints use JWT authentication
-    "/expenses/",          # Expense endpoints use JWT authentication
-    "/telemetry/",         # Frontend telemetry without auth
-    "/users/",             # User endpoints use JWT authentication
-    "/subscriptions/",     # Subscription endpoints use JWT authentication
-    "/team",               # Team endpoints use JWT authentication (no trailing slash)
-    "/inventory/",         # Inventory endpoints use JWT authentication
-    "/webhooks/whatsapp",  # External webhooks have their own verification
-    "/webhooks/paystack",
+    "/auth/",              # Auth endpoints use OTP-based flow, not session
+    "/webhooks/whatsapp",  # External webhook — verified via X-Hub-Signature-256
+    "/webhooks/paystack",  # External webhook — verified via HMAC signature
     "/public/invoices/",   # Public read-only endpoints
-    "/analytics/",         # Analytics endpoints use JWT authentication
-    "/ocr/",               # OCR endpoints use JWT authentication
-    "/referrals/",         # Referral endpoints use JWT authentication
-    "/support/",           # Support contact form (public endpoint)
-    "/admin/auth/",        # Admin auth endpoints use JWT authentication
-    "/admin-auth/",        # Admin auth endpoints (hyphenated route)
-    "/admin/brevo/",       # Admin Brevo sync endpoints use JWT authentication
+    "/support/",           # Public contact form
+    "/admin/auth/login",   # Admin login uses password, not session
+    "/admin/auth/accept-invite",  # One-time invite acceptance
+    "/telemetry/",         # Frontend telemetry without auth
 }
 
 

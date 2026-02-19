@@ -124,7 +124,7 @@ class AccountDeletionService:
                 deletion_summary["deleted_items"]["expenses"] = expenses_deleted
             except Exception as e:
                 # Expense table might not exist in some environments
-                logger.debug(f"Expense table deletion skipped: {e}")
+                logger.debug("Expense table deletion skipped: %s", e)
             
             # 7. The following are cascade deleted via User relationships:
             # - OAuth tokens
@@ -150,15 +150,17 @@ class AccountDeletionService:
             )
             
             logger.info(
-                f"Account deleted: user_id={user_id}, email={user_info['email']}, "
-                f"by_user={deleted_by_user_id or 'self'}"
+                "Account deleted: user_id=%s, email=%s, by_user=%s",
+                user_id,
+                user_info['email'],
+                deleted_by_user_id or 'self',
             )
             
             return deletion_summary
             
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Failed to delete account {user_id}: {e}", exc_info=True)
+            logger.error("Failed to delete account %s: %s", user_id, e, exc_info=True)
             log_audit_event(
                 action="account.deletion_failed",
                 user_id=deleted_by_user_id or user_id,

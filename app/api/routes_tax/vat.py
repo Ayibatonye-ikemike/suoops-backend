@@ -17,11 +17,13 @@ from app.metrics import vat_calculation_record
 from app.services.fiscalization_service import VATCalculator
 from app.services.vat_service import VATService
 
+from .schemas import VATCalculateOut, VATReturnOut, VATSummaryOut
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/vat/summary")
+@router.get("/vat/summary", response_model=VATSummaryOut)
 async def get_vat_summary(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
@@ -42,7 +44,7 @@ async def get_vat_summary(
         raise HTTPException(status_code=500, detail="Failed to fetch VAT summary")
 
 
-@router.get("/vat/calculate")
+@router.get("/vat/calculate", response_model=VATCalculateOut)
 async def calculate_vat(
     amount: float = Query(..., gt=0, description="Amount in Naira"),
     category: str = Query(
@@ -74,7 +76,7 @@ async def calculate_vat(
         raise HTTPException(status_code=400, detail="Invalid VAT calculation parameters")
 
 
-@router.post("/vat/return")
+@router.post("/vat/return", response_model=VATReturnOut)
 async def generate_vat_return(
     year: int = Query(..., ge=2024, le=2030, description="Year"),
     month: int = Query(..., ge=1, le=12, description="Month (1-12)"),

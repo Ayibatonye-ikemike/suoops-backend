@@ -81,13 +81,15 @@ class InventoryIntegrationMixin:
             if movements:
                 action = "restocked" if is_expense else "deducted"
                 logger.info(
-                    f"Inventory {action} for invoice {invoice.invoice_id}: "
-                    f"{len(movements)} product(s) updated"
+                    "Inventory %s for invoice %s: %s product(s) updated",
+                    action,
+                    invoice.invoice_id,
+                    len(movements),
                 )
                 
         except Exception as e:
             # Log but don't fail invoice creation
-            logger.error(f"Inventory processing error for invoice {invoice.invoice_id}: {e}")
+            logger.error("Inventory processing error for invoice %s: %s", invoice.invoice_id, e)
 
     def reverse_inventory_for_invoice(
         self,
@@ -134,7 +136,7 @@ class InventoryIntegrationMixin:
                         reference_id=f"CANCEL-{invoice.invoice_id}",
                     )
                     
-            logger.info(f"Reversed {len(movements)} inventory movements for invoice {invoice.invoice_id}")
+            logger.info("Reversed %s inventory movements for invoice %s", len(movements), invoice.invoice_id)
             
         except Exception as e:
-            logger.error(f"Error reversing inventory for invoice {invoice.invoice_id}: {e}")
+            logger.error("Error reversing inventory for invoice %s: %s", invoice.invoice_id, e)

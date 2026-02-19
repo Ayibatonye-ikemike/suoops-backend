@@ -93,7 +93,7 @@ class OCRService:
             
         except Exception as e:
             # Log as warning - OCR failures are expected for invalid images or API issues
-            logger.warning(f"OCR parsing failed: {str(e)}")
+            logger.warning("OCR parsing failed: %s", e)
             return {
                 "success": False,
                 "error": f"OCR processing error: {str(e)}"
@@ -116,7 +116,7 @@ class OCRService:
             # Resize if too large (API limits)
             if img.size[0] > self.max_image_size[0] or img.size[1] > self.max_image_size[1]:
                 img.thumbnail(self.max_image_size, Image.Resampling.LANCZOS)
-                logger.info(f"Resized image from {img.size} to fit {self.max_image_size}")
+                logger.info("Resized image from %s to fit %s", img.size, self.max_image_size)
             
             # Convert back to bytes
             output = io.BytesIO()
@@ -125,7 +125,7 @@ class OCRService:
             
         except Exception as e:
             # User-provided invalid image - log as warning to avoid Sentry noise
-            logger.warning(f"Image preprocessing failed: {str(e)}")
+            logger.warning("Image preprocessing failed: %s", e)
             return None
     
     def _encode_image(self, image_bytes: bytes) -> str:
@@ -159,7 +159,7 @@ class OCRService:
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "high"  # High detail for better accuracy
+                                "detail": "auto"  # Let OpenAI choose; "high" costs 2-4× more
                             }
                         }
                     ]
@@ -288,7 +288,7 @@ Guidelines:
             }
             
         except Exception as e:
-            logger.warning(f"Validation failed: {str(e)}")
+            logger.warning("Validation failed: %s", e)
             return {
                 "success": False,
                 "error": f"Data validation error: {str(e)}"

@@ -187,7 +187,7 @@ class VATReturn(Base):
     __tablename__ = "vat_returns"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
     
     # Tax period
     tax_period = Column(String(7), nullable=False, index=True)  # Format: YYYY-MM

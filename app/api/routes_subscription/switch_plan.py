@@ -9,11 +9,13 @@ from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models
 
+from .schemas import SwitchPlanOut
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/switch-to-starter")
+@router.post("/switch-to-starter", response_model=SwitchPlanOut)
 async def switch_to_starter(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],

@@ -51,12 +51,6 @@ settings.ENV = "test"  # type: ignore[attr-defined]
 db_session.engine = test_engine  # type: ignore[assignment]
 SessionLocal.configure(bind=test_engine)
 
-# Suppress known third-party deprecation warnings (e.g., passlib crypt removal).
-warnings.filterwarnings(
-    "ignore",
-    category=DeprecationWarning,
-    module="passlib.utils",
-)
 # Suppress third-party utcnow deprecation chatter (botocore) until upstream fixes.
 warnings.filterwarnings(
     "ignore",

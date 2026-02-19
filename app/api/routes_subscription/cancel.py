@@ -11,11 +11,13 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
 
+from .schemas import CancelSubscriptionOut, SubscriptionStatusOut
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/cancel")
+@router.post("/cancel", response_model=CancelSubscriptionOut)
 async def cancel_subscription(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
@@ -130,7 +132,7 @@ async def cancel_subscription(
         )
 
 
-@router.get("/status")
+@router.get("/status", response_model=SubscriptionStatusOut)
 async def get_subscription_status(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
@@ -153,7 +155,6 @@ async def get_subscription_status(
     return {
         "plan": user.plan.value,
         "is_recurring": subscription_code is not None,
-        "subscription_code": subscription_code,
         "subscription_started_at": user.subscription_started_at.isoformat() if user.subscription_started_at else None,
         "expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
         "invoice_balance": getattr(user, 'invoice_balance', 0),

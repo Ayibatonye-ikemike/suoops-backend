@@ -15,11 +15,13 @@ from app.db.session import get_db
 from app.models import models
 from app.models.payment_models import PaymentStatus, PaymentTransaction
 
+from .schemas import PaymentVerifyOut
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/verify/{reference}")
+@router.get("/verify/{reference}", response_model=PaymentVerifyOut)
 async def verify_subscription_payment(
     reference: str,
     current_user_id: Annotated[int, Depends(get_current_user_id)],

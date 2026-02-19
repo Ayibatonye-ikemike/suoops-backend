@@ -5,7 +5,7 @@ import hmac
 import logging
 from decimal import Decimal, ROUND_UP
 
-import requests
+import httpx
 
 from app.core.config import settings
 
@@ -55,7 +55,7 @@ class PaystackProvider:
         self.secret = secret
         self.base = "https://api.paystack.co"
 
-    def create_payment_link(
+    async def create_payment_link(
         self, 
         reference: str, 
         amount: Decimal, 
@@ -74,7 +74,7 @@ class PaystackProvider:
         # Calculate amount with fees if passing to customer
         if pass_fees_to_customer:
             charge_amount = calculate_amount_with_paystack_fee(amount)
-            logger.info(f"Passing fees to customer: target={amount}, charging={charge_amount}")
+            logger.info("Passing fees to customer: target=%s, charging=%s", amount, charge_amount)
         else:
             charge_amount = Decimal(amount)
         
@@ -85,18 +85,24 @@ class PaystackProvider:
             "callback_url": f"{settings.FRONTEND_URL}/payments/confirm",
         }
         try:
-            r = requests.post(
-                f"{self.base}/transaction/initialize",
-                headers={"Authorization": f"Bearer {self.secret}"},
-                json=payload,
-                timeout=10,
-            )
-            r.raise_for_status()
-            data = r.json()
-            return data.get("data", {}).get("authorization_url", "https://paystack.com")
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post(
+                    f"{self.base}/transaction/initialize",
+                    headers={"Authorization": f"Bearer {self.secret}"},
+                    json=payload,
+                )
+                r.raise_for_status()
+                data = r.json()
+            url = data.get("data", {}).get("authorization_url")
+            if not url:
+                raise ValueError("No authorization_url in Paystack response")
+            return url
         except Exception as e:  # noqa: BLE001
-            logger.warning("Paystack init failed: %s", e)
-            return f"https://pay.example.com/{reference}"
+            logger.error("Paystack payment initialization failed: %s", e)
+            raise RuntimeError(
+                f"Payment provider error: unable to create payment link (ref: {reference}). "
+                "Please try again or contact support."
+            ) from e
 
     def verify_webhook(self, raw_body: bytes, signature: str | None) -> bool:
         if not signature:
@@ -113,14 +119,14 @@ class PaymentRouter:
             raise ValueError("Paystack secret key is required")
         self.provider = PaystackProvider(paystack_secret_key)
 
-    def create_payment_link(
+    async def create_payment_link(
         self, 
         reference: str, 
         amount: Decimal, 
         email: str | None = None,
         pass_fees_to_customer: bool = True,
     ) -> str:
-        return self.provider.create_payment_link(reference, amount, email, pass_fees_to_customer)
+        return await self.provider.create_payment_link(reference, amount, email, pass_fees_to_customer)
 
     def verify_webhook(self, raw_body: bytes, signature: str | None) -> bool:
         return self.provider.verify_webhook(raw_body, signature)

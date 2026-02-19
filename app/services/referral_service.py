@@ -75,7 +75,7 @@ class ReferralService:
         self.db.commit()
         self.db.refresh(referral_code)
 
-        logger.info(f"Created referral code {code} for user {user_id}")
+        logger.info("Created referral code %s for user %s", code, user_id)
         return referral_code
 
     def get_code_by_string(self, code: str) -> ReferralCode | None:
@@ -124,13 +124,13 @@ class ReferralService:
         """
         referral_code = self.get_code_by_string(code)
         if not referral_code:
-            logger.warning(f"Invalid referral code: {code}")
+            logger.warning("Invalid referral code: %s", code)
             return None
 
         # Validate
         is_valid, error = self.validate_referral_code(code, referred_user_id)
         if not is_valid:
-            logger.warning(f"Invalid referral: {error}")
+            logger.warning("Invalid referral: %s", error)
             return None
 
         referral = Referral(
@@ -147,8 +147,10 @@ class ReferralService:
         self.db.refresh(referral)
 
         logger.info(
-            f"Recorded referral: user {referral_code.user_id} referred user {referred_user_id} "
-            f"(type: {referral_type.value})"
+            "Recorded referral: user %s referred user %s (type: %s)",
+            referral_code.user_id,
+            referred_user_id,
+            referral_type.value,
         )
         return referral
 
@@ -170,7 +172,7 @@ class ReferralService:
         referral.completed_at = dt.datetime.now(dt.timezone.utc)
         self.db.commit()
 
-        logger.info(f"Completed referral for user {referred_user_id}")
+        logger.info("Completed referral for user %s", referred_user_id)
 
         # Check if referrer has earned a reward
         self._check_and_create_reward(referral.referrer_id)
@@ -197,7 +199,7 @@ class ReferralService:
         referral.referral_type = ReferralType.PAID_SIGNUP
         self.db.commit()
 
-        logger.info(f"Upgraded referral for user {referred_user_id} to paid")
+        logger.info("Upgraded referral for user %s to paid", referred_user_id)
 
         # COMMISSION MODEL: Create immediate reward for the referrer
         self._create_commission_reward(referral.referrer_id, referred_user_id)

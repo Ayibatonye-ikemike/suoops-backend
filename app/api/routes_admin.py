@@ -17,7 +17,45 @@ from app.models.payment_models import PaymentStatus, PaymentTransaction
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.get("/")
+# ── Admin response schemas ────────────────────────────────────────────
+
+class AdminIdentity(BaseModel):
+    id: int
+    name: str
+    role: str
+
+
+class AdminRootOut(BaseModel):
+    message: str
+    endpoints: dict[str, str]
+    authenticated_as: AdminIdentity
+
+
+class UserCountOut(BaseModel):
+    total_users: int
+    ts: int
+
+
+class PackPurchaseItem(BaseModel):
+    reference: str
+    amount: float
+    invoices_added: int
+    date: str | None = None
+
+
+class UserActivity(BaseModel):
+    total_invoices: int
+    revenue_invoices: int
+    expense_invoices: int
+    total_customers: int
+    has_logo: bool
+    has_bank_details: bool
+    invoice_balance: int
+    invoices_used: int
+    pack_purchases: list[PackPurchaseItem]
+
+
+@router.get("/", response_model=AdminRootOut)
 async def admin_root(admin_user=Depends(get_current_admin)) -> dict:
     """
     Admin API root - lists available endpoints.
@@ -36,7 +74,6 @@ async def admin_root(admin_user=Depends(get_current_admin)) -> dict:
         "authenticated_as": {
             "id": admin_user.id,
             "name": admin_user.name,
-            "email": admin_user.email,
             "role": admin_user.role
         }
     }
@@ -69,7 +106,12 @@ class UserStats(BaseModel):
     active_users_last_30_days: int
 
 
-@router.get("/users/count")
+class UserDetailOut(BaseModel):
+    user: UserListItem
+    activity: UserActivity
+
+
+@router.get("/users/count", response_model=UserCountOut)
 async def user_count(db: Session = Depends(get_db), admin_user=Depends(get_current_admin)) -> dict:
     import time
 
@@ -209,7 +251,7 @@ async def list_users(
     ]
 
 
-@router.get("/users/{user_id}", response_model=dict)
+@router.get("/users/{user_id}", response_model=UserDetailOut)
 async def get_user_detail(
     user_id: int,
     db: Session = Depends(get_db),

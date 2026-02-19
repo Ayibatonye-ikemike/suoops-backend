@@ -20,6 +20,10 @@ class ReferralCodeResponse(BaseModel):
     is_active: bool
 
 
+class MessageResponse(BaseModel):
+    message: str
+
+
 class ReferralStatsResponse(BaseModel):
     """Referral statistics for a user."""
     referral_code: str
@@ -269,7 +273,7 @@ async def update_payout_bank_details(
     )
 
 
-@router.delete("/payout-bank")
+@router.delete("/payout-bank", response_model=MessageResponse)
 async def delete_payout_bank_details(
     user_id: CurrentUserDep,
     db: DbDep,

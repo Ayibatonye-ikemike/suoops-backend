@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
@@ -21,9 +22,8 @@ from app.models.admin_models import AdminUser
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 logger = logging.getLogger(__name__)
 
-# Default admin credentials
+# Default admin email — password MUST come from env var, never hardcoded
 DEFAULT_ADMIN_EMAIL = "support@suoops.com"
-DEFAULT_ADMIN_PASSWORD = "SuoOps2024Admin!"  # Should be changed on first login
 
 
 # ============================================================================
@@ -82,6 +82,11 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class SuccessMessageOut(BaseModel):
+    success: bool
+    message: str
+
+
 # ============================================================================
 # Authentication Dependencies
 # ============================================================================
@@ -133,15 +138,31 @@ async def get_current_admin(
 
 
 def create_default_admin(db: Session) -> AdminUser | None:
-    """Create the default admin if it doesn't exist."""
+    """Create the default admin if it doesn't exist.
+    
+    Requires DEFAULT_ADMIN_PASSWORD env var to be set.
+    Will NOT create an admin with a hardcoded password.
+    """
     existing = db.query(AdminUser).filter(AdminUser.email == DEFAULT_ADMIN_EMAIL).first()
     if existing:
         return existing
     
+    default_password = os.environ.get("DEFAULT_ADMIN_PASSWORD")
+    if not default_password:
+        logger.warning(
+            "DEFAULT_ADMIN_PASSWORD env var not set — skipping default admin creation. "
+            "Set this env var on first deploy, then change the password via the admin panel."
+        )
+        return None
+    
+    if len(default_password) < 12:
+        logger.error("DEFAULT_ADMIN_PASSWORD must be at least 12 characters")
+        return None
+    
     admin = AdminUser(
         email=DEFAULT_ADMIN_EMAIL,
         name="SuoOps Support",
-        hashed_password=hash_password(DEFAULT_ADMIN_PASSWORD),
+        hashed_password=hash_password(default_password),
         is_active=True,
         is_super_admin=True,
         can_manage_tickets=True,
@@ -152,7 +173,7 @@ def create_default_admin(db: Session) -> AdminUser | None:
     db.add(admin)
     db.commit()
     db.refresh(admin)
-    logger.info(f"Created default admin: {DEFAULT_ADMIN_EMAIL}")
+    logger.info("Created default admin: %s", DEFAULT_ADMIN_EMAIL)
     return admin
 
 
@@ -296,12 +317,15 @@ def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
 @router.post("/invite", response_model=AdminInviteResponse)
 def invite_admin(
     payload: AdminInviteRequest,
+    current_admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Invite a new admin user.
-    
-    Note: Requires authentication - must be called with valid admin token.
-    """
+    """Invite a new admin user. Requires admin authentication with invite permission."""
+    if not current_admin.is_super_admin and not current_admin.can_invite_admins:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to invite admins",
+        )
     
     # Validate email domain - only @suoops.com emails can be invited
     email_lower = payload.email.lower()
@@ -437,31 +461,29 @@ def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=AdminUserOut)
-def get_current_admin_user(db: Session = Depends(get_db)):
-    """Get current admin user info.
-    
-    Note: This route requires authentication via admin token.
-    """
-    
-    # This would be handled by dependency in production
-    # For now, return placeholder
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication required",
-    )
+def get_current_admin_user(
+    current_admin: AdminUser = Depends(get_current_admin),
+):
+    """Get current admin user info. Requires admin authentication."""
+    return current_admin
 
 
 @router.get("/admins", response_model=list[AdminUserOut])
-def list_admins(db: Session = Depends(get_db)):
-    """List all admin users.
-    
-    Note: Only super admins or those with invite permission can see this.
-    """
+def list_admins(
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """List all admin users. Requires admin authentication."""
+    if not current_admin.is_super_admin and not current_admin.can_invite_admins:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins or admins with invite permission can list admins",
+        )
     admins = db.query(AdminUser).filter(AdminUser.is_active.is_(True)).all()
     return admins
 
 
-@router.delete("/admins/{admin_id}")
+@router.delete("/admins/{admin_id}", response_model=SuccessMessageOut)
 async def remove_admin(
     admin_id: int,
     current_admin: AdminUser = Depends(get_current_admin),
@@ -506,17 +528,44 @@ async def remove_admin(
     return {"success": True, "message": f"Admin {admin_to_remove.email} has been removed"}
 
 
-@router.post("/change-password")
+@router.post("/change-password", response_model=SuccessMessageOut)
 def change_password(
     payload: ChangePasswordRequest,
+    current_admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Change admin password."""
-    # This would need proper auth dependency
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Not implemented",
-    )
+    """Change admin password. Requires admin authentication."""
+    # Verify current password
+    if not verify_password(payload.current_password, current_admin.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    
+    # Validate new password strength
+    new_pw = payload.new_password
+    if len(new_pw) < 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 12 characters",
+        )
+    if not any(c.isupper() for c in new_pw) or not any(c.islower() for c in new_pw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must contain both uppercase and lowercase letters",
+        )
+    if not any(c.isdigit() for c in new_pw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must contain at least one digit",
+        )
+    
+    # Update password
+    current_admin.hashed_password = hash_password(new_pw)
+    db.commit()
+    
+    logger.info("Admin %s changed their password", current_admin.email)
+    return {"success": True, "message": "Password changed successfully"}
 
 
 # ============================================================================

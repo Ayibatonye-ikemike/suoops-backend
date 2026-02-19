@@ -265,21 +265,21 @@ class FiscalTransmitter:
                 
                 if response.status_code == 200:
                     result = response.json()
-                    logger.info(f"Invoice {invoice.id} transmitted to fiscalization gateway successfully")
+                    logger.info("Invoice %s transmitted to fiscalization gateway successfully", invoice.id)
                     return {
                         "status": "validated",
                         "transaction_id": result.get("transaction_id"),
                         "response": result
                     }
                 else:
-                    logger.error(f"Fiscalization transmission failed: {response.status_code}")
+                    logger.error("Fiscalization transmission failed: %s", response.status_code)
                     return {
                         "status": "failed",
                         "error": response.text
                     }
                     
             except Exception as e:
-                logger.error(f"Fiscalization transmission exception: {str(e)}")
+                logger.error("Fiscalization transmission exception: %s", e)
                 return {
                     "status": "failed",
                     "error": str(e)
@@ -332,7 +332,7 @@ class FiscalizationService:
         
         # Check if already fiscalized
         if invoice.fiscal_data:
-            logger.info(f"Invoice {invoice_id} already fiscalized")
+            logger.info("Invoice %s already fiscalized", invoice_id)
             return invoice.fiscal_data
         
         # Calculate VAT if not set
@@ -380,7 +380,7 @@ class FiscalizationService:
                 if nrs_result.get("status") == "accepted" and not fiscal_invoice.transmitted_at:
                     fiscal_invoice.transmitted_at = datetime.now(timezone.utc)
             except Exception as e:
-                logger.warning(f"NRS client transmission failed: {e}")
+                logger.warning("NRS client transmission failed: %s", e)
 
         fiscal_invoice.firs_validation_status = tx_result.get("status", "pending")
         fiscal_invoice.firs_transaction_id = tx_result.get("transaction_id")
@@ -395,5 +395,5 @@ class FiscalizationService:
         self.db.add(fiscal_invoice)
         self.db.commit()
         self.db.refresh(fiscal_invoice)
-        logger.info(f"Invoice {invoice_id} fiscalized (queued transmit): {fiscal_code}")
+        logger.info("Invoice %s fiscalized (queued transmit): %s", invoice_id, fiscal_code)
         return fiscal_invoice

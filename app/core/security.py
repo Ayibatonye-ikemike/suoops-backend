@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
+import bcrypt
 import jwt
 from jwt import ExpiredSignatureError
 from jwt import InvalidTokenError as PyJWTInvalidTokenError
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
@@ -16,13 +16,11 @@ class TokenType(str, Enum):
     ACCESS = "access"
     REFRESH = "refresh"
 
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-    bcrypt__truncate_error=True,
-)
-
 ALGORITHM = "HS256"
+
+# ── bcrypt cost factor ──────────────────────────────────────────────────
+# 12 rounds is the modern recommended default (2^12 ≈ 4096 iterations).
+_BCRYPT_ROUNDS = 12
 
 
 class TokenValidationError(Exception):
@@ -34,11 +32,14 @@ class TokenExpiredError(TokenValidationError):
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Hash a password using bcrypt with a random salt."""
+    salt = bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return pwd_context.verify(password, hashed)
+    """Verify a plaintext password against a bcrypt hash."""
+    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
 
 def create_access_token(subject: str, expires_minutes: int = 60 * 24, user_plan: str | None = None) -> str:

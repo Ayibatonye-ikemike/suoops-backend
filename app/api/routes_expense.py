@@ -7,10 +7,12 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_data_owner_id
+from app.api.rate_limit import limiter
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models.expense import Expense
@@ -87,7 +89,9 @@ def _calculate_period_range(
 
 
 @router.post("/", response_model=ExpenseOut, status_code=201)
+@limiter.limit("30/minute")
 def create_expense(
+    request: Request,
     data: ExpenseCreate,
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
@@ -246,29 +250,33 @@ def expense_summary(
     # Calculate date range
     start_date, end_date = _calculate_period_range(period_type, year, month, day, week)
     
-    # Query expenses in period (use data_owner_id for team context)
-    expenses = db.query(Expense).filter(
-        Expense.user_id == data_owner_id,
-        Expense.date >= start_date,
-        Expense.date <= end_date,
-    ).all()
+    # SQL aggregation instead of loading all expenses into memory
+    rows = (
+        db.query(
+            Expense.category,
+            func.sum(Expense.amount).label("total"),
+            func.count(Expense.id).label("cnt"),
+        )
+        .filter(
+            Expense.user_id == data_owner_id,
+            Expense.date >= start_date,
+            Expense.date <= end_date,
+        )
+        .group_by(Expense.category)
+        .all()
+    )
     
-    # Aggregate by category
-    by_category: dict[str, Decimal] = {}
-    total = Decimal("0")
-    
-    for expense in expenses:
-        category = expense.category
-        by_category[category] = by_category.get(category, Decimal("0")) + expense.amount
-        total += expense.amount
+    by_category = {row.category: float(row.total) for row in rows}
+    total = sum(row.total for row in rows)
+    count = sum(row.cnt for row in rows)
     
     return ExpenseSummary(
         total_expenses=float(total),
-        by_category={k: float(v) for k, v in by_category.items()},
+        by_category=by_category,
         period_type=period_type,
         start_date=start_date.isoformat(),
         end_date=end_date.isoformat(),
-        count=len(expenses),
+        count=count,
     )
 
 
@@ -298,15 +306,37 @@ def expense_stats(
     # Calculate date range
     start_date, end_date = _calculate_period_range(period_type, year, month, day, week)
     
-    # Get expenses (use data_owner_id for team context)
-    expenses = db.query(Expense).filter(
-        Expense.user_id == data_owner_id,
-        Expense.date >= start_date,
-        Expense.date <= end_date,
-    ).all()
+    # SQL aggregation instead of loading all expenses into memory
+    stats_row = (
+        db.query(
+            func.coalesce(func.sum(Expense.amount), 0).label("total"),
+        )
+        .filter(
+            Expense.user_id == data_owner_id,
+            Expense.date >= start_date,
+            Expense.date <= end_date,
+        )
+        .first()
+    )
+    total_expenses = Decimal(str(stats_row.total))
     
-    # Calculate totals
-    total_expenses = sum(expense.amount for expense in expenses)
+    # Top categories via SQL
+    category_rows = (
+        db.query(
+            Expense.category,
+            func.sum(Expense.amount).label("total"),
+        )
+        .filter(
+            Expense.user_id == data_owner_id,
+            Expense.date >= start_date,
+            Expense.date <= end_date,
+        )
+        .group_by(Expense.category)
+        .order_by(func.sum(Expense.amount).desc())
+        .limit(5)
+        .all()
+    )
+    top_categories = [{row.category: float(row.total)} for row in category_rows]
     
     # Get revenue from invoices (use data_owner_id for team context)
     total_revenue = compute_revenue_by_date_range(
@@ -325,22 +355,6 @@ def expense_stats(
         expense_ratio = float(total_expenses / total_revenue * 100)
     else:
         expense_ratio = 0.0
-    
-    # Get top categories
-    category_totals: dict[str, Decimal] = {}
-    for expense in expenses:
-        cat = expense.category
-        category_totals[cat] = category_totals.get(cat, Decimal("0")) + expense.amount
-    
-    # Sort and get top 5
-    top_categories = [
-        {cat: float(amt)}
-        for cat, amt in sorted(
-            category_totals.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:5]
-    ]
     
     return ExpenseStats(
         total_expenses=float(total_expenses),

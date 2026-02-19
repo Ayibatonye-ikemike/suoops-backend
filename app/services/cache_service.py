@@ -131,15 +131,15 @@ class InvoiceCacheRepository:
             cached = self.store.get(key)
             
             if cached:
-                logger.debug(f"Cache HIT for invoice {invoice_id}")
+                logger.debug("Cache HIT for invoice %s", invoice_id)
                 return self._deserialize_invoice(cached)
             
-            logger.debug(f"Cache MISS for invoice {invoice_id}")
+            logger.debug("Cache MISS for invoice %s", invoice_id)
             return None
             
         except Exception as e:
             # Redis is optional - log as warning not error to avoid Sentry noise
-            logger.warning(f"Cache read error for invoice {invoice_id}: {e}")
+            logger.warning("Cache read error for invoice %s: %s", invoice_id, e)
             return None
 
     def set_invoice(self, invoice: models.Invoice, ttl: int | None = None) -> None:
@@ -155,11 +155,11 @@ class InvoiceCacheRepository:
             expiry = ttl or self.DEFAULT_TTL
             
             self.store.set(key, value, ex=expiry)
-            logger.debug(f"Cached invoice {invoice.id} (TTL: {expiry}s)")
+            logger.debug("Cached invoice %s (TTL: %ss)", invoice.id, expiry)
             
         except Exception as e:
             # Redis is optional - log as warning not error to avoid Sentry noise
-            logger.warning(f"Cache write error for invoice {invoice.id}: {e}")
+            logger.warning("Cache write error for invoice %s: %s", invoice.id, e)
 
     def invalidate_invoice(self, invoice_id: str) -> None:
         """Remove invoice from cache.
@@ -170,11 +170,11 @@ class InvoiceCacheRepository:
         try:
             key = self._invoice_key(invoice_id)
             self.store.delete(key)
-            logger.debug(f"Invalidated cache for invoice {invoice_id}")
+            logger.debug("Invalidated cache for invoice %s", invoice_id)
             
         except Exception as e:
             # Redis is optional - log as warning not error to avoid Sentry noise
-            logger.warning(f"Cache invalidation error for invoice {invoice_id}: {e}")
+            logger.warning("Cache invalidation error for invoice %s: %s", invoice_id, e)
 
     def invalidate_user_invoices(self, user_id: int) -> None:
         """Remove user's invoice list from cache.
@@ -185,11 +185,11 @@ class InvoiceCacheRepository:
         try:
             key = self._invoice_list_key(user_id)
             self.store.delete(key)
-            logger.debug(f"Invalidated invoice list cache for user {user_id}")
+            logger.debug("Invalidated invoice list cache for user %s", user_id)
             
         except Exception as e:
             # Redis is optional - log as warning not error to avoid Sentry noise
-            logger.warning(f"Cache list invalidation error for user {user_id}: {e}")
+            logger.warning("Cache list invalidation error for user %s: %s", user_id, e)
 
     def get_invoice_list(self, user_id: int) -> list[dict[str, Any]] | None:
         """Retrieve user's invoice list from cache.
@@ -205,15 +205,15 @@ class InvoiceCacheRepository:
             cached = self.store.get(key)
             
             if cached:
-                logger.debug(f"Cache HIT for user {user_id} invoice list")
+                logger.debug("Cache HIT for user %s invoice list", user_id)
                 return json.loads(cached)
             
-            logger.debug(f"Cache MISS for user {user_id} invoice list")
+            logger.debug("Cache MISS for user %s invoice list", user_id)
             return None
             
         except Exception as e:
             # Redis is optional - log as warning not error to avoid Sentry noise
-            logger.warning(f"Cache read error for user {user_id} invoice list: {e}")
+            logger.warning("Cache read error for user %s invoice list: %s", user_id, e)
             return None
 
     def set_invoice_list(self, user_id: int, invoices: list[models.Invoice], ttl: int | None = None) -> None:
@@ -231,8 +231,8 @@ class InvoiceCacheRepository:
             expiry = ttl or self.LIST_TTL
             
             self.store.set(key, value, ex=expiry)
-            logger.debug(f"Cached {len(invoices)} invoices for user {user_id} (TTL: {expiry}s)")
+            logger.debug("Cached %s invoices for user %s (TTL: %ss)", len(invoices), user_id, expiry)
             
         except Exception as e:
             # Redis is optional - log as warning not error to avoid Sentry noise
-            logger.warning(f"Cache write error for user {user_id} invoice list: {e}")
+            logger.warning("Cache write error for user %s invoice list: %s", user_id, e)

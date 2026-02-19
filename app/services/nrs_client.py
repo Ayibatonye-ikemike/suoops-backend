@@ -88,6 +88,8 @@ def get_nrs_client() -> NRSClient:
             merchant_id=getattr(settings, "NRS_MERCHANT_ID", None),
             enabled=bool(getattr(settings, "NRS_ENABLED", False)),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
+        import logging as _log
+        _log.getLogger(__name__).debug("NRS config not available, using defaults")
         cfg = NRSConfig()
     return NRSClient(cfg)

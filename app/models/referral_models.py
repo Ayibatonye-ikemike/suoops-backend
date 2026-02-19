@@ -108,10 +108,12 @@ class Referral(Base):
     referral_type: Mapped[ReferralType] = mapped_column(
         Enum(ReferralType),
         default=ReferralType.FREE_SIGNUP,
+        index=True,
     )
     status: Mapped[ReferralStatus] = mapped_column(
         Enum(ReferralStatus),
         default=ReferralStatus.PENDING,
+        index=True,
     )
     
     # Timestamps
@@ -119,6 +121,7 @@ class Referral(Base):
         DateTime(timezone=True),
         default=utcnow,
         server_default=func.now(),
+        index=True,
     )
     completed_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True),

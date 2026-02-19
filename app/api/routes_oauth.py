@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.api.rate_limit import RATE_LIMITS, limiter
 from app.api.routes_auth import _set_refresh_cookie
+from app.api.routes_auth import get_current_user_id
 from app.core.config import settings
 from app.core.csrf import get_csrf_token, set_csrf_cookie
 from app.core.security import TokenType, decode_token
@@ -358,7 +359,7 @@ async def oauth_callback(
 @router.post("/{provider}/revoke")
 async def revoke_oauth_access(
     provider: str,
-    current_user_id: int,  # Would need proper dependency injection
+    current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -376,7 +377,7 @@ async def revoke_oauth_access(
         
     Note: Not fully implemented - requires OAuth token storage
     """
-    logger.info(f"OAuth revocation requested for provider {provider}")
+    logger.info("OAuth revocation requested for provider %s", provider)
     
     # TODO: Implement OAuth token storage and revocation
     # For now, just acknowledge the request

@@ -71,7 +71,7 @@ def build_invoice_service(db: Session, user_id: int | None = None) -> InvoiceSer
             redis_client = get_redis_client()
             cache = InvoiceCacheRepository(redis_client)
         except Exception as e:
-            logger.warning(f"Failed to initialize invoice cache: {e}")
+            logger.warning("Failed to initialize invoice cache: %s", e)
     
     return InvoiceService(db, pdf, cache=cache)
 

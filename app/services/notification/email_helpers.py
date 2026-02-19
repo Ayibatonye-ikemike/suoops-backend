@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import logging
-import smtplib
 from datetime import datetime, timezone
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import TYPE_CHECKING
 
+import aiosmtplib
 import httpx
 
 from app.core.config import settings
@@ -90,10 +90,14 @@ Powered by SuoOps
             except Exception as e:  # pragma: no cover
                 logger.error("Failed to download PDF for email attachment: %s", e)
 
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.send_message(msg)
+        await aiosmtplib.send(
+            msg,
+            hostname=smtp_host,
+            port=smtp_port,
+            username=smtp_user,
+            password=smtp_password,
+            start_tls=True,
+        )
         logger.info("Sent invoice email to %s for invoice %s", recipient_email, invoice.invoice_id)
         return True
     except Exception as e:  # pragma: no cover
@@ -168,10 +172,14 @@ Powered by SuoOps
             except Exception as e:  # pragma: no cover
                 logger.error("Failed to download PDF for receipt: %s", e)
 
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.send_message(msg)
+        await aiosmtplib.send(
+            msg,
+            hostname=smtp_host,
+            port=smtp_port,
+            username=smtp_user,
+            password=smtp_password,
+            start_tls=True,
+        )
         logger.info("Sent receipt email to %s for invoice %s", recipient_email, invoice.invoice_id)
         return True
     except Exception as e:  # pragma: no cover
@@ -200,10 +208,14 @@ async def send_simple_email(
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
 
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.send_message(msg)
+        await aiosmtplib.send(
+            msg,
+            hostname=smtp_host,
+            port=smtp_port,
+            username=smtp_user,
+            password=smtp_password,
+            start_tls=True,
+        )
         logger.info("Simple email sent to %s", to_email)
         return True
     except Exception as e:  # pragma: no cover

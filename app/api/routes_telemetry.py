@@ -1,6 +1,5 @@
-import json
+import logging
 import time
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -8,6 +7,8 @@ from pydantic import BaseModel, Field
 
 from app.api.rate_limit import limiter
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 try:  # pragma: no cover
     from prometheus_client import Counter
@@ -28,26 +29,11 @@ class TelemetryIn(BaseModel):
     detail: Optional[Dict[str, Any]] = None
 
 
+class TelemetryAck(BaseModel):
+    status: str
+
+
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
-
-
-LOG_PATH = Path("telemetry.log")
-
-
-def _append_log(event: TelemetryIn) -> None:
-    record = {
-        "received_ts": time.time(),
-        "type": event.type,
-        "client_ts": event.ts,
-        "trace_id": event.trace_id,
-        "detail": event.detail,
-    }
-    try:
-        with LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
-    except Exception:  # noqa: BLE001
-        # Swallow to avoid impacting ingestion path
-        pass
 
 
 @router.options("/frontend")
@@ -56,7 +42,7 @@ async def telemetry_options():
     return {"status": "ok"}
 
 
-@router.post("/frontend")
+@router.post("/frontend", response_model=TelemetryAck, status_code=202)
 @limiter.limit("120/minute")  # IP-based limit to mitigate abuse
 async def ingest_frontend(event: TelemetryIn, request: Request):  # noqa: D401
     """Ingest a frontend telemetry event.
@@ -77,5 +63,10 @@ async def ingest_frontend(event: TelemetryIn, request: Request):  # noqa: D401
             _TELEMETRY_COUNTER.labels(type=event.type).inc()
         except Exception:  # noqa: BLE001
             pass
-    _append_log(event)
+    logger.info(
+        "telemetry event_type=%s trace=%s ts=%s",
+        event.type,
+        event.trace_id,
+        event.ts,
+    )
     return {"status": "accepted"}

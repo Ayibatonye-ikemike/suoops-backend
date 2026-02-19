@@ -172,9 +172,23 @@ async def create_invoice_from_image(
     # Check invoice creation limit
     check_invoice_limit(db, current_user_id)
     
+    # Validate file type before reading (avoid wasting OpenAI call on bad input)
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type: {file.content_type}. Allowed: JPEG, PNG, WebP, BMP, GIF"
+        )
+    
+    # Read and validate size/content
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size: 10MB")
+    if len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+    
     # First parse the image
     ocr = OCRService()
-    contents = await file.read()
     result = await ocr.parse_receipt(contents, context)
     
     if not result.get("success"):

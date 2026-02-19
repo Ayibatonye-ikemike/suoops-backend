@@ -69,12 +69,14 @@ class SupportTicket(Base):
     priority: Mapped[TicketPriority] = mapped_column(
         Enum(TicketPriority, values_callable=lambda x: [e.value for e in x]),
         default=TicketPriority.MEDIUM,
+        index=True,
     )
     
     # Assigned admin (optional - just stores user ID, no FK constraint)
     assigned_to_id: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
+        index=True,
     )
     
     # Internal notes (admin only)

@@ -21,13 +21,13 @@ from app.services.pdf_service import PDFService
 from app.services.tax_reporting_service import TaxReportingService
 from app.utils.feature_gate import require_plan_feature
 
-from .schemas import AlertEventOut
+from .schemas import AlertEventOut, ReportCsvOut, ReportDownloadOut, TaxReportOut
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/reports/generate", response_model=dict)
+@router.post("/reports/generate", response_model=TaxReportOut)
 def generate_tax_report(
     period_type: Literal["day", "week", "month", "year"] = Query(
         "month",
@@ -152,7 +152,7 @@ def list_recent_alerts(
     ]
 
 
-@router.get("/reports/{report_id}/download")
+@router.get("/reports/{report_id}/download", response_model=ReportDownloadOut)
 def download_tax_report_by_id(
     report_id: int,
     current_user_id: int = Depends(get_current_user_id),
@@ -188,7 +188,7 @@ def download_tax_report_by_id(
     }
 
 
-@router.get("/reports/{year}/{month}/download")
+@router.get("/reports/{year}/{month}/download", response_model=ReportDownloadOut)
 def download_monthly_tax_report(
     year: int,
     month: int,
@@ -209,7 +209,7 @@ def download_monthly_tax_report(
     return {"pdf_url": report.pdf_url}
 
 
-@router.get("/reports/{report_id}/csv")
+@router.get("/reports/{report_id}/csv", response_model=ReportCsvOut)
 def download_tax_report_csv_by_id(
     report_id: int,
     basis: str = Query("paid", pattern="^(paid|all)$"),
@@ -247,7 +247,7 @@ def download_tax_report_csv_by_id(
     return {"csv_url": url, "basis": basis}
 
 
-@router.get("/reports/{year}/{month}/csv")
+@router.get("/reports/{year}/{month}/csv", response_model=ReportCsvOut)
 def download_monthly_tax_report_csv(
     year: int,
     month: int,

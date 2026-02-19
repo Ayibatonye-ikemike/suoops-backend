@@ -8,7 +8,6 @@ NEW BILLING MODEL:
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -89,9 +88,16 @@ class InvoiceQuotaMixin:
                 issuer_id, self._get_invoice_balance_safe(user)
             )
             
-            # Sync low balance status to Brevo
+            # Sync low balance status to Brevo (best-effort, fire-and-forget)
             try:
                 from app.services.brevo_service import sync_low_balance_status
-                asyncio.create_task(sync_low_balance_status(user))
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Inside an async context — schedule as a task
+                    loop.create_task(sync_low_balance_status(user))
+                except RuntimeError:
+                    # No running loop (sync context / threadpool) — run directly
+                    asyncio.run(sync_low_balance_status(user))
             except Exception as e:
                 logger.debug("Brevo low balance sync skipped: %s", e)

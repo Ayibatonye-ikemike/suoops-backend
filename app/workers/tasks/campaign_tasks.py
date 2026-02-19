@@ -90,12 +90,7 @@ def send_campaign_async(
         }
     except Exception as e:
         logger.exception("[CAMPAIGN_TASK] Failed to send %s campaign: %s", campaign_type, e)
-        return {
-            "success": False,
-            "error": str(e),
-            "campaign": campaign_type,
-            "task_id": self.request.id,
-        }
+        raise  # let Celery autoretry handle transient failures
 
 
 @celery_app.task(
@@ -164,8 +159,4 @@ def send_single_email_async(
         }
     except Exception as e:
         logger.exception("[CAMPAIGN_TASK] Single email failed for user %d: %s", user_id, e)
-        return {
-            "success": False,
-            "error": str(e),
-            "task_id": self.request.id,
-        }
+        raise  # let Celery autoretry handle transient failures

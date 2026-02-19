@@ -392,19 +392,19 @@ Professional Invoicing & Expense Management
             msg.attach(MIMEText(html_body, 'html'))
             
             # Send email via SMTP
-            logger.info(f"Sending team invitation email to {invitation.email}")
+            logger.info("Sending team invitation email to %s", invitation.email)
             with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
                 server.starttls()
                 server.login(smtp_user, smtp_password)
                 server.send_message(msg)
             
-            logger.info(f"Successfully sent team invitation email to {invitation.email}")
+            logger.info("Successfully sent team invitation email to %s", invitation.email)
             
         except smtplib.SMTPException as e:
-            logger.error(f"SMTP error sending team invitation to {invitation.email}: {e}")
+            logger.error("SMTP error sending team invitation to %s: %s", invitation.email, e)
             # Don't raise - invitation is still created, just email failed
         except Exception as e:
-            logger.error(f"Error sending team invitation email: {type(e).__name__}: {e}")
+            logger.error("Error sending team invitation email: %s: %s", type(e).__name__, e)
             # Don't raise - invitation is still created, just email failed
     
     def validate_invitation(self, token: str) -> InvitationValidation:

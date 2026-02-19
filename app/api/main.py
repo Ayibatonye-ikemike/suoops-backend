@@ -111,23 +111,8 @@ def create_app() -> FastAPI:
             environment=settings.ENV,
             traces_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
             profiles_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
-            # Set user context for better tracking
-            send_default_pii=True,
-        )
-    else:
-        # Fallback DSN for performance monitoring
-        sentry_sdk.init(
-            dsn="https://837ec1827bde9bb0d83d0d3ec1e562a1@o4510345511370752.ingest.us.sentry.io/4510345542041600",
-            integrations=[
-                FastApiIntegration(),
-                StarletteIntegration(),
-                SqlalchemyIntegration(),
-                RedisIntegration(),
-            ],
-            environment=settings.ENV,
-            traces_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
-            profiles_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
-            send_default_pii=True,
+            # Disable PII to comply with NDPA — user context set explicitly via sentry_sdk.set_user
+            send_default_pii=False,
         )
     
     # Lifespan replaces deprecated on_event startup/shutdown
@@ -164,6 +149,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ALLOW_ORIGINS,
+        allow_origin_regex=settings.CORS_ALLOW_ORIGIN_REGEX,
         allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
         allow_methods=settings.CORS_ALLOW_METHODS,
         allow_headers=settings.CORS_ALLOW_HEADERS,
