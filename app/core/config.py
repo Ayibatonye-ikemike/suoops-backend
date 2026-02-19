@@ -71,6 +71,7 @@ class BaseAppSettings(BaseSettings):
     CORS_ALLOW_HEADERS: list[str] = [
         "Authorization", "Content-Type", "Accept", "Origin",
         "X-Requested-With", "X-CSRF-Token", "X-Telemetry-Key",
+        "X-Client-Trace",
         "Sentry-Trace", "Baggage",
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
