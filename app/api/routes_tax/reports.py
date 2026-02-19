@@ -7,6 +7,7 @@ Requires STARTER or PRO plan for access.
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from io import StringIO
 from typing import Literal
 
@@ -62,6 +63,7 @@ def generate_tax_report(
         # Compute revenue & expenses separately so the frontend and PDF can display them
         from app.services.tax_reporting.computations import (
             compute_expenses_by_date_range,
+            compute_personal_income_tax,
             compute_revenue_by_date_range,
         )
         total_revenue = float(
@@ -75,6 +77,13 @@ def generate_tax_report(
             )
         )
         cogs_amount = float(report.cogs_amount or 0)
+
+        # Always use fresh-computed profit for consistency with revenue/expenses
+        # This prevents stale cached assessable_profit from disagreeing with
+        # freshly computed revenue/expenses.
+        fresh_profit = max(total_revenue - total_expenses - cogs_amount, 0.0)
+        fresh_pit = compute_personal_income_tax(Decimal(str(fresh_profit)))
+        fresh_pit_amount = float(fresh_pit["pit_amount"])
 
         # Always generate PDF on-demand if not present
         # (ensures PDF is available for download button)
@@ -98,15 +107,20 @@ def generate_tax_report(
         user = db.query(models.User).filter(models.User.id == current_user_id).first()
         user_plan = user.plan.value if user else "free"
 
-        annual_revenue_estimate = _estimate_annual_revenue(report, period_type)
+        annual_revenue_estimate = _estimate_annual_revenue(
+            total_revenue, period_type,
+        )
         alerts = _generate_tax_alerts(user_plan, annual_revenue_estimate)
-        pit_band_info = _get_pit_band_info(float(report.assessable_profit or 0))
+        pit_band_info = _get_pit_band_info(fresh_profit)
         is_cit_eligible = user_plan in ("pro", "business")
 
         # Debug: Get invoice counts for troubleshooting
         invoice_debug = _get_invoice_debug_info(
             db, current_user_id, report.start_date, report.end_date, basis
         )
+        # Override calculated_revenue with the same value used for the cards
+        # so debug_info is always consistent with the displayed revenue.
+        invoice_debug["calculated_revenue"] = total_revenue
 
         return {
             "id": report.id,
@@ -119,9 +133,9 @@ def generate_tax_report(
             "total_revenue": total_revenue,
             "total_expenses": total_expenses,
             "cogs_amount": cogs_amount,
-            "assessable_profit": float(report.assessable_profit or 0),
+            "assessable_profit": fresh_profit,
             "levy_amount": float(report.levy_amount or 0),
-            "pit_amount": float(report.pit_amount or 0),
+            "pit_amount": fresh_pit_amount,
             "cit_amount": float(report.cit_amount or 0) if is_cit_eligible else 0,
             "vat_collected": float(report.vat_collected or 0),
             "taxable_sales": float(report.taxable_sales or 0),
@@ -310,10 +324,10 @@ def _format_period_label(
     return str(year)
 
 
-def _estimate_annual_revenue(report: MonthlyTaxReport, period_type: str) -> float:
-    """Estimate annual revenue from report."""
-    profit = float(report.assessable_profit or 0)
-    return profit * 12 if period_type == "month" else profit
+def _estimate_annual_revenue(period_revenue: float, period_type: str) -> float:
+    """Estimate annual revenue from period revenue."""
+    multipliers = {"day": 365, "week": 52, "month": 12, "year": 1}
+    return period_revenue * multipliers.get(period_type, 12)
 
 
 def _generate_tax_alerts(user_plan: str, annual_revenue: float) -> list[dict]:
