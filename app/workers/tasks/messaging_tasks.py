@@ -289,6 +289,27 @@ def send_daily_summaries() -> dict[str, Any]:
             today = date.today()
             start_of_day = datetime.combine(today, datetime.min.time())
 
+            # Debug: count PRO / pro_override users first
+            pro_count = (
+                db.query(sqlfunc.count(User.id))
+                .filter(
+                    (User.plan == SubscriptionPlan.PRO) | (User.pro_override.is_(True)),
+                )
+                .scalar()
+            )
+            with_phone = (
+                db.query(sqlfunc.count(User.id))
+                .filter(
+                    User.phone != None,  # noqa: E711
+                    (User.plan == SubscriptionPlan.PRO) | (User.pro_override.is_(True)),
+                )
+                .scalar()
+            )
+            logger.info(
+                "Daily summary debug: pro/override_users=%d with_phone=%d",
+                pro_count, with_phone,
+            )
+
             # Get users who have at least one invoice and a phone number
             # PRO users and users with admin-granted pro_override get daily summaries
             active_users = (
@@ -297,11 +318,11 @@ def send_daily_summaries() -> dict[str, Any]:
                     User.phone != None,  # noqa: E711
                     (User.plan == SubscriptionPlan.PRO) | (User.pro_override.is_(True)),
                 )
-                .join(Invoice, Invoice.issuer_id == User.id)
+                .outerjoin(Invoice, Invoice.issuer_id == User.id)
                 .group_by(User.id)
-                .having(sqlfunc.count(Invoice.id) > 0)
                 .all()
             )
+            logger.info("Daily summary: %d users after join", len(active_users))
 
             for user in active_users:
                 try:
