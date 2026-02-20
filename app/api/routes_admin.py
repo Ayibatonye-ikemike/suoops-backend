@@ -2,7 +2,7 @@ import datetime as dt
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import case, desc, func
 from sqlalchemy.orm import Session
@@ -1959,3 +1959,115 @@ async def export_users_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=suoops_users.csv"}
     )
+
+
+# ============================================================================
+# Celery Task Management
+# ============================================================================
+
+ALLOWED_TASKS = {
+    "engagement": "engagement.send_lifecycle_emails",
+    "daily_summary": "summary.send_daily_summaries",
+    "overdue_reminders": "maintenance.send_overdue_reminders",
+    "tax_reports": "tax.generate_previous_month_reports",
+}
+
+
+@router.get("/tasks/schedule")
+async def get_task_schedule(
+    admin_user=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Show all scheduled Celery Beat tasks, recent email log counts, and worker connectivity."""
+    from app.workers.celery_app import celery_app as celery
+
+    # Beat schedule
+    schedule_info = []
+    beat_schedule = getattr(celery.conf, "beat_schedule", {}) or {}
+    for name, entry in beat_schedule.items():
+        sched = entry.get("schedule")
+        schedule_info.append({
+            "name": name,
+            "task": entry.get("task"),
+            "schedule": str(sched) if sched else "unknown",
+        })
+
+    # Recent engagement email stats (last 24h and last 7d)
+    from app.models.models import UserEmailLog
+
+    now = dt.datetime.now(dt.timezone.utc)
+    day_ago = now - dt.timedelta(hours=24)
+    week_ago = now - dt.timedelta(days=7)
+
+    emails_24h = db.query(func.count(UserEmailLog.id)).filter(
+        UserEmailLog.sent_at >= day_ago
+    ).scalar() or 0
+
+    emails_7d = db.query(func.count(UserEmailLog.id)).filter(
+        UserEmailLog.sent_at >= week_ago
+    ).scalar() or 0
+
+    # Breakdown by type (last 7d)
+    type_counts = (
+        db.query(UserEmailLog.email_type, func.count(UserEmailLog.id))
+        .filter(UserEmailLog.sent_at >= week_ago)
+        .group_by(UserEmailLog.email_type)
+        .all()
+    )
+
+    # Check worker connectivity
+    worker_status = "unknown"
+    try:
+        inspect = celery.control.inspect(timeout=3)
+        active = inspect.active()
+        worker_status = "connected" if active else "no_workers"
+    except Exception:
+        worker_status = "unreachable"
+
+    return {
+        "schedule": schedule_info,
+        "worker_status": worker_status,
+        "email_stats": {
+            "sent_last_24h": emails_24h,
+            "sent_last_7d": emails_7d,
+            "by_type_7d": {t: c for t, c in type_counts},
+        },
+    }
+
+
+@router.post("/tasks/{task_key}/trigger")
+async def trigger_task(
+    task_key: str,
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Manually trigger a scheduled Celery task for testing."""
+    if task_key not in ALLOWED_TASKS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown task '{task_key}'. Allowed: {list(ALLOWED_TASKS.keys())}",
+        )
+
+    from app.workers.celery_app import celery_app as celery
+
+    task_name = ALLOWED_TASKS[task_key]
+    args = ["paid"] if task_key == "tax_reports" else []
+
+    result = celery.send_task(task_name, args=args)
+
+    log_audit_event(
+        "admin.tasks.trigger",
+        user_id=admin_user.id,
+        task_key=task_key,
+        task_name=task_name,
+        celery_task_id=result.id,
+    )
+    logger.info("Admin %s triggered task %s (celery_id=%s)", admin_user.id, task_name, result.id)
+
+    return {
+        "triggered": True,
+        "task_key": task_key,
+        "task_name": task_name,
+        "celery_task_id": result.id,
+        "message": f"Task '{task_key}' dispatched to worker. Check Render worker logs for output.",
+    }
+
