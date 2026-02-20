@@ -279,7 +279,7 @@ def send_daily_summaries() -> dict[str, Any]:
     from sqlalchemy import func as sqlfunc
     from sqlalchemy.orm import joinedload
 
-    from app.models.models import Invoice, User
+    from app.models.models import Invoice, SubscriptionPlan, User
 
     sent = 0
     failed = 0
@@ -295,7 +295,7 @@ def send_daily_summaries() -> dict[str, Any]:
                 db.query(User)
                 .filter(
                     User.phone != None,  # noqa: E711
-                    (User.plan == "pro") | (User.pro_override.is_(True)),
+                    (User.plan == SubscriptionPlan.PRO) | (User.pro_override.is_(True)),
                 )
                 .join(Invoice, Invoice.issuer_id == User.id)
                 .group_by(User.id)
