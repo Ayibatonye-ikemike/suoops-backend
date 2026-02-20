@@ -71,7 +71,7 @@ def get_profile(
         phone_verified=user.phone_verified,
         email=email_plain,
         name=user.name,
-        plan=user.plan.value,
+        plan=user.effective_plan.value,  # Uses effective_plan to respect pro_override
         invoice_balance=invoice_balance,  # New billing model: available invoices
         invoices_this_month=0,  # Deprecated, kept for backward compat
         logo_url=user.logo_url,
@@ -99,7 +99,7 @@ async def get_feature_access(
     async def _produce():
         gate = FeatureGate(db, current_user_id)
         user = gate.user
-        plan = user.plan
+        plan = user.effective_plan  # Uses effective_plan to respect pro_override
         can_create, limit_message = gate.can_create_invoice()
         monthly_count = gate.get_monthly_invoice_count()
         return {
