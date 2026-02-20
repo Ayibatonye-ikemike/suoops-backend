@@ -47,6 +47,31 @@ class WhatsAppHandler:
             speech_service_factory=self._get_speech_service,
         )
 
+    def _check_inventory_access(self, sender: str) -> bool:
+        """Check if the sender has PRO plan access for inventory/product features.
+
+        Returns True if access is granted, False if blocked (sends upsell message).
+        """
+        issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+        if issuer_id is None:
+            self.client.send_text(
+                sender,
+                "❌ Your WhatsApp number isn't linked to a business account.\n"
+                "Register at suoops.com to start invoicing!"
+            )
+            return False
+
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        if not user or user.plan.value != "pro":
+            self.client.send_text(
+                sender,
+                "🔒 *Product Catalog is a Pro feature.*\n\n"
+                "Upgrade to Pro at suoops.com/dashboard/subscription\n"
+                "to manage products, build invoices from your catalog & more!"
+            )
+            return False
+        return True
+
     async def handle_incoming(self, payload: dict[str, Any]) -> None:
         """Handle incoming WhatsApp webhook payload with robust error handling."""
         try:
