@@ -433,3 +433,21 @@ class WebhookEvent(Base):
         default=utcnow,
         server_default=func.now(),
     )
+
+
+class UserEmailLog(Base):
+    """Tracks lifecycle/drip emails sent to users to prevent duplicates."""
+
+    __tablename__ = "user_email_log"
+    __table_args__ = (
+        UniqueConstraint("user_id", "email_type", name="uq_user_email_log_user_type"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    email_type: Mapped[str] = mapped_column(String(60), index=True)
+    sent_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
