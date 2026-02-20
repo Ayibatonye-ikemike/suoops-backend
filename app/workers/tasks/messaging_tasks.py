@@ -373,13 +373,7 @@ def send_daily_summaries() -> dict[str, Any]:
                         .scalar()
                     ) or 0
 
-                    # Skip if nothing happened and nothing is overdue
-                    if (
-                        float(revenue_today) == 0
-                        and float(expenses_today) == 0
-                        and overdue_count == 0
-                    ):
-                        continue
+                    # PRO users always get a daily summary, even on quiet days
 
                     message = _format_daily_summary(
                         revenue_today, expenses_today, outstanding, overdue_count
@@ -414,24 +408,28 @@ def _format_daily_summary(
 
     msg = "📊 *Today's Business Summary*\n\n"
 
-    if rev > 0:
-        msg += f"💰 Cash In: ₦{rev:,.0f}\n"
-    if exp > 0:
-        msg += f"💸 Expenses: ₦{exp:,.0f}\n"
-    if rev > 0 or exp > 0:
-        emoji = "📈" if net >= 0 else "📉"
-        msg += f"{emoji} Net: ₦{net:,.0f}\n"
+    if rev == 0 and exp == 0 and out == 0 and overdue_count == 0:
+        msg += "✨ All clear today — no new transactions or outstanding invoices.\n"
+        msg += "💡 Create an invoice to start tracking your cash flow!\n"
+    else:
+        if rev > 0:
+            msg += f"💰 Cash In: ₦{rev:,.0f}\n"
+        if exp > 0:
+            msg += f"💸 Expenses: ₦{exp:,.0f}\n"
+        if rev > 0 or exp > 0:
+            emoji = "📈" if net >= 0 else "📉"
+            msg += f"{emoji} Net: ₦{net:,.0f}\n"
 
-    msg += "\n"
+        msg += "\n"
 
-    if out > 0:
-        msg += f"⏳ Outstanding: ₦{out:,.0f}\n"
-    if overdue_count > 0:
-        s = "s" if overdue_count != 1 else ""
-        msg += (
-            f"⚠️ Overdue: {overdue_count} invoice{s}\n"
-            "💡 Send reminders from your dashboard to collect faster!\n"
-        )
+        if out > 0:
+            msg += f"⏳ Outstanding: ₦{out:,.0f}\n"
+        if overdue_count > 0:
+            s = "s" if overdue_count != 1 else ""
+            msg += (
+                f"⚠️ Overdue: {overdue_count} invoice{s}\n"
+                "💡 Send reminders from your dashboard to collect faster!\n"
+            )
 
     msg += "\n🔗 suoops.com/dashboard"
     return msg
