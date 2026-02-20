@@ -118,6 +118,29 @@ class S3Client:
             logger.info("Using filesystem storage fallback at %s", root)
         return self._filesystem_root
 
+    def download_bytes(self, key: str) -> bytes | None:
+        """Download an object from S3 and return its bytes.
+
+        Args:
+            key: The S3 object key (e.g., 'tax-reports/1/2025-02.pdf')
+
+        Returns:
+            File bytes or None if download fails / client unavailable.
+        """
+        if self._client is None:
+            # Try filesystem fallback
+            if self._filesystem_root:
+                local_path = self._filesystem_root / key
+                if local_path.exists():
+                    return local_path.read_bytes()
+            return None
+        try:
+            response = self._client.get_object(Bucket=self.bucket, Key=key)
+            return response["Body"].read()
+        except (BotoCoreError, ClientError) as exc:
+            logger.warning("Failed to download %s from S3: %s", key, exc)
+            return None
+
     def get_presigned_url(self, key: str, expires_in: int | None = None) -> str | None:
         """Generate a fresh presigned URL for an existing S3 object.
         

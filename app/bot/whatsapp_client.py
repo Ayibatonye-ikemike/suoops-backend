@@ -70,7 +70,7 @@ class WhatsAppClient:
             return False
 
     def send_document(self, to: str, url: str, filename: str, caption: str | None = None) -> None:
-        """Send a document (usually PDF)."""
+        """Send a document (usually PDF). Accepts a URL or media_id."""
         if self._is_test_mode():
             logger.info("[WHATSAPP DOC][TEST] Would send to %s: %s (%s)", to, filename, url)
             return
@@ -79,9 +79,15 @@ class WhatsAppClient:
             return
 
         try:
-            document: dict[str, Any] = {"link": url, "filename": filename}
+            document: dict[str, Any] = {"filename": filename}
             if caption:
                 document["caption"] = caption
+
+            # If it looks like a media_id (no :// scheme), use "id"; otherwise "link"
+            if "://" in url:
+                document["link"] = url
+            else:
+                document["id"] = url
 
             payload = {
                 "messaging_product": "whatsapp",
@@ -103,6 +109,35 @@ class WhatsAppClient:
             logger.info("[WHATSAPP DOC] ✓ Sent to %s: %s", to, filename)
         except Exception as exc:  # noqa: BLE001
             logger.error("[WHATSAPP DOC] Failed to send to %s: %s", to, exc)
+
+    def upload_media(self, data: bytes, mime_type: str = "application/pdf", filename: str = "document.pdf") -> str | None:
+        """Upload media bytes directly to WhatsApp's Media API.
+
+        Returns the media_id on success, or None on failure.
+        """
+        if self._is_test_mode():
+            logger.info("[WHATSAPP MEDIA][TEST] Would upload %d bytes as %s", len(data), filename)
+            return "test-media-id"
+        if not self.phone_number_id or not self.api_key:
+            logger.warning("[WHATSAPP MEDIA] Not configured")
+            return None
+
+        upload_url = f"{self.media_url}/{self.phone_number_id}/media"
+        try:
+            response = requests.post(
+                upload_url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                files={"file": (filename, data, mime_type)},
+                data={"messaging_product": "whatsapp", "type": mime_type},
+                timeout=30,
+            )
+            response.raise_for_status()
+            media_id = response.json().get("id")
+            logger.info("[WHATSAPP MEDIA] ✓ Uploaded %s → media_id=%s", filename, media_id)
+            return media_id
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[WHATSAPP MEDIA] Upload failed for %s: %s", filename, exc)
+            return None
 
     def send_template(
         self,

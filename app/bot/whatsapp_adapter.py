@@ -524,22 +524,34 @@ class WhatsAppHandler:
             # Send text summary first
             self.client.send_text(sender, msg)
 
-            # Send PDF if available
-            if report.pdf_url and report.pdf_url.startswith("http"):
-                # Generate a fresh presigned URL — the stored one expires after 1 hour
+            # Send PDF if available — upload directly to WhatsApp (S3 presigned
+            # URLs are blocked by WhatsApp servers → 403 Forbidden)
+            if report.pdf_url:
                 from app.storage.s3_client import S3Client as _S3
                 _s3 = _S3()
                 s3_key = _s3.extract_key_from_url(report.pdf_url)
-                fresh_url = _s3.get_presigned_url(s3_key) if s3_key else None
-                download_url = fresh_url or report.pdf_url
+                pdf_bytes = _s3.download_bytes(s3_key) if s3_key else None
 
-                filename = f"TaxReport_{period_label.replace(' ', '_')}.pdf"
-                self.client.send_document(
-                    sender,
-                    download_url,
-                    filename,
-                    f"📄 Tax Report — {period_label}",
-                )
+                if pdf_bytes:
+                    filename = f"TaxReport_{period_label.replace(' ', '_')}.pdf"
+                    media_id = self.client.upload_media(pdf_bytes, "application/pdf", filename)
+                    if media_id:
+                        self.client.send_document(
+                            sender, media_id, filename,
+                            f"📄 Tax Report — {period_label}",
+                        )
+                    else:
+                        self.client.send_text(
+                            sender,
+                            "💡 Couldn't attach PDF right now. "
+                            "Download it at suoops.com/dashboard/tax"
+                        )
+                else:
+                    self.client.send_text(
+                        sender,
+                        "💡 PDF not available right now. "
+                        "Download it at suoops.com/dashboard/tax"
+                    )
             else:
                 self.client.send_text(
                     sender,
