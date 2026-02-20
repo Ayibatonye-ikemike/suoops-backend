@@ -150,6 +150,12 @@ class SubscriptionPlan(str, enum.Enum):
             # Voice: Pro only (15/mo quota)
             "voice_invoice": self == SubscriptionPlan.PRO,
             "voice_quota": 15 if self == SubscriptionPlan.PRO else 0,
+            # Business insights: Pro only
+            "cash_dashboard": self == SubscriptionPlan.PRO,
+            "customer_insights": self == SubscriptionPlan.PRO,
+            "professionalism_score": self == SubscriptionPlan.PRO,
+            "margin_insights": self == SubscriptionPlan.PRO,
+            "daily_summary": self == SubscriptionPlan.PRO,
         }
 
 

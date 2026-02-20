@@ -14,12 +14,17 @@ from app.api.dependencies import get_data_owner_id
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models
+from app.utils.feature_gate import require_plan_feature
 from app.models.schemas import AnalyticsDashboard
 from app.services.analytics_service import (
     calculate_aging_report,
+    calculate_cash_position,
+    calculate_customer_insights,
     calculate_customer_metrics,
     calculate_invoice_metrics,
+    calculate_margin_insights,
     calculate_monthly_trends,
+    calculate_professionalism_score,
     calculate_revenue_metrics,
     get_conversion_rate,
     get_date_range,
@@ -223,3 +228,141 @@ async def get_conversion_funnel(
             "overall": (paid / total * 100) if total > 0 else 0,
         },
     }
+
+
+# ── Cash-First Dashboard ─────────────────────────────────────────────
+
+
+class CashPositionOut(BaseModel):
+    cash_collected_today: float
+    cash_collected_this_week: float
+    total_outstanding: float
+    total_overdue: float
+    overdue_count: int
+    expected_inflow_7_days: float
+    invoices_created_today: int
+    expenses_today: float
+    net_today: float
+
+
+@router.get("/cash-position", response_model=CashPositionOut)
+async def get_cash_position(
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
+):
+    """Cash-first business snapshot.
+
+    Shows real money movement: what came in, what's owed, what's overdue,
+    and what to expect this week — the numbers that matter most to a
+    Nigerian small business owner.
+    """
+    require_plan_feature(db, current_user_id, "cash_dashboard", "Cash Dashboard")
+    return calculate_cash_position(db, data_owner_id)
+
+
+# ── Customer Insights ────────────────────────────────────────────────
+
+
+class CustomerInsightItem(BaseModel):
+    id: int
+    name: str
+    phone: str | None = None
+    total_spent: float
+    invoice_count: int
+    paid_count: int
+    payment_rate: float
+    last_purchase_days_ago: int
+    status: str  # vip | active | new | at_risk | dormant
+
+
+class CustomerInsightsOut(BaseModel):
+    customers: list[CustomerInsightItem]
+    summary: dict[str, int]
+    dormant_customers: list[CustomerInsightItem]
+    total_analyzed: int
+
+
+@router.get("/customer-insights", response_model=CustomerInsightsOut)
+async def get_customer_insights(
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Customer value, payment behaviour, and dormancy insights.
+
+    Segments customers into VIP / Active / New / At-Risk / Dormant so the
+    business knows who to nurture and who to re-engage.
+    """
+    require_plan_feature(db, current_user_id, "customer_insights", "Customer Insights")
+    return calculate_customer_insights(db, data_owner_id, limit)
+
+
+# ── Professionalism Score ────────────────────────────────────────────
+
+
+class ProfessionalismScoreOut(BaseModel):
+    score: int  # 0-100
+    checks: dict[str, bool]
+    tips: list[str]
+    level: str  # Excellent | Good | Fair | Needs Work
+
+
+@router.get("/professionalism-score", response_model=ProfessionalismScoreOut)
+async def get_professionalism_score(
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
+):
+    """Score how professional the business looks (0-100).
+
+    Five checks, 20 points each: logo, bank details, due dates, receipts,
+    payment instructions. Only visible to the business — not to customers.
+    """
+    require_plan_feature(db, current_user_id, "professionalism_score", "Professionalism Score")
+    return calculate_professionalism_score(db, data_owner_id)
+
+
+# ── Margin & Discount Insights ───────────────────────────────────────
+
+
+class DiscountedCustomer(BaseModel):
+    name: str
+    count: int
+    total_discount: float
+
+
+class ProductMargin(BaseModel):
+    name: str
+    cost_price: float
+    selling_price: float
+    margin_percent: float
+    stock: int
+
+
+class MarginInsightsOut(BaseModel):
+    total_discounts: float
+    discount_count: int
+    total_revenue: float
+    discount_as_percent_of_revenue: float
+    top_discounted_customers: list[DiscountedCustomer]
+    product_margins: list[ProductMargin]
+    low_margin_count: int
+
+
+@router.get("/margin-insights", response_model=MarginInsightsOut)
+async def get_margin_insights(
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
+    period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
+):
+    """Discount leakage and product margin analysis.
+
+    Shows total discounts given, who gets the most, and which products have
+    thin margins — so the business can price more profitably.
+    """
+    require_plan_feature(db, current_user_id, "margin_insights", "Margin & Discount Insights")
+    start_date, end_date = get_date_range(period)
+    return calculate_margin_insights(db, data_owner_id, start_date, end_date)

@@ -259,3 +259,158 @@ def ocr_parse_image(
             raise Exception(result["error"])
 
     return result
+
+
+# ── Daily Business Summary ───────────────────────────────────────────
+
+
+@celery_app.task(
+    name="summary.send_daily_summaries",
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_kwargs={"max_retries": 2},
+)
+def send_daily_summaries() -> dict[str, Any]:
+    """Send daily business summary to all active users via WhatsApp.
+
+    Runs every evening (18:00 UTC / 19:00 WAT).  Skips users with zero
+    activity for the day so it never feels like spam.
+    """
+    from sqlalchemy import func as sqlfunc
+    from sqlalchemy.orm import joinedload
+
+    from app.models.models import Invoice, User
+
+    sent = 0
+    failed = 0
+
+    try:
+        with session_scope() as db:
+            today = date.today()
+            start_of_day = datetime.combine(today, datetime.min.time())
+
+            # Get users who have at least one invoice and a phone number
+            # Only PRO users get daily summaries
+            active_users = (
+                db.query(User)
+                .filter(
+                    User.phone != None,  # noqa: E711
+                    User.plan == "pro",
+                )
+                .join(Invoice, Invoice.issuer_id == User.id)
+                .group_by(User.id)
+                .having(sqlfunc.count(Invoice.id) > 0)
+                .all()
+            )
+
+            for user in active_users:
+                try:
+                    # Revenue collected today
+                    revenue_today = (
+                        db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
+                        .filter(
+                            Invoice.issuer_id == user.id,
+                            Invoice.invoice_type == "revenue",
+                            Invoice.status == "paid",
+                            Invoice.paid_at >= start_of_day,
+                        )
+                        .scalar()
+                    )
+
+                    # Expenses recorded today
+                    expenses_today = (
+                        db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
+                        .filter(
+                            Invoice.issuer_id == user.id,
+                            Invoice.invoice_type == "expense",
+                            Invoice.created_at >= start_of_day,
+                        )
+                        .scalar()
+                    )
+
+                    # Total outstanding
+                    outstanding = (
+                        db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
+                        .filter(
+                            Invoice.issuer_id == user.id,
+                            Invoice.invoice_type == "revenue",
+                            Invoice.status.in_(["pending", "awaiting_confirmation"]),
+                        )
+                        .scalar()
+                    )
+
+                    # Overdue count
+                    overdue_count = (
+                        db.query(sqlfunc.count(Invoice.id))
+                        .filter(
+                            Invoice.issuer_id == user.id,
+                            Invoice.invoice_type == "revenue",
+                            Invoice.status == "pending",
+                            Invoice.due_date != None,  # noqa: E711
+                            Invoice.due_date < start_of_day,
+                        )
+                        .scalar()
+                    ) or 0
+
+                    # Skip if nothing happened and nothing is overdue
+                    if (
+                        float(revenue_today) == 0
+                        and float(expenses_today) == 0
+                        and overdue_count == 0
+                    ):
+                        continue
+
+                    message = _format_daily_summary(
+                        revenue_today, expenses_today, outstanding, overdue_count
+                    )
+
+                    from app.bot.whatsapp_client import WhatsAppClient
+
+                    client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+                    client.send_text(user.phone, message)
+                    sent += 1
+
+                except Exception as e:
+                    logger.warning("Failed daily summary for user %s: %s", user.id, e)
+                    failed += 1
+
+        logger.info("Daily summaries: sent=%d failed=%d", sent, failed)
+        return {"success": True, "sent": sent, "failed": failed}
+
+    except Exception as exc:
+        logger.error("Daily summary task failed: %s", exc)
+        raise
+
+
+def _format_daily_summary(
+    revenue: Any, expenses: Any, outstanding: Any, overdue_count: int
+) -> str:
+    """Format the daily WhatsApp summary message."""
+    rev = float(revenue)
+    exp = float(expenses)
+    net = rev - exp
+    out = float(outstanding)
+
+    msg = "📊 *Today's Business Summary*\n\n"
+
+    if rev > 0:
+        msg += f"💰 Cash In: ₦{rev:,.0f}\n"
+    if exp > 0:
+        msg += f"💸 Expenses: ₦{exp:,.0f}\n"
+    if rev > 0 or exp > 0:
+        emoji = "📈" if net >= 0 else "📉"
+        msg += f"{emoji} Net: ₦{net:,.0f}\n"
+
+    msg += "\n"
+
+    if out > 0:
+        msg += f"⏳ Outstanding: ₦{out:,.0f}\n"
+    if overdue_count > 0:
+        s = "s" if overdue_count != 1 else ""
+        msg += (
+            f"⚠️ Overdue: {overdue_count} invoice{s}\n"
+            "💡 Send reminders from your dashboard to collect faster!\n"
+        )
+
+    msg += "\n🔗 suoops.com/dashboard"
+    return msg

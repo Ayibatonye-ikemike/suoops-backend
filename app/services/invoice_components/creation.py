@@ -83,6 +83,18 @@ class InvoiceCreationMixin:
             status = "awaiting_confirmation"
             paid_at = None
 
+        # ── Professional defaults ──────────────────────────────────────
+        # Auto due-date: 3 days from now for revenue invoices when client
+        # doesn't specify one.  Businesses that set due dates collect faster.
+        due_date = data.get("due_date")
+        if due_date is None and invoice_type == "revenue":
+            due_date = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=3)
+
+        # Professional payment instruction default for revenue invoices
+        notes = data.get("notes")
+        if not notes and invoice_type == "revenue":
+            notes = "Payment is due by the date shown above. Thank you for your business."
+
         invoice = models.Invoice(
             invoice_id=generate_id("INV" if invoice_type == "revenue" else "EXP"),
             issuer_id=issuer_id,
@@ -90,7 +102,7 @@ class InvoiceCreationMixin:
             customer=customer,
             amount=Decimal(str(data.get("amount"))),
             discount_amount=discount_amount,
-            due_date=data.get("due_date"),
+            due_date=due_date,
             status=status,
             paid_at=paid_at,
             invoice_type=invoice_type,
@@ -102,7 +114,7 @@ class InvoiceCreationMixin:
             input_method=data.get("input_method"),
             channel=data.get("channel"),
             verified=data.get("verified", False),
-            notes=data.get("notes"),
+            notes=notes,
             vat_rate=float(vat_result["vat_rate"]),
             vat_amount=vat_result["vat_amount"],
             vat_category=str(vat_category),

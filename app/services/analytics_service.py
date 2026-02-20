@@ -465,3 +465,404 @@ def get_conversion_rate(currency: str) -> Decimal:
         "Set NGN_USD_RATE to the current Naira/USD rate."
     )
     return Decimal("1600")
+
+
+# ── Cash-First Dashboard ─────────────────────────────────────────────
+
+
+def calculate_cash_position(db: Session, user_id: int) -> dict:
+    """Cash-first dashboard: collected, outstanding, overdue, expected inflow.
+
+    Gives business owners an instant snapshot of *money movement* rather
+    than abstract accounting metrics.
+    """
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    next_week = today + timedelta(days=7)
+    start_of_today = datetime.combine(today, datetime.min.time())
+    start_of_week = datetime.combine(week_ago, datetime.min.time())
+    end_of_next_week = datetime.combine(next_week, datetime.max.time())
+
+    base = [
+        models.Invoice.issuer_id == user_id,
+        models.Invoice.invoice_type == "revenue",
+    ]
+
+    # Cash collected this week
+    cash_this_week = (
+        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
+        .filter(
+            *base,
+            models.Invoice.status == "paid",
+            models.Invoice.paid_at >= start_of_week,
+        )
+        .scalar()
+    )
+
+    # Cash collected today
+    cash_today = (
+        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
+        .filter(
+            *base,
+            models.Invoice.status == "paid",
+            models.Invoice.paid_at >= start_of_today,
+        )
+        .scalar()
+    )
+
+    # Total outstanding (unpaid revenue invoices)
+    outstanding = (
+        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
+        .filter(
+            *base,
+            models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
+        )
+        .scalar()
+    )
+
+    # Overdue amount + count
+    overdue_filters = [
+        *base,
+        models.Invoice.status == "pending",
+        models.Invoice.due_date != None,  # noqa: E711
+        models.Invoice.due_date < start_of_today,
+    ]
+    overdue_amount = (
+        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
+        .filter(*overdue_filters)
+        .scalar()
+    )
+    overdue_count = (
+        db.query(func.count(models.Invoice.id))
+        .filter(*overdue_filters)
+        .scalar()
+    ) or 0
+
+    # Expected inflow next 7 days
+    expected_inflow = (
+        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
+        .filter(
+            *base,
+            models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
+            models.Invoice.due_date != None,  # noqa: E711
+            models.Invoice.due_date >= start_of_today,
+            models.Invoice.due_date <= end_of_next_week,
+        )
+        .scalar()
+    )
+
+    # Invoices created today
+    invoices_today = (
+        db.query(func.count(models.Invoice.id))
+        .filter(*base, models.Invoice.created_at >= start_of_today)
+        .scalar()
+    ) or 0
+
+    # Expenses today
+    expenses_today = (
+        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
+        .filter(
+            models.Invoice.issuer_id == user_id,
+            models.Invoice.invoice_type == "expense",
+            models.Invoice.created_at >= start_of_today,
+        )
+        .scalar()
+    )
+
+    return {
+        "cash_collected_today": float(cash_today),
+        "cash_collected_this_week": float(cash_this_week),
+        "total_outstanding": float(outstanding),
+        "total_overdue": float(overdue_amount),
+        "overdue_count": overdue_count,
+        "expected_inflow_7_days": float(expected_inflow),
+        "invoices_created_today": invoices_today,
+        "expenses_today": float(expenses_today),
+        "net_today": float(cash_today) - float(expenses_today),
+    }
+
+
+# ── Customer Insights ────────────────────────────────────────────────
+
+
+def calculate_customer_insights(
+    db: Session,
+    user_id: int,
+    limit: int = 20,
+) -> dict:
+    """Customer value, payment speed, dormancy insights.
+
+    Segments customers into VIP / Active / New / At-Risk / Dormant so the
+    business knows who to nurture and who to re-engage.
+    """
+    today = date.today()
+
+    customer_stats = (
+        db.query(
+            models.Customer.id,
+            models.Customer.name,
+            models.Customer.phone,
+            func.sum(models.Invoice.amount).label("total_spent"),
+            func.count(models.Invoice.id).label("invoice_count"),
+            func.max(models.Invoice.created_at).label("last_invoice_date"),
+            func.sum(
+                case((models.Invoice.status == "paid", 1), else_=0)
+            ).label("paid_count"),
+        )
+        .join(models.Invoice, models.Invoice.customer_id == models.Customer.id)
+        .filter(
+            models.Invoice.issuer_id == user_id,
+            models.Invoice.invoice_type == "revenue",
+        )
+        .group_by(models.Customer.id, models.Customer.name, models.Customer.phone)
+        .order_by(func.sum(models.Invoice.amount).desc())
+        .limit(limit)
+        .all()
+    )
+
+    customers = []
+    for row in customer_stats:
+        last_dt = row.last_invoice_date
+        days_since_last = (today - last_dt.date()).days if last_dt else 999
+
+        total = float(row.total_spent or 0)
+        count = row.invoice_count or 0
+        paid = row.paid_count or 0
+
+        # Status segmentation
+        if count == 1 and days_since_last < 30:
+            status = "new"
+        elif days_since_last > 90:
+            status = "dormant"
+        elif total >= 100_000 and count >= 3:
+            status = "vip"
+        elif days_since_last <= 30:
+            status = "active"
+        else:
+            status = "at_risk"
+
+        payment_rate = round(paid / count * 100, 1) if count else 0.0
+
+        customers.append(
+            {
+                "id": row.id,
+                "name": row.name,
+                "phone": row.phone,
+                "total_spent": total,
+                "invoice_count": count,
+                "paid_count": paid,
+                "payment_rate": payment_rate,
+                "last_purchase_days_ago": days_since_last,
+                "status": status,
+            }
+        )
+
+    status_counts: dict[str, int] = {}
+    for c in customers:
+        status_counts[c["status"]] = status_counts.get(c["status"], 0) + 1
+
+    dormant = [c for c in customers if c["status"] in ("dormant", "at_risk")]
+
+    return {
+        "customers": customers,
+        "summary": status_counts,
+        "dormant_customers": dormant,
+        "total_analyzed": len(customers),
+    }
+
+
+# ── Professionalism Score ────────────────────────────────────────────
+
+
+def calculate_professionalism_score(db: Session, user_id: int) -> dict:
+    """Score how professional the business looks to customers (0-100).
+
+    Five checks, 20 points each:
+    1. Has logo
+    2. Has bank details
+    3. Uses due dates on invoices
+    4. Sends receipts on payment
+    5. Includes payment instructions
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return {"score": 0, "checks": {}, "tips": []}
+
+    checks: dict[str, bool] = {}
+    tips: list[str] = []
+
+    # 1. Has logo (+20)
+    has_logo = bool(user.logo_url)
+    checks["has_logo"] = has_logo
+    if not has_logo:
+        tips.append("Upload your business logo to look more credible on invoices.")
+
+    # 2. Has bank details (+20)
+    has_bank = bool(user.bank_name and user.account_number)
+    checks["has_bank_details"] = has_bank
+    if not has_bank:
+        tips.append("Add your bank details so customers know where to pay.")
+
+    # 3. Uses due dates on invoices (+20)
+    recent_invoices = (
+        db.query(models.Invoice)
+        .filter(
+            models.Invoice.issuer_id == user_id,
+            models.Invoice.invoice_type == "revenue",
+        )
+        .order_by(models.Invoice.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    with_due_date = sum(1 for inv in recent_invoices if inv.due_date)
+    due_ratio = with_due_date / len(recent_invoices) if recent_invoices else 0
+    checks["uses_due_dates"] = due_ratio >= 0.7
+    if due_ratio < 0.7:
+        tips.append("Set due dates on your invoices — businesses that do collect 30 %% faster.")
+
+    # 4. Sends receipts on payment (+20)
+    paid_invoices = (
+        db.query(models.Invoice)
+        .filter(
+            models.Invoice.issuer_id == user_id,
+            models.Invoice.invoice_type == "revenue",
+            models.Invoice.status == "paid",
+        )
+        .order_by(models.Invoice.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    with_receipt = sum(1 for inv in paid_invoices if inv.receipt_pdf_url)
+    receipt_ratio = with_receipt / len(paid_invoices) if paid_invoices else 0
+    checks["sends_receipts"] = receipt_ratio >= 0.7
+    if receipt_ratio < 0.7:
+        tips.append("Send receipts when customers pay — it builds trust and repeat business.")
+
+    # 5. Includes payment instructions (+20)
+    with_notes = sum(1 for inv in recent_invoices if inv.notes)
+    notes_ratio = with_notes / len(recent_invoices) if recent_invoices else 0
+    checks["has_payment_instructions"] = notes_ratio >= 0.5
+    if notes_ratio < 0.5:
+        tips.append("Include payment instructions on invoices for clarity.")
+
+    score = sum(20 for v in checks.values() if v)
+    if score >= 80:
+        level = "Excellent"
+    elif score >= 60:
+        level = "Good"
+    elif score >= 40:
+        level = "Fair"
+    else:
+        level = "Needs Work"
+
+    return {"score": score, "checks": checks, "tips": tips, "level": level}
+
+
+# ── Margin & Discount Insights ───────────────────────────────────────
+
+
+def calculate_margin_insights(
+    db: Session,
+    user_id: int,
+    start_date: date,
+    end_date: date,
+) -> dict:
+    """Discount leakage and product margin analysis.
+
+    Shows how much revenue is lost to discounts and which products have
+    thin margins — so the business can price more profitably.
+    """
+    start_dt = datetime.combine(start_date, datetime.min.time())
+    end_dt = datetime.combine(end_date, datetime.max.time())
+    period_filter = [
+        models.Invoice.issuer_id == user_id,
+        models.Invoice.invoice_type == "revenue",
+        models.Invoice.created_at >= start_dt,
+        models.Invoice.created_at <= end_dt,
+    ]
+
+    # ── Discount leakage ──
+    disc_row = (
+        db.query(
+            func.count(models.Invoice.id).label("disc_count"),
+            func.coalesce(func.sum(models.Invoice.discount_amount), 0).label("total_discounts"),
+        )
+        .filter(*period_filter, models.Invoice.discount_amount > 0)
+        .first()
+    )
+
+    total_rev = (
+        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
+        .filter(*period_filter)
+        .scalar()
+    )
+
+    total_discounts = float(disc_row.total_discounts) if disc_row else 0.0
+    total_revenue = float(total_rev) if total_rev else 0.0
+    disc_count = disc_row.disc_count if disc_row else 0
+
+    # Top discounted customers
+    top_discounted = (
+        db.query(
+            models.Customer.name,
+            func.count(models.Invoice.id).label("count"),
+            func.sum(models.Invoice.discount_amount).label("total_discount"),
+        )
+        .join(models.Customer, models.Invoice.customer_id == models.Customer.id)
+        .filter(*period_filter, models.Invoice.discount_amount > 0)
+        .group_by(models.Customer.name)
+        .order_by(func.sum(models.Invoice.discount_amount).desc())
+        .limit(5)
+        .all()
+    )
+
+    # ── Product margins (from inventory) ──
+    product_margins: list[dict] = []
+    try:
+        from app.models.inventory_models import Product
+
+        products = (
+            db.query(Product)
+            .filter(
+                Product.user_id == user_id,
+                Product.cost_price > 0,
+                Product.selling_price > 0,
+                Product.is_active.is_(True),
+            )
+            .all()
+        )
+        for p in products:
+            margin = float(
+                (p.selling_price - p.cost_price) / p.selling_price * 100
+            )
+            product_margins.append(
+                {
+                    "name": p.name,
+                    "cost_price": float(p.cost_price),
+                    "selling_price": float(p.selling_price),
+                    "margin_percent": round(margin, 1),
+                    "stock": p.quantity_in_stock,
+                }
+            )
+        product_margins.sort(key=lambda x: x["margin_percent"])
+    except Exception:
+        pass  # Inventory module may not be in use
+
+    return {
+        "total_discounts": total_discounts,
+        "discount_count": disc_count,
+        "total_revenue": total_revenue,
+        "discount_as_percent_of_revenue": (
+            round(total_discounts / total_revenue * 100, 1) if total_revenue else 0.0
+        ),
+        "top_discounted_customers": [
+            {
+                "name": c.name,
+                "count": c.count,
+                "total_discount": float(c.total_discount),
+            }
+            for c in (top_discounted or [])
+        ],
+        "product_margins": product_margins[:10],
+        "low_margin_count": sum(1 for p in product_margins if p["margin_percent"] < 20),
+    }

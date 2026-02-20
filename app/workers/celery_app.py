@@ -38,7 +38,15 @@ def _create_celery() -> Celery:
                 "task": "tax.generate_previous_month_reports",
                 "schedule": crontab(minute=0, hour=2, day_of_month=1),  # 02:00 UTC first day
                 "args": ["paid"],
-            }
+            },
+            "daily-overdue-reminders": {
+                "task": "maintenance.send_overdue_reminders",
+                "schedule": crontab(minute=0, hour=8),  # 08:00 UTC = 09:00 WAT
+            },
+            "daily-business-summary": {
+                "task": "summary.send_daily_summaries",
+                "schedule": crontab(minute=0, hour=18),  # 18:00 UTC = 19:00 WAT
+            },
         }
     return celery
 
