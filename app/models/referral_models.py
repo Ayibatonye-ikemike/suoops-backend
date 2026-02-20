@@ -1,19 +1,19 @@
 """
 Referral system models for tracking referral codes, referrals, and rewards.
 
-COMMISSION-BASED REFERRAL MODEL (Updated January 2026):
-- Paid subscription referrals: 10% commission = ₦500 per Pro subscriber
+COMMISSION-BASED REFERRAL MODEL (Updated February 2026):
+- Paid subscription referrals: 15% commission = ₦488 per Pro subscriber
 - Free signup referrals: No reward (focus on quality paid referrals)
 - CASH PAYOUT: Commissions are paid out at the end of each month
 
 Note: Starter plan has no monthly subscription (pay-per-invoice only).
-Only Pro (₦5,000/month) counts as paid referrals and earns commission.
+Only Pro (₦3,250/month) counts as paid referrals and earns commission.
 
 Economics:
-- Pro plan revenue: ₦5,000/month
-- Commission per referral: ₦500 (10%)
-- Referrer gets: ₦500 cash (paid monthly)
-- Your profit after commission: ~₦3,500-₦4,000/month per customer
+- Pro plan revenue: ₦3,250/month
+- Commission per referral: ₦488 (15%)
+- Referrer gets: ₦488 cash (paid monthly)
+- Your profit after commission: ~₦2,762/month per customer
 """
 from __future__ import annotations
 
@@ -185,7 +185,7 @@ class ReferralReward(Base):
 
 
 # Referral thresholds (configurable)
-# COMMISSION-BASED MODEL: 10% commission per paid referral - CASH PAYOUT
+# COMMISSION-BASED MODEL: 15% commission per paid referral - CASH PAYOUT
 REFERRAL_THRESHOLDS = {
     "free_signup": {
         "required": 0,  # No reward for free signups (focus on paid referrals)
@@ -195,14 +195,14 @@ REFERRAL_THRESHOLDS = {
     "paid_signup": {
         "required": 1,  # Each paid signup = instant commission
         "reward_type": "commission",
-        "reward_description": "₦500 cash commission (10% of Pro plan)",
-        "commission_amount": 500,  # ₦500 = 10% of ₦5,000 Pro plan
-        "commission_percentage": 10,
+        "reward_description": "₦488 cash commission (15% of Pro plan)",
+        "commission_amount": 488,  # ₦488 = 15% of ₦3,250 Pro plan
+        "commission_percentage": 15,
         "payout_schedule": "monthly",  # Cash payout at end of month
     },
 }
 
 # Pro plan price for commission calculation
-PRO_PLAN_PRICE = 5000  # ₦5,000/month
-REFERRAL_COMMISSION_PERCENTAGE = 10  # 10% commission
-REFERRAL_COMMISSION_AMOUNT = PRO_PLAN_PRICE * REFERRAL_COMMISSION_PERCENTAGE // 100  # ₦500
+PRO_PLAN_PRICE = 3250  # ₦3,250/month
+REFERRAL_COMMISSION_PERCENTAGE = 15  # 15% commission
+REFERRAL_COMMISSION_AMOUNT = PRO_PLAN_PRICE * REFERRAL_COMMISSION_PERCENTAGE // 100  # ₦488

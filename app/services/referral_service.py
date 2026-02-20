@@ -1,9 +1,9 @@
 """
 Referral service for managing referral codes, tracking referrals, and distributing rewards.
 
-COMMISSION-BASED MODEL (Updated January 2026):
+COMMISSION-BASED MODEL (Updated February 2026):
 - Each user gets a unique 8-character referral code
-- Paid referral commission: 10% = ₦500 per Pro subscriber (instant reward)
+- Paid referral commission: 15% = ₦488 per Pro subscriber (instant reward)
 - Free signup referrals: No reward (focus on quality paid referrals)
 - Note: Starter has no monthly subscription - only Pro counts as paid referrals
 - CASH PAYOUT: Commissions are paid out at the end of each month
@@ -182,7 +182,7 @@ class ReferralService:
     def upgrade_referral_to_paid(self, referred_user_id: int) -> bool:
         """
         Upgrade a referral from free to paid when referred user subscribes to Pro.
-        COMMISSION MODEL: Creates instant ₦500 commission reward for the referrer.
+        COMMISSION MODEL: Creates instant ₦488 commission reward for the referrer.
         """
         referral = self.db.execute(
             select(Referral)
@@ -211,7 +211,7 @@ class ReferralService:
     def _create_commission_reward(self, referrer_id: int, referred_user_id: int) -> ReferralReward | None:
         """
         Create an instant commission reward when a referred user subscribes to Pro.
-        COMMISSION MODEL: ₦500 commission per paid referral (Pro plan = ₦3,250/month).
+        COMMISSION MODEL: ₦488 commission per paid referral (15% of Pro plan ₦3,250/month).
         CASH PAYOUT: Commissions are paid out at the end of each month.
         """
         # Get referred user name for reward description
@@ -225,7 +225,7 @@ class ReferralService:
         reward = ReferralReward(
             user_id=referrer_id,
             reward_type="commission",
-            reward_description=f"₦500 cash commission for {referred_name}'s Pro subscription",
+            reward_description=f"₦{REFERRAL_COMMISSION_AMOUNT} cash commission for {referred_name}'s Pro subscription",
             free_referrals_count=0,
             paid_referrals_count=1,
             status=RewardStatus.PENDING,
@@ -338,7 +338,7 @@ class ReferralService:
     def get_referral_stats(self, user_id: int) -> dict:
         """
         Get referral statistics for a user.
-        COMMISSION MODEL: Shows earnings from paid referrals (₦500 each).
+        COMMISSION MODEL: Shows earnings from paid referrals (₦488 each).
         """
         referral_code = self.get_or_create_referral_code(user_id)
 
@@ -358,7 +358,7 @@ class ReferralService:
         total_rewards = self._get_rewards_count(user_id)
 
         # COMMISSION MODEL: Calculate total earnings
-        total_commission_earned = paid_completed * REFERRAL_COMMISSION_AMOUNT  # ₦500 per paid referral
+        total_commission_earned = paid_completed * REFERRAL_COMMISSION_AMOUNT  # ₦488 per paid referral
 
         return {
             "referral_code": referral_code.code,
@@ -379,8 +379,8 @@ class ReferralService:
             ],
             # CASH PAYOUT MODEL: Commission info
             "commission": {
-                "rate_percentage": 10,  # 10% commission
-                "amount_per_referral": REFERRAL_COMMISSION_AMOUNT,  # ₦500
+                "rate_percentage": 15,  # 15% commission
+                "amount_per_referral": REFERRAL_COMMISSION_AMOUNT,  # ₦488
                 "total_earned": total_commission_earned,
                 "payout_schedule": "monthly",  # Cash paid at end of month
             },
