@@ -290,12 +290,12 @@ def send_daily_summaries() -> dict[str, Any]:
             start_of_day = datetime.combine(today, datetime.min.time())
 
             # Get users who have at least one invoice and a phone number
-            # Only PRO users get daily summaries
+            # PRO users and users with admin-granted pro_override get daily summaries
             active_users = (
                 db.query(User)
                 .filter(
                     User.phone != None,  # noqa: E711
-                    User.plan == "pro",
+                    (User.plan == "pro") | (User.pro_override.is_(True)),
                 )
                 .join(Invoice, Invoice.issuer_id == User.id)
                 .group_by(User.id)

@@ -91,6 +91,7 @@ class UserListItem(BaseModel):
     invoices_this_month: int
     business_name: str | None
     role: str
+    pro_override: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -245,7 +246,8 @@ async def list_users(
             last_login=user.last_login,
             invoices_this_month=user.invoices_this_month,
             business_name=user.business_name,
-            role=user.role
+            role=user.role,
+            pro_override=getattr(user, 'pro_override', False),
         )
         for user in users
     ]
@@ -325,7 +327,8 @@ async def get_user_detail(
             last_login=user.last_login,
             invoices_this_month=user.invoices_this_month,
             business_name=user.business_name,
-            role=user.role
+            role=user.role,
+            pro_override=getattr(user, 'pro_override', False),
         ),
         "activity": {
             "total_invoices": total_invoices,
@@ -338,6 +341,46 @@ async def get_user_detail(
             "invoices_used": invoices_used,
             "pack_purchases": pack_purchases
         }
+    }
+
+
+@router.post("/users/{user_id}/pro-override")
+async def toggle_pro_override(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """
+    Toggle admin-granted PRO feature access for a user.
+
+    This gives the user access to all PRO features (inventory, branding,
+    voice, daily summary, etc.) WITHOUT changing their actual plan or
+    invoice balance. Invoice packs are NOT included.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_value = not getattr(user, "pro_override", False)
+    user.pro_override = new_value
+    db.commit()
+
+    action = "granted" if new_value else "revoked"
+    log_audit_event(
+        "admin.users.pro_override",
+        user_id=admin_user.id,
+        target_user_id=user_id,
+        action=action,
+    )
+    logger.info(
+        "Admin %s %s PRO override for user %s (%s)",
+        admin_user.id, action, user_id, user.email or user.phone,
+    )
+
+    return {
+        "user_id": user_id,
+        "pro_override": new_value,
+        "message": f"PRO features {action} for {user.name or user.email}",
     }
 
 

@@ -62,7 +62,7 @@ class WhatsAppHandler:
             return False
 
         user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-        if not user or user.plan.value != "pro":
+        if not user or user.effective_plan.value != "pro":
             self.client.send_text(
                 sender,
                 "🔒 *Product Catalog is a Pro feature.*\n\n"
@@ -423,7 +423,7 @@ class WhatsAppHandler:
         try:
             # Check plan — tax reports require STARTER+
             user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-            if not user or user.plan.value == "free":
+            if not user or user.effective_plan.value == "free":
                 self.client.send_text(
                     sender,
                     "🔒 *Tax Reports require a Starter or Pro plan.*\n\n"

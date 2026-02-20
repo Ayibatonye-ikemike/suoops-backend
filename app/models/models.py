@@ -320,6 +320,22 @@ class User(Base):
     # Values: 'user', 'staff', 'admin'. Additional roles can be added via migration.
     role: Mapped[str] = mapped_column(String(20), default="user", server_default="user", index=True)
     
+    # Admin-granted PRO feature access (without subscription or invoice packs).
+    # When True, user.effective_plan returns PRO for feature gating purposes,
+    # but the actual `plan` field and `invoice_balance` are unchanged.
+    pro_override: Mapped[bool] = mapped_column(default=False, server_default="false")
+
+    @property
+    def effective_plan(self) -> "SubscriptionPlan":
+        """Return the plan used for feature gating.
+
+        If pro_override is True, treat user as PRO regardless of actual plan.
+        This does NOT affect invoice_balance or subscription billing.
+        """
+        if self.pro_override:
+            return SubscriptionPlan.PRO
+        return self.plan
+    
     # Tax and compliance relationships
     tax_profile: Mapped[TaxProfile | None] = relationship(
         "TaxProfile",

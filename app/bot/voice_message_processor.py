@@ -62,7 +62,7 @@ class VoiceMessageProcessor:
             return False, None
         
         # Check if Pro plan (voice is premium feature now included in Pro)
-        has_access = user.plan == models.SubscriptionPlan.PRO
+        has_access = user.effective_plan == models.SubscriptionPlan.PRO
         return has_access, user
 
     async def process(self, sender: str, media_id: str, payload: dict[str, Any]) -> None:

@@ -83,12 +83,12 @@ class FeatureGate:
             )
     
     def is_free_tier(self) -> bool:
-        """Check if user is on free tier."""
-        return self.user.plan == models.SubscriptionPlan.FREE
+        """Check if user is on free tier (respects pro_override)."""
+        return self.user.effective_plan == models.SubscriptionPlan.FREE
     
     def is_paid_tier(self) -> bool:
-        """Check if user has any paid subscription (not FREE)."""
-        return self.user.plan != models.SubscriptionPlan.FREE
+        """Check if user has any paid subscription (not FREE, respects pro_override)."""
+        return self.user.effective_plan != models.SubscriptionPlan.FREE
     
     def _get_invoice_balance_safe(self) -> int:
         """Safely get invoice_balance, defaulting to 5 if column doesn't exist yet."""
@@ -241,7 +241,7 @@ class FeatureGate:
         Returns:
             (can_use: bool, error_message: str | None)
         """
-        plan = self.user.plan
+        plan = self.user.effective_plan
         features = plan.features
         
         # Check if plan has voice access at all
@@ -276,7 +276,7 @@ class FeatureGate:
         """
         can_use, error_msg = self.can_use_voice()
         if not can_use:
-            quota = 15 if self.user.plan == models.SubscriptionPlan.PRO else 0
+            quota = 15 if self.user.effective_plan == models.SubscriptionPlan.PRO else 0
             current_count = self.get_monthly_voice_count()
             
             raise HTTPException(
@@ -355,7 +355,7 @@ def require_plan_feature(db: Session, user_id: int, feature_key: str, feature_na
         HTTPException: 403 if feature not available on user's plan
     """
     gate = FeatureGate(db, user_id)
-    features = gate.user.plan.features
+    features = gate.user.effective_plan.features
     
     if not features.get(feature_key):
         feature_display = feature_name or feature_key.replace("_", " ").title()
