@@ -4,7 +4,7 @@ Feature gating utilities for subscription-based access control.
 NEW BILLING MODEL:
 - Invoice Packs: 50 invoices for ₦1,250 (one-time purchase, never expires)
 - FREE: 5 free invoices to start, then purchase packs
-- STARTER: No monthly fee, just buy invoice packs + tax features
+- STARTER: No monthly fee, just buy invoice packs
 - PRO (₦3,250/mo): Premium features (branding, inventory, team, voice, API) + buy invoice packs
 
 Invoice balance is decremented per use. All plans can purchase more packs.
@@ -52,7 +52,7 @@ class FeatureGate:
         Check if user's Pro/Business subscription has expired.
         
         When expired:
-        - Pro/Business → Starter (keep tax features, lose premium features)
+        - Pro/Business → Starter (lose all premium features including tax)
         - Invoice balance is preserved (they paid for those invoices)
         - Starter has no expiry (just buy invoice packs)
         """
@@ -71,7 +71,7 @@ class FeatureGate:
             expiry = expiry.replace(tzinfo=dt.timezone.utc)
         
         if now > expiry:
-            # Subscription has expired - downgrade to Starter (keeps tax features)
+            # Subscription has expired - downgrade to Starter (basic invoicing only)
             old_plan = user.plan.value
             user.plan = models.SubscriptionPlan.STARTER
             user.subscription_expires_at = None
