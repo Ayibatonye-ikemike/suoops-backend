@@ -362,7 +362,7 @@ class ReferralStats(BaseModel):
     referrals_this_week: int
     referrals_this_month: int
     # Commission/Payout fields
-    total_commission_earned: int  # Total commission from all paid referrals (₦500 each)
+    total_commission_earned: int  # Total commission from all paid referrals (₦488 each)
     pending_payout_amount: int  # Sum of pending rewards to be paid out
     users_with_payout_bank: int  # Number of users who have set up payout bank
 
@@ -427,7 +427,7 @@ async def get_referral_stats(
     ).filter(
         Referral.status == ReferralStatus.COMPLETED
     ).group_by(Referral.referrer_id).order_by(
-        desc("referral_count")
+        desc("paid_count"), desc("referral_count")
     ).limit(10).all()
     
     top_referrers = []
@@ -440,12 +440,13 @@ async def get_referral_stats(
                 "email": user.email,
                 "phone": user.phone,
                 "referral_count": count,
+                "paid_referral_count": paid_count or 0,
                 "commission_earned": (paid_count or 0) * REFERRAL_COMMISSION_AMOUNT,
                 "payout_bank_name": user.payout_bank_name
             })
     
     # Commission/Payout stats
-    total_commission_earned = paid * REFERRAL_COMMISSION_AMOUNT  # ₦500 per paid referral
+    total_commission_earned = paid * REFERRAL_COMMISSION_AMOUNT  # ₦488 per paid referral
     
     # Count users with payout bank set up
     users_with_payout_bank = db.query(models.User).filter(
