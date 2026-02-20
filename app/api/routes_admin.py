@@ -933,16 +933,18 @@ async def get_growth_metrics(
         revenue_growth.append(MonthlyDataPoint(month=label, value=float(month_rev)))
 
     # ── Engagement ──
-    avg_invoices = db.query(
-        func.avg(func.count(Invoice.id))
-    ).group_by(Invoice.issuer_id).scalar()
+    invoice_counts_sq = db.query(
+        func.count(Invoice.id).label("cnt")
+    ).group_by(Invoice.issuer_id).subquery()
+    avg_invoices = db.query(func.avg(invoice_counts_sq.c.cnt)).scalar()
     avg_invoices_per_user = round(float(avg_invoices), 1) if avg_invoices else 0
 
-    power_users = db.query(
-        func.count(func.distinct(Invoice.issuer_id))
+    power_user_sq = db.query(
+        Invoice.issuer_id
     ).filter(
         Invoice.created_at >= month_start
-    ).having(func.count(Invoice.id) >= 10).scalar() or 0
+    ).group_by(Invoice.issuer_id).having(func.count(Invoice.id) >= 10).subquery()
+    power_users = db.query(func.count()).select_from(power_user_sq).scalar() or 0
 
     users_with_any_invoice = db.query(Invoice.issuer_id).distinct().subquery()
     zero_invoice = db.query(models.User).filter(
