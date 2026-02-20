@@ -855,12 +855,12 @@ async def get_growth_metrics(
 
     # Users who created at least 1 invoice
     users_with_invoice = db.query(
-        func.count(func.distinct(Invoice.user_id))
+        func.count(func.distinct(Invoice.issuer_id))
     ).scalar() or 0
 
     # Users who received at least 1 payment
     users_with_payment = db.query(
-        func.count(func.distinct(Invoice.user_id))
+        func.count(func.distinct(Invoice.issuer_id))
     ).filter(Invoice.status == "paid").scalar() or 0
 
     # Users who upgraded to a paid plan
@@ -936,16 +936,16 @@ async def get_growth_metrics(
     # ── Engagement ──
     avg_invoices = db.query(
         func.avg(func.count(Invoice.id))
-    ).group_by(Invoice.user_id).scalar()
+    ).group_by(Invoice.issuer_id).scalar()
     avg_invoices_per_user = round(float(avg_invoices), 1) if avg_invoices else 0
 
     power_users = db.query(
-        func.count(func.distinct(Invoice.user_id))
+        func.count(func.distinct(Invoice.issuer_id))
     ).filter(
         Invoice.created_at >= month_start
     ).having(func.count(Invoice.id) >= 10).scalar() or 0
 
-    users_with_any_invoice = db.query(Invoice.user_id).distinct().subquery()
+    users_with_any_invoice = db.query(Invoice.issuer_id).distinct().subquery()
     zero_invoice = db.query(models.User).filter(
         ~models.User.id.in_(db.query(users_with_any_invoice))
     ).count()
@@ -1081,7 +1081,7 @@ async def get_business_intelligence(
     # ── Pre-fetch aggregated invoice data per user ──
     inv_stats = (
         db.query(
-            Invoice.user_id,
+            Invoice.issuer_id,
             func.count(Invoice.id).label("total"),
             func.count(case((Invoice.status == "paid", 1))).label("paid"),
             func.count(case((Invoice.status == "pending", 1))).label("pending"),
@@ -1114,22 +1114,22 @@ async def get_business_intelligence(
                 )
             ).label("total_revenue_count"),
         )
-        .group_by(Invoice.user_id)
+        .group_by(Invoice.issuer_id)
         .all()
     )
-    inv_map: dict[int, Any] = {row.user_id: row for row in inv_stats}
+    inv_map: dict[int, Any] = {row.issuer_id: row for row in inv_stats}
 
     # Pre-fetch customer count per user
     cust_stats = (
         db.query(
-            Invoice.user_id,
+            Invoice.issuer_id,
             func.count(func.distinct(Invoice.customer_id)).label("cust_count"),
         )
         .filter(Invoice.customer_id.isnot(None))
-        .group_by(Invoice.user_id)
+        .group_by(Invoice.issuer_id)
         .all()
     )
-    cust_map: dict[int, int] = {row.user_id: row.cust_count for row in cust_stats}
+    cust_map: dict[int, int] = {row.issuer_id: row.cust_count for row in cust_stats}
 
     # ── Build business items ──
     items: list[BusinessHealthItem] = []
@@ -1345,7 +1345,7 @@ async def get_inactive_users(
     now = dt.datetime.now(dt.timezone.utc)
     
     # Users with 0 invoices
-    users_with_invoices = db.query(models.Invoice.user_id).distinct().subquery()
+    users_with_invoices = db.query(models.Invoice.issuer_id).distinct().subquery()
     
     inactive_users = db.query(models.User).filter(
         ~models.User.id.in_(db.query(users_with_invoices))
@@ -1397,7 +1397,7 @@ async def get_low_balance_users(
     for user in low_balance_users:
         # Count their invoices
         invoice_count = db.query(func.count(models.Invoice.id)).filter(
-            models.Invoice.user_id == user.id
+            models.Invoice.issuer_id == user.id
         ).scalar() or 0
         
         days_since_signup = (now - user.created_at.replace(tzinfo=dt.timezone.utc)).days if user.created_at else 0
@@ -1436,15 +1436,15 @@ async def get_active_free_users(
     
     # Get users with invoice counts
     user_invoice_counts = db.query(
-        models.Invoice.user_id,
+        models.Invoice.issuer_id,
         func.count(models.Invoice.id).label('invoice_count')
-    ).group_by(models.Invoice.user_id).having(
+    ).group_by(models.Invoice.issuer_id).having(
         func.count(models.Invoice.id) >= min_invoices
     ).subquery()
     
     active_free_users = db.query(models.User, user_invoice_counts.c.invoice_count).join(
         user_invoice_counts,
-        models.User.id == user_invoice_counts.c.user_id
+        models.User.id == user_invoice_counts.c.issuer_id
     ).filter(
         models.User.plan == SubscriptionPlan.FREE
     ).all()
@@ -1487,7 +1487,7 @@ async def get_churned_users(
     cutoff = now - dt.timedelta(days=days_inactive)
     
     # Users who have invoices but haven't logged in recently
-    users_with_invoices = db.query(models.Invoice.user_id).distinct().subquery()
+    users_with_invoices = db.query(models.Invoice.issuer_id).distinct().subquery()
     
     churned_users = db.query(models.User).filter(
         models.User.id.in_(db.query(users_with_invoices)),
@@ -1497,7 +1497,7 @@ async def get_churned_users(
     result = []
     for user in churned_users:
         invoice_count = db.query(func.count(models.Invoice.id)).filter(
-            models.Invoice.user_id == user.id
+            models.Invoice.issuer_id == user.id
         ).scalar() or 0
         
         days_since_signup = (now - user.created_at.replace(tzinfo=dt.timezone.utc)).days if user.created_at else 0
