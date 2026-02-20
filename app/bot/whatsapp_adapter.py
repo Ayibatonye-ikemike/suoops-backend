@@ -9,9 +9,11 @@ from app.bot.expense_intent_processor import ExpenseIntentProcessor
 from app.bot.invoice_intent_processor import InvoiceIntentProcessor
 from app.bot.message_extractor import extract_message
 from app.bot.nlp_service import NLPService
-from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart
+from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart, clear_cart
 from app.bot.voice_message_processor import VoiceMessageProcessor
 from app.bot.whatsapp_client import WhatsAppClient
+from app.core.config import settings
+from app.models import models
 from app.services.invoice_service import build_invoice_service
 
 logger = logging.getLogger(__name__)
@@ -114,10 +116,12 @@ class WhatsAppHandler:
         is_greeting = text_lower in greeting_keywords
         is_optin = text_lower in optin_keywords
 
-        # ── Product browsing flow ──────────────────────────────────
+        # ── Product browsing flow (PRO only) ────────────────────────
         # Check if user has an active cart session (mid-flow)
         cart_session = get_cart(sender)
         if cart_session:
+            if not self._check_inventory_access(sender):
+                return
             # User is mid-flow: handle items text or customer details
             if cart_session.step == "awaiting_items":
                 self.product_flow.handle_items_reply(sender, text)
@@ -135,8 +139,10 @@ class WhatsAppHandler:
                             )
                 return
 
-        # Check if text triggers product browsing
+        # Check if text triggers product browsing (PRO only)
         if ProductInvoiceFlow.is_trigger(text_lower):
+            if not self._check_inventory_access(sender):
+                return
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
                 self.product_flow.start_browsing(sender, issuer_id)
@@ -149,9 +155,11 @@ class WhatsAppHandler:
                 )
                 return
 
-        # Check if user is searching products: "search wig" / "find shoe"
+        # Check if user is searching products: "search wig" / "find shoe" (PRO only)
         search_match = text_lower.startswith("search ") or text_lower.startswith("find ")
         if search_match:
+            if not self._check_inventory_access(sender):
+                return
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
                 query = text[len(text_lower.split()[0]) + 1:].strip()
