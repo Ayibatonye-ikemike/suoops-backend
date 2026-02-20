@@ -190,6 +190,21 @@ class WhatsAppHandler:
             return
         # ── End analytics ─────────────────────────────────────────
 
+        # ── Tax report download ───────────────────────────────────
+        tax_keywords = {"tax report", "tax", "my tax", "download tax", "tax pdf"}
+        if text_lower in tax_keywords:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._send_tax_report(sender, issuer_id)
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+            return
+        # ── End tax report ────────────────────────────────────────
+
         # Handle explicit help command - give concise guide
         if is_help:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
@@ -277,7 +292,8 @@ class WhatsAppHandler:
             "📦 *From inventory:*\n"
             "Type *products* to browse your stock\n\n"
             "📊 *Business report:*\n"
-            "Type *report* for your analytics\n\n"
+            "Type *report* for your analytics\n"
+            "Type *tax report* for tax summary + PDF\n\n"
             "Type *help* for full guide."
         )
     
@@ -375,6 +391,163 @@ class WhatsAppHandler:
                 "Try again or view full analytics at suoops.com/dashboard/analytics"
             )
 
+    def _send_tax_report(self, sender: str, issuer_id: int) -> None:
+        """Generate and send the latest monthly tax report PDF via WhatsApp."""
+        import datetime as dt
+
+        try:
+            # Check plan — tax reports require STARTER+
+            user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+            if not user or user.plan.value == "free":
+                self.client.send_text(
+                    sender,
+                    "🔒 *Tax Reports require a Starter or Pro plan.*\n\n"
+                    "Upgrade at suoops.com/dashboard/subscription\n"
+                    "to unlock tax reports, analytics & more!"
+                )
+                return
+
+            now = dt.datetime.utcnow()
+            year = now.year
+            month = now.month
+
+            # Try current month first, fall back to previous month
+            from app.models.tax_models import MonthlyTaxReport
+
+            report = (
+                self.db.query(MonthlyTaxReport)
+                .filter(
+                    MonthlyTaxReport.user_id == issuer_id,
+                    MonthlyTaxReport.period_type == "month",
+                )
+                .order_by(MonthlyTaxReport.created_at.desc())
+                .first()
+            )
+
+            # If no report exists, generate one for the current month
+            if not report:
+                from app.services.tax_reporting_service import TaxReportingService
+
+                try:
+                    service = TaxReportingService(self.db)
+                    report = service.generate_report(
+                        user_id=issuer_id,
+                        period_type="month",
+                        year=year,
+                        month=month,
+                        basis="paid",
+                    )
+                    self.db.commit()
+                except Exception as gen_err:
+                    logger.warning("Failed to generate tax report for user %s: %s", issuer_id, gen_err)
+
+            if not report:
+                self.client.send_text(
+                    sender,
+                    "📊 No tax report data found yet.\n\n"
+                    "Create some invoices first, then type *tax report* "
+                    "to get your tax summary!"
+                )
+                return
+
+            # Generate PDF if not already present
+            if not report.pdf_url:
+                try:
+                    from app.services.pdf_service import PDFService
+                    from app.storage.s3_client import S3Client
+                    from app.services.tax_reporting.computations import (
+                        compute_revenue_by_date_range,
+                        compute_expenses_by_date_range,
+                    )
+
+                    total_revenue = float(
+                        compute_revenue_by_date_range(
+                            self.db, issuer_id, report.start_date, report.end_date, "paid"
+                        )
+                    )
+                    total_expenses = float(
+                        compute_expenses_by_date_range(
+                            self.db, issuer_id, report.start_date, report.end_date
+                        )
+                    )
+
+                    pdf_service = PDFService(S3Client())
+                    pdf_url = pdf_service.generate_monthly_tax_report_pdf(
+                        report, basis="paid",
+                        total_revenue=total_revenue, total_expenses=total_expenses,
+                    )
+
+                    from app.services.tax_reporting_service import TaxReportingService
+                    TaxReportingService(self.db).attach_report_pdf(report, pdf_url)
+                    report.pdf_url = pdf_url
+                    self.db.commit()
+                except Exception as pdf_err:
+                    logger.warning("Failed to generate tax PDF for user %s: %s", issuer_id, pdf_err)
+
+            # Build period label
+            if report.start_date:
+                period_label = report.start_date.strftime("%B %Y")
+            else:
+                period_label = f"{report.year}-{report.month:02d}" if report.month else str(report.year)
+
+            # Format amounts
+            def fmt(val) -> str:
+                amount = float(val or 0)
+                if amount >= 1_000_000:
+                    return f"₦{amount / 1_000_000:,.1f}M"
+                return f"₦{amount:,.0f}"
+
+            profit = float(report.assessable_profit or 0)
+            levy = float(report.levy_amount or 0)
+            pit = float(report.pit_amount or 0)
+            vat = float(report.vat_collected or 0)
+
+            msg = (
+                f"📊 *Tax Report — {period_label}*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"💰 Assessable Profit: {fmt(profit)}\n"
+                f"📋 Dev Levy: {fmt(levy)}\n"
+                f"🏛️ Personal Income Tax: {fmt(pit)}\n"
+            )
+
+            if float(report.cit_amount or 0) > 0:
+                msg += f"🏢 Company Income Tax: {fmt(report.cit_amount)}\n"
+
+            if vat > 0:
+                msg += f"💵 VAT Collected: {fmt(vat)}\n"
+
+            total_tax = levy + pit + float(report.cit_amount or 0)
+            msg += (
+                f"\n📌 *Total Tax Liability: {fmt(total_tax)}*\n\n"
+            )
+
+            # Send text summary first
+            self.client.send_text(sender, msg)
+
+            # Send PDF if available
+            if report.pdf_url and report.pdf_url.startswith("http"):
+                filename = f"TaxReport_{period_label.replace(' ', '_')}.pdf"
+                self.client.send_document(
+                    sender,
+                    report.pdf_url,
+                    filename,
+                    f"📄 Tax Report — {period_label}",
+                )
+            else:
+                self.client.send_text(
+                    sender,
+                    "💡 PDF not available right now. "
+                    "Download it at suoops.com/dashboard/tax-reports"
+                )
+
+        except Exception as exc:
+            logger.exception("Error sending tax report for user %s: %s", issuer_id, exc)
+            self.client.send_text(
+                sender,
+                "⚠️ Couldn't generate your tax report right now. "
+                "Try again or download at suoops.com/dashboard/tax-reports"
+            )
+
     def _send_help_guide(self, sender: str) -> None:
         """Send comprehensive help guide to a business user."""
         help_message = (
@@ -418,8 +591,10 @@ class WhatsAppHandler:
             "� *BUSINESS REPORT*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Type *report* — get revenue, invoices & customer stats\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "�💡 *TIPS*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"            "🏛️ *TAX REPORT (Starter+)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Type *tax report* — get your tax summary + PDF\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"            "�💡 *TIPS*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "• Set up bank details in your dashboard first\n"
             "• Share the payment link if customer doesn't reply\n"
