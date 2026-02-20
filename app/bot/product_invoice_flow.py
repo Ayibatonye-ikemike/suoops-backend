@@ -458,7 +458,7 @@ class ProductInvoiceFlow:
             "customer_email": customer_email,
             "amount": session.total,
             "lines": lines,
-            "due_date": None,
+            # due_date omitted — backend auto-defaults to 3 days
         }
 
         # Clear the cart

@@ -316,10 +316,16 @@ class InvoiceIntentProcessor:
         except Exception:
             pass
         
+        # Format due date for display
+        due_display = ""
+        if invoice.due_date:
+            due_display = f"📅 Due: {invoice.due_date.strftime('%d %b %Y')}\n"
+
         business_message = (
             f"✅ Invoice {invoice.invoice_id} created!\n\n"
             f"💰 Amount: ₦{invoice.amount:,.2f}\n"
             f"👤 Customer: {customer_name}\n"
+            f"{due_display}"
             f"📊 Status: {status_display}\n"
         )
         

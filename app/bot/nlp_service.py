@@ -240,6 +240,96 @@ class NLPService:
         
         return "Customer"
     
+    # ---------- due-date helpers ----------
+    _WEEKDAYS = {
+        "monday": 0, "mon": 0,
+        "tuesday": 1, "tue": 1, "tues": 1,
+        "wednesday": 2, "wed": 2,
+        "thursday": 3, "thu": 3, "thurs": 3,
+        "friday": 4, "fri": 4,
+        "saturday": 5, "sat": 5,
+        "sunday": 6, "sun": 6,
+    }
+    _MONTHS = {
+        "jan": 1, "january": 1,
+        "feb": 2, "february": 2,
+        "mar": 3, "march": 3,
+        "apr": 4, "april": 4,
+        "may": 5,
+        "jun": 6, "june": 6,
+        "jul": 7, "july": 7,
+        "aug": 8, "august": 8,
+        "sep": 9, "sept": 9, "september": 9,
+        "oct": 10, "october": 10,
+        "nov": 11, "november": 11,
+        "dec": 12, "december": 12,
+    }
+
+    _DUE_IN_PATTERN = re.compile(
+        r"(?:due\s+)?in\s+(\d{1,3})\s*(?:days?|d)", re.IGNORECASE
+    )
+    _DUE_WEEKDAY_PATTERN = re.compile(
+        r"due\s+(?:next\s+)?(?:on\s+)?(" + "|".join(_WEEKDAYS) + r")",
+        re.IGNORECASE,
+    )
+    _DUE_MONTH_DAY_PATTERN = re.compile(
+        r"due\s+(?:on\s+)?(" + "|".join(_MONTHS) + r")\s+(\d{1,2})",
+        re.IGNORECASE,
+    )
+
+    def _extract_due_date(self, text: str) -> dt.datetime | None:
+        """Extract due date from natural language.
+
+        Supported:
+            "tomorrow"                 → +1 day
+            "due in 7 days"            → +7 days
+            "in 14 days"               → +14 days
+            "due next week"            → +7 days
+            "due friday" / "due fri"   → next occurrence of that weekday
+            "due march 5"              → specific calendar date
+        """
+        text_lower = text.lower()
+        now = dt.datetime.now(dt.timezone.utc)
+
+        # "tomorrow"
+        if "tomorrow" in text_lower:
+            return now + dt.timedelta(days=1)
+
+        # "due next week"
+        if "next week" in text_lower:
+            return now + dt.timedelta(days=7)
+
+        # "due in 7 days" / "in 14d"
+        m = self._DUE_IN_PATTERN.search(text_lower)
+        if m:
+            days = min(int(m.group(1)), 365)
+            return now + dt.timedelta(days=days)
+
+        # "due friday" / "due next monday"
+        m = self._DUE_WEEKDAY_PATTERN.search(text_lower)
+        if m:
+            target_day = self._WEEKDAYS[m.group(1).lower()]
+            days_ahead = (target_day - now.weekday()) % 7
+            if days_ahead == 0:
+                days_ahead = 7  # next occurrence, not today
+            return now + dt.timedelta(days=days_ahead)
+
+        # "due march 5" / "due jan 15"
+        m = self._DUE_MONTH_DAY_PATTERN.search(text_lower)
+        if m:
+            month = self._MONTHS[m.group(1).lower()]
+            day = int(m.group(2))
+            year = now.year
+            try:
+                target = dt.datetime(year, month, day, tzinfo=dt.timezone.utc)
+                if target < now:
+                    target = target.replace(year=year + 1)
+                return target
+            except ValueError:
+                pass  # invalid day — fall through to None
+
+        return None  # backend auto-defaults to 3 days
+
     def _extract_email(self, text: str) -> str | None:
         """
         Extract email address from text.
@@ -321,10 +411,8 @@ class NLPService:
             description = self._extract_description(text)
             lines = [{"description": description, "quantity": 1, "unit_price": total_amount}]
         
-        # Extract due date
-        due = None
-        if "tomorrow" in text:
-            due = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=1)
+        # Extract due date — supports natural language
+        due = self._extract_due_date(text)
         
         # If name looks like a phone number, use a default name
         if name and name.replace("+", "").replace("-", "").isdigit():
