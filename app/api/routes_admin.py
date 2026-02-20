@@ -365,22 +365,22 @@ async def toggle_pro_override(
     user.pro_override = new_value
     db.commit()
 
-    action = "granted" if new_value else "revoked"
+    change = "granted" if new_value else "revoked"
     log_audit_event(
         "admin.users.pro_override",
         user_id=admin_user.id,
         target_user_id=user_id,
-        action=action,
+        change=change,
     )
     logger.info(
         "Admin %s %s PRO override for user %s (%s)",
-        admin_user.id, action, user_id, user.email or user.phone,
+        admin_user.id, change, user_id, user.email or user.phone,
     )
 
     return {
         "user_id": user_id,
         "pro_override": new_value,
-        "message": f"PRO features {action} for {user.name or user.email}",
+        "message": f"PRO features {change} for {user.name or user.email}",
     }
 
 
