@@ -526,10 +526,17 @@ class WhatsAppHandler:
 
             # Send PDF if available
             if report.pdf_url and report.pdf_url.startswith("http"):
+                # Generate a fresh presigned URL — the stored one expires after 1 hour
+                from app.storage.s3_client import S3Client as _S3
+                _s3 = _S3()
+                s3_key = _s3.extract_key_from_url(report.pdf_url)
+                fresh_url = _s3.get_presigned_url(s3_key) if s3_key else None
+                download_url = fresh_url or report.pdf_url
+
                 filename = f"TaxReport_{period_label.replace(' ', '_')}.pdf"
                 self.client.send_document(
                     sender,
-                    report.pdf_url,
+                    download_url,
                     filename,
                     f"📄 Tax Report — {period_label}",
                 )
