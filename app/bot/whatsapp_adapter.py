@@ -420,7 +420,7 @@ class WhatsAppHandler:
                     MonthlyTaxReport.user_id == issuer_id,
                     MonthlyTaxReport.period_type == "month",
                 )
-                .order_by(MonthlyTaxReport.created_at.desc())
+                .order_by(MonthlyTaxReport.generated_at.desc())
                 .first()
             )
 
@@ -537,7 +537,7 @@ class WhatsAppHandler:
                 self.client.send_text(
                     sender,
                     "💡 PDF not available right now. "
-                    "Download it at suoops.com/dashboard/tax-reports"
+                    "Download it at suoops.com/dashboard/tax"
                 )
 
         except Exception as exc:
@@ -545,7 +545,7 @@ class WhatsAppHandler:
             self.client.send_text(
                 sender,
                 "⚠️ Couldn't generate your tax report right now. "
-                "Try again or download at suoops.com/dashboard/tax-reports"
+                "Try again or download at suoops.com/dashboard/tax"
             )
 
     def _send_help_guide(self, sender: str) -> None:
