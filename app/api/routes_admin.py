@@ -746,6 +746,246 @@ async def get_platform_metrics(
 
 
 # =============================================================================
+# GROWTH METRICS — MRR, Churn, Activation, Collection Rate, Trends
+# =============================================================================
+
+class MonthlyDataPoint(BaseModel):
+    month: str  # "2026-01"
+    value: float
+
+class ActivationFunnel(BaseModel):
+    total_signups: int
+    created_first_invoice: int
+    received_first_payment: int
+    upgraded_to_paid: int
+
+class GrowthMetrics(BaseModel):
+    # Revenue
+    mrr: float  # Monthly recurring revenue from active subscriptions
+    mrr_trend: list[MonthlyDataPoint]  # Last 6 months
+    arr: float  # Annualized
+    # Churn
+    churned_users: int  # Pro/Starter expired and not renewed
+    churn_rate: float  # % of paid users who churned this month
+    # Activation
+    activation_funnel: ActivationFunnel
+    # Collection
+    collection_rate: float  # % of invoices that get paid
+    avg_days_to_payment: float | None  # Average days from created → paid
+    # Growth trends
+    user_growth: list[MonthlyDataPoint]  # New signups per month
+    invoice_growth: list[MonthlyDataPoint]  # Invoices created per month
+    revenue_growth: list[MonthlyDataPoint]  # Paid revenue per month
+    # Engagement
+    avg_invoices_per_user: float
+    power_users: int  # Users with 10+ invoices this month
+    zero_invoice_users: int  # Signed up but never created an invoice
+    # Subscription health
+    expired_subscriptions: int  # Pro/Starter with expired dates
+    expiring_soon: int  # Expiring within 7 days
+
+
+@router.get("/metrics/growth", response_model=GrowthMetrics)
+async def get_growth_metrics(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin)
+) -> Any:
+    """Get business growth metrics — MRR, churn, activation funnel, trends."""
+    from app.models.models import Invoice
+
+    log_audit_event("admin.metrics.growth", user_id=admin_user.id)
+
+    now = dt.datetime.now(dt.timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = today_start.replace(day=1)
+
+    # ── MRR ──
+    # Starter = ₦1,250/mo, Pro = ₦3,250/mo
+    PLAN_PRICES = {"starter": 1250, "pro": 3250}
+    active_starter = db.query(models.User).filter(
+        models.User.plan == SubscriptionPlan.STARTER,
+        (models.User.subscription_expires_at.is_(None)) |
+        (models.User.subscription_expires_at >= now)
+    ).count()
+    active_pro = db.query(models.User).filter(
+        models.User.plan == SubscriptionPlan.PRO,
+        (models.User.subscription_expires_at.is_(None)) |
+        (models.User.subscription_expires_at >= now)
+    ).count()
+    mrr = (active_starter * PLAN_PRICES["starter"]) + (active_pro * PLAN_PRICES["pro"])
+    arr = mrr * 12
+
+    # ── MRR Trend (last 6 months from payment transactions) ──
+    mrr_trend: list[MonthlyDataPoint] = []
+    for i in range(5, -1, -1):
+        m_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+        for _ in range(i):
+            m_start = (m_start - dt.timedelta(days=1)).replace(day=1)
+        if i == 0:
+            m_start = month_start
+        m_end = (m_start + dt.timedelta(days=32)).replace(day=1)
+
+        month_revenue = db.query(func.sum(PaymentTransaction.amount)).filter(
+            PaymentTransaction.status == PaymentStatus.SUCCESS,
+            PaymentTransaction.payment_type == "subscription",
+            PaymentTransaction.created_at >= m_start,
+            PaymentTransaction.created_at < m_end,
+        ).scalar() or 0
+
+        mrr_trend.append(MonthlyDataPoint(
+            month=m_start.strftime("%Y-%m"),
+            value=float(month_revenue) / 100 if month_revenue > 1000 else float(month_revenue)
+        ))
+
+    # ── Churn ──
+    # Users on paid plans whose subscription expired and didn't renew
+    churned = db.query(models.User).filter(
+        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO]),
+        models.User.subscription_expires_at.isnot(None),
+        models.User.subscription_expires_at < now,
+    ).count()
+
+    total_paid = db.query(models.User).filter(
+        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO])
+    ).count()
+    churn_rate = (churned / total_paid * 100) if total_paid > 0 else 0
+
+    # ── Activation Funnel ──
+    total_signups = db.query(models.User).count()
+
+    # Users who created at least 1 invoice
+    users_with_invoice = db.query(
+        func.count(func.distinct(Invoice.user_id))
+    ).scalar() or 0
+
+    # Users who received at least 1 payment
+    users_with_payment = db.query(
+        func.count(func.distinct(Invoice.user_id))
+    ).filter(Invoice.status == "paid").scalar() or 0
+
+    # Users who upgraded to a paid plan
+    upgraded = db.query(models.User).filter(
+        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO])
+    ).count()
+
+    funnel = ActivationFunnel(
+        total_signups=total_signups,
+        created_first_invoice=users_with_invoice,
+        received_first_payment=users_with_payment,
+        upgraded_to_paid=upgraded,
+    )
+
+    # ── Collection Rate ──
+    total_revenue_invoices = db.query(Invoice).filter(
+        Invoice.invoice_type == "revenue"
+    ).count()
+    paid_revenue_invoices = db.query(Invoice).filter(
+        Invoice.invoice_type == "revenue",
+        Invoice.status == "paid"
+    ).count()
+    collection_rate = (
+        (paid_revenue_invoices / total_revenue_invoices * 100)
+        if total_revenue_invoices > 0 else 0
+    )
+
+    # Average days to payment
+    avg_days_raw = db.query(
+        func.avg(
+            func.extract("epoch", Invoice.paid_at - Invoice.created_at) / 86400
+        )
+    ).filter(
+        Invoice.status == "paid",
+        Invoice.paid_at.isnot(None),
+    ).scalar()
+    avg_days_to_payment = round(float(avg_days_raw), 1) if avg_days_raw else None
+
+    # ── Growth Trends (last 6 months) ──
+    user_growth: list[MonthlyDataPoint] = []
+    invoice_growth: list[MonthlyDataPoint] = []
+    revenue_growth: list[MonthlyDataPoint] = []
+
+    for i in range(5, -1, -1):
+        m_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+        for _ in range(i):
+            m_start = (m_start - dt.timedelta(days=1)).replace(day=1)
+        if i == 0:
+            m_start = month_start
+        m_end = (m_start + dt.timedelta(days=32)).replace(day=1)
+        label = m_start.strftime("%Y-%m")
+
+        new_users = db.query(models.User).filter(
+            models.User.created_at >= m_start,
+            models.User.created_at < m_end,
+        ).count()
+        user_growth.append(MonthlyDataPoint(month=label, value=new_users))
+
+        new_invoices = db.query(Invoice).filter(
+            Invoice.created_at >= m_start,
+            Invoice.created_at < m_end,
+        ).count()
+        invoice_growth.append(MonthlyDataPoint(month=label, value=new_invoices))
+
+        month_rev = db.query(func.sum(Invoice.amount)).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.status == "paid",
+            Invoice.paid_at >= m_start,
+            Invoice.paid_at < m_end,
+        ).scalar() or 0
+        revenue_growth.append(MonthlyDataPoint(month=label, value=float(month_rev)))
+
+    # ── Engagement ──
+    avg_invoices = db.query(
+        func.avg(func.count(Invoice.id))
+    ).group_by(Invoice.user_id).scalar()
+    avg_invoices_per_user = round(float(avg_invoices), 1) if avg_invoices else 0
+
+    power_users = db.query(
+        func.count(func.distinct(Invoice.user_id))
+    ).filter(
+        Invoice.created_at >= month_start
+    ).having(func.count(Invoice.id) >= 10).scalar() or 0
+
+    users_with_any_invoice = db.query(Invoice.user_id).distinct().subquery()
+    zero_invoice = db.query(models.User).filter(
+        ~models.User.id.in_(db.query(users_with_any_invoice))
+    ).count()
+
+    # ── Subscription Health ──
+    expired = db.query(models.User).filter(
+        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO]),
+        models.User.subscription_expires_at.isnot(None),
+        models.User.subscription_expires_at < now,
+    ).count()
+
+    seven_days = now + dt.timedelta(days=7)
+    expiring = db.query(models.User).filter(
+        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO]),
+        models.User.subscription_expires_at.isnot(None),
+        models.User.subscription_expires_at >= now,
+        models.User.subscription_expires_at <= seven_days,
+    ).count()
+
+    return GrowthMetrics(
+        mrr=mrr,
+        mrr_trend=mrr_trend,
+        arr=arr,
+        churned_users=churned,
+        churn_rate=round(churn_rate, 1),
+        activation_funnel=funnel,
+        collection_rate=round(collection_rate, 1),
+        avg_days_to_payment=avg_days_to_payment,
+        user_growth=user_growth,
+        invoice_growth=invoice_growth,
+        revenue_growth=revenue_growth,
+        avg_invoices_per_user=avg_invoices_per_user,
+        power_users=power_users,
+        zero_invoice_users=zero_invoice,
+        expired_subscriptions=expired,
+        expiring_soon=expiring,
+    )
+
+
+# =============================================================================
 # USER SEGMENTS FOR CAMPAIGNS (Brevo Email/WhatsApp Export)
 # =============================================================================
 
