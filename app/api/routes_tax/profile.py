@@ -58,6 +58,9 @@ async def update_tax_profile(
             tin=data.tin,
             vat_registration_number=data.vat_registration_number,
             vat_registered=data.vat_registered,
+            business_type=data.business_type,
+            vat_apply_to=data.vat_apply_to,
+            withholding_vat_applies=data.withholding_vat_applies,
         )
         tax_profile_updated()
         return {

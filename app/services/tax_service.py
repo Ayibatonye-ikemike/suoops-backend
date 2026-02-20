@@ -102,7 +102,10 @@ class TaxProfileService:
         fixed_assets: Optional[Decimal] = None,
         tin: Optional[str] = None,
         vat_registration_number: Optional[str] = None,
-        vat_registered: Optional[bool] = None
+        vat_registered: Optional[bool] = None,
+        business_type: Optional[str] = None,
+        vat_apply_to: Optional[str] = None,
+        withholding_vat_applies: Optional[bool] = None,
     ) -> TaxProfile:
         """
         Update tax profile with new data.
@@ -153,6 +156,15 @@ class TaxProfileService:
         
         if vat_registered is not None:
             profile.vat_registered = vat_registered
+
+        if business_type is not None:
+            profile.business_type = business_type
+
+        if vat_apply_to is not None:
+            profile.vat_apply_to = vat_apply_to
+
+        if withholding_vat_applies is not None:
+            profile.withholding_vat_applies = withholding_vat_applies
         
         # Auto-classify business size
         if annual_turnover is not None or fixed_assets is not None:
@@ -201,7 +213,10 @@ class TaxProfileService:
                 "vat_registered": profile.vat_registered,
                 "vat_number": profile.vat_registration_number,
                 "firs_registered": profile.firs_registered,
-                "firs_merchant_id": profile.firs_merchant_id
+                "firs_merchant_id": profile.firs_merchant_id,
+                "business_type": profile.business_type or "mixed",
+                "vat_apply_to": profile.vat_apply_to or "all",
+                "withholding_vat_applies": profile.withholding_vat_applies or False,
             },
             "tax_benefits": self._get_tax_benefits(profile)
         }

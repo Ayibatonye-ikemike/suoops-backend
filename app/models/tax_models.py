@@ -75,6 +75,12 @@ class TaxProfile(Base):
     last_verification_at = Column(DateTime, nullable=True)
     vat_registered = Column(Boolean, default=False)
     vat_registration_number = Column(String(20), nullable=True)
+
+    # Business type (for reporting clarity only, not enforcement)
+    business_type = Column(String(20), default="mixed")  # goods, services, mixed
+    # VAT application rules
+    vat_apply_to = Column(String(20), default="all")  # all, selected
+    withholding_vat_applies = Column(Boolean, default=False)  # banks, telcos, govt withhold VAT
     
     # Compliance tracking
     last_vat_return = Column(DateTime, nullable=True)

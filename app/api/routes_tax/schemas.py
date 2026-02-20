@@ -22,6 +22,17 @@ class TaxProfileUpdate(BaseModel):
         None, max_length=20, description="VAT registration number"
     )
     vat_registered: bool | None = Field(None, description="VAT registration status")
+    business_type: str | None = Field(
+        None, description="Business type: goods, services, or mixed",
+        pattern="^(goods|services|mixed)$",
+    )
+    vat_apply_to: str | None = Field(
+        None, description="Apply VAT to: all or selected invoices",
+        pattern="^(all|selected)$",
+    )
+    withholding_vat_applies: bool | None = Field(
+        None, description="Whether customers sometimes withhold VAT",
+    )
 
 
 class FiscalizationStatus(BaseModel):
@@ -80,6 +91,9 @@ class TaxRegistration(BaseModel):
     vat_number: str | None = None
     firs_registered: bool
     firs_merchant_id: str | None = None
+    business_type: str = "mixed"
+    vat_apply_to: str = "all"
+    withholding_vat_applies: bool = False
 
 
 class TaxBenefits(BaseModel):
