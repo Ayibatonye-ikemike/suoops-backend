@@ -239,6 +239,97 @@ class WhatsAppClient:
             logger.info("[WHATSAPP] Downloaded %d bytes", len(response.content))
             return response.content
 
+    def send_interactive_list(
+        self,
+        to: str,
+        body: str,
+        button_text: str,
+        sections: list[dict[str, Any]],
+        header: str | None = None,
+        footer: str | None = None,
+    ) -> bool:
+        """
+        Send an interactive list message (product catalog, menu, etc.).
+
+        WhatsApp limits:
+            - Max 10 rows total across all sections
+            - Row title max 24 chars, description max 72 chars
+            - Button text max 20 chars
+
+        Args:
+            to: Recipient phone number
+            body: Message body text
+            button_text: Text on the button that opens the list
+            sections: List of sections, each with 'title' and 'rows'.
+                      Each row: {'id': str, 'title': str, 'description': str (optional)}
+            header: Optional header text
+            footer: Optional footer text
+
+        Returns:
+            True if sent successfully
+        """
+        if self._is_test_mode():
+            logger.info("[WHATSAPP LIST][TEST] Would send list to %s: %s", to, body[:100])
+            return True
+        if not self.phone_number_id or not self.api_key:
+            logger.warning("[WHATSAPP LIST] Not configured, would send to %s", to)
+            return False
+
+        # Enforce WhatsApp limits
+        total_rows = sum(len(s.get("rows", [])) for s in sections)
+        if total_rows > 10:
+            logger.warning("[WHATSAPP LIST] Truncating to 10 rows (had %d)", total_rows)
+            # Truncate rows to fit within 10
+            remaining = 10
+            for section in sections:
+                rows = section.get("rows", [])
+                section["rows"] = rows[:remaining]
+                remaining -= len(section["rows"])
+                if remaining <= 0:
+                    break
+
+        interactive: dict[str, Any] = {
+            "type": "list",
+            "body": {"text": body},
+            "action": {
+                "button": button_text[:20],
+                "sections": sections,
+            },
+        }
+
+        if header:
+            interactive["header"] = {"type": "text", "text": header}
+        if footer:
+            interactive["footer"] = {"text": footer}
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to.replace("+", ""),
+            "type": "interactive",
+            "interactive": interactive,
+        }
+
+        try:
+            response = requests.post(
+                self.base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=10,
+            )
+            response.raise_for_status()
+            logger.info("[WHATSAPP LIST] ✓ Sent list to %s with %d items", to, total_rows)
+            return True
+        except requests.HTTPError as exc:
+            detail = exc.response.text if exc.response is not None else "(no body)"
+            logger.error("[WHATSAPP LIST] HTTP Error to %s: %s | Response: %s", to, exc, detail)
+            return False
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[WHATSAPP LIST] Failed to send to %s: %s", to, exc)
+            return False
+
     def send_interactive_buttons(
         self,
         to: str,

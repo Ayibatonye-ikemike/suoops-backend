@@ -9,8 +9,10 @@ from app.bot.expense_intent_processor import ExpenseIntentProcessor
 from app.bot.invoice_intent_processor import InvoiceIntentProcessor
 from app.bot.message_extractor import extract_message
 from app.bot.nlp_service import NLPService
+from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart
 from app.bot.voice_message_processor import VoiceMessageProcessor
 from app.bot.whatsapp_client import WhatsAppClient
+from app.services.invoice_service import build_invoice_service
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,7 @@ class WhatsAppHandler:
 
         self.invoice_processor = InvoiceIntentProcessor(db=db, client=client)
         self.expense_processor = ExpenseIntentProcessor(db=db, client=client)
+        self.product_flow = ProductInvoiceFlow(db=db, client=client)
         self.voice_processor = VoiceMessageProcessor(
             client=client,
             nlp=nlp,
@@ -110,6 +113,52 @@ class WhatsAppHandler:
         is_help = text_lower in help_keywords
         is_greeting = text_lower in greeting_keywords
         is_optin = text_lower in optin_keywords
+
+        # ── Product browsing flow ──────────────────────────────────
+        # Check if user has an active cart session (mid-flow)
+        cart_session = get_cart(sender)
+        if cart_session:
+            # User is mid-flow: handle quantity or customer details
+            if cart_session.step == "awaiting_qty":
+                self.product_flow.handle_quantity_reply(sender, text)
+                return
+            if cart_session.step == "awaiting_customer":
+                invoice_data = self.product_flow.handle_customer_reply(sender, text)
+                if invoice_data:
+                    # Create the invoice using the existing processor
+                    issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+                    if issuer_id:
+                        invoice_service = build_invoice_service(self.db, user_id=issuer_id)
+                        if self.invoice_processor._enforce_quota(invoice_service, issuer_id, sender):
+                            await self.invoice_processor._create_invoice(
+                                invoice_service, issuer_id, sender, invoice_data, {}
+                            )
+                return
+
+        # Check if text triggers product browsing
+        if ProductInvoiceFlow.is_trigger(text_lower):
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self.product_flow.start_browsing(sender, issuer_id)
+                return
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+                return
+
+        # Check if user is searching products: "search wig" / "find shoe"
+        search_match = text_lower.startswith("search ") or text_lower.startswith("find ")
+        if search_match:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                query = text[len(text_lower.split()[0]) + 1:].strip()
+                if query:
+                    self.product_flow.handle_search(sender, issuer_id, query)
+                    return
+        # ── End product browsing flow ──────────────────────────────
         
         # Handle explicit help command - give concise guide
         if is_help:
@@ -195,6 +244,8 @@ class WhatsAppHandler:
             "👋 Welcome back!\n\n"
             "📝 *Create invoice:*\n"
             "`Invoice Joy 08012345678, 5000 wig`\n\n"
+            "📦 *From inventory:*\n"
+            "Type *products* to browse your stock\n\n"
             "Type *help* for full guide."
         )
     
@@ -212,6 +263,12 @@ class WhatsAppHandler:
             "*Multiple Items:*\n"
             "• `Invoice Ada 08012345678 11000 Design, 10000 Printing, 1000 Delivery`\n"
             "• `Invoice Blessing 5000 braids, 2000 gel, 500 pins`\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "📦 *INVOICE FROM INVENTORY*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "• Type *products* — browse & pick from your stock\n"
+            "• Type *search wig* — find a specific product\n"
+            "• Select items, set quantities, send invoice!\n\n"
             "⚠️ *IMPORTANT:*\n"
             "• Put amount BEFORE item name (11000 Design ✅, NOT Design 11000 ❌)\n"
             "• Don't use commas in numbers (11000 ✅, NOT 11,000 ❌)\n"
@@ -232,12 +289,43 @@ class WhatsAppHandler:
         self.client.send_text(sender, help_message)
     
     async def _handle_interactive_message(self, sender: str, message: dict[str, Any]) -> None:
-        """Handle interactive button clicks from WhatsApp."""
+        """Handle interactive button clicks and list selections from WhatsApp."""
         button_id = message.get("button_id", "")
         button_title = message.get("button_title", "")
+        # List replies come through as list_reply_id / list_reply_title
+        list_reply_id = message.get("list_reply_id", "")
+        list_reply_title = message.get("list_reply_title", "")
         
-        logger.info("[BUTTON] Received button click from %s: id=%s, title=%s", sender, button_id, button_title)
+        interactive_id = button_id or list_reply_id
         
+        logger.info(
+            "[INTERACTIVE] From %s: button_id=%s, list_reply_id=%s",
+            sender, button_id, list_reply_id,
+        )
+        
+        # ── Product flow: list selection ───────────────────────────
+        if list_reply_id.startswith("product_"):
+            try:
+                product_id = int(list_reply_id.replace("product_", ""))
+                self.product_flow.handle_product_selected(sender, product_id)
+                return
+            except (ValueError, TypeError):
+                logger.warning("[INTERACTIVE] Invalid product id: %s", list_reply_id)
+        
+        # ── Product flow: cart action buttons ──────────────────────
+        if button_id == "cart_add_more":
+            self.product_flow.handle_add_more(sender)
+            return
+        
+        if button_id == "cart_send_invoice":
+            self.product_flow.handle_send_invoice(sender)
+            return
+        
+        if button_id == "cart_clear":
+            self.product_flow.handle_clear_cart(sender)
+            return
+        # ── End product flow ───────────────────────────────────────
+
         # Handle "I've Paid" button click
         if button_id == "confirm_paid" or button_id.startswith("paid_"):
             if self.invoice_processor.handle_customer_paid(sender):
@@ -250,7 +338,7 @@ class WhatsAppHandler:
                 logger.info("Handled opt-in button from customer %s", sender)
                 return
         
-        logger.warning("[BUTTON] Unhandled button: id=%s", button_id)
+        logger.warning("[INTERACTIVE] Unhandled: id=%s", interactive_id)
     
     async def _handle_image_message(self, sender: str, message: dict[str, Any]) -> None:
         """Handle image messages (receipt photos)"""

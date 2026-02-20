@@ -61,7 +61,7 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any] | None:
         elif msg_type == "audio":
             extracted["audio_id"] = message.get("audio", {}).get("id")
         elif msg_type == "interactive":
-            # Handle interactive button replies
+            # Handle interactive button replies and list selections
             interactive = message.get("interactive", {})
             interactive_type = interactive.get("type")
             if interactive_type == "button_reply":
@@ -71,6 +71,14 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any] | None:
                 extracted["button_title"] = button_reply.get("title")
                 logger.info("[EXTRACT] Button clicked: id=%s, title=%s", 
                            extracted.get("button_id"), extracted.get("button_title"))
+            elif interactive_type == "list_reply":
+                # List item was selected - extract row ID and title
+                list_reply = interactive.get("list_reply", {})
+                extracted["list_reply_id"] = list_reply.get("id")
+                extracted["list_reply_title"] = list_reply.get("title")
+                extracted["list_reply_description"] = list_reply.get("description")
+                logger.info("[EXTRACT] List selected: id=%s, title=%s",
+                           extracted.get("list_reply_id"), extracted.get("list_reply_title"))
 
         contacts = value.get("contacts", [])
         if contacts:

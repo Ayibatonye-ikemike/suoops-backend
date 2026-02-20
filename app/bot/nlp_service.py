@@ -397,8 +397,12 @@ class NLPService:
         clean_text = re.sub(r"\s+", " ", clean_text).strip()
         
         # Strategy: Use regex to find all <amount> <description> pairs
+        # or <quantity> <description> at <amount> patterns
         # Pattern: number (3+ digits) followed by non-numeric words until next number
         # This handles both comma-separated and space-separated items
+        
+        # Also support quantity prefix: "3 wigs" (small number before a word)
+        # Vs amount: "5000 wig" (large number before a word)
         
         # Find all amounts and their positions
         amount_pattern = re.compile(r"\b(\d{3,})\b")
