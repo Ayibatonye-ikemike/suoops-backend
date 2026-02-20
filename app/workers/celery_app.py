@@ -47,6 +47,10 @@ def _create_celery() -> Celery:
                 "task": "summary.send_daily_summaries",
                 "schedule": crontab(minute=0, hour=18),  # 18:00 UTC = 19:00 WAT
             },
+            "daily-engagement-emails": {
+                "task": "engagement.send_lifecycle_emails",
+                "schedule": crontab(minute=0, hour=9),  # 09:00 UTC = 10:00 WAT
+            },
         }
     return celery
 

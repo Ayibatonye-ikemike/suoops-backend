@@ -17,6 +17,9 @@ from .campaign_tasks import (
     send_campaign_async,
     send_single_email_async,
 )
+from .engagement_tasks import (
+    send_engagement_emails,
+)
 from .expense_tasks import (
     send_expense_reminders,
     send_expense_summary,
@@ -58,4 +61,6 @@ __all__ = [
     # Campaign tasks
     "send_campaign_async",
     "send_single_email_async",
+    # Engagement tasks
+    "send_engagement_emails",
 ]
