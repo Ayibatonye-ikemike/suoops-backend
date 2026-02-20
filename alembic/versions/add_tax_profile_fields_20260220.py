@@ -1,14 +1,14 @@
 """Add business_type, vat_apply_to, withholding_vat_applies to tax_profiles
 
 Revision ID: tax_profile_fields_20260220
-Revises: None (auto-detect)
+Revises: 20260219_add_missing_indexes
 Create Date: 2026-02-20
 """
 import sqlalchemy as sa
 from alembic import op
 
 revision = "tax_profile_fields_20260220"
-down_revision = None  # Alembic auto-detects chain
+down_revision = "20260219_add_missing_indexes"
 
 
 def upgrade():
