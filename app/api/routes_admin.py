@@ -827,7 +827,6 @@ async def get_growth_metrics(
 
         month_revenue = db.query(func.sum(PaymentTransaction.amount)).filter(
             PaymentTransaction.status == PaymentStatus.SUCCESS,
-            PaymentTransaction.payment_type == "subscription",
             PaymentTransaction.created_at >= m_start,
             PaymentTransaction.created_at < m_end,
         ).scalar() or 0
