@@ -986,6 +986,332 @@ async def get_growth_metrics(
 
 
 # =============================================================================
+# BUSINESS INTELLIGENCE — Per-business health for admin
+# =============================================================================
+
+class BusinessHealthItem(BaseModel):
+    """Per-business health snapshot."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    business_name: str | None
+    phone: str | None
+    email: str | None
+    plan: str
+    created_at: str
+    last_login: str | None
+
+    # Subscription
+    subscription_started_at: str | None
+    subscription_expires_at: str | None
+    subscription_status: str  # active, expired, expiring_soon, free
+    days_until_expiry: int | None
+    invoice_balance: int
+
+    # Revenue
+    total_revenue: float
+    total_expenses: float
+    net_income: float
+    invoices_total: int
+    invoices_paid: int
+    invoices_pending: int
+    collection_rate: float
+
+    # Activity
+    customers_count: int
+    invoices_this_month: int
+    last_invoice_date: str | None
+    days_since_last_invoice: int | None
+    avg_invoice_value: float
+
+    # Risk / Opportunity
+    health_score: int  # 0-100
+    risk_flags: list[str]
+
+
+class BusinessListResponse(BaseModel):
+    businesses: list[BusinessHealthItem]
+    total: int
+    page: int
+    page_size: int
+
+
+@router.get("/businesses", response_model=BusinessListResponse)
+async def get_business_intelligence(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=5, le=100),
+    sort_by: str = Query("health_score", regex="^(health_score|total_revenue|invoices_total|created_at|last_login|name|collection_rate)$"),
+    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    plan_filter: str | None = Query(None, regex="^(free|starter|pro)$"),
+    risk_filter: str | None = Query(None, regex="^(at_risk|healthy|inactive|churned)$"),
+    search: str | None = Query(None, max_length=100),
+    _admin: Any = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Business-level intelligence — per-business health metrics."""
+    from app.models.models import Invoice
+
+    now = dt.datetime.now(dt.timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    thirty_days_ago = now - dt.timedelta(days=30)
+
+    # ── Base query: all registered users ──
+    q = db.query(models.User)
+
+    if plan_filter:
+        plan_enum = {
+            "free": SubscriptionPlan.FREE,
+            "starter": SubscriptionPlan.STARTER,
+            "pro": SubscriptionPlan.PRO,
+        }[plan_filter]
+        q = q.filter(models.User.plan == plan_enum)
+
+    if search:
+        term = f"%{search.strip()}%"
+        q = q.filter(
+            (models.User.name.ilike(term))
+            | (models.User.business_name.ilike(term))
+            | (models.User.phone.ilike(term))
+            | (models.User.email.ilike(term))
+        )
+
+    all_users = q.all()
+
+    # ── Pre-fetch aggregated invoice data per user ──
+    inv_stats = (
+        db.query(
+            Invoice.user_id,
+            func.count(Invoice.id).label("total"),
+            func.count(case((Invoice.status == "paid", 1))).label("paid"),
+            func.count(case((Invoice.status == "pending", 1))).label("pending"),
+            func.sum(
+                case((Invoice.invoice_type == "revenue", Invoice.amount), else_=0)
+            ).label("revenue"),
+            func.sum(
+                case((Invoice.invoice_type == "expense", Invoice.amount), else_=0)
+            ).label("expenses"),
+            func.max(Invoice.created_at).label("last_invoice"),
+            func.count(
+                case(
+                    (Invoice.created_at >= month_start, 1),
+                )
+            ).label("this_month"),
+            func.avg(
+                case((Invoice.invoice_type == "revenue", Invoice.amount))
+            ).label("avg_value"),
+            func.count(
+                case(
+                    (
+                        (Invoice.invoice_type == "revenue") & (Invoice.status == "paid"),
+                        1,
+                    )
+                )
+            ).label("paid_revenue"),
+            func.count(
+                case(
+                    (Invoice.invoice_type == "revenue", 1),
+                )
+            ).label("total_revenue_count"),
+        )
+        .group_by(Invoice.user_id)
+        .all()
+    )
+    inv_map: dict[int, Any] = {row.user_id: row for row in inv_stats}
+
+    # Pre-fetch customer count per user
+    cust_stats = (
+        db.query(
+            Invoice.user_id,
+            func.count(func.distinct(Invoice.customer_id)).label("cust_count"),
+        )
+        .filter(Invoice.customer_id.isnot(None))
+        .group_by(Invoice.user_id)
+        .all()
+    )
+    cust_map: dict[int, int] = {row.user_id: row.cust_count for row in cust_stats}
+
+    # ── Build business items ──
+    items: list[BusinessHealthItem] = []
+
+    for u in all_users:
+        inv = inv_map.get(u.id)
+        total_rev = float(inv.revenue or 0) if inv else 0
+        total_exp = float(inv.expenses or 0) if inv else 0
+        inv_total = inv.total if inv else 0
+        inv_paid = inv.paid if inv else 0
+        inv_pending = inv.pending if inv else 0
+        inv_this_month = inv.this_month if inv else 0
+        avg_val = round(float(inv.avg_value or 0), 2) if inv else 0
+        paid_rev = inv.paid_revenue if inv else 0
+        total_rev_count = inv.total_revenue_count if inv else 0
+        last_inv = inv.last_invoice if inv else None
+        customers = cust_map.get(u.id, 0)
+
+        collection = (
+            round(paid_rev / total_rev_count * 100, 1) if total_rev_count > 0 else 0
+        )
+
+        # Subscription status
+        sub_status = "free"
+        days_until = None
+        if u.plan in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO):
+            if u.subscription_expires_at:
+                if u.subscription_expires_at < now:
+                    sub_status = "expired"
+                elif u.subscription_expires_at <= now + dt.timedelta(days=7):
+                    sub_status = "expiring_soon"
+                    days_until = (u.subscription_expires_at - now).days
+                else:
+                    sub_status = "active"
+                    days_until = (u.subscription_expires_at - now).days
+            else:
+                sub_status = "active"
+
+        # Days since last invoice
+        days_since = None
+        if last_inv:
+            if hasattr(last_inv, "tzinfo") and last_inv.tzinfo is None:
+                last_inv = last_inv.replace(tzinfo=dt.timezone.utc)
+            days_since = (now - last_inv).days
+
+        # ── Health Score (0–100) ──
+        score = 50  # baseline
+
+        # Activity (+/- 30)
+        if days_since is not None:
+            if days_since <= 3:
+                score += 30
+            elif days_since <= 7:
+                score += 20
+            elif days_since <= 14:
+                score += 10
+            elif days_since <= 30:
+                score += 0
+            elif days_since <= 60:
+                score -= 10
+            else:
+                score -= 20
+        else:
+            # never created an invoice
+            score -= 25
+
+        # Collection rate (+/- 15)
+        if total_rev_count >= 3:
+            if collection >= 70:
+                score += 15
+            elif collection >= 40:
+                score += 5
+            else:
+                score -= 10
+
+        # Invoice volume (+/- 10)
+        if inv_this_month >= 10:
+            score += 10
+        elif inv_this_month >= 3:
+            score += 5
+        elif inv_total == 0:
+            score -= 5
+
+        # Paid plan bonus
+        if u.plan == SubscriptionPlan.PRO:
+            score += 10
+        elif u.plan == SubscriptionPlan.STARTER:
+            score += 5
+
+        # Subscription expired penalty
+        if sub_status == "expired":
+            score -= 15
+
+        score = max(0, min(100, score))
+
+        # Risk flags
+        flags: list[str] = []
+        if inv_total == 0:
+            flags.append("never_invoiced")
+        if days_since is not None and days_since > 30:
+            flags.append("inactive_30d")
+        if days_since is not None and days_since > 60:
+            flags.append("inactive_60d")
+        if sub_status == "expired":
+            flags.append("subscription_expired")
+        if sub_status == "expiring_soon":
+            flags.append("subscription_expiring")
+        if total_rev_count >= 5 and collection < 30:
+            flags.append("low_collection")
+        if u.plan == SubscriptionPlan.FREE and inv_total >= 3 and u.invoice_balance <= 1:
+            flags.append("upgrade_candidate")
+        if inv_this_month >= 10:
+            flags.append("power_user")
+
+        item = BusinessHealthItem(
+            id=u.id,
+            name=u.name,
+            business_name=u.business_name,
+            phone=u.phone,
+            email=u.email,
+            plan=u.plan.value,
+            created_at=u.created_at.isoformat(),
+            last_login=u.last_login.isoformat() if u.last_login else None,
+            subscription_started_at=u.subscription_started_at.isoformat() if u.subscription_started_at else None,
+            subscription_expires_at=u.subscription_expires_at.isoformat() if u.subscription_expires_at else None,
+            subscription_status=sub_status,
+            days_until_expiry=days_until,
+            invoice_balance=u.invoice_balance,
+            total_revenue=total_rev,
+            total_expenses=total_exp,
+            net_income=round(total_rev - total_exp, 2),
+            invoices_total=inv_total,
+            invoices_paid=inv_paid,
+            invoices_pending=inv_pending,
+            collection_rate=collection,
+            customers_count=customers,
+            invoices_this_month=inv_this_month,
+            last_invoice_date=last_inv.isoformat() if last_inv else None,
+            days_since_last_invoice=days_since,
+            avg_invoice_value=avg_val,
+            health_score=score,
+            risk_flags=flags,
+        )
+
+        items.append(item)
+
+    # ── Risk filter ──
+    if risk_filter == "at_risk":
+        items = [i for i in items if i.health_score < 40]
+    elif risk_filter == "healthy":
+        items = [i for i in items if i.health_score >= 60]
+    elif risk_filter == "inactive":
+        items = [i for i in items if "inactive_30d" in i.risk_flags or "never_invoiced" in i.risk_flags]
+    elif risk_filter == "churned":
+        items = [i for i in items if "subscription_expired" in i.risk_flags]
+
+    # ── Sort ──
+    reverse = sort_order == "desc"
+    key_map = {
+        "health_score": lambda x: x.health_score,
+        "total_revenue": lambda x: x.total_revenue,
+        "invoices_total": lambda x: x.invoices_total,
+        "created_at": lambda x: x.created_at,
+        "last_login": lambda x: x.last_login or "",
+        "name": lambda x: x.name.lower(),
+        "collection_rate": lambda x: x.collection_rate,
+    }
+    items.sort(key=key_map[sort_by], reverse=reverse)
+
+    total = len(items)
+    start = (page - 1) * page_size
+    page_items = items[start : start + page_size]
+
+    return BusinessListResponse(
+        businesses=page_items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+# =============================================================================
 # USER SEGMENTS FOR CAMPAIGNS (Brevo Email/WhatsApp Export)
 # =============================================================================
 
