@@ -1,4 +1,5 @@
 import datetime as dt
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -13,6 +14,8 @@ from app.db.session import get_db
 from app.models import models
 from app.models.models import SubscriptionPlan
 from app.models.payment_models import PaymentStatus, PaymentTransaction
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
