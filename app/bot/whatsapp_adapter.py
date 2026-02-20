@@ -14,6 +14,13 @@ from app.bot.voice_message_processor import VoiceMessageProcessor
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
 from app.models import models
+from app.services.analytics_service import (
+    calculate_customer_metrics,
+    calculate_invoice_metrics,
+    calculate_revenue_metrics,
+    get_conversion_rate,
+    get_date_range,
+)
 from app.services.invoice_service import build_invoice_service
 
 logger = logging.getLogger(__name__)
@@ -167,7 +174,22 @@ class WhatsAppHandler:
                     self.product_flow.handle_search(sender, issuer_id, query)
                     return
         # ── End product browsing flow ──────────────────────────────
-        
+
+        # ── Analytics / Insights command ──────────────────────────
+        analytics_keywords = {"report", "analytics", "insights", "summary", "dashboard", "stats", "my stats", "my report"}
+        if text_lower in analytics_keywords:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._send_analytics(sender, issuer_id)
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+            return
+        # ── End analytics ─────────────────────────────────────────
+
         # Handle explicit help command - give concise guide
         if is_help:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
@@ -254,9 +276,105 @@ class WhatsAppHandler:
             "`Invoice Joy 08012345678, 5000 wig`\n\n"
             "📦 *From inventory:*\n"
             "Type *products* to browse your stock\n\n"
+            "📊 *Business report:*\n"
+            "Type *report* for your analytics\n\n"
             "Type *help* for full guide."
         )
     
+    def _send_analytics(self, sender: str, issuer_id: int) -> None:
+        """Send business analytics snapshot via WhatsApp."""
+        from decimal import Decimal
+
+        try:
+            period = "30d"
+            start_date, end_date = get_date_range(period)
+            conversion_rate = get_conversion_rate("NGN")
+
+            revenue = calculate_revenue_metrics(
+                self.db, issuer_id, start_date, end_date, conversion_rate
+            )
+            invoices = calculate_invoice_metrics(
+                self.db, issuer_id, start_date, end_date
+            )
+            customers = calculate_customer_metrics(
+                self.db, issuer_id, start_date, end_date
+            )
+
+            # Format currency helper
+            def fmt(amount: float) -> str:
+                if amount >= 1_000_000:
+                    return f"₦{amount / 1_000_000:,.1f}M"
+                if amount >= 1_000:
+                    return f"₦{amount:,.0f}"
+                return f"₦{amount:,.2f}"
+
+            # Build growth indicator
+            growth = revenue.growth_rate
+            if growth > 0:
+                growth_icon = "📈"
+                growth_text = f"+{growth:.0f}%"
+            elif growth < 0:
+                growth_icon = "📉"
+                growth_text = f"{growth:.0f}%"
+            else:
+                growth_icon = "➡️"
+                growth_text = "0%"
+
+            # Collection rate
+            collection = (
+                (invoices.paid_invoices / invoices.total_invoices * 100)
+                if invoices.total_invoices > 0 else 0
+            )
+
+            msg = (
+                "📊 *Your Business Report (30 days)*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"{growth_icon} *Revenue {growth_text} vs prev*\n"
+                f"💰 Total: {fmt(revenue.total_revenue)}\n"
+                f"✅ Collected: {fmt(revenue.paid_revenue)}\n"
+                f"⏳ Pending: {fmt(revenue.pending_revenue)}\n"
+                f"🔴 Overdue: {fmt(revenue.overdue_revenue)}\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "📄 *Invoices*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📋 Total: {invoices.total_invoices}\n"
+                f"✅ Paid: {invoices.paid_invoices}\n"
+                f"⏳ Pending: {invoices.pending_invoices}\n"
+            )
+
+            if invoices.awaiting_confirmation:
+                msg += f"🔔 Awaiting: {invoices.awaiting_confirmation}\n"
+            if invoices.overdue_invoices if hasattr(invoices, 'overdue_invoices') else 0:
+                msg += f"🔴 Overdue: {invoices.overdue_invoices}\n"
+
+            msg += (
+                f"📊 Collection: {collection:.0f}%\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "👥 *Customers*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"👥 Total: {customers.total_customers}\n"
+                f"🆕 Active this month: {customers.active_customers}\n"
+                f"🔄 Repeat rate: {customers.repeat_customer_rate:.0f}%\n\n"
+            )
+
+            if revenue.average_invoice_value:
+                msg += f"💵 Avg invoice: {fmt(revenue.average_invoice_value)}\n\n"
+
+            msg += (
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "💡 Full analytics at suoops.com/dashboard/analytics"
+            )
+
+            self.client.send_text(sender, msg)
+
+        except Exception as exc:
+            logger.exception("Error generating analytics for user %s: %s", issuer_id, exc)
+            self.client.send_text(
+                sender,
+                "⚠️ Couldn't generate your report right now. "
+                "Try again or view full analytics at suoops.com/dashboard/analytics"
+            )
+
     def _send_help_guide(self, sender: str) -> None:
         """Send comprehensive help guide to a business user."""
         help_message = (
@@ -297,7 +415,11 @@ class WhatsAppHandler:
             "2️⃣ They reply 'Hi' → get payment details + PDF\n"
             "3️⃣ They pay & tap 'I've Paid' → you're notified!\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "💡 *TIPS*\n"
+            "� *BUSINESS REPORT*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Type *report* — get revenue, invoices & customer stats\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "�💡 *TIPS*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "• Set up bank details in your dashboard first\n"
             "• Share the payment link if customer doesn't reply\n"
