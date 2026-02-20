@@ -118,9 +118,9 @@ class WhatsAppHandler:
         # Check if user has an active cart session (mid-flow)
         cart_session = get_cart(sender)
         if cart_session:
-            # User is mid-flow: handle quantity or customer details
-            if cart_session.step == "awaiting_qty":
-                self.product_flow.handle_quantity_reply(sender, text)
+            # User is mid-flow: handle items text or customer details
+            if cart_session.step == "awaiting_items":
+                self.product_flow.handle_items_reply(sender, text)
                 return
             if cart_session.step == "awaiting_customer":
                 invoice_data = self.product_flow.handle_customer_reply(sender, text)
@@ -303,24 +303,11 @@ class WhatsAppHandler:
             sender, button_id, list_reply_id,
         )
         
-        # ── Product flow: list selection ───────────────────────────
-        if list_reply_id.startswith("product_"):
-            try:
-                product_id = int(list_reply_id.replace("product_", ""))
-                self.product_flow.handle_product_selected(sender, product_id)
-                return
-            except (ValueError, TypeError):
-                logger.warning("[INTERACTIVE] Invalid product id: %s", list_reply_id)
-        
         # ── Product flow: cart action buttons ──────────────────────
         if button_id == "cart_add_more":
             self.product_flow.handle_add_more(sender)
             return
-        
-        if button_id == "cart_send_invoice":
-            self.product_flow.handle_send_invoice(sender)
-            return
-        
+
         if button_id == "cart_clear":
             self.product_flow.handle_clear_cart(sender)
             return
