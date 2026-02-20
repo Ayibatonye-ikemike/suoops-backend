@@ -92,7 +92,11 @@
     <tr><td>Development Levy</td><td>{{ '{:,.2f}'.format((report.levy_amount or 0)|float) }}</td></tr>
   </table>
 
-  <h2 class="section-title">VAT Breakdown</h2>
+  <h2 class="section-title">VAT Summary</h2>
+  <p style="font-size:10.5px; color:#0F766E; margin:2px 0 8px; line-height:1.5;">
+    This is an internal VAT summary based on invoices created in SuoOps.<br>
+    Please review with your accountant before filing.
+  </p>
   <table>
     <tr><th style="width:55%">Category</th><th>Amount (₦)</th></tr>
     <tr><td>VAT Collected</td><td>{{ '{:,.2f}'.format((report.vat_collected or 0)|float) }}</td></tr>
@@ -102,7 +106,7 @@
   </table>
 
   <div class="footer">
-    <strong>Disclaimer:</strong> This internal compliance report was generated automatically by SuoOps. Figures exclude refunded invoices and are provisional, subject to FIRS review and guidance updates. This document supports — but does not replace — statutory filings.
+    <strong>Disclaimer:</strong> This is an internal VAT &amp; tax summary based on invoices created in SuoOps. VAT figures reflect only what the business explicitly charged on invoices &mdash; SuoOps does not assume VAT obligations, decide exemptions, or calculate net VAT payable. Please review all figures with your accountant before filing with FIRS.
   </div>
 
   {# ==================== PAGE 2 — GUIDANCE (USER TO FILL) ==================== #}
@@ -180,7 +184,7 @@
     </div>
 
     <div class="footer" style="margin-top:24px;">
-      <strong>Disclaimer:</strong> This internal compliance report was generated automatically by SuoOps. Figures exclude refunded invoices and are provisional, subject to FIRS review and guidance updates. This document supports — but does not replace — statutory filings.
+      <strong>Disclaimer:</strong> This is an internal VAT &amp; tax summary based on invoices created in SuoOps. VAT figures reflect only what the business explicitly charged on invoices &mdash; SuoOps does not assume VAT obligations, decide exemptions, or calculate net VAT payable. Please review all figures with your accountant before filing with FIRS.
     </div>
   </div>
 </body>

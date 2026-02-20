@@ -91,6 +91,9 @@ class BaseAppSettings(BaseSettings):
     SENTRY_DSN: str | None = None
     TELEMETRY_INGEST_KEY: str | None = None  # API key required for telemetry ingestion in prod
     
+    # VAT / Tax
+    VAT_RATE: float = 7.5  # Nigeria standard VAT rate (percent)
+
     # Fiscalization Integration (FIRS - provisional placeholders, external API pending)
     FIRS_API_URL: str | None = None
     FIRS_API_KEY: str | None = None

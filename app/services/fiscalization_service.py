@@ -36,19 +36,24 @@ class VATCalculator:
     VAT calculation logic (SRP: Calculations only).
     
     Nigeria 2026 tax rules:
-    - Standard rate: 7.5%
+    - Standard rate: 7.5% (from settings.VAT_RATE)
     - Zero-rated: Medical, education, basic food
     - Exempt: Financial services
     """
     
-    STANDARD_RATE = 7.5
-    
-    VAT_RATES = {
-        VATCategory.STANDARD: 7.5,
-        VATCategory.ZERO_RATED: 0,
-        VATCategory.EXEMPT: 0,
-        VATCategory.EXPORT: 0,
-    }
+    @staticmethod
+    def _standard_rate() -> float:
+        return settings.VAT_RATE
+
+    @classmethod
+    def _vat_rates(cls) -> dict:
+        rate = cls._standard_rate()
+        return {
+            VATCategory.STANDARD: rate,
+            VATCategory.ZERO_RATED: 0,
+            VATCategory.EXEMPT: 0,
+            VATCategory.EXPORT: 0,
+        }
     
     @classmethod
     def calculate(cls, amount: Decimal, category: str = "standard") -> Dict[str, Decimal]:
@@ -62,7 +67,8 @@ class VATCalculator:
         Returns:
             Dict with subtotal, vat_rate, vat_amount, total
         """
-        vat_rate = cls.VAT_RATES.get(category, cls.STANDARD_RATE)
+        rates = cls._vat_rates()
+        vat_rate = rates.get(category, cls._standard_rate())
         
         # Calculate VAT from inclusive amount
         vat_amount = (Decimal(str(amount)) * Decimal(str(vat_rate))) / (Decimal("100") + Decimal(str(vat_rate)))

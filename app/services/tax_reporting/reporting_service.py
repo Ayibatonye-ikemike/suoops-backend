@@ -217,22 +217,24 @@ class TaxReportingService:
         end_date: date,
         basis: str,
     ) -> dict:
-        """Compute VAT aggregation data for eligible plans."""
-        from app.models.models import Invoice, SubscriptionPlan, User
-        
-        user = self.db.query(User).filter(User.id == user_id).first()
-        user_plan = user.plan if user else SubscriptionPlan.FREE
-        
-        is_vat_eligible = user_plan == SubscriptionPlan.PRO
-        
+        """Compute VAT aggregation data for the period.
+
+        VAT is opt-in: only computed for VAT-registered businesses.
+        SuoOps calculates VAT from what the business charges — not what the law assumes.
+        """
+        from app.models.models import Invoice
+        from app.models.tax_models import TaxProfile
+
         vat_data = {
             "taxable_sales": Decimal("0"),
             "zero_rated_sales": Decimal("0"),
             "exempt_sales": Decimal("0"),
             "vat_collected": Decimal("0"),
         }
-        
-        if not is_vat_eligible:
+
+        # VAT aggregation is opt-in: only for VAT-registered businesses
+        tax_profile = self.db.query(TaxProfile).filter(TaxProfile.user_id == user_id).first()
+        if not (tax_profile and tax_profile.vat_registered):
             return vat_data
         
         start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
@@ -256,16 +258,27 @@ class TaxReportingService:
             if inv.discount_amount:
                 amount -= Decimal(str(inv.discount_amount))
             cat = (inv.vat_category or "standard").lower()
+
             if cat in {"standard"}:
-                vat_data["taxable_sales"] += amount
-                if inv.vat_amount:
-                    vat_data["vat_collected"] += Decimal(str(inv.vat_amount))
+                # Use stored VAT or compute on-the-fly for legacy invoices
+                vat_amt = Decimal(str(inv.vat_amount or 0))
+                if not vat_amt:
+                    from app.services.fiscalization_service import VATCalculator
+                    vat_result = VATCalculator.calculate(amount, "standard")
+                    vat_amt = vat_result["vat_amount"]
+                # taxable_sales = VAT-exclusive base (net amount)
+                vat_data["taxable_sales"] += amount - vat_amt
+                vat_data["vat_collected"] += vat_amt
             elif cat in {"zero_rated", "export"}:
                 vat_data["zero_rated_sales"] += amount
             elif cat in {"exempt"}:
                 vat_data["exempt_sales"] += amount
             else:
-                vat_data["taxable_sales"] += amount
+                # Unknown category — treat as standard
+                from app.services.fiscalization_service import VATCalculator
+                vat_result = VATCalculator.calculate(amount, "standard")
+                vat_data["taxable_sales"] += amount - vat_result["vat_amount"]
+                vat_data["vat_collected"] += vat_result["vat_amount"]
         
         return vat_data
 

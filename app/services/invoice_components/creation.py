@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import metrics
 from app.core.exceptions import MissingBankDetailsError
 from app.models import models
+from app.services.fiscalization_service import VATCalculator
 from app.utils.id_generator import generate_id
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,29 @@ class InvoiceCreationMixin:
 
         discount_raw = data.get("discount_amount")
         discount_amount = Decimal(str(discount_raw)) if discount_raw else None
-        
+
+        # ── VAT calculation (opt-in: only for VAT-registered businesses) ──
+        # SuoOps calculates VAT from what the business charges — not what the law assumes.
+        from app.models.tax_models import TaxProfile
+        tax_profile = self.db.query(TaxProfile).filter(TaxProfile.user_id == issuer_id).first()
+        is_vat_registered = tax_profile.vat_registered if tax_profile else False
+
+        default_description = (data.get("description") or "Item").strip() or "Item"
+
+        if is_vat_registered:
+            # VAT enabled: auto-detect category from item descriptions, then calculate
+            lines_data_preview = data.get("lines") or [{"description": default_description}]
+            combined_desc = " ".join(ld.get("description", "") for ld in lines_data_preview)
+            vat_category = data.get("vat_category") or VATCalculator.detect_category(combined_desc)
+
+            inv_amount = Decimal(str(data.get("amount")))
+            taxable_amount = inv_amount - (discount_amount or Decimal(0))
+            vat_result = VATCalculator.calculate(taxable_amount, vat_category)
+        else:
+            # VAT OFF by default — no VAT assumptions for non-registered businesses
+            vat_category = "none"
+            vat_result = {"vat_rate": Decimal("0"), "vat_amount": Decimal("0")}
+
         # Determine initial status based on invoice type and contact info
         customer_phone = data.get("customer_phone")
         customer_email = data.get("customer_email")
@@ -80,9 +103,11 @@ class InvoiceCreationMixin:
             channel=data.get("channel"),
             verified=data.get("verified", False),
             notes=data.get("notes"),
+            vat_rate=float(vat_result["vat_rate"]),
+            vat_amount=vat_result["vat_amount"],
+            vat_category=str(vat_category),
         )
 
-        default_description = (data.get("description") or "Item").strip() or "Item"
         lines_data = data.get("lines") or [
             {"description": default_description, "quantity": 1, "unit_price": invoice.amount}
         ]

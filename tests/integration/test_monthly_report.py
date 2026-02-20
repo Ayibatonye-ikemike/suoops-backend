@@ -75,6 +75,11 @@ def add_invoice(
 def test_monthly_report_aggregation_vat_and_levy():
     session = SessionLocal()
     seed_user(session, 1)
+    # VAT is opt-in: register this user as VAT-registered
+    from app.models.tax_models import TaxProfile
+    profile = TaxProfile(user_id=1, vat_registered=True)
+    session.add(profile)
+    session.commit()
     service = TaxReportingService(session)
     now = datetime.now(timezone.utc)
     year = now.year
@@ -88,7 +93,7 @@ def test_monthly_report_aggregation_vat_and_levy():
 
     report = service.generate_monthly_report(1, year, month, basis="paid", force_regenerate=True)
 
-    assert float(report.taxable_sales) == 10000.0
+    assert float(report.taxable_sales) == 9250.0  # VAT-exclusive (10000 - 750)
     assert float(report.zero_rated_sales) == 4000.0
     assert float(report.exempt_sales) == 6000.0
     assert float(report.vat_collected) == 750.0
@@ -107,6 +112,11 @@ def test_monthly_report_aggregation_vat_and_levy():
 def test_monthly_report_regeneration_retains_pdf_url():
     session = SessionLocal()
     seed_user(session, 2)
+    # VAT is opt-in: register this user as VAT-registered
+    from app.models.tax_models import TaxProfile
+    profile = TaxProfile(user_id=2, vat_registered=True)
+    session.add(profile)
+    session.commit()
     service = TaxReportingService(session)
     now = datetime.now(timezone.utc)
     year = now.year

@@ -107,19 +107,21 @@ class TaxProfile(Base):
     @property
     def tax_rates(self) -> Dict[str, float]:
         """Get applicable tax rates based on business size (NTA 2025 rates)"""
+        from app.core.config import settings
+        vat_rate = settings.VAT_RATE
         if self.is_small_business:
             return {
                 "CIT": 0,           # Company Income Tax - EXEMPT (≤₦100M)
                 "CGT": 0,           # Capital Gains Tax - EXEMPT
                 "DEV_LEVY": 0,      # Development Levy - EXEMPT
-                "VAT": 7.5          # VAT still applicable (exemption at ₦25M separately)
+                "VAT": vat_rate     # VAT still applicable (exemption at ₦25M separately)
             }
         else:
             return {
                 "CIT": 20,          # Company Income Tax (medium: 20%, large: 30%)
                 "CGT": 30,          # Capital Gains Tax
                 "DEV_LEVY": 4,      # 4% Development Levy
-                "VAT": 7.5          # Standard VAT rate
+                "VAT": vat_rate     # Standard VAT rate
             }
 
     def mark_verified(self, tin: bool = False, vat: bool = False) -> None:
