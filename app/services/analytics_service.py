@@ -718,7 +718,7 @@ def calculate_professionalism_score(db: Session, user_id: int) -> dict:
     due_ratio = with_due_date / len(recent_invoices) if recent_invoices else 0
     checks["uses_due_dates"] = due_ratio >= 0.7
     if due_ratio < 0.7:
-        tips.append("Set due dates on your invoices — businesses that do collect 30 %% faster.")
+        tips.append("Set due dates on your invoices — businesses that do collect 30% faster.")
 
     # 4. Sends receipts on payment (+20)
     paid_invoices = (
