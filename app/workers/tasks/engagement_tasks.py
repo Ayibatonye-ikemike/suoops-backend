@@ -188,7 +188,6 @@ def send_engagement_emails() -> dict[str, Any]:
                 db.query(User)
                 .filter(
                     User.email != None,  # noqa: E711 – need email to send
-                    User.is_active.is_(True),
                 )
                 .all()
             )
