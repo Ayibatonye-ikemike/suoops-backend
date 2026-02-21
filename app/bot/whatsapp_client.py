@@ -69,14 +69,17 @@ class WhatsAppClient:
             logger.error("[WHATSAPP] Failed to send to %s: %s", to, exc)
             return False
 
-    def send_document(self, to: str, url: str, filename: str, caption: str | None = None) -> None:
-        """Send a document (usually PDF). Accepts a URL or media_id."""
+    def send_document(self, to: str, url: str, filename: str, caption: str | None = None) -> bool:
+        """Send a document (usually PDF). Accepts a URL or media_id.
+
+        Returns True on success, False on failure.
+        """
         if self._is_test_mode():
             logger.info("[WHATSAPP DOC][TEST] Would send to %s: %s (%s)", to, filename, url)
-            return
+            return True
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP DOC] Not configured, would send to %s: %s", to, filename)
-            return
+            return False
 
         try:
             document: dict[str, Any] = {"filename": filename}
@@ -107,8 +110,10 @@ class WhatsAppClient:
             )
             response.raise_for_status()
             logger.info("[WHATSAPP DOC] ✓ Sent to %s: %s", to, filename)
+            return True
         except Exception as exc:  # noqa: BLE001
             logger.error("[WHATSAPP DOC] Failed to send to %s: %s", to, exc)
+            return False
 
     def upload_media(self, data: bytes, mime_type: str = "application/pdf", filename: str = "document.pdf") -> str | None:
         """Upload media bytes directly to WhatsApp's Media API.

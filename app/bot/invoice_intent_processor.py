@@ -1020,15 +1020,6 @@ class InvoiceIntentProcessor:
             footer=f"Invoice: {invoice_id}",
         )
 
-    def _build_payment_hint(self, issuer) -> str:
-        if not issuer or not issuer.bank_name or not issuer.account_number:
-            return "Please contact the business for payment details."
-
-        hint = f"{issuer.bank_name} {issuer.account_number}"
-        if getattr(issuer, "account_name", None):
-            hint += f" ({issuer.account_name})"
-        return hint
-
     def _send_template(
         self,
         customer_phone: str,
@@ -1103,30 +1094,6 @@ class InvoiceIntentProcessor:
             language=getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
             components=components,
         )
-
-    def _build_fallback_message(self, invoice, issuer) -> str:
-        customer_name = getattr(invoice.customer, "name", "there") if invoice.customer else "there"
-        amount_text = f"₦{invoice.amount:,.2f}"
-        message = (
-            f"Hello {customer_name}! 👋\n\n"
-            "You have a new invoice.\n\n"
-            f"📄 Invoice: {invoice.invoice_id}\n"
-            f"💰 Amount: {amount_text}\n\n"
-        )
-
-        if issuer and issuer.bank_name and issuer.account_number:
-            message += (
-                "💳 Payment Details (Bank Transfer):\n"
-                f"Bank: {issuer.bank_name}\n"
-                f"Account: {issuer.account_number}\n"
-            )
-            if getattr(issuer, "account_name", None):
-                message += f"Name: {issuer.account_name}\n"
-            message += "\n📝 After payment, your receipt will be sent automatically."
-        else:
-            message += "💳 Please contact the business for payment details."
-
-        return message
 
     def _resolve_issuer_id(self, sender_phone: str | None) -> int | None:
         from app.models import models

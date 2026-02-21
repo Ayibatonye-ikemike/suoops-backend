@@ -293,27 +293,30 @@ class WhatsAppHandler:
                 return
         
         # Try expense processor first (checks if expense-related)
+        expense_handled = False
         try:
-            await self.expense_processor.handle(sender, parse, message)
+            expense_handled = await self.expense_processor.handle(sender, parse, message)
         except Exception as exc:
             logger.exception("Error in expense processor: %s", exc)
             self.client.send_text(
                 sender,
                 "⚠️ Something went wrong recording your expense. Please try again.",
             )
-        
-        # Then try invoice processor
-        try:
-            await self.invoice_processor.handle(sender, parse, message)
-        except Exception as exc:
-            logger.exception("Error in invoice processor: %s", exc)
-            self.client.send_text(
-                sender,
-                "⚠️ Something went wrong creating your invoice. Please try again.",
-            )
+            expense_handled = True  # Error message sent, don't double-fire
+
+        # Only try invoice processor if expense processor didn't handle it
+        if not expense_handled:
+            try:
+                await self.invoice_processor.handle(sender, parse, message)
+            except Exception as exc:
+                logger.exception("Error in invoice processor: %s", exc)
+                self.client.send_text(
+                    sender,
+                    "⚠️ Something went wrong creating your invoice. Please try again.",
+                )
 
         # If we get here with an unknown intent, send a gentle nudge
-        if parse.intent == "unknown":
+        if not expense_handled and parse.intent == "unknown":
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
                 # Registered business — nudge toward creating an invoice

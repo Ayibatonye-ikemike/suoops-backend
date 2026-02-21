@@ -30,7 +30,7 @@ class ExpenseIntentProcessor:
         sender: str,
         parse: dict[str, Any],
         message: dict[str, Any],
-    ) -> None:
+    ) -> bool:
         """
         Handle expense intent from parsed message.
         
@@ -38,10 +38,13 @@ class ExpenseIntentProcessor:
             sender: WhatsApp phone number
             parse: Parsed message from NLP service
             message: Raw WhatsApp message
+        
+        Returns:
+            True if the message was handled as an expense, False otherwise.
         """
         # Check if this is an expense-related message
         if not self._is_expense_message(parse, message):
-            return
+            return False
         
         # Get user from phone number (handle all Nigerian phone format variants)
         from app.models.models import User
@@ -69,7 +72,7 @@ class ExpenseIntentProcessor:
                 "❌ Your number isn't linked to an account yet.\n\n"
                 "Register free at suoops.com to start tracking invoices & expenses!"
             )
-            return
+            return True  # Handled (sent error message)
         
         try:
             # Process based on message type
@@ -80,6 +83,8 @@ class ExpenseIntentProcessor:
             else:
                 await self._handle_text_expense(user.id, sender, parse, message)
         
+            return True  # Handled (created expense or sent confirmation)
+
         except ValueError as e:
             # Handle validation errors (e.g., couldn't extract amount)
             error_msg = str(e)
@@ -104,6 +109,7 @@ class ExpenseIntentProcessor:
                     "• `Spent 3000 naira on data`\n\n"
                     "Please check the format and try again."
                 )
+            return True  # Handled (sent error message)
         
         except Exception as e:
             # Handle unexpected errors gracefully
@@ -137,6 +143,7 @@ class ExpenseIntentProcessor:
                     "`Expense: ₦2,500 for data subscription`\n\n"
                     "Or send a photo of your receipt 📸"
                 )
+            return True  # Handled (sent error message)
     
     def _is_expense_message(
         self,

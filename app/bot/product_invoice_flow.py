@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.bot.whatsapp_client import WhatsAppClient
 from app.models.inventory_models import Product
+from app.models.models import User
 from app.services.inventory.product_service import ProductService
 
 logger = logging.getLogger(__name__)
@@ -235,6 +236,19 @@ class ProductInvoiceFlow:
         """Check if user has an active cart session (mid-flow)."""
         return get_cart(phone) is not None
 
+    def _require_pro(self, phone: str, user_id: int) -> bool:
+        """Check if user has PRO plan. Returns True if allowed, False if blocked."""
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user or user.effective_plan.value != "pro":
+            self.client.send_text(
+                phone,
+                "🔒 *Product Catalog is a Pro feature.*\n\n"
+                "Upgrade to Pro at suoops.com/dashboard/subscription\n"
+                "to manage products, build invoices from your catalog & more!"
+            )
+            return False
+        return True
+
     def start_browsing(self, phone: str, user_id: int, search: str | None = None) -> None:
         """
         Show the user's product catalog as a text list.
@@ -242,6 +256,9 @@ class ProductInvoiceFlow:
         Then wait for them to reply with items + quantities in one message.
         Does NOT reset existing cart items (safe for "Add More").
         """
+        if not self._require_pro(phone, user_id):
+            return
+
         product_svc = ProductService(self.db, user_id)
         products, total = product_svc.list_products(
             page=1,
