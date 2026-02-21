@@ -10,6 +10,7 @@ from app.bot.invoice_intent_processor import InvoiceIntentProcessor
 from app.bot.message_extractor import extract_message
 from app.bot.nlp_service import NLPService
 from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart
+from app.bot.support_handler import SupportHandler
 from app.bot.voice_message_processor import VoiceMessageProcessor
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
@@ -39,6 +40,7 @@ class WhatsAppHandler:
 
         self.invoice_processor = InvoiceIntentProcessor(db=db, client=client)
         self.expense_processor = ExpenseIntentProcessor(db=db, client=client)
+        self.support_handler = SupportHandler(db=db, client=client)
         self.product_flow = ProductInvoiceFlow(db=db, client=client)
         self.voice_processor = VoiceMessageProcessor(
             client=client,
@@ -315,6 +317,18 @@ class WhatsAppHandler:
                     sender,
                     "⚠️ Something went wrong creating your invoice. Please try again.",
                 )
+
+        # ── Support FAQ, onboarding & escalation ─────────────────
+        # Try support handler for any question-like or support message
+        # before falling through to the generic nudge.
+        if not expense_handled:
+            try:
+                support_handled = self.support_handler.try_handle(sender, text)
+                if support_handled:
+                    return
+            except Exception as exc:
+                logger.exception("Error in support handler: %s", exc)
+        # ── End support ───────────────────────────────────────────
 
         # If we get here with an unknown intent, send a gentle nudge
         if not expense_handled and parse.intent == "unknown":
