@@ -175,7 +175,7 @@ class InvoiceIntentProcessor:
                 f"⚠️ Amount ₦{amount:,.0f} seems too low.\n\n"
                 "Minimum invoice amount is ₦100.\n"
                 "Did you mean a larger number?\n\n"
-                "💡 *TIP:* Don't use commas in numbers: `5000` ✅  `5,000` ❌",
+                "💡 *TIP:* Amount should be a number (e.g. 5000 or 5,000)",
             )
             return
 
@@ -421,6 +421,7 @@ class InvoiceIntentProcessor:
         
         # Get remaining invoice balance
         remaining_balance = None
+        quota_check = None
         try:
             quota_check = invoice_service.check_invoice_quota(issuer_id)
             remaining_balance = quota_check.get("invoice_balance", 0)
@@ -487,11 +488,13 @@ class InvoiceIntentProcessor:
         
         # Show low balance warning AFTER successful creation (better UX)
         if remaining_balance is not None and 0 < remaining_balance <= 5:
+            pack_price = quota_check.get("pack_price", 2500) if quota_check else 2500
+            pack_size = quota_check.get("pack_size", 100) if quota_check else 100
             self.client.send_text(
                 sender,
                 f"⚠️ Running low on invoices!\n\n"
                 f"You have {remaining_balance} invoice{'s' if remaining_balance != 1 else ''} left.\n\n"
-                "💳 Buy 50 more for ₦1,250\n"
+                f"💳 Buy more: ₦{pack_price:,} for {pack_size} invoices\n"
                 "Visit: suoops.com/dashboard/billing/purchase"
             )
 

@@ -118,7 +118,8 @@ class WhatsAppHandler:
                 if sender:
                     self.client.send_text(
                         sender,
-                        "⚠️ Something went wrong. Please try again in a moment.",
+                        "⚠️ Something went wrong. Please try again in a moment.\n\n"
+                        "If this keeps happening, contact support@suoops.com",
                     )
             except Exception:
                 logger.exception("Failed to send error message to user")
@@ -234,7 +235,7 @@ class WhatsAppHandler:
         if is_help:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
-                self._send_help_guide(sender)
+                self._send_help_guide(sender, issuer_id)
             else:
                 self.client.send_text(
                     sender,
@@ -262,7 +263,7 @@ class WhatsAppHandler:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
                 # This is a registered business - send short greeting
-                self._send_business_greeting(sender)
+                self._send_business_greeting(sender, issuer_id)
                 return
             else:
                 # Not a business and not a found customer - send short response
@@ -296,6 +297,10 @@ class WhatsAppHandler:
             await self.expense_processor.handle(sender, parse, message)
         except Exception as exc:
             logger.exception("Error in expense processor: %s", exc)
+            self.client.send_text(
+                sender,
+                "⚠️ Something went wrong recording your expense. Please try again.",
+            )
         
         # Then try invoice processor
         try:
@@ -312,30 +317,40 @@ class WhatsAppHandler:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
                 # Registered business — nudge toward creating an invoice
-                self.client.send_text(
-                    sender,
+                nudge = (
                     "🤔 I'm not sure what you mean.\n\n"
                     "Here's what I can do:\n"
                     "📝 *Create invoice:* `Invoice Joy 5000 wig`\n"
                     "📊 *Business report:* Type *report*\n"
-                    "📦 *From inventory:* Type *products*\n"
-                    "❓ *Full guide:* Type *help*",
                 )
+                # Only show inventory option if user has PRO plan
+                user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+                if user and user.effective_plan.value == "pro":
+                    nudge += "📦 *From inventory:* Type *products*\n"
+                nudge += "❓ *Full guide:* Type *help*"
+                self.client.send_text(sender, nudge)
     
-    def _send_business_greeting(self, sender: str) -> None:
+    def _send_business_greeting(self, sender: str, issuer_id: int) -> None:
         """Send short greeting to a returning business user."""
-        self.client.send_text(
-            sender,
+        msg = (
             "👋 Welcome back!\n\n"
             "📝 *Create invoice:*\n"
             "`Invoice Joy 08012345678, 5000 wig`\n\n"
-            "📦 *From inventory:*\n"
-            "Type *products* to browse your stock\n\n"
+        )
+        # Only show inventory option if user has PRO plan
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        if user and user.effective_plan.value == "pro":
+            msg += (
+                "📦 *From inventory:*\n"
+                "Type *products* to browse your stock\n\n"
+            )
+        msg += (
             "📊 *Business report:*\n"
             "Type *report* for your analytics\n"
             "Type *tax report* for tax summary + PDF\n\n"
             "Type *help* for full guide."
         )
+        self.client.send_text(sender, msg)
     
     def _send_analytics(self, sender: str, issuer_id: int) -> None:
         """Send business analytics snapshot via WhatsApp."""
@@ -607,7 +622,7 @@ class WhatsAppHandler:
                 "Try again or download at suoops.com/dashboard/tax"
             )
 
-    def _send_help_guide(self, sender: str) -> None:
+    def _send_help_guide(self, sender: str, issuer_id: int) -> None:
         """Send comprehensive help guide to a business user."""
         help_message = (
             "📖 *SuoOps Invoice Guide*\n\n"
@@ -621,18 +636,27 @@ class WhatsAppHandler:
             "*Multiple Items:*\n"
             "• `Invoice Ada 08012345678 11000 Design, 10000 Printing, 1000 Delivery`\n"
             "• `Invoice Blessing 5000 braids, 2000 gel, 500 pins`\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "📦 *INVOICE FROM INVENTORY*\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "• Type *products* — browse & pick from your stock\n"
-            "• Type *search wig* — find a specific product\n"
-            "• Select items, set quantities, send invoice!\n\n"
+        )
+
+        # Only show inventory section if user has PRO plan
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        if user and user.effective_plan.value == "pro":
+            help_message += (
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "📦 *INVOICE FROM INVENTORY*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "• Type *products* — browse & pick from your stock\n"
+                "• Type *search wig* — find a specific product\n"
+                "• Select items, set quantities, send invoice!\n\n"
+            )
+
+        help_message += (
             "⚠️ *IMPORTANT:*\n"
             "• Put amount BEFORE item name (11000 Design ✅, NOT Design 11000 ❌)\n"
-            "• Don't use commas in numbers (11000 ✅, NOT 11,000 ❌)\n"
+            "• Commas in numbers are fine (11,000 ✅ or 11000 ✅)\n"
             "• Separate items with commas\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "� *SET A DUE DATE (Optional)*\n"
+            "📅 *SET A DUE DATE (Optional)*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Add due date to any invoice:\n"
             "• `Invoice Joy 5000 wig tomorrow`\n"
@@ -641,19 +665,21 @@ class WhatsAppHandler:
             "• `Invoice Joy 5000 wig due march 5`\n\n"
             "💡 If you don't set one, it defaults to 3 days.\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "�📱 *WHAT HAPPENS NEXT*\n"
+            "📱 *WHAT HAPPENS NEXT*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "1️⃣ Customer gets WhatsApp notification\n"
             "2️⃣ They reply 'Hi' → get payment details + PDF\n"
             "3️⃣ They pay & tap 'I've Paid' → you're notified!\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "� *BUSINESS REPORT*\n"
+            "📊 *BUSINESS REPORT*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Type *report* — get revenue, invoices & customer stats\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"            "🏛️ *TAX REPORT (Starter+)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "🏛️ *TAX REPORT (Starter+)*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Type *tax report* — get your tax summary + PDF\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"            "�💡 *TIPS*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "💡 *TIPS*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "• Set up bank details in your dashboard first\n"
             "• Share the payment link if customer doesn't reply\n"

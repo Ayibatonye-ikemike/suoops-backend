@@ -98,8 +98,11 @@ class ExpenseIntentProcessor:
             else:
                 self.client.send_text(
                     sender,
-                    f"❌ {error_msg}\n\n"
-                    "Please check your message format and try again."
+                    "❌ I couldn't process that expense.\n\n"
+                    "*How to record an expense:*\n"
+                    "• `Expense: ₦5,000 for transport`\n"
+                    "• `Spent 3000 naira on data`\n\n"
+                    "Please check the format and try again."
                 )
         
         except Exception as e:
@@ -282,8 +285,12 @@ class ExpenseIntentProcessor:
             logger.error(f"OCR processing failed: {e}", exc_info=True)
             self.client.send_text(
                 sender,
-                f"❌ Could not read receipt: {str(e)}\n\n"
-                "Try sending a clearer photo or type the expense manually."
+                "❌ Could not read this receipt.\n\n"
+                "📸 *Tips for better results:*\n"
+                "• Use a clear, well-lit photo\n"
+                "• Make sure the amount is visible\n\n"
+                "Or type the expense manually:\n"
+                "• `Expense: ₦5,000 for transport`"
             )
     
     async def _send_confirmation(
