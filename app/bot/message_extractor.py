@@ -58,6 +58,9 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any] | None:
 
         if msg_type == "text":
             extracted["text"] = message.get("text", {}).get("body", "")
+        elif msg_type == "image":
+            extracted["image_id"] = message.get("image", {}).get("id")
+            extracted["caption"] = message.get("image", {}).get("caption", "")
         elif msg_type == "audio":
             extracted["audio_id"] = message.get("audio", {}).get("id")
         elif msg_type == "interactive":

@@ -88,7 +88,7 @@ class ExpenseIntentProcessor:
         except ValueError as e:
             # Handle validation errors (e.g., couldn't extract amount)
             error_msg = str(e)
-            logger.warning(f"Validation error processing expense for {sender}: {error_msg}")
+            logger.warning("Validation error processing expense for %s: %s", sender, error_msg)
             
             if "amount" in error_msg.lower():
                 self.client.send_text(
@@ -114,7 +114,7 @@ class ExpenseIntentProcessor:
         except Exception as e:
             # Handle unexpected errors gracefully
             error_str = str(e).lower()
-            logger.error(f"Error processing expense for {sender}: {e}", exc_info=True)
+            logger.error("Error processing expense for %s: %s", sender, e, exc_info=True)
             
             # Database constraint errors
             if "not-null" in error_str or "notnull" in error_str:
@@ -266,11 +266,12 @@ class ExpenseIntentProcessor:
             self.client.send_text(sender, "❌ Could not get image from message")
             return
         
-        # Download image from WhatsApp
+        # Download image from WhatsApp (resolve media ID → URL → bytes)
         try:
-            image_bytes = await self.client.download_media(media_id)
+            media_url = await self.client.get_media_url(media_id)
+            image_bytes = await self.client.download_media(media_url)
         except Exception as e:
-            logger.error(f"Failed to download image {media_id}: {e}")
+            logger.error("Failed to download image %s: %s", media_id, e)
             self.client.send_text(sender, "❌ Could not download image. Please try again.")
             return
         

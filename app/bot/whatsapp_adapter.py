@@ -9,7 +9,7 @@ from app.bot.expense_intent_processor import ExpenseIntentProcessor
 from app.bot.invoice_intent_processor import InvoiceIntentProcessor
 from app.bot.message_extractor import extract_message
 from app.bot.nlp_service import NLPService
-from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart, clear_cart
+from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart
 from app.bot.voice_message_processor import VoiceMessageProcessor
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
@@ -74,6 +74,7 @@ class WhatsAppHandler:
 
     async def handle_incoming(self, payload: dict[str, Any]) -> None:
         """Handle incoming WhatsApp webhook payload with robust error handling."""
+        sender = None  # Initialise early so the except block can safely check it
         try:
             message = extract_message(payload)
             if not message:
@@ -332,6 +333,15 @@ class WhatsAppHandler:
                     nudge += "📦 *From inventory:* Type *products*\n"
                 nudge += "❓ *Full guide:* Type *help*"
                 self.client.send_text(sender, nudge)
+            else:
+                # Unregistered user with unknown message — don't leave them in silence
+                self.client.send_text(
+                    sender,
+                    "👋 Hi! I'm the SuoOps invoice assistant.\n\n"
+                    "📤 *Send invoices?* Register free at suoops.com\n"
+                    "📥 *Received an invoice?* Reply *Hi* to see payment details.\n\n"
+                    "Type *help* for more info."
+                )
     
     def _send_business_greeting(self, sender: str, issuer_id: int) -> None:
         """Send short greeting to a returning business user."""

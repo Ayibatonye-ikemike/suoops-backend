@@ -107,42 +107,6 @@ class InvoiceIntentProcessor:
         )
         self.client.send_text(sender, limit_message)
         return False
-    
-    async def _send_invoice_notifications(
-        self,
-        invoice,
-        customer_email: str | None = None,
-        customer_phone: str | None = None
-    ) -> dict[str, bool]:
-        """
-        Send invoice notifications via available channels (Email, WhatsApp).
-        
-        Args:
-            invoice: Invoice model instance
-            customer_email: Customer email address (optional)
-            customer_phone: Customer phone number (optional)
-        
-        Returns:
-            dict: Status of each channel {"email": bool, "whatsapp": bool}
-        """
-        try:
-            from app.services.notification_service import NotificationService
-            
-            notification_service = NotificationService()
-            results = await notification_service.send_invoice_notification(
-                invoice=invoice,
-                customer_email=customer_email,
-                customer_phone=customer_phone,
-                pdf_url=invoice.pdf_url,
-            )
-            
-            logger.info("Invoice %s notifications - Email: %s, WhatsApp: %s",
-                       invoice.invoice_id, results["email"], results["whatsapp"])
-            
-            return results
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Error sending invoice notifications: %s", exc)
-            return {"email": False, "whatsapp": False}
 
     async def _create_invoice(
         self,
@@ -555,27 +519,6 @@ class InvoiceIntentProcessor:
             invoice.invoice_id,
         )
         self._send_full_invoice(invoice, customer_phone, issuer_id)
-        return False
-    
-    def _is_registered_user(self, phone: str) -> bool:
-        """Check if a phone number belongs to a registered business user."""
-        from app.models import models
-        
-        # Normalize phone for lookup
-        normalized = phone.replace(" ", "").replace("-", "")
-        if not normalized.startswith("+"):
-            if normalized.startswith("0"):
-                normalized = "+234" + normalized[1:]
-            elif normalized.startswith("234"):
-                normalized = "+" + normalized
-            else:
-                normalized = "+" + normalized
-        
-        # Check if phone exists in users table
-        user = self.db.query(models.User).filter(models.User.phone == normalized).first()
-        if user:
-            logger.info("[NOTIFY] Customer phone %s is a registered user (ID: %s)", phone, user.id)
-            return True
         return False
 
     def _send_template_only(self, invoice, customer_phone: str, issuer_id: int) -> None:
@@ -1001,24 +944,6 @@ class InvoiceIntentProcessor:
             message += "\n\n📝 After transfer, tap the link above and click 'I've sent the transfer'."
         
         return message
-
-    def _send_paid_button(self, customer_phone: str, invoice_id: str, amount_text: str) -> bool:
-        """Send an interactive button message for payment confirmation."""
-        body = (
-            f"💳 After making payment for {amount_text}, tap the button below to notify the business.\n\n"
-            "This will send your payment confirmation instantly!"
-        )
-        
-        buttons = [
-            {"id": "confirm_paid", "title": "✅ I've Paid"},
-        ]
-        
-        return self.client.send_interactive_buttons(
-            to=customer_phone,
-            body=body,
-            buttons=buttons,
-            footer=f"Invoice: {invoice_id}",
-        )
 
     def _send_template(
         self,

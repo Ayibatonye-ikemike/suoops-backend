@@ -391,6 +391,9 @@ class WhatsAppClient:
         Returns:
             True if sent successfully
         """
+        if self._is_test_mode():
+            logger.info("[WHATSAPP BUTTONS][TEST] Would send to %s: %s", to, body[:80])
+            return True
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP BUTTONS] Not configured, would send to %s", to)
             return False

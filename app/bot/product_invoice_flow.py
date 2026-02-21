@@ -231,11 +231,6 @@ class ProductInvoiceFlow:
         """Check if text triggers the product browsing flow."""
         return text.lower().strip() in ProductInvoiceFlow.TRIGGER_KEYWORDS
 
-    @staticmethod
-    def has_active_session(phone: str) -> bool:
-        """Check if user has an active cart session (mid-flow)."""
-        return get_cart(phone) is not None
-
     def _require_pro(self, phone: str, user_id: int) -> bool:
         """Check if user has PRO plan. Returns True if allowed, False if blocked."""
         user = self.db.query(User).filter(User.id == user_id).first()
