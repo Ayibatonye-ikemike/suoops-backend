@@ -247,7 +247,11 @@ class WhatsAppHandler:
                     "📥 *Received an invoice?*\n"
                     "Reply 'Hi' to get payment details.\n\n"
                     "📤 *Want to send invoices?*\n"
-                    "Register free at suoops.com"
+                    "Register free at suoops.com\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🚀 Type *get started* for setup guide\n"
+                    "❓ *Ask me anything* — pricing, how it works, etc.\n"
+                    "🆘 Type *support* to reach our team"
                 )
             return
         
@@ -273,8 +277,11 @@ class WhatsAppHandler:
                 self.client.send_text(
                     sender,
                     "👋 Hi! I'm the SuoOps invoice assistant.\n\n"
-                    "📥 Received an invoice? I'll send payment details when it arrives.\n\n"
-                    "📤 Want to send invoices? Register free at suoops.com"
+                    "📥 *Received an invoice?* I'll send payment details when it arrives.\n\n"
+                    "📤 *Want to send invoices?* Register free at suoops.com\n\n"
+                    "🚀 Type *get started* for a step-by-step setup guide\n"
+                    "❓ *Ask me anything* — e.g. \"how to register\"\n"
+                    "🆘 Type *support* to reach our team"
                 )
                 return
 
@@ -345,7 +352,11 @@ class WhatsAppHandler:
                 user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
                 if user and user.effective_plan.value == "pro":
                     nudge += "📦 *From inventory:* Type *products*\n"
-                nudge += "❓ *Full guide:* Type *help*"
+                nudge += (
+                    "❓ *Full guide:* Type *help*\n"
+                    "💬 *Ask a question:* e.g. \"how to get paid\"\n"
+                    "🆘 *Need help?* Type *support*"
+                )
                 self.client.send_text(sender, nudge)
             else:
                 # Unregistered user with unknown message — don't leave them in silence
@@ -354,7 +365,9 @@ class WhatsAppHandler:
                     "👋 Hi! I'm the SuoOps invoice assistant.\n\n"
                     "📤 *Send invoices?* Register free at suoops.com\n"
                     "📥 *Received an invoice?* Reply *Hi* to see payment details.\n\n"
-                    "Type *help* for more info."
+                    "🚀 Type *get started* for setup guide\n"
+                    "❓ *Ask me anything* — e.g. \"how to register\"\n"
+                    "🆘 Type *support* to reach our team"
                 )
     
     def _send_business_greeting(self, sender: str, issuer_id: int) -> None:
@@ -375,6 +388,9 @@ class WhatsAppHandler:
             "📊 *Business report:*\n"
             "Type *report* for your analytics\n"
             "Type *tax report* for tax summary + PDF\n\n"
+            "🚀 Type *setup* to check your account status\n"
+            "❓ *Ask me anything* — e.g. \"how to get paid\"\n"
+            "🆘 Type *support* to reach our team\n\n"
             "Type *help* for full guide."
         )
         self.client.send_text(sender, msg)
@@ -710,7 +726,15 @@ class WhatsAppHandler:
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "• Set up bank details in your dashboard first\n"
             "• Share the payment link if customer doesn't reply\n"
-            "• Track all invoices at suoops.com/dashboard"
+            "• Track all invoices at suoops.com/dashboard\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "🆘 *SUPPORT & QUESTIONS*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "❓ *Ask me anything:*\n"
+            "  \"how to get paid\", \"pricing\", \"verify my number\"\n\n"
+            "🚀 Type *setup* — check your account status\n"
+            "🆘 Type *support* — reach our team\n"
+            "🌐 Visit support.suoops.com for more help"
         )
         self.client.send_text(sender, help_message)
     
