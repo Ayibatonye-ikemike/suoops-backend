@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
-from app.core.exceptions import InvoiceBalanceExhaustedError
+from app.core.exceptions import InvoiceBalanceExhaustedError, MissingBankDetailsError
 from app.services.invoice_service import build_invoice_service
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,23 @@ class InvoiceIntentProcessor:
                 "Visit: suoops.com/dashboard/billing/purchase",
             )
             return
+        except MissingBankDetailsError:
+            logger.warning("Missing bank details for user %s", issuer_id)
+            self.client.send_text(
+                sender,
+                "🏦 *Please add your bank details first!*\n\n"
+                "Your invoice message is correct ✅ but I need your bank "
+                "account info to include on the invoice.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "📱 *How to add:*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "1. Go to suoops.com/dashboard/settings\n"
+                "2. Add your *Bank Name*\n"
+                "3. Add your *Account Number*\n"
+                "4. Add your *Account Name*\n\n"
+                "Once done, come back and send your invoice again! 🚀",
+            )
+            return
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to create invoice")
             error_msg = str(exc).lower()
@@ -242,6 +259,22 @@ class InvoiceIntentProcessor:
                 self.client.send_text(
                     sender,
                     "❌ Network issue. Please try again in a moment."
+                )
+            # Missing bank details (fallback string check)
+            elif "bank" in error_msg or "inv004" in error_msg:
+                self.client.send_text(
+                    sender,
+                    "🏦 *Please add your bank details first!*\n\n"
+                    "Your invoice message is correct ✅ but I need your bank "
+                    "account info to include on the invoice.\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "📱 *How to add:*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "1. Go to suoops.com/dashboard/settings\n"
+                    "2. Add your *Bank Name*\n"
+                    "3. Add your *Account Number*\n"
+                    "4. Add your *Account Name*\n\n"
+                    "Once done, come back and send your invoice again! 🚀",
                 )
             # Generic fallback - provide comprehensive guide
             else:
