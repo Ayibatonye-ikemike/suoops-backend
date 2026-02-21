@@ -29,13 +29,48 @@ class InvoiceIntentProcessor:
 
         issuer_id = self._resolve_issuer_id(sender)
         if issuer_id is None:
-            logger.warning("Unable to resolve issuer for WhatsApp sender: %s", sender)
-            self.client.send_text(
-                sender,
-                "❌ Unable to identify your business account.\n\n"
-                "Please ensure your WhatsApp number is registered in your profile at "
-                "suoops.com/dashboard/settings",
+            # Check if user exists but phone is unverified
+            from app.models import models as _m
+            clean_digits = "".join(ch for ch in sender if ch.isdigit())
+            phone_candidates: set[str] = {sender}
+            if sender.startswith("+"):
+                phone_candidates.add(sender[1:])
+            if clean_digits:
+                phone_candidates.add(clean_digits)
+                if clean_digits.startswith("234"):
+                    phone_candidates.add(f"+{clean_digits}")
+                    phone_candidates.add("0" + clean_digits[3:])
+            unverified_user = (
+                self.db.query(_m.User)
+                .filter(
+                    _m.User.phone.in_(list(phone_candidates)),
+                    _m.User.phone_verified.is_(False),
+                )
+                .first()
             )
+            if unverified_user:
+                logger.info("Unverified phone for user %s (sender: %s)", unverified_user.id, sender)
+                self.client.send_text(
+                    sender,
+                    "📱 *Almost there! Verify your phone first.*\n\n"
+                    "Your account exists but your WhatsApp number isn't verified yet.\n\n"
+                    "1. Go to suoops.com/dashboard/settings\n"
+                    "2. Click *Verify Phone*\n"
+                    "3. Enter the OTP code you receive\n\n"
+                    "Once verified, come back and send your invoice! 🚀",
+                )
+            else:
+                logger.warning("Unable to resolve issuer for WhatsApp sender: %s", sender)
+                self.client.send_text(
+                    sender,
+                    "👋 Hi! I don't recognise this number yet.\n\n"
+                    "📲 *Already have an account?*\n"
+                    "Make sure this WhatsApp number is added & verified "
+                    "in your profile at suoops.com/dashboard/settings\n\n"
+                    "🆕 *New to SuoOps?*\n"
+                    "Register free at suoops.com — start sending invoices "
+                    "via WhatsApp in under 2 minutes!",
+                )
             return
 
         invoice_service = build_invoice_service(self.db, user_id=issuer_id)
@@ -117,8 +152,51 @@ class InvoiceIntentProcessor:
         data: dict[str, Any],
         payload: dict[str, Any],
     ) -> None:
-        # Check for potentially malformed amounts BEFORE creating invoice
+        # ── Guard: reject zero / trivially-small amounts early ──
         amount = data.get("amount", 0)
+        if not amount or amount <= 0:
+            self.client.send_text(
+                sender,
+                "❌ I couldn't find an amount in your message.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "✅ *CORRECT FORMAT:*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                "📋 *EXAMPLES:*\n"
+                "• `Invoice Joy 08012345678, 12000 wig`\n"
+                "• `Invoice Ada 5000 braids, 2000 gel`\n\n"
+                "💡 *TIP:* Amount should be a number (e.g. 5000, not five thousand)",
+            )
+            return
+
+        if amount < 100:
+            self.client.send_text(
+                sender,
+                f"⚠️ Amount ₦{amount:,.0f} seems too low.\n\n"
+                "Minimum invoice amount is ₦100.\n"
+                "Did you mean a larger number?\n\n"
+                "💡 *TIP:* Don't use commas in numbers: `5000` ✅  `5,000` ❌",
+            )
+            return
+
+        # ── Guard: missing customer name ──
+        customer_name = data.get("customer_name", "")
+        if not customer_name or customer_name == "Customer":
+            self.client.send_text(
+                sender,
+                "❌ I couldn't find a customer name.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "✅ *CORRECT FORMAT:*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                "📋 *EXAMPLES:*\n"
+                "• `Invoice Joy 08012345678, 12000 wig`\n"
+                "• `Invoice Ada 5000 braids`\n\n"
+                "💡 *TIP:* Customer name comes right after the word 'Invoice'",
+            )
+            return
+
+        # Check for potentially malformed amounts BEFORE creating invoice
         lines = data.get("lines", [])
         
         # Detect suspicious patterns that suggest parsing errors

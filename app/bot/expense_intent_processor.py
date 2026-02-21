@@ -43,14 +43,31 @@ class ExpenseIntentProcessor:
         if not self._is_expense_message(parse, message):
             return
         
-        # Get user from phone number
+        # Get user from phone number (handle all Nigerian phone format variants)
         from app.models.models import User
-        user = self.db.query(User).filter(User.phone == sender).first()
+        clean_digits = "".join(ch for ch in sender if ch.isdigit())
+        phone_candidates: set[str] = {sender}
+        if sender.startswith("+"):
+            phone_candidates.add(sender[1:])
+        if clean_digits:
+            phone_candidates.add(clean_digits)
+            if clean_digits.startswith("234"):
+                phone_candidates.add(f"+{clean_digits}")
+                phone_candidates.add("0" + clean_digits[3:])
+            elif clean_digits.startswith("0"):
+                phone_candidates.add("234" + clean_digits[1:])
+                phone_candidates.add("+234" + clean_digits[1:])
+        user = (
+            self.db.query(User)
+            .filter(User.phone.in_(list(phone_candidates)))
+            .first()
+        )
         
         if not user:
             self.client.send_text(
                 sender,
-                "❌ Please register first by creating an invoice."
+                "❌ Your number isn't linked to an account yet.\n\n"
+                "Register free at suoops.com to start tracking invoices & expenses!"
             )
             return
         

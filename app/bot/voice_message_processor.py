@@ -115,8 +115,22 @@ class VoiceMessageProcessor:
             await self.invoice_processor.handle(sender, parse, payload)
         except Exception as exc:  # noqa: BLE001
             logger.exception("[VOICE] Failed to process audio")
-            self.client.send_text(
-                sender,
-                f"❌ Sorry, I couldn't process that voice message: {exc}\n\n"
-                "Please try again or send a text message.",
-            )
+            error_msg = str(exc).lower()
+            if "timeout" in error_msg or "connection" in error_msg:
+                user_msg = (
+                    "⚠️ The voice service is slow right now. "
+                    "Please try again in a moment or send a text message."
+                )
+            elif "too large" in error_msg or "size" in error_msg:
+                user_msg = (
+                    "⚠️ That voice message is too long.\n\n"
+                    "Please keep it under 1 minute, or send a text message instead:\n"
+                    "`Invoice Joy 08012345678, 5000 wig`"
+                )
+            else:
+                user_msg = (
+                    "❌ Sorry, I couldn't process that voice message.\n\n"
+                    "Please try again or send a text message instead:\n"
+                    "`Invoice Joy 08012345678, 5000 wig`"
+                )
+            self.client.send_text(sender, user_msg)

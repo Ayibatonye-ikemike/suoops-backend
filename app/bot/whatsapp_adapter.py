@@ -306,6 +306,21 @@ class WhatsAppHandler:
                 sender,
                 "⚠️ Something went wrong creating your invoice. Please try again.",
             )
+
+        # If we get here with an unknown intent, send a gentle nudge
+        if parse.intent == "unknown":
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                # Registered business — nudge toward creating an invoice
+                self.client.send_text(
+                    sender,
+                    "🤔 I'm not sure what you mean.\n\n"
+                    "Here's what I can do:\n"
+                    "📝 *Create invoice:* `Invoice Joy 5000 wig`\n"
+                    "📊 *Business report:* Type *report*\n"
+                    "📦 *From inventory:* Type *products*\n"
+                    "❓ *Full guide:* Type *help*",
+                )
     
     def _send_business_greeting(self, sender: str) -> None:
         """Send short greeting to a returning business user."""
