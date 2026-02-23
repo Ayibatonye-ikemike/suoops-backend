@@ -480,6 +480,7 @@ class ProductInvoiceFlow:
             "customer_phone": customer_phone,
             "customer_email": customer_email,
             "amount": session.total,
+            "currency": get_user_currency(self.db, session.user_id),
             "lines": lines,
             # due_date omitted — backend auto-defaults to 3 days
         }

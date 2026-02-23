@@ -51,25 +51,34 @@ def fmt_money(
     *,
     compact: bool = False,
     decimals: bool = False,
+    convert: bool = True,
 ) -> str:
-    """Format *amount* (always stored in NGN) for display.
+    """Format *amount* for display.
 
     Parameters
     ----------
     amount : float
-        Value in NGN (the canonical storage currency).
+        Monetary value.
     currency : str
         ``"NGN"`` (default) or ``"USD"``.
     compact : bool
         If True, use shortened form for large values (e.g. ₦1.2M / $891).
     decimals : bool
         If True, always show 2 decimal places (₦50,000.00).
+    convert : bool
+        If True (default), treat *amount* as NGN and convert to USD when
+        currency is ``"USD"``.  Set to False when the amount is **already**
+        denominated in the target currency (e.g. a USD invoice stored as
+        USD in the database).
     """
     amt = float(amount or 0)
 
     if currency == "USD":
-        rate = _get_rate()
-        usd = _to_usd(amt, rate)
+        if convert:
+            rate = _get_rate()
+            usd = _to_usd(amt, rate)
+        else:
+            usd = amt
         if compact and usd >= 1_000_000:
             return f"${usd / 1_000_000:,.1f}M"
         if compact or not decimals:
@@ -86,9 +95,9 @@ def fmt_money(
     return f"₦{amt:,.0f}"
 
 
-def fmt_money_full(amount: float | int | Decimal, currency: str = "NGN") -> str:
+def fmt_money_full(amount: float | int | Decimal, currency: str = "NGN", *, convert: bool = True) -> str:
     """Always show 2 decimal places: ₦50,000.00 / $37.13."""
-    return fmt_money(amount, currency, decimals=True)
+    return fmt_money(amount, currency, decimals=True, convert=convert)
 
 
 def get_user_currency(db: Session, user_id: int) -> str:

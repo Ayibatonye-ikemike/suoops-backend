@@ -400,12 +400,12 @@ class InvoiceIntentProcessor:
         if invoice.due_date:
             due_display = f"📅 Due: {invoice.due_date.strftime('%d %b %Y')}\n"
 
-        # Use user's preferred currency for display
-        currency = get_user_currency(self.db, issuer_id)
+        # Display amount in the invoice's own currency
+        inv_currency = getattr(invoice, "currency", "NGN") or "NGN"
 
         business_message = (
             f"✅ Invoice {invoice.invoice_id} created!\n\n"
-            f"💰 Amount: {fmt_money_full(invoice.amount, currency)}\n"
+            f"💰 Amount: {fmt_money_full(invoice.amount, inv_currency, convert=False)}\n"
             f"👤 Customer: {customer_name}\n"
             f"{due_display}"
             f"📊 Status: {status_display}\n"
@@ -453,7 +453,7 @@ class InvoiceIntentProcessor:
                 sender,
                 invoice.pdf_url,
                 f"Invoice_{invoice.invoice_id}.pdf",
-                f"📄 Invoice {invoice.invoice_id} - {fmt_money_full(invoice.amount, currency)}",
+                f"📄 Invoice {invoice.invoice_id} - {fmt_money_full(invoice.amount, inv_currency, convert=False)}",
             )
         
         # Show low balance warning AFTER successful creation (better UX)
@@ -534,7 +534,7 @@ class InvoiceIntentProcessor:
         falls back to basic 'invoice_notification' template.
         """
         customer_name = getattr(invoice.customer, "name", "valued customer") if invoice.customer else "valued customer"
-        amount_text = f"₦{invoice.amount:,.2f}"
+        amount_text = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
         items_text = self._build_items_text(invoice)
         
         # Try the full invoice template with payment details first
@@ -596,7 +596,7 @@ class InvoiceIntentProcessor:
             # The template opens a 24-hour messaging window, so the document
             # send is allowed immediately after the template is delivered.
             if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-                amount_text_pdf = f"₦{invoice.amount:,.2f}"
+                amount_text_pdf = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
                 self.client.send_document(
                     customer_phone,
                     invoice.pdf_url,
@@ -622,7 +622,7 @@ class InvoiceIntentProcessor:
         2. Invoice PDF document
         """
         issuer = self._load_issuer(issuer_id)
-        amount_text = f"₦{invoice.amount:,.2f}"
+        amount_text = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
 
         logger.info("[NOTIFY] Sending full invoice to %s for invoice %s", customer_phone, invoice.invoice_id)
         
@@ -752,7 +752,7 @@ class InvoiceIntentProcessor:
         
         # Send the invoice PDF - customer already has payment details from template
         invoice = recent_invoices[0]  # We only query 1 now
-        amount_text = f"₦{invoice.amount:,.2f}"
+        amount_text = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
         
         logger.info("[OPTIN] Sending PDF for invoice %s", invoice.invoice_id)
         
@@ -883,7 +883,7 @@ class InvoiceIntentProcessor:
             self.client.send_text(
                 customer_phone,
                 f"✅ Thank you! Your payment confirmation for invoice {pending_invoice.invoice_id} "
-                f"(₦{pending_invoice.amount:,.2f}) has been sent to the business.\n\n"
+                f"({fmt_money_full(pending_invoice.amount, getattr(pending_invoice, 'currency', 'NGN') or 'NGN', convert=False)}) has been sent to the business.\n\n"
                 "📧 You'll receive your receipt once they verify the payment."
             )
             logger.info(
@@ -934,7 +934,7 @@ class InvoiceIntentProcessor:
         """Build a message with payment link and bank details for customer."""
         frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
         payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
-        amount_text = f"₦{invoice.amount:,.2f}"
+        amount_text = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
         
         message = f"📄 Your invoice for {amount_text} is ready!\n\n🔗 View & Pay Online:\n{payment_link}"
         

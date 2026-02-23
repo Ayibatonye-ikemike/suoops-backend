@@ -21,6 +21,8 @@ class NLPService:
     """
     
     AMOUNT_PATTERN = re.compile(r"(?:₦|ngn)?\s?([0-9]{3,}(?:,[0-9]{3})*|[0-9]+)(?:\.[0-9]{1,2})?")
+    # Detect USD-prefixed amounts: $50, $1,200.50, USD 500, usd500
+    USD_AMOUNT_PATTERN = re.compile(r"(?:\$|usd)\s?([0-9]{1,}(?:,[0-9]{3})*|[0-9]+)(?:\.[0-9]{1,2})?", re.IGNORECASE)
     
     # Phone number patterns - supports Nigerian and international formats
     # Nigerian: +2348012345678, 2348012345678, 08012345678, 8012345678
@@ -417,10 +419,16 @@ class NLPService:
         # If name looks like a phone number, use a default name
         if name and name.replace("+", "").replace("-", "").isdigit():
             name = "Customer"
+
+        # Detect currency — check for USD markers ($, usd, dollar) in the text
+        text_lower = text.lower()
+        has_usd_marker = bool(self.USD_AMOUNT_PATTERN.search(text)) or "dollar" in text_lower
+        currency = "USD" if has_usd_marker else "NGN"
         
         return {
             "customer_name": name.capitalize(),
             "amount": total_amount,
+            "currency": currency,
             "due_date": due,
             "customer_phone": phone,
             "customer_email": email,
@@ -454,6 +462,11 @@ class NLPService:
         
         # Remove "invoice" and customer name (first word after invoice)
         clean_text = re.sub(r"^invoice\s+[a-zA-Z]+\s*", "", clean_text)
+        
+        # Strip currency symbols/prefixes so amounts are clean digits
+        clean_text = clean_text.replace("₦", "").replace("$", "")
+        clean_text = re.sub(r"\busd\b", "", clean_text)
+        clean_text = re.sub(r"\bngn\b", "", clean_text)
         
         for word in ["for", "due", "tomorrow", "today", "next week"]:
             clean_text = clean_text.replace(word, " ")

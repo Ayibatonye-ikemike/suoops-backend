@@ -22,6 +22,7 @@ class InvoiceLineIn(BaseModel):
 class InvoiceCreate(BaseModel):
     # Common fields for both revenue and expense invoices
     amount: Decimal
+    currency: Literal["NGN", "USD"] = "NGN"
     due_date: dt.datetime | None = None
     lines: list[InvoiceLineIn] | None = None
     discount_amount: Decimal | None = None
@@ -60,6 +61,7 @@ class InvoiceOut(BaseModel):
 
     invoice_id: str
     amount: Decimal
+    currency: str = "NGN"
     status: str
     pdf_url: str | None
     receipt_pdf_url: str | None = None
@@ -139,6 +141,7 @@ class InvoicePublicOut(BaseModel):
 
     invoice_id: str
     amount: Decimal
+    currency: str = "NGN"
     status: str
     due_date: dt.datetime | None = None
     customer_name: str | None = None

@@ -101,6 +101,7 @@ class InvoiceCreationMixin:
             created_by_user_id=created_by_user_id or issuer_id,  # Track actual creator
             customer=customer,
             amount=Decimal(str(data.get("amount"))),
+            currency=data.get("currency", "NGN"),
             discount_amount=discount_amount,
             due_date=due_date,
             status=status,

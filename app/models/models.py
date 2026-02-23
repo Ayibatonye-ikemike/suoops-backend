@@ -176,6 +176,7 @@ class Invoice(Base):
     issuer_id: Mapped[int] = mapped_column(ForeignKey("user.id"))  # type: ignore
     customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"), index=True)  # type: ignore
     amount: Mapped[Decimal] = mapped_column(Numeric(scale=2))
+    currency: Mapped[str] = mapped_column(String(3), default="NGN", server_default="NGN")  # NGN or USD
     # WhatsApp delivery pending: True if waiting for customer to opt-in before sending
     whatsapp_delivery_pending: Mapped[bool] = mapped_column(default=False, index=True)
     discount_amount: Mapped[Decimal | None] = mapped_column(Numeric(scale=2), nullable=True)
