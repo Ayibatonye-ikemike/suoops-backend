@@ -862,13 +862,24 @@ def send_daily_summaries() -> dict[str, Any]:
                     # fall back to plain text if no template configured.
                     success = False
                     if summary_template:
+                        rev = float(revenue_today)
+                        exp = float(expenses_today)
+                        net = rev - exp
+                        out = float(outstanding)
+
                         success = client.send_template(
                             user.phone,
                             summary_template,
                             template_lang,
                             components=[{
                                 "type": "body",
-                                "parameters": [{"type": "text", "text": message}],
+                                "parameters": [
+                                    {"type": "text", "text": f"₦{rev:,.0f}"},
+                                    {"type": "text", "text": f"₦{exp:,.0f}"},
+                                    {"type": "text", "text": f"₦{net:,.0f}"},
+                                    {"type": "text", "text": f"₦{out:,.0f}"},
+                                    {"type": "text", "text": str(overdue_count)},
+                                ],
                             }],
                         )
                         if not success:
