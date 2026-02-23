@@ -168,6 +168,19 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
     if not refresh_value:
         log_failure("auth.refresh", user_id=None, error="missing_refresh_token")
         raise HTTPException(status_code=401, detail="Missing refresh token")
+
+    # Check if the refresh token has been revoked (e.g. via logout)
+    try:
+        from app.core.token_blocklist import is_token_revoked
+        from app.db.redis_client import get_redis_client
+        if is_token_revoked(get_redis_client(), refresh_value):
+            log_failure("auth.refresh", user_id=None, error="revoked_token")
+            raise HTTPException(status_code=401, detail="Token has been revoked")
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        pass  # Redis unavailable — fail-open (short access-token TTL limits risk)
+
     try:
         bundle = svc.refresh(refresh_value)
         # Extract user_id from the new access token
@@ -184,8 +197,28 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
 @router.post("/logout", response_model=schemas.MessageOut)
 def logout(request: Request):
     response = JSONResponse(status_code=200, content={"detail": "Logged out"})
+
+    # Revoke the refresh token server-side so it can't be reused
+    refresh_value = request.cookies.get(REFRESH_COOKIE_NAME)
+    if refresh_value:
+        try:
+            from app.core.security import TokenType, decode_token
+            from app.core.token_blocklist import revoke_token
+            from app.db.redis_client import get_redis_client
+
+            payload = decode_token(refresh_value, expected_type=TokenType.REFRESH)
+            from datetime import datetime, timezone
+            expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+            user_id = payload.get("sub")
+            revoke_token(get_redis_client(), refresh_value, expires_at=expires_at)
+            log_audit_event("auth.logout", user_id=int(user_id) if user_id else None)
+        except Exception:  # noqa: BLE001
+            # Token might already be expired or invalid — still clear the cookie
+            log_audit_event("auth.logout", user_id=None)
+    else:
+        log_audit_event("auth.logout", user_id=None)
+
     _clear_refresh_cookie(response)
-    log_audit_event("auth.logout", user_id=None)
     return response
 
 

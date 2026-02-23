@@ -217,7 +217,7 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
     )
 
 
-@router.get("/", response_model=list[schemas.InvoiceOut])
+@router.get("/", response_model=schemas.PaginatedResponse[schemas.InvoiceOut])
 def list_invoices(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep, 
@@ -225,15 +225,21 @@ def list_invoices(
     invoice_type: str | None = None,  # Optional filter: "revenue", "expense", or None for all
     start_date: str | None = None,  # Optional date filter (YYYY-MM-DD)
     end_date: str | None = None,  # Optional date filter (YYYY-MM-DD)
+    skip: int = 0,
+    limit: int = 50,
 ):
     from datetime import date
     from datetime import datetime as dt
     
+    # Clamp pagination params to safe bounds
+    skip = max(0, skip)
+    limit = max(1, min(limit, 200))
+    
     svc = get_invoice_service_for_user(data_owner_id, db)
     # Pass invoice_type to query so filtering happens BEFORE the limit
-    invoices = svc.list_invoices(data_owner_id, invoice_type=invoice_type)
+    invoices, total = svc.list_invoices(data_owner_id, invoice_type=invoice_type, skip=skip, limit=limit)
     
-    # Filter by date range if specified
+    # Filter by date range if specified (applied post-query for simplicity)
     if start_date or end_date:
         def get_invoice_date(inv) -> date | None:
             """Extract date from invoice, handling various formats."""
@@ -263,7 +269,13 @@ def list_invoices(
             except ValueError:
                 pass  # Invalid date format, skip filter
     
-    return invoices
+    return schemas.PaginatedResponse[schemas.InvoiceOut](
+        items=invoices,
+        total=total,
+        skip=skip,
+        limit=limit,
+        has_more=(skip + limit) < total,
+    )
 
 
 @router.get("/{invoice_id}", response_model=schemas.InvoiceOutDetailed)

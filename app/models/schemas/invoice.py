@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from .utils import format_amount
+
+T = TypeVar("T")
 
 
 class InvoiceLineIn(BaseModel):
@@ -185,3 +187,11 @@ class InvoicePackPurchaseInitOut(BaseModel):
     reference: str = Field(description="Payment reference for tracking")
     amount: int = Field(description="Total amount in Naira")
     invoices_to_add: int = Field(description="Number of invoices that will be added after payment")
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """Generic paginated API response."""
+    items: list[T]
+    total: int = Field(description="Total number of matching records")
+    skip: int = Field(description="Number of records skipped")
+    limit: int = Field(description="Maximum records returned per page")
+    has_more: bool = Field(description="Whether more records exist beyond this page")

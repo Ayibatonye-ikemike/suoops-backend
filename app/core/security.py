@@ -42,7 +42,7 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def create_access_token(subject: str, expires_minutes: int = 60 * 24, user_plan: str | None = None) -> str:
+def create_access_token(subject: str, expires_minutes: int = 30, user_plan: str | None = None) -> str:
     return _create_token(subject, timedelta(minutes=expires_minutes), TokenType.ACCESS, user_plan)
 
 

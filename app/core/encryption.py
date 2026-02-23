@@ -51,7 +51,10 @@ def encrypt_value(value: str | None) -> str | None:
     cipher = _get_cipher()
     if not cipher:
         if _is_production():
-            logger.warning("Encryption unavailable in production — storing value as plaintext")
+            raise RuntimeError(
+                "ENCRYPTION_KEY is not configured — refusing to store sensitive data as "
+                "plaintext in production. Set the ENCRYPTION_KEY environment variable."
+            )
         return value
     try:
         return cipher.encrypt(value.encode()).decode()

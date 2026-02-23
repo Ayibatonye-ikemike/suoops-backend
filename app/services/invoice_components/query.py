@@ -15,8 +15,15 @@ logger = logging.getLogger(__name__)
 class InvoiceQueryMixin:
     db: Session
 
-    def list_invoices(self, issuer_id: int, invoice_type: str | None = None) -> list[models.Invoice]:
-        if self.cache:
+    def list_invoices(
+        self,
+        issuer_id: int,
+        invoice_type: str | None = None,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[models.Invoice], int]:
+        """Return a page of invoices and the total count matching the filters."""
+        if self.cache and skip == 0 and limit >= 50:
             cached = self.cache.get_invoice_list(issuer_id)
             if cached is not None:
                 logger.info("Cache hit for user %s invoice list", issuer_id)
@@ -30,6 +37,9 @@ class InvoiceQueryMixin:
         if invoice_type:
             query = query.filter(models.Invoice.invoice_type == invoice_type)
         
+        # Get total count before applying pagination
+        total = query.count()
+        
         invoices = (
             query
             .options(
@@ -40,12 +50,14 @@ class InvoiceQueryMixin:
                 joinedload(models.Invoice.status_updated_by),  # Load status updater for name display
             )
             .order_by(models.Invoice.id.desc())
+            .offset(skip)
+            .limit(limit)
             .all()
         )
 
         if self.cache and invoices:
             self.cache.set_invoice_list(issuer_id, invoices)
-        return invoices
+        return invoices, total
 
     def get_invoice(self, issuer_id: int, invoice_id: str) -> models.Invoice:
         if self.cache:
