@@ -363,13 +363,20 @@ class NLPService:
                 "invoice Joy 08012345678, 1000 wig, 2000 shoe, 4000 belt"
         """
         tokens = text.split()
+
+        # Detect currency early — needed for amount-size heuristics
+        text_lower = text.lower()
+        has_usd_marker = bool(self.USD_AMOUNT_PATTERN.search(text)) or "dollar" in text_lower
+        is_usd = has_usd_marker
         
         # Smart name extraction: check if second token looks like amount
         # If so, look for name elsewhere in the text
         name = "Customer"
         if len(tokens) > 1:
-            second_token = tokens[1].replace(",", "").replace("₦", "").replace("ngn", "")
-            if second_token.isdigit() and len(second_token) >= 3:
+            second_token = tokens[1].replace(",", "").replace("₦", "").replace("ngn", "").replace("$", "")
+            # USD amounts can be 1+ digit ($5, $50); NGN amounts need 3+ digits
+            min_amount_digits = 1 if is_usd else 3
+            if second_token.isdigit() and len(second_token) >= min_amount_digits:
                 # Amount came first - look for name after the comma or amount
                 name = self._extract_name_from_text(text)
             else:
@@ -393,7 +400,7 @@ class NLPService:
 
         # Try to extract multiple items using pattern: <item_name> <amount>
         # Supports: "wig 1000, shoe 3000" or "wig 1000 shoe 3000"
-        lines = self._extract_line_items(text, phone_variants)
+        lines = self._extract_line_items(text, phone_variants, is_usd=is_usd)
         
         # Calculate total amount from all items
         if lines:
@@ -406,12 +413,21 @@ class NLPService:
         else:
             # Fallback: single amount extraction for backward compatibility
             amount_raw = "0"
-            for match in self.AMOUNT_PATTERN.finditer(text):
-                candidate = match.group(1).replace(",", "")
-                if candidate in phone_variants:
-                    continue
-                amount_raw = candidate
-                break
+            # Try USD-prefixed pattern first when $ or usd marker present
+            if is_usd:
+                for match in self.USD_AMOUNT_PATTERN.finditer(text):
+                    candidate = match.group(1).replace(",", "")
+                    if candidate in phone_variants:
+                        continue
+                    amount_raw = candidate
+                    break
+            if amount_raw == "0":
+                for match in self.AMOUNT_PATTERN.finditer(text):
+                    candidate = match.group(1).replace(",", "")
+                    if candidate in phone_variants:
+                        continue
+                    amount_raw = candidate
+                    break
             total_amount = Decimal(amount_raw)
             
             # Create a single line item with description
@@ -425,10 +441,8 @@ class NLPService:
         if name and name.replace("+", "").replace("-", "").isdigit():
             name = "Customer"
 
-        # Detect currency — check for USD markers ($, usd, dollar) in the text
-        text_lower = text.lower()
-        has_usd_marker = bool(self.USD_AMOUNT_PATTERN.search(text)) or "dollar" in text_lower
-        currency = "USD" if has_usd_marker else "NGN"
+        # Currency already detected at the top of this method
+        currency = "USD" if is_usd else "NGN"
         
         return {
             "customer_name": name.capitalize(),
@@ -440,7 +454,13 @@ class NLPService:
             "lines": lines,
         }
     
-    def _extract_line_items(self, text: str, phone_variants: set[str]) -> list[dict[str, object]]:
+    def _extract_line_items(
+        self,
+        text: str,
+        phone_variants: set[str],
+        *,
+        is_usd: bool = False,
+    ) -> list[dict[str, object]]:
         """
         Extract multiple line items from text.
         
@@ -452,14 +472,10 @@ class NLPService:
             5. Comma after amount: "40,000, shoe, 50,000 bag"
             6. Typo handling: "20,00" treated as "2000" (2 digits after comma)
             7. Quantity-only: "5 wig, 10 shoe, 20 pack" (unit_price=None, needs inventory lookup)
+            8. USD small amounts: "$50 wig, $25 shoe" (1+ digit when USD)
         
-        Examples:
-            "1000 wig, 2000 shoe" →
-                [{"description": "Wig", "unit_price": 1000}, {"description": "Shoe", "unit_price": 2000}]
-            "40,000 shoe 50,000 bag" →
-                [{"description": "Shoe", "unit_price": 40000}, {"description": "Bag", "unit_price": 50000}]
-            "40,000, shoe, 50,000 bag" →
-                [{"description": "Shoe", "unit_price": 40000}, {"description": "Bag", "unit_price": 50000}]
+        When *is_usd* is True, amounts as small as 1 digit are accepted
+        (e.g. ``$5 wig``).  Otherwise the minimum is 3 digits (NGN).
         """
         lines = []
         
@@ -473,6 +489,7 @@ class NLPService:
         clean_text = clean_text.replace("₦", "").replace("$", "")
         clean_text = re.sub(r"\busd\b", "", clean_text)
         clean_text = re.sub(r"\bngn\b", "", clean_text)
+        clean_text = re.sub(r"\bdollars?\b", "", clean_text)
         
         for word in ["for", "due", "tomorrow", "today", "next week"]:
             clean_text = clean_text.replace(word, " ")
@@ -512,7 +529,9 @@ class NLPService:
         # Vs amount: "5000 wig" (large number before a word)
         
         # Find all amounts and their positions
-        amount_pattern = re.compile(r"\b(\d{3,})\b")
+        # USD amounts can be 1+ digit ($5, $50); NGN needs 3+ digits
+        min_digits = 1 if is_usd else 3
+        amount_pattern = re.compile(rf"\b(\d{{{min_digits},}})\b")
         matches = list(amount_pattern.finditer(clean_text))
         
         if matches:
@@ -554,7 +573,8 @@ class NLPService:
                 current = tokens[i]
                 next_token = tokens[i + 1]
                 
-                if not current[0].isdigit() and next_token.isdigit() and len(next_token) >= 3:
+                min_len = 1 if is_usd else 3
+                if not current[0].isdigit() and next_token.isdigit() and len(next_token) >= min_len:
                     if next_token not in phone_variants:
                         lines.append({
                             "description": current.capitalize(),

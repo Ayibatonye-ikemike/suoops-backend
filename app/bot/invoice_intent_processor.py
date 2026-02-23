@@ -190,20 +190,32 @@ class InvoiceIntentProcessor:
                 "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
                 "📋 *EXAMPLES:*\n"
                 "• `Invoice Joy 08012345678, 12000 wig`\n"
-                "• `Invoice Ada 5000 braids, 2000 gel`\n\n"
-                "💡 *TIP:* Amount should be a number (e.g. 5000, not five thousand)",
+                "• `Invoice Ada $50 braids, $20 gel`\n\n"
+                "💡 *TIP:* Use $ for USD or ₦ for Naira",
             )
             return
 
-        if amount < 100:
-            currency = get_user_currency(self.db, issuer_id)
-            self.client.send_text(
-                sender,
-                f"⚠️ Amount {fmt_money(amount, currency)} seems too low.\n\n"
-                "Minimum invoice amount is ₦100.\n"
-                "Did you mean a larger number?\n\n"
-                "💡 *TIP:* Amount should be a number (e.g. 5000 or 5,000)",
-            )
+        # Currency-aware minimum: $1 for USD, ₦100 for NGN
+        inv_currency = data.get("currency", "NGN")
+        min_amount = 1 if inv_currency == "USD" else 100
+        if amount < min_amount:
+            if inv_currency == "USD":
+                self.client.send_text(
+                    sender,
+                    f"⚠️ Amount ${amount:,.2f} seems too low.\n\n"
+                    "Minimum invoice amount is $1.\n"
+                    "Did you mean a larger number?\n\n"
+                    "💡 *TIP:* Use $ or USD before the amount (e.g. $50 or USD 50)",
+                )
+            else:
+                currency = get_user_currency(self.db, issuer_id)
+                self.client.send_text(
+                    sender,
+                    f"⚠️ Amount {fmt_money(amount, currency)} seems too low.\n\n"
+                    "Minimum invoice amount is ₦100.\n"
+                    "Did you mean a larger number?\n\n"
+                    "💡 *TIP:* Amount should be a number (e.g. 5000 or 5,000)",
+                )
             return
 
         # ── Guard: missing customer name ──
@@ -227,27 +239,35 @@ class InvoiceIntentProcessor:
         lines = data.get("lines", [])
         
         # Detect suspicious patterns that suggest parsing errors
+        # Thresholds are currency-aware (USD amounts are much smaller than NGN)
         is_suspicious = False
         suspicious_reason = ""
         
-        # 1. Very small amount with multiple line items could mean comma-formatting issues
-        if amount < 500 and len(lines) >= 2:
+        low_multi = 5 if inv_currency == "USD" else 500
+        low_single_lo = 1 if inv_currency == "USD" else 100
+        low_single_hi = 10 if inv_currency == "USD" else 1000
+        high_cap = 50_000 if inv_currency == "USD" else 5_000_000
+
+        # 1. Very small amount with multiple line items could mean parsing issues
+        if amount < low_multi and len(lines) >= 2:
             is_suspicious = True
             suspicious_reason = "very small total with multiple items"
         
-        # 2. Amount that looks like a partial number (e.g., 244 instead of 11,244)
-        if 100 <= amount < 1000 and len(lines) == 1:
-            # Could be intentional (small item) or parsing error - just log
-            logger.info("Small invoice amount ₦%s - may be intentional or parsing issue", amount)
+        # 2. Amount that looks like a partial number
+        if low_single_lo <= amount < low_single_hi and len(lines) == 1:
+            # Could be intentional or parsing error - just log
+            logger.info("Small invoice amount %s%s - may be intentional or parsing issue",
+                        "$" if inv_currency == "USD" else "₦", amount)
         
-        # 3. Suspiciously large amounts (possible concatenation error like 9,422,244)
-        if amount > 5_000_000:
+        # 3. Suspiciously large amounts (possible concatenation error)
+        if amount > high_cap:
             is_suspicious = True
             suspicious_reason = "unusually large amount"
         
         if is_suspicious:
             logger.warning(
-                "Suspicious invoice amount ₦%s (%s) - raw data: %s",
+                "Suspicious invoice amount %s%s (%s) - raw data: %s",
+                "$" if inv_currency == "USD" else "₦",
                 amount, suspicious_reason, data
             )
             currency = get_user_currency(self.db, issuer_id)

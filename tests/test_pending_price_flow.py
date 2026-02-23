@@ -211,7 +211,7 @@ class TestHandlePriceReply:
 
     def test_no_session_returns_false(self):
         proc, _ = _make_processor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             proc.handle_price_reply("2348012345678", "5000, 3000"),
         )
         assert result is False
@@ -237,7 +237,7 @@ class TestHandlePriceReply:
                 "app.bot.invoice_intent_processor.build_invoice_service",
             ) as mock_build,
         ):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 proc.handle_price_reply(sender, "5000, 3000"),
             )
 
@@ -266,7 +266,7 @@ class TestHandlePriceReply:
             data={"customer_name": "Tonye", "customer_phone": "08078557662"},
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             proc.handle_price_reply(sender, "hello world"),
         )
 
