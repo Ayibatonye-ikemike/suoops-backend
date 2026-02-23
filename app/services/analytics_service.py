@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import and_, case, extract, func, or_
@@ -678,11 +678,11 @@ def calculate_professionalism_score(db: Session, user_id: int) -> dict:
     """Score how professional the business looks to customers (0-100).
 
     Five checks, 20 points each:
-    1. Has logo
-    2. Has bank details
-    3. Uses due dates on invoices
-    4. Sends receipts on payment
-    5. Includes payment instructions
+    1. Has business name
+    2. Has logo
+    3. Has bank details (= payment instructions on invoices)
+    4. Uses due dates on recent invoices
+    5. Sends receipts on payment
     """
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
@@ -691,36 +691,52 @@ def calculate_professionalism_score(db: Session, user_id: int) -> dict:
     checks: dict[str, bool] = {}
     tips: list[str] = []
 
-    # 1. Has logo (+20)
+    # 1. Has business name (+20)
+    has_name = bool(user.business_name and user.business_name.strip())
+    checks["has_business_name"] = has_name
+    if not has_name:
+        tips.append("Set your business name — it appears on every invoice and receipt.")
+
+    # 2. Has logo (+20)
     has_logo = bool(user.logo_url)
     checks["has_logo"] = has_logo
     if not has_logo:
         tips.append("Upload your business logo to look more credible on invoices.")
 
-    # 2. Has bank details (+20)
+    # 3. Has bank details (+20)
+    # Bank details ARE the payment instructions shown on invoices.
     has_bank = bool(user.bank_name and user.account_number)
     checks["has_bank_details"] = has_bank
     if not has_bank:
         tips.append("Add your bank details so customers know where to pay.")
 
-    # 3. Uses due dates on invoices (+20)
+    # 4. Uses due dates on recent invoices (+20)
+    # Only look at the last 5 invoices created in the past 30 days so
+    # old invoices (created before the user learned about due dates)
+    # don't permanently drag down the score.
+    thirty_days_ago = datetime.now(tz=timezone.utc) - timedelta(days=30)
     recent_invoices = (
         db.query(models.Invoice)
         .filter(
             models.Invoice.issuer_id == user_id,
             models.Invoice.invoice_type == "revenue",
+            models.Invoice.created_at >= thirty_days_ago,
         )
         .order_by(models.Invoice.created_at.desc())
-        .limit(10)
+        .limit(5)
         .all()
     )
-    with_due_date = sum(1 for inv in recent_invoices if inv.due_date)
-    due_ratio = with_due_date / len(recent_invoices) if recent_invoices else 0
-    checks["uses_due_dates"] = due_ratio >= 0.7
-    if due_ratio < 0.7:
+    if recent_invoices:
+        with_due_date = sum(1 for inv in recent_invoices if inv.due_date)
+        due_ratio = with_due_date / len(recent_invoices)
+        checks["uses_due_dates"] = due_ratio >= 0.6
+    else:
+        # No recent invoices — don't penalise; pass by default
+        checks["uses_due_dates"] = True
+    if not checks["uses_due_dates"]:
         tips.append("Set due dates on your invoices — businesses that do collect 30% faster.")
 
-    # 4. Sends receipts on payment (+20)
+    # 5. Sends receipts on payment (+20)
     paid_invoices = (
         db.query(models.Invoice)
         .filter(
@@ -732,18 +748,15 @@ def calculate_professionalism_score(db: Session, user_id: int) -> dict:
         .limit(10)
         .all()
     )
-    with_receipt = sum(1 for inv in paid_invoices if inv.receipt_pdf_url)
-    receipt_ratio = with_receipt / len(paid_invoices) if paid_invoices else 0
-    checks["sends_receipts"] = receipt_ratio >= 0.7
-    if receipt_ratio < 0.7:
+    if paid_invoices:
+        with_receipt = sum(1 for inv in paid_invoices if inv.receipt_pdf_url)
+        receipt_ratio = with_receipt / len(paid_invoices)
+        checks["sends_receipts"] = receipt_ratio >= 0.7
+    else:
+        # No paid invoices yet — don't penalise
+        checks["sends_receipts"] = True
+    if not checks["sends_receipts"]:
         tips.append("Send receipts when customers pay — it builds trust and repeat business.")
-
-    # 5. Includes payment instructions (+20)
-    with_notes = sum(1 for inv in recent_invoices if inv.notes)
-    notes_ratio = with_notes / len(recent_invoices) if recent_invoices else 0
-    checks["has_payment_instructions"] = notes_ratio >= 0.5
-    if notes_ratio < 0.5:
-        tips.append("Include payment instructions on invoices for clarity.")
 
     score = sum(20 for v in checks.values() if v)
     if score >= 80:
