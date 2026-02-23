@@ -46,10 +46,23 @@ class InvoiceStatusMixin:
         if previous_status == status:
             return invoice
 
-        # Allow manual marking as paid (e.g., business confirms payment).
-        # Block nonsensical transitions.
-        if status == "paid" and previous_status == "cancelled":
-            raise ValueError("Cannot mark a cancelled invoice as paid")
+        # ── Invoice status state machine ─────────────────────────────
+        # pending             → awaiting_confirmation, paid, cancelled
+        # awaiting_confirmation → pending, paid, cancelled
+        # paid                → (terminal — no further changes)
+        # cancelled           → pending (re-open only)
+        _VALID_TRANSITIONS: dict[str, set[str]] = {
+            "pending": {"awaiting_confirmation", "paid", "cancelled"},
+            "awaiting_confirmation": {"pending", "paid", "cancelled"},
+            "paid": set(),  # terminal state
+            "cancelled": {"pending"},  # can only re-open
+        }
+
+        allowed = _VALID_TRANSITIONS.get(previous_status, set())
+        if status not in allowed:
+            raise ValueError(
+                f"Cannot change invoice from '{previous_status}' to '{status}'"
+            )
 
         invoice.status = status
         
