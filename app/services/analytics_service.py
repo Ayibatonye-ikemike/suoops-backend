@@ -439,32 +439,12 @@ def get_date_range(period: str) -> tuple[date, date]:
 def get_conversion_rate(currency: str) -> Decimal:
     """Get currency conversion rate (NGN to target currency).
 
-    Uses the ``NGN_USD_RATE`` env-var when available so ops can update it
-    without a deploy.  Falls back to a reasonable default and logs a
-    warning so the team knows to set it.
+    Uses real-time exchange rate with 1-hour caching.
+    Falls back to NGN_USD_RATE env var, then to a hardcoded default.
     """
-    if currency != "USD":
-        return Decimal("1")
+    from app.services.exchange_rate import get_conversion_rate as _get_rate
 
-    from app.core.config import settings
-
-    rate_str = settings.NGN_USD_RATE
-    if rate_str:
-        try:
-            return Decimal(rate_str)
-        except Exception:  # noqa: BLE001
-            import logging as _log
-            _log.getLogger(__name__).warning(
-                "Invalid NGN_USD_RATE value '%s', falling back to default", rate_str
-            )
-
-    import logging as _log
-
-    _log.getLogger(__name__).warning(
-        "NGN_USD_RATE env var not set – using default 1600. "
-        "Set NGN_USD_RATE to the current Naira/USD rate."
-    )
-    return Decimal("1600")
+    return _get_rate(currency)
 
 
 # ── Cash-First Dashboard ─────────────────────────────────────────────

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -75,6 +76,22 @@ class ConversionFunnelOut(BaseModel):
     conversion_rates: ConversionRates
 
 
+class ExchangeRateOut(BaseModel):
+    rate: float
+    currency_pair: str
+    description: str
+
+
+@router.get("/exchange-rate", response_model=ExchangeRateOut)
+def get_exchange_rate(
+    current_user_id: CurrentUserDep,
+):
+    """Get the current NGN/USD exchange rate used for conversions."""
+    from app.services.exchange_rate import get_exchange_rate_info
+
+    return get_exchange_rate_info()
+
+
 @router.get("/dashboard", response_model=AnalyticsDashboard)
 def get_analytics_dashboard(
     current_user_id: CurrentUserDep,
@@ -141,10 +158,12 @@ def get_revenue_by_customer(
     db: DbDep,
     period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
     limit: int = Query(10, ge=1, le=100),
+    currency: str = Query("NGN", pattern="^(NGN|USD)$"),
 ):
     """Get top customers by revenue (team data for team members)."""
     
     start_date, _ = get_date_range(period)
+    conversion_rate = get_conversion_rate(currency)
     
     # Query top customers using data_owner_id
     top_customers = (
@@ -171,7 +190,9 @@ def get_revenue_by_customer(
         "customers": [
             {
                 "name": customer.name,
-                "total_revenue": float(customer.total_revenue),
+                "total_revenue": float(
+                    Decimal(str(customer.total_revenue)) / conversion_rate
+                ),
                 "invoice_count": customer.invoice_count,
             }
             for customer in top_customers
