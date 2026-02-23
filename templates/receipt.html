@@ -2,112 +2,265 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Payment Receipt {{ invoice.invoice_id }}</title>
+  <title>Receipt {{ invoice.invoice_id }}</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 26px; }
-    h1 { margin: 0 0 6px 0; font-size: 26px; }
-    .header { position: relative; margin-bottom: 22px; }
-    .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-    .business-info { flex: 1; max-width: calc(100% - 140px); }
-    .business-name { font-size: 18px; font-weight: bold; color: #0B3318; margin: 4px 0 0 0; }
-    .logo-container { flex-shrink: 0; text-align: right; }
-    .logo { max-width: 100px; max-height: 50px; }
-    .meta { font-size: 13px; color: #555; margin: 4px 0; }
-    .box { background:#f9fafb; border:1px solid #d0d7de; border-radius:8px; padding:16px; margin:20px 0; }
-    .box h3 { margin:0 0 12px 0; font-size:16px; color:#0b4f9f; }
-    table { width:100%; border-collapse:collapse; margin-top:8px; }
-    th, td { border:1px solid #e2e8f0; padding:8px; font-size:13px; }
-    th { background:#f1f5f9; text-align:left; }
-    .total { text-align:right; font-weight:bold; font-size:16px; margin-top:10px; }
-    .watermark { position:fixed; top:35%; left:5%; right:5%; text-align:center; opacity:0.08; font-size:72px; transform:rotate(-25deg); pointer-events:none; z-index:-1; color:#0b8245; }
-    .footer { margin-top:32px; font-size:11px; color:#666; line-height:1.4; }
-    .qr-section {
-      margin-top: 30px;
-      padding: 20px;
-      border: 2px dashed #14B56A;
-      border-radius: 12px;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      background: #E8F5EC; color: #0F1E17;
+      padding: 32px 20px;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .receipt-wrapper {
+      max-width: 680px; margin: 0 auto; background: #fff;
+      border-radius: 16px; overflow: hidden;
+      box-shadow: 0 4px 24px rgba(11,51,24,0.08);
+    }
+
+    /* ── Brand Header ─────────────────────────── */
+    .brand-header {
+      background: #0B3318; padding: 28px 32px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .brand-left { flex: 1; min-width: 0; }
+    .business-name {
+      font-size: 22px; font-weight: 700; color: #fff;
+      letter-spacing: -0.3px; word-wrap: break-word;
+    }
+    .doc-type {
+      font-size: 12px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 1.5px; color: #BFF74A; margin-top: 4px;
+    }
+    .logo-area { flex-shrink: 0; margin-left: 20px; }
+    .logo-area img {
+      max-width: 90px; max-height: 56px; border-radius: 6px;
+      background: #fff; padding: 4px;
+    }
+
+    /* ── Status Badge ─────────────────────────── */
+    .status-bar {
+      background: #14B56A; padding: 14px 32px;
+      display: flex; flex-wrap: wrap; gap: 24px;
+    }
+    .status-item { color: #fff; font-size: 12px; }
+    .status-label {
+      opacity: 0.8; text-transform: uppercase; font-weight: 600;
+      letter-spacing: 0.5px; font-size: 10px;
+    }
+    .status-value { font-weight: 700; font-size: 14px; margin-top: 2px; }
+
+    /* ── Body ─────────────────────────────────── */
+    .receipt-body { padding: 28px 32px; }
+
+    /* ── Paid Badge ───────────────────────────── */
+    .paid-badge {
+      display: inline-block; padding: 8px 20px;
+      background: #E8F5EC; color: #0B3318; border: 2px solid #14B56A;
+      border-radius: 8px; font-weight: 800; font-size: 18px;
+      letter-spacing: 2px; margin-bottom: 24px;
+    }
+
+    /* ── Info Grid ────────────────────────────── */
+    .info-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 16px 24px; margin-bottom: 28px;
+    }
+    .info-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: #0F766E; margin-bottom: 4px;
+    }
+    .info-value { font-size: 15px; font-weight: 600; color: #0B3318; }
+    .info-detail { font-size: 13px; color: #555; margin-top: 2px; }
+
+    /* ── Amount Box ───────────────────────────── */
+    .amount-box {
+      background: #FAFFFE; border: 2px solid #14B56A;
+      border-radius: 12px; padding: 24px; margin-bottom: 24px;
       text-align: center;
-      background: white;
-      box-shadow: 0 2px 8px rgba(20, 181, 106, 0.1);
     }
-    .qr-section h3 {
-      margin: 0 0 10px 0;
-      color: #0B3318;
-      font-size: 18px;
-      font-weight: 600;
+    .amount-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: #0F766E; margin-bottom: 8px;
     }
-    .qr-section img {
-      width: 150px;
-      height: 150px;
-      margin: 10px 0;
+    .amount-value {
+      font-size: 32px; font-weight: 800; color: #0B3318;
+      font-variant-numeric: tabular-nums;
     }
-    .qr-section p {
-      margin: 5px 0;
-      font-size: 12px;
-      color: #666;
+
+    /* ── Line Items ───────────────────────────── */
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .items-table thead th {
+      background: #E8F5EC; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.8px; color: #0B3318;
+      padding: 10px 12px; text-align: left; border-bottom: 2px solid #14B56A;
+    }
+    .items-table thead th:nth-child(2),
+    .items-table thead th:nth-child(3),
+    .items-table thead th:nth-child(4) { text-align: right; }
+    .items-table tbody td {
+      padding: 12px; font-size: 13px;
+      border-bottom: 1px solid #E8F5EC; color: #0F1E17;
+    }
+    .items-table tbody td:nth-child(2),
+    .items-table tbody td:nth-child(3),
+    .items-table tbody td:nth-child(4) { text-align: right; font-variant-numeric: tabular-nums; }
+    .items-table tbody tr:last-child td { border-bottom: none; }
+
+    /* ── Section Label ────────────────────────── */
+    .section-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: #0F766E; margin-bottom: 6px;
+    }
+
+    /* ── QR Code ──────────────────────────────── */
+    .qr-section {
+      text-align: center; padding: 24px; border: 2px dashed rgba(20,181,106,0.25);
+      border-radius: 12px; margin-bottom: 24px; background: #FAFFFE;
+    }
+    .qr-section img { width: 130px; height: 130px; margin: 10px 0; }
+    .qr-title { font-size: 13px; font-weight: 700; color: #0B3318; }
+    .qr-sub { font-size: 11px; color: #777; margin-top: 4px; }
+
+    /* ── Footer ───────────────────────────────── */
+    .receipt-footer {
+      background: #0B3318; padding: 20px 32px;
+      color: #E8F5EC; font-size: 11px; line-height: 1.6;
+    }
+    .receipt-footer a { color: #BFF74A; text-decoration: none; }
+    .footer-note { opacity: 0.6; margin-top: 8px; font-size: 10px; }
+
+    /* ── Watermark ────────────────────────────── */
+    .watermark {
+      position: fixed; top: 38%; left: 10%; right: 10%; text-align: center;
+      opacity: 0.04; font-size: 80px; font-weight: 900; transform: rotate(-25deg);
+      pointer-events: none; z-index: -1; color: #0B3318;
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .receipt-wrapper { box-shadow: none; border-radius: 0; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-top">
-      <div class="business-info">
-        <h1>Payment Receipt</h1>
+  {% if watermark_text %}
+  <div class="watermark">{{ watermark_text }}</div>
+  {% endif %}
+
+  <div class="receipt-wrapper">
+    <!-- Brand Header -->
+    <div class="brand-header">
+      <div class="brand-left">
         {% if business_name %}
-        <p class="business-name">{{ business_name }}</p>
+        <div class="business-name">{{ business_name }}</div>
         {% endif %}
+        <div class="doc-type">Payment Receipt</div>
       </div>
       {% if logo_url %}
-      <div class="logo-container">
-        <img src="{{ logo_url }}" alt="Business Logo" class="logo" />
+      <div class="logo-area">
+        <img src="{{ logo_url }}" alt="Logo" />
       </div>
       {% endif %}
     </div>
-    {% if watermark_text %}<div class="watermark">{{ watermark_text }}</div>{% else %}<div class="watermark">PAID</div>{% endif %}
-    <p class="meta"><strong>Invoice:</strong> {{ invoice.invoice_id }}</p>
-    <p class="meta"><strong>Customer:</strong> {{ invoice.customer.name if invoice.customer else 'Customer' }}</p>
-    <p class="meta"><strong>Amount Paid:</strong> ₦{{ "{:,.2f}".format(invoice.amount) }}</p>
-    <p class="meta"><strong>Payment Date:</strong> {{ paid_at_display }}</p>
-    <p class="meta"><strong>Status:</strong> PAID</p>
-    {% if created_by_name %}
-    <p class="meta"><strong>Invoice Created by:</strong> {{ created_by_name }}</p>
-    {% endif %}
-    {% if confirmed_by_name %}
-    <p class="meta"><strong>Payment Confirmed by:</strong> {{ confirmed_by_name }}</p>
-    {% endif %}
-  </div>
-  <div class="box">
-    <h3>Summary</h3>
-    <table>
-      <tr><th>Invoice ID</th><td>{{ invoice.invoice_id }}</td></tr>
-      <tr><th>Customer</th><td>{{ invoice.customer.name if invoice.customer else 'Customer' }}</td></tr>
-      <tr><th>Amount</th><td>₦{{ "{:,.2f}".format(invoice.amount) }}</td></tr>
-      <tr><th>Payment Method</th><td>Bank Transfer</td></tr>
-      <tr><th>Confirmed Status</th><td>PAID</td></tr>
-      <tr><th>Timestamp</th><td>{{ paid_at_display }}</td></tr>
-      {% if created_by_name %}
-      <tr><th>Invoice Created by</th><td>{{ created_by_name }}</td></tr>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-label">Receipt For</div>
+        <div class="status-value">{{ invoice.invoice_id }}</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Date Paid</div>
+        <div class="status-value">{{ paid_at_display }}</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Status</div>
+        <div class="status-value">PAID</div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="receipt-body">
+      <!-- Paid Badge -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div class="paid-badge">&#x2713; PAID</div>
+      </div>
+
+      <!-- Amount -->
+      <div class="amount-box">
+        <div class="amount-label">Amount Paid</div>
+        <div class="amount-value">&#x20A6;{{ "{:,.2f}".format(invoice.amount) }}</div>
+      </div>
+
+      <!-- Customer & Payment Info -->
+      <div class="info-grid">
+        <div>
+          <div class="info-label">Customer</div>
+          <div class="info-value">{{ invoice.customer.name }}</div>
+          {% if invoice.customer.phone %}
+          <div class="info-detail">{{ invoice.customer.phone }}</div>
+          {% endif %}
+          {% if invoice.customer.email %}
+          <div class="info-detail">{{ invoice.customer.email }}</div>
+          {% endif %}
+        </div>
+        <div>
+          <div class="info-label">Business</div>
+          <div class="info-value">{{ business_name }}</div>
+        </div>
+        {% if created_by_name %}
+        <div>
+          <div class="info-label">Issued By</div>
+          <div class="info-detail">{{ created_by_name }}</div>
+        </div>
+        {% endif %}
+        {% if confirmed_by_name %}
+        <div>
+          <div class="info-label">Confirmed By</div>
+          <div class="info-detail">{{ confirmed_by_name }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Line Items -->
+      {% if invoice.lines %}
+      <div class="section-label" style="margin-bottom: 10px;">Items</div>
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>Unit Price</th>
+            <th>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in invoice.lines %}
+          <tr>
+            <td>{{ line.description }}</td>
+            <td>{{ line.quantity }}</td>
+            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price) }}</td>
+            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
       {% endif %}
-      {% if confirmed_by_name %}
-      <tr><th>Payment Confirmed by</th><td>{{ confirmed_by_name }}</td></tr>
+
+      <!-- QR Code -->
+      {% if qr_code %}
+      <div class="qr-section">
+        <div class="qr-title">&#x1F510; Verify This Receipt</div>
+        <img src="{{ qr_code }}" alt="QR verification" />
+        <div class="qr-sub">Scan to confirm authenticity &amp; payment status</div>
+      </div>
       {% endif %}
-    </table>
-    <p class="total">Total Paid: ₦{{ "{:,.2f}".format(invoice.amount) }}</p>
-  </div>
-  
-  {% if qr_code %}
-  <div class="qr-section">
-    <h3>🔐 Verify Authenticity</h3>
-    <img src="{{ qr_code }}" alt="Scan to verify receipt" />
-    <p><strong>Scan QR code to verify this receipt is genuine</strong></p>
-    <p>Confirm payment status and invoice authenticity instantly</p>
-  </div>
-  {% endif %}
-  
-  <div class="footer">
-    <p>This document serves as official confirmation that the above invoice has been settled in full.</p>
-    <p>Keep this receipt for your records. For any disputes or inquiries, contact the issuing business.</p>
-    <p style="margin-top:10px;">Powered by SuoOps • Automated Receipting</p>
+    </div>
+
+    <!-- Footer -->
+    <div class="receipt-footer">
+      <div>Thank you for your payment!</div>
+      <div class="footer-note">This is a computer-generated receipt and is valid without a signature. Powered by SuoOps.</div>
+    </div>
   </div>
 </body>
 </html>

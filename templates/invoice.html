@@ -4,226 +4,345 @@
   <meta charset="utf-8" />
   <title>Invoice {{ invoice.invoice_id }}</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; background: #E8F5EC; }
-    h1 { margin-bottom: 4px; color: #0B3318; max-width: calc(100% - 130px); font-size: 20px; word-wrap: break-word; }
-    .header { margin-bottom: 20px; position: relative; background: white; padding: 20px; border-radius: 8px; }
-    .logo { 
-      position: absolute; 
-      top: 20px; 
-      right: 20px; 
-      max-width: 100px; 
-      max-height: 60px; 
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      background: #E8F5EC; color: #0F1E17;
+      padding: 32px 20px;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
-    .payment-box { 
-      background: white; 
-      border: 2px solid #14B56A; 
-      border-radius: 12px; 
-      padding: 20px; 
-      margin: 20px 0; 
-      box-shadow: 0 2px 8px rgba(20, 181, 106, 0.1); 
+    .invoice-wrapper {
+      max-width: 680px; margin: 0 auto; background: #fff;
+      border-radius: 16px; overflow: hidden;
+      box-shadow: 0 4px 24px rgba(11,51,24,0.08);
     }
-    .payment-box h3 { 
-      margin: 0 0 12px 0; 
-      color: #0B3318; 
-      font-size: 18px; 
+
+    /* ── Brand Header ─────────────────────────── */
+    .brand-header {
+      background: #0B3318; padding: 28px 32px;
+      display: flex; justify-content: space-between; align-items: center;
     }
-    .payment-details { 
-      font-size: 16px; 
-      line-height: 1.8; 
+    .brand-left { flex: 1; min-width: 0; }
+    .business-name {
+      font-size: 22px; font-weight: 700; color: #fff;
+      letter-spacing: -0.3px; word-wrap: break-word;
     }
-    .payment-details strong { 
-      display: inline-block; 
-      width: 140px; 
+    .doc-type {
+      font-size: 12px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 1.5px; color: #BFF74A; margin-top: 4px;
     }
-    .confirm-box {
-      margin-top: 16px;
-      padding: 14px;
-      border-radius: 8px;
-      background: #BFF74A20;
-      border: 1px solid #BFF74A;
+    .logo-area { flex-shrink: 0; margin-left: 20px; }
+    .logo-area img {
+      max-width: 90px; max-height: 56px; border-radius: 6px;
+      background: #fff; padding: 4px;
     }
-    .confirm-box a {
-      color: #0F766E;
-      text-decoration: none;
-      font-weight: bold;
+
+    /* ── Meta Bar ─────────────────────────────── */
+    .meta-bar {
+      background: #14B56A; padding: 14px 32px;
+      display: flex; flex-wrap: wrap; gap: 24px;
     }
-    .confirm-box a:hover {
-      color: #14B56A;
-      text-decoration: underline;
+    .meta-item { color: #fff; font-size: 12px; }
+    .meta-label {
+      opacity: 0.8; text-transform: uppercase; font-weight: 600;
+      letter-spacing: 0.5px; font-size: 10px;
     }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; background: white; border-radius: 8px; overflow: hidden; }
-    th, td { border: 1px solid #0F766E20; padding: 12px; font-size: 14px; }
-    th { background: #E8F5EC; text-align: left; color: #0B3318; font-weight: 600; }
-    .total { 
-      text-align: right; 
-      font-weight: bold; 
-      font-size: 18px; 
-      margin-top: 12px; 
-      color: #0B3318; 
+    .meta-value { font-weight: 700; font-size: 14px; margin-top: 2px; }
+
+    /* ── Body ─────────────────────────────────── */
+    .invoice-body { padding: 28px 32px; }
+
+    /* ── Customer ─────────────────────────────── */
+    .customer-section {
+      display: flex; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px; margin-bottom: 28px;
     }
-    .footer { 
-      margin-top: 30px; 
-      font-size: 12px; 
-      color: #0F1E17; 
-      background: white; 
-      padding: 20px; 
-      border-radius: 8px; 
+    .customer-section .col { flex: 1; min-width: 180px; }
+    .section-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: #0F766E; margin-bottom: 6px;
     }
+    .customer-name { font-size: 16px; font-weight: 600; color: #0B3318; }
+    .customer-detail { font-size: 13px; color: #555; margin-top: 2px; }
+
+    /* ── Line Items ───────────────────────────── */
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .items-table thead th {
+      background: #E8F5EC; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.8px; color: #0B3318;
+      padding: 10px 12px; text-align: left; border-bottom: 2px solid #14B56A;
+    }
+    .items-table thead th:nth-child(2),
+    .items-table thead th:nth-child(3),
+    .items-table thead th:nth-child(4) { text-align: right; }
+    .items-table tbody td {
+      padding: 12px; font-size: 13px;
+      border-bottom: 1px solid #E8F5EC; color: #0F1E17;
+    }
+    .items-table tbody td:nth-child(2),
+    .items-table tbody td:nth-child(3),
+    .items-table tbody td:nth-child(4) { text-align: right; font-variant-numeric: tabular-nums; }
+    .items-table tbody tr:last-child td { border-bottom: none; }
+
+    /* ── Totals ───────────────────────────────── */
+    .totals-area { display: flex; justify-content: flex-end; margin-bottom: 28px; }
+    .totals-box { width: 260px; }
+    .totals-row {
+      display: flex; justify-content: space-between;
+      padding: 6px 0; font-size: 13px; color: #555;
+    }
+    .totals-row.discount { color: #14B56A; }
+    .totals-row.grand-total {
+      border-top: 2px solid #0B3318; margin-top: 8px; padding-top: 12px;
+      font-size: 20px; font-weight: 800; color: #0B3318;
+    }
+
+    /* ── Payment Box ──────────────────────────── */
+    .payment-box {
+      background: #FAFFFE; border: 2px solid #14B56A;
+      border-radius: 12px; padding: 22px; margin-bottom: 24px;
+    }
+    .pay-title { font-size: 15px; font-weight: 700; color: #0B3318; margin-bottom: 14px; }
+    .payment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
+    .pay-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; color: #0F766E;
+    }
+    .pay-value {
+      font-size: 15px; font-weight: 600; color: #0B3318;
+      margin-top: 1px; margin-bottom: 8px;
+    }
+    .confirm-cta {
+      display: block; margin-top: 16px; padding: 12px 24px;
+      background: #14B56A; color: #fff; text-align: center;
+      font-weight: 700; font-size: 14px; border-radius: 8px;
+      text-decoration: none; letter-spacing: 0.3px;
+    }
+    .confirm-cta:hover { background: #109456; }
+
+    /* ── Payment Warning ──────────────────────── */
+    .payment-warning {
+      background: #FFFBEB; border: 2px solid #F59E0B;
+      border-radius: 12px; padding: 18px 22px; margin-bottom: 24px;
+    }
+    .warn-title { font-size: 14px; font-weight: 700; color: #92400E; margin-bottom: 4px; }
+    .payment-warning p { font-size: 13px; color: #92400E; }
+
+    /* ── Tax ───────────────────────────────────── */
+    .tax-section { margin-bottom: 24px; }
+    .tax-table { width: 100%; border-collapse: collapse; }
+    .tax-table th, .tax-table td { padding: 8px 12px; font-size: 12px; border-bottom: 1px solid #E8F5EC; }
+    .tax-table th { text-align: left; font-weight: 600; color: #0F766E; width: 40%; }
+    .tax-table td { color: #0F1E17; }
+
+    /* ── QR Code ──────────────────────────────── */
     .qr-section {
-      margin-top: 30px;
-      padding: 20px;
-      border: 2px dashed #14B56A;
-      border-radius: 12px;
-      text-align: center;
-      background: white;
-      box-shadow: 0 2px 8px rgba(20, 181, 106, 0.1);
+      text-align: center; padding: 24px; border: 2px dashed rgba(20,181,106,0.25);
+      border-radius: 12px; margin-bottom: 24px; background: #FAFFFE;
     }
-    .qr-section h3 {
-      margin: 0 0 10px 0;
-      color: #0B3318;
-      font-size: 18px;
-      font-weight: 600;
+    .qr-section img { width: 130px; height: 130px; margin: 10px 0; }
+    .qr-title { font-size: 13px; font-weight: 700; color: #0B3318; }
+    .qr-sub { font-size: 11px; color: #777; margin-top: 4px; }
+
+    /* ── Footer ───────────────────────────────── */
+    .invoice-footer {
+      background: #0B3318; padding: 20px 32px;
+      color: #E8F5EC; font-size: 11px; line-height: 1.6;
     }
-    .qr-section img {
-      width: 150px;
-      height: 150px;
-      margin: 10px 0;
+    .invoice-footer a { color: #BFF74A; text-decoration: none; }
+    .footer-note { opacity: 0.6; margin-top: 8px; font-size: 10px; }
+
+    /* ── Watermark ────────────────────────────── */
+    .watermark {
+      position: fixed; top: 38%; left: 10%; right: 10%; text-align: center;
+      opacity: 0.04; font-size: 80px; font-weight: 900; transform: rotate(-25deg);
+      pointer-events: none; z-index: -1; color: #0B3318;
     }
-    .qr-section p {
-      margin: 5px 0;
-      font-size: 12px;
-      color: #666;
+    @media print {
+      body { background: #fff; padding: 0; }
+      .invoice-wrapper { box-shadow: none; border-radius: 0; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    {% if logo_url %}
-    <img src="{{ logo_url }}" alt="Business Logo" class="logo" />
-    {% endif %}
-    {% if watermark_text %}
-    <div style="position:fixed; top:35%; left:5%; right:5%; text-align:center; opacity:0.08; font-size:72px; transform:rotate(-25deg); pointer-events:none; z-index:-1; color:#0b4f9f;">
-      {{ watermark_text }}
-    </div>
-    {% endif %}
-    {% if business_name %}
-    <p style="font-size: 18px; font-weight: bold; color: #0B3318; margin: 0 0 8px 0;">{{ business_name }}</p>
-    {% endif %}
-    <h1>Invoice {{ invoice.invoice_id }}</h1>
-    <p><strong>Customer:</strong> {{ invoice.customer.name }}</p>
-    {% if invoice.customer.phone %}
-    <p><strong>Phone:</strong> {{ invoice.customer.phone }}</p>
-    {% endif %}
-    <p><strong>Date:</strong> {{ invoice.created_at.strftime('%B %d, %Y') }}</p>
-    <p><strong>Status:</strong> {{ invoice.status.upper() }}</p>
-    {% if created_by_name %}
-    <p><strong>Created by:</strong> {{ created_by_name }}</p>
-    {% endif %}
-  </div>
-  
-  {% if bank_details and (bank_details.bank_name or bank_details.account_number) %}
-  <div class="payment-box">
-    <h3>💳 Payment Instructions</h3>
-    <div class="payment-details">
-      <p>Please make payment via bank transfer to:</p>
-      {% if bank_details.bank_name %}
-      <p><strong>Bank Name:</strong> {{ bank_details.bank_name }}</p>
-      {% endif %}
-      {% if bank_details.account_number %}
-      <p><strong>Account Number:</strong> {{ bank_details.account_number }}</p>
-      {% endif %}
-      {% if bank_details.account_name %}
-      <p><strong>Account Name:</strong> {{ bank_details.account_name }}</p>
+  {% if watermark_text %}
+  <div class="watermark">{{ watermark_text }}</div>
+  {% endif %}
+
+  <div class="invoice-wrapper">
+    <!-- Brand Header -->
+    <div class="brand-header">
+      <div class="brand-left">
+        {% if business_name %}
+        <div class="business-name">{{ business_name }}</div>
+        {% endif %}
+        <div class="doc-type">Invoice</div>
+      </div>
+      {% if logo_url %}
+      <div class="logo-area">
+        <img src="{{ logo_url }}" alt="Logo" />
+      </div>
       {% endif %}
     </div>
-    {% if customer_portal_url %}
-    <div class="confirm-box">
-      <p style="margin: 0;">After completing your transfer, please <a href="{{ customer_portal_url }}" target="_blank" rel="noopener">click here to confirm payment</a> so we can verify and send your receipt.</p>
+
+    <!-- Meta Bar -->
+    <div class="meta-bar">
+      <div class="meta-item">
+        <div class="meta-label">Invoice No.</div>
+        <div class="meta-value">{{ invoice.invoice_id }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Date</div>
+        <div class="meta-value">{{ invoice.created_at.strftime('%d %b %Y') }}</div>
+      </div>
+      {% if invoice.due_date %}
+      <div class="meta-item">
+        <div class="meta-label">Due Date</div>
+        <div class="meta-value">{{ invoice.due_date.strftime('%d %b %Y') }}</div>
+      </div>
+      {% endif %}
+      <div class="meta-item">
+        <div class="meta-label">Status</div>
+        <div class="meta-value">{{ invoice.status.upper() }}</div>
+      </div>
     </div>
-    {% endif %}
-  </div>
-  {% else %}
-  <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 16px; margin: 20px 0;">
-    <h3 style="margin: 0 0 8px 0; color: #856404;">⚠️ Payment Details Missing</h3>
-    <p style="margin: 0; font-size: 14px; color: #856404;">
-      Bank transfer details haven't been configured for this invoice. Please contact the business directly for payment instructions.
-    </p>
-  </div>
-  {% endif %}
-  
-  <h3>Items</h3>
-  <table>
-    <thead>
-      <tr>
-        <th>Description</th>
-        <th style="text-align: center;">Qty</th>
-        <th style="text-align: right;">Unit Price</th>
-        <th style="text-align: right;">Subtotal</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for line in invoice.lines %}
-      <tr>
-        <td>{{ line.description }}</td>
-        <td style="text-align: center;">{{ line.quantity }}</td>
-        <td style="text-align: right;">₦{{ "{:,.2f}".format(line.unit_price) }}</td>
-        <td style="text-align: right;">₦{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  
-  {% if invoice.discount_amount %}
-  <p class="total">Subtotal: ₦{{ "{:,.2f}".format(invoice.amount + invoice.discount_amount) }}</p>
-  <p class="total" style="color: green;">Discount: -₦{{ "{:,.2f}".format(invoice.discount_amount) }}</p>
-  {% endif %}
-  
-  <p class="total" style="font-size: 20px; color: #14B56A;">
-    Total: ₦{{ "{:,.2f}".format(invoice.amount) }}
-  </p>
-  
-  {% if is_vat_eligible %}
-  <h3>Tax & Compliance</h3>
-  <table style="margin-top:10px;">
-    <tr>
-      <th style="text-align:left;">VAT Category</th>
-      <td>{{ (invoice.vat_category or 'standard')|upper }}</td>
-    </tr>
-    <tr>
-      <th style="text-align:left;">VAT Rate</th>
-      <td>{{ (invoice.vat_rate if invoice.vat_rate is not none else 7.5) }}%</td>
-    </tr>
-    <tr>
-      <th style="text-align:left;">VAT Amount</th>
-      <td>₦{{ "{:,.2f}".format(invoice.vat_amount or 0) }}</td>
-    </tr>
-    <tr>
-      <th style="text-align:left;">Fiscal Code</th>
-      <td>{{ invoice.fiscal_code or '—' }}</td>
-    </tr>
-  </table>
-  {% endif %}
-  
-  {% if qr_code %}
-  <div class="qr-section">
-    <h3>🔐 Verify Authenticity</h3>
-    <img src="{{ qr_code }}" alt="Scan to verify invoice" />
-    <p><strong>Scan QR code to verify this invoice is genuine</strong></p>
-    <p>Check payment status and confirm authenticity instantly</p>
-  </div>
-  {% endif %}
-  
-  <div class="footer">
-    <p>Thank you for your business!</p>
-    {% if customer_portal_url %}
-    <p style="margin-top:12px; font-size:13px;">
-      <strong>Payment Portal:</strong> <a href="{{ customer_portal_url }}" target="_blank" rel="noopener">{{ customer_portal_url }}</a>
-    </p>
-    <p style="font-size:12px; color:#666;">Use this link to confirm your transfer and check payment status.</p>
-    {% else %}
-    <p>After making payment, please notify us and your receipt will be sent automatically.</p>
-    {% endif %}
-    <p style="margin-top:16px; font-size:11px; color:#666;">VAT details shown are provisional and subject to regulatory updates. Refunds (if any) will invalidate VAT previously shown.</p>
+
+    <!-- Body -->
+    <div class="invoice-body">
+      <!-- Customer & Creator -->
+      <div class="customer-section">
+        <div class="col">
+          <div class="section-label">Bill To</div>
+          <div class="customer-name">{{ invoice.customer.name }}</div>
+          {% if invoice.customer.phone %}
+          <div class="customer-detail">{{ invoice.customer.phone }}</div>
+          {% endif %}
+          {% if invoice.customer.email %}
+          <div class="customer-detail">{{ invoice.customer.email }}</div>
+          {% endif %}
+        </div>
+        {% if created_by_name %}
+        <div class="col" style="text-align: right;">
+          <div class="section-label">Created By</div>
+          <div class="customer-detail" style="margin-top: 2px;">{{ created_by_name }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Line Items -->
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>Unit Price</th>
+            <th>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in invoice.lines %}
+          <tr>
+            <td>{{ line.description }}</td>
+            <td>{{ line.quantity }}</td>
+            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price) }}</td>
+            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Totals -->
+      <div class="totals-area">
+        <div class="totals-box">
+          {% if invoice.discount_amount %}
+          <div class="totals-row">
+            <span>Subtotal</span>
+            <span>&#x20A6;{{ "{:,.2f}".format(invoice.amount + invoice.discount_amount) }}</span>
+          </div>
+          <div class="totals-row discount">
+            <span>Discount</span>
+            <span>&minus;&#x20A6;{{ "{:,.2f}".format(invoice.discount_amount) }}</span>
+          </div>
+          {% endif %}
+          <div class="totals-row grand-total">
+            <span>Total</span>
+            <span>&#x20A6;{{ "{:,.2f}".format(invoice.amount) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment Box -->
+      {% if bank_details and (bank_details.bank_name or bank_details.account_number) %}
+      <div class="payment-box">
+        <div class="pay-title">&#x1F4B3; Payment Instructions</div>
+        <div class="payment-grid">
+          {% if bank_details.bank_name %}
+          <div>
+            <div class="pay-label">Bank</div>
+            <div class="pay-value">{{ bank_details.bank_name }}</div>
+          </div>
+          {% endif %}
+          {% if bank_details.account_number %}
+          <div>
+            <div class="pay-label">Account Number</div>
+            <div class="pay-value">{{ bank_details.account_number }}</div>
+          </div>
+          {% endif %}
+          {% if bank_details.account_name %}
+          <div>
+            <div class="pay-label">Account Name</div>
+            <div class="pay-value">{{ bank_details.account_name }}</div>
+          </div>
+          {% endif %}
+        </div>
+        {% if customer_portal_url %}
+        <a href="{{ customer_portal_url }}" class="confirm-cta" target="_blank" rel="noopener">
+          &#x2713; I've Paid &mdash; Confirm Transfer
+        </a>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="payment-warning">
+        <div class="warn-title">&#x26A0;&#xFE0F; Payment Details Missing</div>
+        <p>Bank transfer details haven't been configured. Contact the business directly for payment instructions.</p>
+      </div>
+      {% endif %}
+
+      <!-- VAT / Tax -->
+      {% if is_vat_eligible %}
+      <div class="tax-section">
+        <div class="section-label" style="margin-bottom: 10px;">Tax &amp; Compliance</div>
+        <table class="tax-table">
+          <tr><th>VAT Category</th><td>{{ (invoice.vat_category or 'standard')|upper }}</td></tr>
+          <tr><th>VAT Rate</th><td>{{ (invoice.vat_rate if invoice.vat_rate is not none else 7.5) }}%</td></tr>
+          <tr><th>VAT Amount</th><td>&#x20A6;{{ "{:,.2f}".format(invoice.vat_amount or 0) }}</td></tr>
+          <tr><th>Fiscal Code</th><td>{{ invoice.fiscal_code or '&mdash;' }}</td></tr>
+        </table>
+      </div>
+      {% endif %}
+
+      <!-- QR Code -->
+      {% if qr_code %}
+      <div class="qr-section">
+        <div class="qr-title">&#x1F510; Verify This Invoice</div>
+        <img src="{{ qr_code }}" alt="QR verification" />
+        <div class="qr-sub">Scan to confirm authenticity &amp; payment status</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Footer -->
+    <div class="invoice-footer">
+      <div>Thank you for your business!</div>
+      {% if customer_portal_url %}
+      <div style="margin-top: 6px;">
+        Payment Portal: <a href="{{ customer_portal_url }}">{{ customer_portal_url }}</a>
+      </div>
+      {% else %}
+      <div style="margin-top: 6px;">After making payment, please notify us and your receipt will be sent automatically.</div>
+      {% endif %}
+      <div class="footer-note">VAT details are provisional and subject to regulatory updates. Powered by SuoOps.</div>
+    </div>
   </div>
 </body>
 </html>
