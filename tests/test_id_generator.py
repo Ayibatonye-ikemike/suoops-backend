@@ -35,13 +35,15 @@ def test_generate_id_different_prefixes():
 
 
 def test_generate_id_format():
-    """Test generated ID format."""
+    """Test generated ID format — UUID hex after prefix."""
     id_value = generate_id("PREFIX")
-    
+
     # Should contain prefix and separator
     assert "-" in id_value
     assert id_value.startswith("PREFIX-")
-    
-    # Rest should be alphanumeric or contain standard separators
+
+    # Suffix should be 32 hex characters (UUID4 without dashes)
     suffix = id_value.replace("PREFIX-", "")
-    assert len(suffix) > 0
+    assert len(suffix) == 32
+    # Verify it's valid hex
+    int(suffix, 16)
