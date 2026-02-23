@@ -117,6 +117,26 @@ class InvoiceIntentProcessor:
         data: dict[str, Any],
         payload: dict[str, Any],
     ) -> None:
+        # ── Resolve prices from inventory for quantity-only items ──
+        amount = data.get("amount", 0)
+        lines = data.get("lines", [])
+        needs_price = any(l.get("unit_price") is None for l in lines)
+
+        if needs_price and lines:
+            resolved = self._resolve_prices_from_inventory(
+                issuer_id, lines, sender,
+            )
+            if resolved is None:
+                return  # error already sent to user
+            data["lines"] = resolved
+            from decimal import Decimal
+
+            amount = sum(
+                Decimal(str(l["unit_price"])) * l.get("quantity", 1)
+                for l in resolved
+            )
+            data["amount"] = amount
+
         # ── Guard: reject zero / trivially-small amounts early ──
         amount = data.get("amount", 0)
         if not amount or amount <= 0:
@@ -1040,6 +1060,104 @@ class InvoiceIntentProcessor:
             language=getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
             components=components,
         )
+
+    # ── Inventory price resolution ──────────────────────────────────
+
+    def _resolve_prices_from_inventory(
+        self,
+        issuer_id: int,
+        lines: list[dict[str, Any]],
+        sender: str,
+    ) -> list[dict[str, Any]] | None:
+        """Resolve unit prices for quantity-only line items from inventory.
+
+        Returns the resolved lines list on success, or *None* if resolution
+        failed (an error message is sent to the user in that case).
+        """
+        from decimal import Decimal
+
+        from app.bot.product_invoice_flow import _fuzzy_match_product
+        from app.services.inventory.product_service import ProductService
+
+        try:
+            product_svc = ProductService(self.db, issuer_id)
+            products, _ = product_svc.list_products(page=1, page_size=50)
+        except Exception:
+            logger.warning("Could not load products for user %s", issuer_id)
+            products = []
+
+        if not products:
+            # No inventory → tell user to include prices
+            item_names = ", ".join(
+                l.get("description", "item") for l in lines
+            )
+            self.client.send_text(
+                sender,
+                f"❌ I see quantities for *{item_names}* but no prices.\n\n"
+                "I don't have a product catalog for your account yet.\n\n"
+                "💡 *Try one of these:*\n"
+                "1️⃣ Include prices:\n"
+                "   `Invoice Tonye 08012345678, 5000 wig, 3000 shoe`\n\n"
+                "2️⃣ Set up your product catalog first:\n"
+                "   Type *products* to get started\n"
+                "   Then use `Invoice Tonye 08012345678, 5 wig, 10 shoe`",
+            )
+            return None
+
+        product_cache: list[tuple[str, Any]] = [
+            (p.name.lower(), p) for p in products
+        ]
+
+        resolved: list[dict[str, Any]] = []
+        unmatched: list[str] = []
+
+        for line in lines:
+            desc = (line.get("description") or "").lower().strip()
+            qty = line.get("quantity", 1)
+
+            match = _fuzzy_match_product(desc, product_cache)
+            if match and match.selling_price:
+                resolved.append({
+                    "description": match.name,
+                    "quantity": qty,
+                    "unit_price": Decimal(str(match.selling_price)),
+                    "product_id": match.id,
+                })
+            else:
+                unmatched.append(line.get("description", "item"))
+
+        if unmatched:
+            missing = ", ".join(unmatched)
+            currency = get_user_currency(self.db, issuer_id)
+
+            # If SOME matched, show what we found
+            if resolved:
+                found = ", ".join(
+                    f"{r['quantity']}x {r['description']} ({fmt_money(r['unit_price'], currency, convert=False)})"
+                    for r in resolved
+                )
+                self.client.send_text(
+                    sender,
+                    f"⚠️ I found some items but not all:\n"
+                    f"✅ {found}\n"
+                    f"❌ Not found: *{missing}*\n\n"
+                    "💡 *Fix:* Add prices for the missing items:\n"
+                    f"  `Invoice ..., 5000 {unmatched[0].lower()}`\n\n"
+                    "Or type *products* to add them to your catalog.",
+                )
+            else:
+                self.client.send_text(
+                    sender,
+                    f"❌ I couldn't find *{missing}* in your product catalog.\n\n"
+                    "💡 *Options:*\n"
+                    "1️⃣ Include prices:\n"
+                    "   `Invoice Tonye 08012345678, 5000 wig, 3000 shoe`\n\n"
+                    "2️⃣ Add to catalog first:\n"
+                    "   Type *products* to manage your catalog",
+                )
+            return None
+
+        return resolved
 
     def _resolve_issuer_id(self, sender_phone: str | None) -> int | None:
         from app.models import models

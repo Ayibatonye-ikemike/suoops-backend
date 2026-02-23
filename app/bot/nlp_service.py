@@ -374,7 +374,7 @@ class NLPService:
                 name = self._extract_name_from_text(text)
             else:
                 # Standard format - name is second token
-                name = tokens[1]
+                name = tokens[1].rstrip(",.")
         
         # Extract phone number first so we can avoid treating it as amount
         phone = self._extract_phone(text)
@@ -397,7 +397,12 @@ class NLPService:
         
         # Calculate total amount from all items
         if lines:
-            total_amount = sum(Decimal(str(line["unit_price"])) * line.get("quantity", 1) for line in lines)
+            needs_price = any(line.get("unit_price") is None for line in lines)
+            if needs_price:
+                # Quantity-only items — prices must be resolved from inventory
+                total_amount = Decimal("0")
+            else:
+                total_amount = sum(Decimal(str(line["unit_price"])) * line.get("quantity", 1) for line in lines)
         else:
             # Fallback: single amount extraction for backward compatibility
             amount_raw = "0"
@@ -446,6 +451,7 @@ class NLPService:
             4. Space-separated items: "40,000 shoe 50,000 bag"
             5. Comma after amount: "40,000, shoe, 50,000 bag"
             6. Typo handling: "20,00" treated as "2000" (2 digits after comma)
+            7. Quantity-only: "5 wig, 10 shoe, 20 pack" (unit_price=None, needs inventory lookup)
         
         Examples:
             "1000 wig, 2000 shoe" →
@@ -509,36 +515,34 @@ class NLPService:
         amount_pattern = re.compile(r"\b(\d{3,})\b")
         matches = list(amount_pattern.finditer(clean_text))
         
-        if not matches:
-            return lines
-        
-        for i, match in enumerate(matches):
-            amount_str = match.group(1)
-            
-            # Skip if it looks like a phone number
-            if amount_str in phone_variants:
-                continue
-            
-            amount_start = match.end()
-            
-            # Description ends at next amount or end of string
-            if i + 1 < len(matches):
-                desc_end = matches[i + 1].start()
-            else:
-                desc_end = len(clean_text)
-            
-            # Extract description between this amount and the next
-            description = clean_text[amount_start:desc_end].strip()
-            
-            # Clean up description - remove leading/trailing punctuation
-            description = re.sub(r"^[\s,]+|[\s,]+$", "", description)
-            
-            if description and not description.isdigit():
-                lines.append({
-                    "description": description.capitalize(),
-                    "quantity": 1,
-                    "unit_price": Decimal(amount_str),
-                })
+        if matches:
+            for i, match in enumerate(matches):
+                amount_str = match.group(1)
+                
+                # Skip if it looks like a phone number
+                if amount_str in phone_variants:
+                    continue
+                
+                amount_start = match.end()
+                
+                # Description ends at next amount or end of string
+                if i + 1 < len(matches):
+                    desc_end = matches[i + 1].start()
+                else:
+                    desc_end = len(clean_text)
+                
+                # Extract description between this amount and the next
+                description = clean_text[amount_start:desc_end].strip()
+                
+                # Clean up description - remove leading/trailing punctuation
+                description = re.sub(r"^[\s,]+|[\s,]+$", "", description)
+                
+                if description and not description.isdigit():
+                    lines.append({
+                        "description": description.capitalize(),
+                        "quantity": 1,
+                        "unit_price": Decimal(amount_str),
+                    })
         
         # Fallback: if no lines found with amount-first, try item-first pattern
         # e.g., "wig 1000, shoe 2000"
@@ -560,7 +564,25 @@ class NLPService:
                         i += 2
                         continue
                 i += 1
-        
+
+        # Fallback 2: quantity-only patterns (small number + word)
+        # e.g., "5 wig 10 shoe 20 pack" → quantities without unit prices
+        # These need inventory price lookup downstream.
+        if not lines:
+            qty_pattern = re.compile(
+                r"\b(\d{1,2})\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s+\d|\s*$)"
+            )
+            qty_matches = qty_pattern.findall(clean_text)
+            for qty_str, desc in qty_matches:
+                qty = int(qty_str)
+                desc = desc.strip()
+                if 1 <= qty <= 99 and desc and not desc.isdigit():
+                    lines.append({
+                        "description": desc.capitalize(),
+                        "quantity": qty,
+                        "unit_price": None,  # signal: needs inventory lookup
+                    })
+
         return lines
     
     def _extract_description(self, text: str) -> str:
