@@ -106,6 +106,10 @@ def send_overdue_reminders() -> dict[str, Any]:
                 len(by_issuer),
             )
 
+            from app.bot.whatsapp_client import WhatsAppClient
+
+            client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+
             for issuer_id, invoices in by_issuer.items():
                 user = db.query(User).filter(User.id == issuer_id).first()
                 if not user or not user.phone:
@@ -152,10 +156,16 @@ def send_overdue_reminders() -> dict[str, Any]:
                     continue
 
                 try:
-                    from app.bot.whatsapp_client import WhatsAppClient
+                    success = client.send_text(user.phone, message)
+                    if not success:
+                        logger.warning(
+                            "Overdue reminder delivery failed for user %s (phone=%s…)",
+                            issuer_id,
+                            user.phone[:6] if user.phone else "none",
+                        )
+                        failed += 1
+                        continue
 
-                    client = WhatsAppClient(settings.WHATSAPP_API_KEY)
-                    client.send_text(user.phone, message)
                     sent += 1
 
                     # Log all tiers we just notified about
@@ -746,6 +756,12 @@ def send_daily_summaries() -> dict[str, Any]:
             )
             logger.info("Daily summary: %d users after join", len(active_users))
 
+            from app.bot.whatsapp_client import WhatsAppClient
+
+            client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+            summary_template = getattr(settings, "WHATSAPP_TEMPLATE_DAILY_SUMMARY", None)
+            template_lang = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en")
+
             for user in active_users:
                 try:
                     # Revenue collected today
@@ -801,11 +817,37 @@ def send_daily_summaries() -> dict[str, Any]:
                         revenue_today, expenses_today, outstanding, overdue_count
                     )
 
-                    from app.bot.whatsapp_client import WhatsAppClient
+                    # Try template first (works outside WhatsApp 24h window),
+                    # fall back to plain text if no template configured.
+                    success = False
+                    if summary_template:
+                        success = client.send_template(
+                            user.phone,
+                            summary_template,
+                            template_lang,
+                            components=[{
+                                "type": "body",
+                                "parameters": [{"type": "text", "text": message}],
+                            }],
+                        )
+                        if not success:
+                            logger.warning(
+                                "Template delivery failed for user %s, trying plain text",
+                                user.id,
+                            )
 
-                    client = WhatsAppClient(settings.WHATSAPP_API_KEY)
-                    client.send_text(user.phone, message)
-                    sent += 1
+                    if not success:
+                        success = client.send_text(user.phone, message)
+
+                    if success:
+                        sent += 1
+                    else:
+                        failed += 1
+                        logger.warning(
+                            "Daily summary delivery failed for user %s (phone=%s…)",
+                            user.id,
+                            user.phone[:6] if user.phone else "none",
+                        )
 
                 except Exception as e:
                     logger.warning("Failed daily summary for user %s: %s", user.id, e)

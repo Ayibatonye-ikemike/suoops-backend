@@ -46,6 +46,7 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_TEMPLATE_INVOICE_PAYMENT: str | None = None  # Invoice with bank details
     WHATSAPP_TEMPLATE_PAYMENT_REMINDER: str | None = None  # Overdue reminder
     WHATSAPP_TEMPLATE_RECEIPT: str | None = None  # Payment receipt
+    WHATSAPP_TEMPLATE_DAILY_SUMMARY: str | None = None  # Daily business summary
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
     
     @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")
