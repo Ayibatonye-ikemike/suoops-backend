@@ -74,6 +74,13 @@ class OCRService:
                 items = result["items"]
         """
         try:
+            # Fail fast if no API key configured
+            if not self.api_key:
+                return {
+                    "success": False,
+                    "error": "OCR processing error: OPENAI_API_KEY not configured"
+                }
+
             # Validate and preprocess image
             processed_image = self._preprocess_image(image_bytes)
             if not processed_image:

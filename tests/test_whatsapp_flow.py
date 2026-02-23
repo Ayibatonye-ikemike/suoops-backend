@@ -253,7 +253,7 @@ class TestWhatsAppThreeWayFlow:
 
         mock_client.send_text.assert_called()
         message = mock_client.send_text.call_args[0][1]
-        assert "Unable to identify your business account" in message
+        assert "don't recognise this number" in message
         assert "suoops.com/dashboard/settings" in message
 
     def test_missing_customer_phone_allows_invoice_creation(

@@ -96,5 +96,5 @@ def test_update_invoice_status():
     # List invoices should include updated status
     li = client.get("/invoices/", headers=headers)
     assert li.status_code == 200
-    listed = li.json()
+    listed = li.json()["items"]
     assert any(i["invoice_id"] == inv["invoice_id"] and i["status"] == "paid" for i in listed)

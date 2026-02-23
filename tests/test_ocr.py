@@ -327,13 +327,18 @@ async def test_parse_receipt_api_error(ocr_service, sample_image_bytes):
 
 @pytest.mark.asyncio
 async def test_parse_receipt_no_api_key(sample_image_bytes):
-    """Test that missing API key is logged."""
-    with patch.dict('os.environ', {}, clear=True):
+    """Test that missing API key causes OCR failure."""
+    from app.core.config import settings
+    orig_key = settings.OPENAI_API_KEY
+    try:
+        settings.OPENAI_API_KEY = None
         ocr = OCRService()
         
-        # Should still attempt to parse (will fail at API call)
+        # Should fail fast with no API key
         result = await ocr.parse_receipt(sample_image_bytes)
         assert result["success"] is False
+    finally:
+        settings.OPENAI_API_KEY = orig_key
 
 
 # ========== Prompt Building Tests ==========

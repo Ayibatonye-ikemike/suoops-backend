@@ -56,7 +56,7 @@ def test_create_list_invoice_auth_flow():
     invoice_id = resp.json()["invoice_id"]
     resp2 = client.get("/invoices/", headers=headers)
     assert resp2.status_code == 200
-    assert any(inv["invoice_id"] == invoice_id for inv in resp2.json())
+    assert any(inv["invoice_id"] == invoice_id for inv in resp2.json()["items"])
 
 
 @patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
