@@ -27,6 +27,7 @@ from app.bot.whatsapp_client import WhatsAppClient
 from app.models.inventory_models import Product
 from app.models.models import User
 from app.services.inventory.product_service import ProductService
+from app.utils.currency_fmt import fmt_money, get_user_currency
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +67,19 @@ class CartSession:
     def total(self) -> Decimal:
         return sum(item.line_total for item in self.items)
 
-    @property
-    def cart_summary(self) -> str:
+    def cart_summary_fmt(self, currency: str = "NGN") -> str:
+        """Return a formatted cart summary respecting currency preference."""
         if not self.items:
             return "🛒 Cart is empty"
         lines = []
         for item in self.items:
-            lines.append(f"  {item.quantity}x {item.product_name} — ₦{item.line_total:,.0f}")
-        lines.append(f"\n💰 *Total: ₦{self.total:,.0f}*")
+            lines.append(f"  {item.quantity}x {item.product_name} — {fmt_money(item.line_total, currency)}")
+        lines.append(f"\n💰 *Total: {fmt_money(self.total, currency)}*")
         return "🛒 *Your Cart:*\n" + "\n".join(lines)
+
+    @property
+    def cart_summary(self) -> str:
+        return self.cart_summary_fmt("NGN")
 
 
 # In-memory cart store (phone → CartSession)
@@ -290,10 +295,13 @@ class ProductInvoiceFlow:
             session = CartSession(user_id=user_id, _products_cache=product_cache)
             _carts[phone] = session
 
+        # Resolve user's preferred display currency
+        currency = get_user_currency(self.db, user_id)
+
         # Build readable product list
         product_lines = []
         for product in products[:10]:
-            price = f"₦{product.selling_price:,.0f}" if product.selling_price else "—"
+            price = fmt_money(product.selling_price, currency) if product.selling_price else "—"
             stock = f" ({product.quantity_in_stock})" if product.track_stock else ""
             product_lines.append(f"• *{product.name}* — {price}{stock}")
 
@@ -302,7 +310,7 @@ class ProductInvoiceFlow:
         # Show existing cart if items present
         cart_text = ""
         if session.items:
-            cart_text = f"\n\n{session.cart_summary}\n"
+            cart_text = f"\n\n{session.cart_summary_fmt(currency)}\n"
 
         more_text = ""
         if total > 10:
@@ -389,10 +397,13 @@ class ProductInvoiceFlow:
             else:
                 session.items.append(new_item)
 
+        # Resolve user's preferred display currency
+        currency = get_user_currency(self.db, session.user_id)
+
         # Build response
         added_lines = []
         for item in matched:
-            added_lines.append(f"  ✅ {item.quantity}x {item.product_name} — ₦{item.line_total:,.0f}")
+            added_lines.append(f"  ✅ {item.quantity}x {item.product_name} — {fmt_money(item.line_total, currency)}")
         added_text = "\n".join(added_lines)
 
         warn_text = ""
@@ -406,7 +417,7 @@ class ProductInvoiceFlow:
         self.client.send_text(
             phone,
             f"{added_text}{warn_text}\n\n"
-            f"{session.cart_summary}\n\n"
+            f"{session.cart_summary_fmt(currency)}\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "👤 *Who is this invoice for?*\n"
             "e.g. `Joy 08012345678`\n\n"

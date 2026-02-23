@@ -12,6 +12,7 @@ from app.bot.whatsapp_client import WhatsAppClient
 from app.models.expense import Expense
 from app.services.expense_nlp_service import ExpenseNLPService
 from app.services.expense_ocr_service import ExpenseOCRService
+from app.utils.currency_fmt import fmt_money, get_user_currency
 
 logger = logging.getLogger(__name__)
 
@@ -315,11 +316,14 @@ class ExpenseIntentProcessor:
         # Format category
         category_display = expense.category.replace("_", " ").title()
         
+        # Resolve user's preferred display currency
+        currency = get_user_currency(self.db, expense.user_id)
+        
         # Build message
         icon = "📸" if is_photo else "✅"
         message = (
             f"{icon} Expense added!\n\n"
-            f"💰 Amount: ₦{expense.amount:,.0f}\n"
+            f"💰 Amount: {fmt_money(expense.amount, currency)}\n"
             f"📅 Date: {date_str}\n"
             f"📂 Category: {category_display}\n"
         )

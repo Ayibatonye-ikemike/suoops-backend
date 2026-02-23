@@ -324,6 +324,11 @@ class User(Base):
     # When True, user.effective_plan returns PRO for feature gating purposes,
     # but the actual `plan` field and `invoice_balance` are unchanged.
     pro_override: Mapped[bool] = mapped_column(default=False, server_default="false")
+    
+    # Currency preference for WhatsApp bot + dashboard display: "NGN" or "USD"
+    preferred_currency: Mapped[str] = mapped_column(
+        String(3), default="NGN", server_default="NGN"
+    )
 
     @property
     def effective_plan(self) -> "SubscriptionPlan":

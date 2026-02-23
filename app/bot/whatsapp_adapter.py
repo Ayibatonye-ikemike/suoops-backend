@@ -23,6 +23,7 @@ from app.services.analytics_service import (
     get_date_range,
 )
 from app.services.invoice_service import build_invoice_service
+from app.utils.currency_fmt import fmt_money, get_user_currency
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +235,21 @@ class WhatsAppHandler:
             return
         # ── End tax report ────────────────────────────────────────
 
+        # ── Currency toggle (USD / Naira) ─────────────────────────
+        currency_keywords = {"currency", "usd", "dollar", "dollars", "naira", "ngn", "show usd", "show naira", "show dollars"}
+        if text_lower in currency_keywords:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._toggle_currency(sender, issuer_id, text_lower)
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+            return
+        # ── End currency toggle ───────────────────────────────────
+
         # Handle explicit help command - give concise guide
         if is_help:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
@@ -388,7 +404,9 @@ class WhatsAppHandler:
             "📊 *Business report:*\n"
             "Type *report* for your analytics\n"
             "Type *tax report* for tax summary + PDF\n\n"
-            "🚀 Type *setup* to check your account status\n"
+            "� *Currency:*\n"
+            "Type *usd* or *naira* to switch display currency\n\n"
+            "�🚀 Type *setup* to check your account status\n"
             "❓ *Ask me anything* — e.g. \"how to get paid\"\n"
             "🆘 Type *support* to reach our team\n\n"
             "Type *help* for full guide."
@@ -414,13 +432,11 @@ class WhatsAppHandler:
                 self.db, issuer_id, start_date, end_date
             )
 
-            # Format currency helper
+            # Resolve user's preferred display currency
+            currency = get_user_currency(self.db, issuer_id)
+
             def fmt(amount: float) -> str:
-                if amount >= 1_000_000:
-                    return f"₦{amount / 1_000_000:,.1f}M"
-                if amount >= 1_000:
-                    return f"₦{amount:,.0f}"
-                return f"₦{amount:,.2f}"
+                return fmt_money(amount, currency, compact=True)
 
             # Build growth indicator
             growth = revenue.growth_rate
@@ -588,12 +604,11 @@ class WhatsAppHandler:
             else:
                 period_label = f"{report.year}-{report.month:02d}" if report.month else str(report.year)
 
-            # Format amounts
+            # Format amounts in user's preferred currency
+            currency = get_user_currency(self.db, issuer_id)
+
             def fmt(val) -> str:
-                amount = float(val or 0)
-                if amount >= 1_000_000:
-                    return f"₦{amount / 1_000_000:,.1f}M"
-                return f"₦{amount:,.0f}"
+                return fmt_money(float(val or 0), currency, compact=True)
 
             profit = float(report.assessable_profit or 0)
             levy = float(report.levy_amount or 0)
@@ -665,6 +680,49 @@ class WhatsAppHandler:
                 "Try again or download at suoops.com/dashboard/tax"
             )
 
+    def _toggle_currency(self, sender: str, issuer_id: int, text_lower: str) -> None:
+        """Toggle or display the user's preferred currency (NGN / USD)."""
+        from app.services.exchange_rate import get_ngn_usd_rate
+
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        if not user:
+            return
+
+        current = getattr(user, "preferred_currency", "NGN") or "NGN"
+
+        # Explicit switch requests
+        usd_words = {"usd", "dollar", "dollars", "show usd", "show dollars"}
+        ngn_words = {"naira", "ngn", "show naira"}
+
+        if text_lower in usd_words:
+            new = "USD"
+        elif text_lower in ngn_words:
+            new = "NGN"
+        else:
+            # "currency" → toggle to the opposite
+            new = "USD" if current == "NGN" else "NGN"
+
+        user.preferred_currency = new  # type: ignore[assignment]
+        self.db.commit()
+
+        # Build confirmation
+        rate = get_ngn_usd_rate()
+        if new == "USD":
+            self.client.send_text(
+                sender,
+                "💱 *Currency set to USD* 🇺🇸\n\n"
+                f"Live rate: ₦{rate:,.0f} = $1\n"
+                "All amounts will now show in dollars.\n\n"
+                "Type *naira* to switch back."
+            )
+        else:
+            self.client.send_text(
+                sender,
+                "💱 *Currency set to Naira* 🇳🇬\n\n"
+                "All amounts will show in ₦.\n\n"
+                "Type *usd* to switch to dollars."
+            )
+
     def _send_help_guide(self, sender: str, issuer_id: int) -> None:
         """Send comprehensive help guide to a business user."""
         help_message = (
@@ -722,7 +780,12 @@ class WhatsAppHandler:
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Type *tax report* — get your tax summary + PDF\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "💡 *TIPS*\n"
+            "� *CURRENCY DISPLAY*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Type *usd* — show amounts in US Dollars\n"
+            "Type *naira* — switch back to Naira (₦)\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "�💡 *TIPS*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "• Set up bank details in your dashboard first\n"
             "• Share the payment link if customer doesn't reply\n"

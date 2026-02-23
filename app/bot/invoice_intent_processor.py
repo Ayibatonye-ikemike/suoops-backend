@@ -9,6 +9,7 @@ from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
 from app.core.exceptions import InvoiceBalanceExhaustedError, MissingBankDetailsError
 from app.services.invoice_service import build_invoice_service
+from app.utils.currency_fmt import fmt_money, fmt_money_full, get_user_currency
 
 logger = logging.getLogger(__name__)
 
@@ -134,9 +135,10 @@ class InvoiceIntentProcessor:
             return
 
         if amount < 100:
+            currency = get_user_currency(self.db, issuer_id)
             self.client.send_text(
                 sender,
-                f"⚠️ Amount ₦{amount:,.0f} seems too low.\n\n"
+                f"⚠️ Amount {fmt_money(amount, currency)} seems too low.\n\n"
                 "Minimum invoice amount is ₦100.\n"
                 "Did you mean a larger number?\n\n"
                 "💡 *TIP:* Amount should be a number (e.g. 5000 or 5,000)",
@@ -187,10 +189,11 @@ class InvoiceIntentProcessor:
                 "Suspicious invoice amount ₦%s (%s) - raw data: %s",
                 amount, suspicious_reason, data
             )
+            currency = get_user_currency(self.db, issuer_id)
             # Send format reminder but continue with creation (user may know what they're doing)
             self.client.send_text(
                 sender,
-                f"⚠️ Heads up: The total is ₦{amount:,.2f}\n\n"
+                f"⚠️ Heads up: The total is {fmt_money_full(amount, currency)}\n\n"
                 "If this looks wrong, cancel and try again with this format:\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n"
                 "✅ *CORRECT FORMAT:*\n"
@@ -397,9 +400,12 @@ class InvoiceIntentProcessor:
         if invoice.due_date:
             due_display = f"📅 Due: {invoice.due_date.strftime('%d %b %Y')}\n"
 
+        # Use user's preferred currency for display
+        currency = get_user_currency(self.db, issuer_id)
+
         business_message = (
             f"✅ Invoice {invoice.invoice_id} created!\n\n"
-            f"💰 Amount: ₦{invoice.amount:,.2f}\n"
+            f"💰 Amount: {fmt_money_full(invoice.amount, currency)}\n"
             f"👤 Customer: {customer_name}\n"
             f"{due_display}"
             f"📊 Status: {status_display}\n"
@@ -447,7 +453,7 @@ class InvoiceIntentProcessor:
                 sender,
                 invoice.pdf_url,
                 f"Invoice_{invoice.invoice_id}.pdf",
-                f"📄 Invoice {invoice.invoice_id} - ₦{invoice.amount:,.2f}",
+                f"📄 Invoice {invoice.invoice_id} - {fmt_money_full(invoice.amount, currency)}",
             )
         
         # Show low balance warning AFTER successful creation (better UX)
