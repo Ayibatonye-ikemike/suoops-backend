@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
+import time
+from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -12,6 +15,44 @@ from app.services.invoice_service import build_invoice_service
 from app.utils.currency_fmt import fmt_money, fmt_money_full, get_user_currency
 
 logger = logging.getLogger(__name__)
+
+# ── Pending-price session store ─────────────────────────────────
+# When a user sends quantity-only items ("5 wig, 10 shoe") and has
+# no product catalog, the bot asks for prices and stores state here.
+# Same ephemeral pattern as product_invoice_flow._carts.
+
+_PRICE_TTL = 900  # 15 minutes
+
+
+@dataclass
+class PendingPriceSession:
+    """Ephemeral state for invoice items awaiting user price input."""
+
+    user_id: int
+    lines: list[dict[str, Any]]  # [{description, quantity}, ...]
+    data: dict[str, Any]         # original parsed data (name, phone, etc.)
+    created_at: float = field(default_factory=time.time)
+
+    @property
+    def is_expired(self) -> bool:
+        return (time.time() - self.created_at) > _PRICE_TTL
+
+
+_pending_prices: dict[str, PendingPriceSession] = {}
+
+
+def get_pending_price_session(phone: str) -> PendingPriceSession | None:
+    """Get active pending-price session, or None if expired/missing."""
+    session = _pending_prices.get(phone)
+    if session and session.is_expired:
+        del _pending_prices[phone]
+        return None
+    return session
+
+
+def clear_pending_price_session(phone: str) -> None:
+    """Remove pending-price session for phone."""
+    _pending_prices.pop(phone, None)
 
 
 class InvoiceIntentProcessor:
@@ -124,7 +165,7 @@ class InvoiceIntentProcessor:
 
         if needs_price and lines:
             resolved = self._resolve_prices_from_inventory(
-                issuer_id, lines, sender,
+                issuer_id, lines, sender, data=data,
             )
             if resolved is None:
                 return  # error already sent to user
@@ -1068,11 +1109,17 @@ class InvoiceIntentProcessor:
         issuer_id: int,
         lines: list[dict[str, Any]],
         sender: str,
+        *,
+        data: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]] | None:
         """Resolve unit prices for quantity-only line items from inventory.
 
         Returns the resolved lines list on success, or *None* if resolution
-        failed (an error message is sent to the user in that case).
+        failed (an error/prompt is sent to the user in that case).
+
+        When *data* is provided and there is no product catalog (or no
+        matches at all), the bot starts a conversational price-gathering
+        session instead of simply blocking.
         """
         from decimal import Decimal
 
@@ -1087,21 +1134,19 @@ class InvoiceIntentProcessor:
             products = []
 
         if not products:
-            # No inventory → tell user to include prices
-            item_names = ", ".join(
-                l.get("description", "item") for l in lines
-            )
-            self.client.send_text(
-                sender,
-                f"❌ I see quantities for *{item_names}* but no prices.\n\n"
-                "I don't have a product catalog for your account yet.\n\n"
-                "💡 *Try one of these:*\n"
-                "1️⃣ Include prices:\n"
-                "   `Invoice Tonye 08012345678, 5000 wig, 3000 shoe`\n\n"
-                "2️⃣ Set up your product catalog first:\n"
-                "   Type *products* to get started\n"
-                "   Then use `Invoice Tonye 08012345678, 5 wig, 10 shoe`",
-            )
+            # No inventory — ask user for prices conversationally
+            if data is not None:
+                self._start_pending_price_session(sender, issuer_id, lines, data)
+            else:
+                item_names = ", ".join(
+                    l.get("description", "item") for l in lines
+                )
+                self.client.send_text(
+                    sender,
+                    f"❌ I see quantities for *{item_names}* but no prices.\n\n"
+                    "Include prices like:\n"
+                    "   `Invoice Tonye 08012345678, 5000 wig, 3000 shoe`",
+                )
             return None
 
         product_cache: list[tuple[str, Any]] = [
@@ -1146,18 +1191,166 @@ class InvoiceIntentProcessor:
                     "Or type *products* to add them to your catalog.",
                 )
             else:
-                self.client.send_text(
-                    sender,
-                    f"❌ I couldn't find *{missing}* in your product catalog.\n\n"
-                    "💡 *Options:*\n"
-                    "1️⃣ Include prices:\n"
-                    "   `Invoice Tonye 08012345678, 5000 wig, 3000 shoe`\n\n"
-                    "2️⃣ Add to catalog first:\n"
-                    "   Type *products* to manage your catalog",
-                )
+                # Nothing matched — ask for prices conversationally
+                if data is not None:
+                    self._start_pending_price_session(sender, issuer_id, lines, data)
+                else:
+                    self.client.send_text(
+                        sender,
+                        f"❌ I couldn't find *{missing}* in your product catalog.\n\n"
+                        "Include prices like:\n"
+                        "   `Invoice Tonye 08012345678, 5000 wig, 3000 shoe`",
+                    )
             return None
 
         return resolved
+
+    # ── Conversational price gathering ──────────────────────────────
+
+    def _start_pending_price_session(
+        self,
+        sender: str,
+        issuer_id: int,
+        lines: list[dict[str, Any]],
+        data: dict[str, Any],
+    ) -> None:
+        """Store a pending-price session and prompt user for prices."""
+        session = PendingPriceSession(
+            user_id=issuer_id,
+            lines=[
+                {
+                    "description": l.get("description", "item"),
+                    "quantity": l.get("quantity", 1),
+                }
+                for l in lines
+            ],
+            data={k: v for k, v in data.items() if k not in ("lines", "amount")},
+        )
+        _pending_prices[sender] = session
+
+        items_list = "\n".join(
+            f"  {i + 1}. {l['description'].title()} (×{l['quantity']})"
+            for i, l in enumerate(session.lines)
+        )
+        customer = data.get("customer_name", "your customer")
+        n = len(session.lines)
+        example = ", ".join(["5000"] * n)
+
+        self.client.send_text(
+            sender,
+            f"📝 *Invoice for {customer}*\n\n"
+            f"I see {n} item{'s' if n > 1 else ''} but need prices:\n"
+            f"{items_list}\n\n"
+            f"💰 *Reply with the price per item:*\n"
+            f"  e.g. `{example}`\n\n"
+            f"Type *cancel* to start over.",
+        )
+
+    async def handle_price_reply(self, sender: str, text: str) -> bool:
+        """Handle a price reply for pending quantity-only items.
+
+        Returns *True* if the message was handled, *False* if there is
+        no active pending-price session.
+        """
+        session = get_pending_price_session(sender)
+        if not session:
+            return False
+
+        prices = self._parse_price_reply(text, session.lines)
+        if prices is None:
+            n = len(session.lines)
+            items_list = "\n".join(
+                f"  {i + 1}. {l['description'].title()} (×{l['quantity']})"
+                for i, l in enumerate(session.lines)
+            )
+            self.client.send_text(
+                sender,
+                f"🤔 I couldn't read the prices.\n\n"
+                f"Items:\n{items_list}\n\n"
+                f"Reply with {n} price{'s' if n > 1 else ''} separated by commas:\n"
+                f"  e.g. `{', '.join(['5000'] * n)}`\n\n"
+                f"Type *cancel* to start over.",
+            )
+            return True
+
+        from decimal import Decimal
+
+        resolved_lines: list[dict[str, Any]] = []
+        total = Decimal("0")
+        for line, price in zip(session.lines, prices):
+            unit_price = Decimal(str(price))
+            qty = line.get("quantity", 1)
+            resolved_lines.append(
+                {
+                    "description": line["description"],
+                    "quantity": qty,
+                    "unit_price": unit_price,
+                }
+            )
+            total += unit_price * qty
+
+        # Rebuild the full data dict
+        data: dict[str, Any] = dict(session.data)
+        data["lines"] = resolved_lines
+        data["amount"] = total
+
+        clear_pending_price_session(sender)
+
+        issuer_id = session.user_id
+        invoice_service = build_invoice_service(self.db, user_id=issuer_id)
+        if self._enforce_quota(invoice_service, issuer_id, sender):
+            await self._create_invoice(invoice_service, issuer_id, sender, data, {})
+
+        return True
+
+    @staticmethod
+    def _parse_price_reply(
+        text: str, lines: list[dict[str, Any]]
+    ) -> list[float] | None:
+        """Extract prices from a user's reply.
+
+        Handles:
+          • ``5000, 3000, 2000``       (comma-separated)
+          • ``5,000  3,000  2,000``    (thousand-formatted, space-sep)
+          • ``5000 wig, 3000 shoe``    (price + item name)
+          • ``5000``                   (single item)
+
+        Returns a list matching the order of *lines*, or *None*.
+        """
+        text = text.strip()
+        n = len(lines)
+
+        # Normalise thousand-separator commas: "5,000" → "5000"
+        cleaned = re.sub(r"(\d),(\d{3})(?!\d)", r"\1\2", text)
+        cleaned = re.sub(r"(\d),(\d{3})(?!\d)", r"\1\2", cleaned)  # e.g. 1,000,000
+
+        raw_numbers = re.findall(r"\d+(?:\.\d+)?", cleaned)
+        numbers = [float(x) for x in raw_numbers]
+
+        # Exact count → positional mapping
+        if len(numbers) == n:
+            return numbers
+
+        # More numbers than items → try matching by item name
+        if len(numbers) > n:
+            parts = re.split(r"[,\n]", cleaned)
+            matched: list[float] = []
+            for line in lines:
+                desc = (line.get("description") or "").lower().strip()
+                for part in parts:
+                    part_lower = part.lower().strip()
+                    part_nums = re.findall(r"\d+(?:\.\d+)?", part)
+                    if part_nums and desc in part_lower:
+                        matched.append(float(part_nums[0]))
+                        break
+            if len(matched) == n:
+                return matched
+
+        # Single item, at least one number
+        if n == 1 and numbers:
+            return [numbers[0]]
+
+        return None
 
     def _resolve_issuer_id(self, sender_phone: str | None) -> int | None:
         from app.models import models

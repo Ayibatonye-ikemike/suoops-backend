@@ -6,7 +6,11 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.bot.expense_intent_processor import ExpenseIntentProcessor
-from app.bot.invoice_intent_processor import InvoiceIntentProcessor
+from app.bot.invoice_intent_processor import (
+    InvoiceIntentProcessor,
+    clear_pending_price_session,
+    get_pending_price_session,
+)
 from app.bot.message_extractor import extract_message
 from app.bot.nlp_service import NLPService
 from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart
@@ -175,6 +179,26 @@ class WhatsAppHandler:
                                 invoice_service, issuer_id, sender, invoice_data, {}
                             )
                 return
+
+        # ── Pending-price session (qty-only items needing prices) ──
+        pending_price = get_pending_price_session(sender)
+        if pending_price:
+            # Let user cancel or start a new invoice
+            if text_lower in {"cancel", "stop", "nevermind", "no"}:
+                clear_pending_price_session(sender)
+                self.client.send_text(sender, "✅ Invoice cancelled.")
+                return
+            # If user typed a brand-new invoice command, clear old session
+            if text_lower.startswith("invoice"):
+                clear_pending_price_session(sender)
+                # fall through → NLP will handle the new invoice
+            else:
+                handled = await self.invoice_processor.handle_price_reply(
+                    sender, text,
+                )
+                if handled:
+                    return
+        # ── End pending-price ──────────────────────────────────────
 
         # Check if text triggers product browsing (PRO only)
         if ProductInvoiceFlow.is_trigger(text_lower):
