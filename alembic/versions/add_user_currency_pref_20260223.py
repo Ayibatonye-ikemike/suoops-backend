@@ -4,14 +4,14 @@ Stores the user's display currency preference (NGN or USD).
 Used by the WhatsApp bot and synced with the frontend toggle.
 
 Revision ID: user_currency_pref_20260223
-Revises: user_pro_override_20260220
+Revises: invoice_reminder_log_20260223
 Create Date: 2026-02-23
 """
 import sqlalchemy as sa
 from alembic import op
 
 revision = "user_currency_pref_20260223"
-down_revision = "user_pro_override_20260220"
+down_revision = "invoice_reminder_log_20260223"
 
 
 def upgrade():
