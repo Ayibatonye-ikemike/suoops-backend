@@ -451,3 +451,46 @@ class UserEmailLog(Base):
         default=utcnow,
         server_default=func.now(),
     )
+
+
+class InvoiceReminderLog(Base):
+    """Tracks payment reminders sent per invoice to prevent duplicates.
+
+    Each (invoice_id, reminder_type, channel) combination is unique so
+    we never spam the same reminder twice.
+
+    reminder_type values:
+      - customer_pre_due      (3 days before due)
+      - customer_due_today    (due date)
+      - customer_overdue_1d   (1 day past due)
+      - customer_overdue_7d   (7 days past due)
+      - customer_overdue_14d  (14+ days past due)
+      - owner_light           (1-3 days overdue — nudge)
+      - owner_action          (4-7 days overdue — action required)
+      - owner_urgent          (8-14 days overdue — escalation)
+      - owner_critical        (14+ days overdue — final warning)
+    """
+
+    __tablename__ = "invoice_reminder_log"
+    __table_args__ = (
+        UniqueConstraint(
+            "invoice_id",
+            "reminder_type",
+            "channel",
+            name="uq_invoice_reminder_type_channel",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("invoice.id", ondelete="CASCADE"),
+        index=True,
+    )
+    reminder_type: Mapped[str] = mapped_column(String(30))
+    channel: Mapped[str] = mapped_column(String(20))  # whatsapp, email
+    recipient: Mapped[str] = mapped_column(String(255))
+    sent_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )

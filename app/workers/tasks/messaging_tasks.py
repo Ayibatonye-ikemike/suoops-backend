@@ -55,24 +55,30 @@ def process_whatsapp_inbound(self: Task, payload: dict[str, Any]) -> None:
     retry_kwargs={"max_retries": 3},
 )
 def send_overdue_reminders() -> dict[str, Any]:
-    """Send reminders for overdue invoices.
+    """Send escalating reminders to BUSINESS OWNERS about their overdue invoices.
 
-    Queries all pending invoices past their due date, groups by issuer,
-    and sends a WhatsApp/email notification to the business owner.
+    Escalation tiers (by days overdue):
+      owner_light    — 1-3 days  : gentle nudge
+      owner_action   — 4-7 days  : action required
+      owner_urgent   — 8-14 days : suggest calling customer
+      owner_critical — 14+ days  : final warning / write-off hint
+
+    Each tier is sent only once per invoice (tracked in InvoiceReminderLog).
+    Runs daily at 09:00 WAT (08:00 UTC).
     """
-    from sqlalchemy import func
     from sqlalchemy.orm import joinedload
 
-    from app.models.models import Invoice, User
+    from app.models.models import InvoiceReminderLog, Invoice, User
 
     sent = 0
+    skipped = 0
     failed = 0
 
     try:
         with session_scope() as db:
             today = date.today()
+            now_dt = datetime.combine(today, datetime.min.time())
 
-            # Get overdue invoices grouped by issuer
             overdue_invoices = (
                 db.query(Invoice)
                 .options(joinedload(Invoice.customer))
@@ -80,7 +86,7 @@ def send_overdue_reminders() -> dict[str, Any]:
                     Invoice.status == "pending",
                     Invoice.invoice_type == "revenue",
                     Invoice.due_date != None,  # noqa: E711
-                    Invoice.due_date < datetime.combine(today, datetime.min.time()),
+                    Invoice.due_date < now_dt,
                 )
                 .all()
             )
@@ -105,18 +111,45 @@ def send_overdue_reminders() -> dict[str, Any]:
                 if not user or not user.phone:
                     continue
 
-                total_owed = sum(inv.amount for inv in invoices)
-                oldest_days = max(
-                    (today - inv.due_date.date()).days for inv in invoices if inv.due_date
-                )
+                # Classify invoices by escalation tier
+                tiers: dict[str, list[Invoice]] = {
+                    "owner_light": [],
+                    "owner_action": [],
+                    "owner_urgent": [],
+                    "owner_critical": [],
+                }
+                for inv in invoices:
+                    if not inv.due_date:
+                        continue
+                    days = (today - inv.due_date.date()).days
+                    if days >= 14:
+                        tier = "owner_critical"
+                    elif days >= 8:
+                        tier = "owner_urgent"
+                    elif days >= 4:
+                        tier = "owner_action"
+                    else:
+                        tier = "owner_light"
 
-                message = (
-                    f"⚠️ You have {len(invoices)} overdue invoice(s) "
-                    f"totalling ₦{total_owed:,.0f}.\n"
-                    f"Oldest is {oldest_days} day(s) past due.\n\n"
-                    "💡 Send payment reminders to your customers from the "
-                    "SuoOps dashboard to get paid faster!"
-                )
+                    # Check if this tier was already sent for this invoice
+                    already = (
+                        db.query(InvoiceReminderLog)
+                        .filter(
+                            InvoiceReminderLog.invoice_id == inv.id,
+                            InvoiceReminderLog.reminder_type == tier,
+                            InvoiceReminderLog.channel == "whatsapp",
+                        )
+                        .first()
+                    )
+                    if already:
+                        skipped += 1
+                        continue
+                    tiers[tier].append(inv)
+
+                # Build a single consolidated message per user covering the highest tier
+                message = _build_owner_escalation_message(tiers, today)
+                if not message:
+                    continue
 
                 try:
                     from app.bot.whatsapp_client import WhatsAppClient
@@ -124,21 +157,410 @@ def send_overdue_reminders() -> dict[str, Any]:
                     client = WhatsAppClient(settings.WHATSAPP_API_KEY)
                     client.send_text(user.phone, message)
                     sent += 1
+
+                    # Log all tiers we just notified about
+                    for tier, tier_invoices in tiers.items():
+                        for inv in tier_invoices:
+                            db.add(
+                                InvoiceReminderLog(
+                                    invoice_id=inv.id,
+                                    reminder_type=tier,
+                                    channel="whatsapp",
+                                    recipient=user.phone,
+                                )
+                            )
+                    db.commit()
                 except Exception as e:
-                    logger.warning("Failed to send overdue reminder to user %s: %s", issuer_id, e)
+                    logger.warning(
+                        "Failed owner overdue reminder for user %s: %s", issuer_id, e
+                    )
                     failed += 1
 
-        logger.info("Overdue reminders complete: sent=%d failed=%d", sent, failed)
+        logger.info(
+            "Owner overdue reminders: sent=%d skipped=%d failed=%d",
+            sent,
+            skipped,
+            failed,
+        )
         return {
             "success": True,
             "sent": sent,
+            "skipped": skipped,
             "failed": failed,
             "total_overdue": len(overdue_invoices),
         }
 
     except Exception as exc:
-        logger.warning("Reminder task transient failure: %s", exc)
+        logger.warning("Owner reminder task transient failure: %s", exc)
         raise
+
+
+def _build_owner_escalation_message(
+    tiers: dict[str, list[Any]], today: date
+) -> str | None:
+    """Build a consolidated escalation message for the business owner."""
+    total = sum(len(v) for v in tiers.values())
+    if total == 0:
+        return None
+
+    total_owed = sum(inv.amount for invs in tiers.values() for inv in invs)
+    parts: list[str] = []
+
+    critical = tiers["owner_critical"]
+    urgent = tiers["owner_urgent"]
+    action = tiers["owner_action"]
+    light = tiers["owner_light"]
+
+    if critical:
+        days_list = ", ".join(
+            f"{(today - inv.due_date.date()).days}d" for inv in critical[:3]
+        )
+        parts.append(
+            f"🔴 *CRITICAL* — {len(critical)} invoice(s) 14+ days overdue ({days_list}).\n"
+            "Consider calling these customers directly or reviewing your collection strategy."
+        )
+
+    if urgent:
+        parts.append(
+            f"🟠 *URGENT* — {len(urgent)} invoice(s) 8-14 days overdue.\n"
+            "💡 Try calling your customers — a quick follow-up call recovers 70% of late payments."
+        )
+
+    if action:
+        parts.append(
+            f"🟡 *Action Required* — {len(action)} invoice(s) 4-7 days overdue.\n"
+            "💡 Send a polite reminder from your dashboard to nudge them."
+        )
+
+    if light:
+        parts.append(
+            f"🟢 *Heads Up* — {len(light)} invoice(s) 1-3 days overdue.\n"
+            "These are still fresh — customers may just need a gentle nudge."
+        )
+
+    header = (
+        f"⚠️ *Overdue Invoice Report*\n"
+        f"You have {total} overdue invoice(s) totalling ₦{total_owed:,.0f}.\n\n"
+    )
+    footer = "\n\n🔗 Review all invoices at suoops.com/dashboard"
+
+    return header + "\n\n".join(parts) + footer
+
+
+# ── Customer-Facing Payment Reminders ────────────────────────────────
+
+
+@celery_app.task(
+    name="reminders.send_customer_payment_reminders",
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def send_customer_payment_reminders() -> dict[str, Any]:
+    """Send payment reminders directly to CUSTOMERS via WhatsApp and email.
+
+    Reminder tiers (relative to due_date):
+      customer_pre_due    — 3 days before due : gentle heads-up
+      customer_due_today  — on the due date   : due today notice
+      customer_overdue_1d — 1 day past due    : first nudge
+      customer_overdue_7d — 7 days past due   : firmer follow-up
+      customer_overdue_14d— 14+ days past due : final escalation (CC's owner)
+
+    Each tier is sent only once per invoice per channel (tracked in
+    InvoiceReminderLog).  Runs daily at 10:00 WAT (09:00 UTC).
+    """
+    from sqlalchemy.orm import joinedload
+
+    from app.models.models import InvoiceReminderLog, Invoice, User
+
+    stats = {"whatsapp_sent": 0, "email_sent": 0, "skipped": 0, "failed": 0}
+
+    try:
+        with session_scope() as db:
+            today = date.today()
+            now_dt = datetime.combine(today, datetime.min.time())
+
+            # Window: 3 days before today → any overdue
+            window_start = now_dt + timedelta(days=3)
+
+            candidates = (
+                db.query(Invoice)
+                .options(
+                    joinedload(Invoice.customer),
+                    joinedload(Invoice.issuer),
+                )
+                .filter(
+                    Invoice.status == "pending",
+                    Invoice.invoice_type == "revenue",
+                    Invoice.due_date != None,  # noqa: E711
+                    Invoice.due_date <= window_start,
+                )
+                .all()
+            )
+
+            if not candidates:
+                logger.info("No invoices due or overdue for customer reminders")
+                return {"success": True, **stats}
+
+            logger.info(
+                "Customer reminders: %d candidate invoices", len(candidates)
+            )
+
+            for inv in candidates:
+                customer = inv.customer
+                issuer = inv.issuer
+                if not customer or not issuer:
+                    continue
+
+                # Determine which tier this invoice falls into
+                days_until_due = (inv.due_date.date() - today).days
+                tier = _classify_customer_tier(days_until_due)
+                if not tier:
+                    continue
+
+                customer_phone = customer.phone
+                customer_email = customer.email
+                business_name = issuer.business_name or issuer.name
+
+                # --- WhatsApp ---
+                if customer_phone:
+                    already = (
+                        db.query(InvoiceReminderLog)
+                        .filter(
+                            InvoiceReminderLog.invoice_id == inv.id,
+                            InvoiceReminderLog.reminder_type == tier,
+                            InvoiceReminderLog.channel == "whatsapp",
+                        )
+                        .first()
+                    )
+                    if already:
+                        stats["skipped"] += 1
+                    else:
+                        ok = _send_customer_whatsapp_reminder(
+                            inv, customer, issuer, tier, business_name
+                        )
+                        if ok:
+                            db.add(
+                                InvoiceReminderLog(
+                                    invoice_id=inv.id,
+                                    reminder_type=tier,
+                                    channel="whatsapp",
+                                    recipient=customer_phone,
+                                )
+                            )
+                            stats["whatsapp_sent"] += 1
+                        else:
+                            stats["failed"] += 1
+
+                # --- Email ---
+                if customer_email:
+                    already = (
+                        db.query(InvoiceReminderLog)
+                        .filter(
+                            InvoiceReminderLog.invoice_id == inv.id,
+                            InvoiceReminderLog.reminder_type == tier,
+                            InvoiceReminderLog.channel == "email",
+                        )
+                        .first()
+                    )
+                    if already:
+                        stats["skipped"] += 1
+                    else:
+                        ok = _send_customer_email_reminder(
+                            inv, customer, issuer, tier, business_name
+                        )
+                        if ok:
+                            db.add(
+                                InvoiceReminderLog(
+                                    invoice_id=inv.id,
+                                    reminder_type=tier,
+                                    channel="email",
+                                    recipient=customer_email,
+                                )
+                            )
+                            stats["email_sent"] += 1
+                        else:
+                            stats["failed"] += 1
+
+                # For 14d+ overdue, also ping the owner about this specific invoice
+                if tier == "customer_overdue_14d" and issuer.phone:
+                    _notify_owner_escalation(inv, issuer, customer, business_name)
+
+            db.commit()
+
+        logger.info("Customer payment reminders: %s", stats)
+        return {"success": True, **stats}
+
+    except Exception as exc:
+        logger.warning("Customer reminder task transient failure: %s", exc)
+        raise
+
+
+def _classify_customer_tier(days_until_due: int) -> str | None:
+    """Map days-until-due to customer reminder tier.
+
+    Returns None if the invoice doesn't match any tier window.
+    """
+    if days_until_due == 3:
+        return "customer_pre_due"
+    elif days_until_due == 0:
+        return "customer_due_today"
+    elif days_until_due == -1:
+        return "customer_overdue_1d"
+    elif days_until_due == -7:
+        return "customer_overdue_7d"
+    elif days_until_due <= -14:
+        # Only trigger once at -14 (the log prevents re-sends)
+        return "customer_overdue_14d"
+    return None
+
+
+def _send_customer_whatsapp_reminder(
+    inv: Any,
+    customer: Any,
+    issuer: Any,
+    tier: str,
+    business_name: str,
+) -> bool:
+    """Send a WhatsApp payment reminder to a customer."""
+    try:
+        from app.bot.whatsapp_client import WhatsAppClient
+
+        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        message = _format_customer_reminder(inv, tier, business_name)
+        return client.send_text(customer.phone, message)
+    except Exception as e:
+        logger.warning(
+            "WhatsApp reminder failed for invoice %s to %s: %s",
+            inv.invoice_id,
+            customer.phone,
+            e,
+        )
+        return False
+
+
+def _send_customer_email_reminder(
+    inv: Any,
+    customer: Any,
+    issuer: Any,
+    tier: str,
+    business_name: str,
+) -> bool:
+    """Send an email payment reminder to a customer."""
+    try:
+        from app.services.notification.service import NotificationService
+
+        svc = NotificationService()
+        subject = _email_subject_for_tier(inv, tier, business_name)
+        body = _format_customer_reminder(inv, tier, business_name)
+        return asyncio.run(svc.send_email(customer.email, subject, body))
+    except Exception as e:
+        logger.warning(
+            "Email reminder failed for invoice %s to %s: %s",
+            inv.invoice_id,
+            customer.email,
+            e,
+        )
+        return False
+
+
+def _notify_owner_escalation(
+    inv: Any, issuer: Any, customer: Any, business_name: str
+) -> None:
+    """Alert the business owner about a severely overdue invoice."""
+    try:
+        from app.bot.whatsapp_client import WhatsAppClient
+
+        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        customer_name = customer.name or "a customer"
+        msg = (
+            f"🔴 *Escalation Alert*\n\n"
+            f"Invoice {inv.invoice_id} for {customer_name} "
+            f"(₦{inv.amount:,.0f}) is now 14+ days overdue.\n\n"
+            "We've sent a final reminder to the customer. "
+            "Consider calling them directly or reviewing your collection options.\n\n"
+            "🔗 suoops.com/dashboard"
+        )
+        client.send_text(issuer.phone, msg)
+    except Exception as e:
+        logger.warning(
+            "Owner escalation alert failed for invoice %s: %s", inv.invoice_id, e
+        )
+
+
+def _format_customer_reminder(inv: Any, tier: str, business_name: str) -> str:
+    """Format a customer-facing payment reminder message."""
+    payment_link = f"{settings.BASE_URL}/pay/{inv.invoice_id}"
+    amount_str = f"₦{inv.amount:,.0f}"
+    due_str = inv.due_date.strftime("%d %b %Y") if inv.due_date else "N/A"
+
+    if tier == "customer_pre_due":
+        return (
+            f"👋 Hi{_name_greeting(inv.customer)},\n\n"
+            f"Friendly reminder: your invoice {inv.invoice_id} for {amount_str} "
+            f"from *{business_name}* is due on *{due_str}* (in 3 days).\n\n"
+            f"💳 Pay now: {payment_link}\n\n"
+            "Thank you for your prompt attention!"
+        )
+    elif tier == "customer_due_today":
+        return (
+            f"⏰ Hi{_name_greeting(inv.customer)},\n\n"
+            f"Your invoice {inv.invoice_id} for {amount_str} "
+            f"from *{business_name}* is *due today*.\n\n"
+            f"💳 Pay now: {payment_link}\n\n"
+            "Please make your payment to avoid it becoming overdue."
+        )
+    elif tier == "customer_overdue_1d":
+        return (
+            f"📌 Hi{_name_greeting(inv.customer)},\n\n"
+            f"Your invoice {inv.invoice_id} for {amount_str} "
+            f"from *{business_name}* was due yesterday and is now overdue.\n\n"
+            f"💳 Pay now: {payment_link}\n\n"
+            "If you've already paid, please disregard this message."
+        )
+    elif tier == "customer_overdue_7d":
+        return (
+            f"⚠️ Hi{_name_greeting(inv.customer)},\n\n"
+            f"This is a follow-up regarding invoice {inv.invoice_id} for "
+            f"{amount_str} from *{business_name}*, which is now 7 days overdue.\n\n"
+            f"💳 Pay now: {payment_link}\n\n"
+            "Please settle this at your earliest convenience. "
+            "If you're experiencing any issues with payment, please reach out to "
+            f"{business_name} directly."
+        )
+    else:  # customer_overdue_14d
+        return (
+            f"🔴 Hi{_name_greeting(inv.customer)},\n\n"
+            f"*Final reminder:* Invoice {inv.invoice_id} for {amount_str} "
+            f"from *{business_name}* is now over 14 days past due.\n\n"
+            f"💳 Pay now: {payment_link}\n\n"
+            "Please arrange payment immediately. If you have questions or "
+            f"need to discuss payment terms, please contact {business_name} directly."
+        )
+
+
+def _email_subject_for_tier(inv: Any, tier: str, business_name: str) -> str:
+    """Return an email subject line appropriate for the reminder tier."""
+    ref = inv.invoice_id
+    if tier == "customer_pre_due":
+        return f"Reminder: Invoice {ref} from {business_name} due in 3 days"
+    elif tier == "customer_due_today":
+        return f"Invoice {ref} from {business_name} is due today"
+    elif tier == "customer_overdue_1d":
+        return f"Overdue: Invoice {ref} from {business_name}"
+    elif tier == "customer_overdue_7d":
+        return f"Follow-up: Invoice {ref} from {business_name} — 7 days overdue"
+    else:
+        return f"Final Notice: Invoice {ref} from {business_name} — 14+ days overdue"
+
+
+def _name_greeting(customer: Any) -> str:
+    """Return ' Name' if customer has a name, else empty string."""
+    name = getattr(customer, "name", None)
+    if name and name.strip():
+        return f" {name.split()[0]}"
+    return ""
 
 
 @celery_app.task(

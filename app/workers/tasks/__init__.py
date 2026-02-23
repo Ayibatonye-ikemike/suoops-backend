@@ -27,6 +27,7 @@ from .expense_tasks import (
 from .messaging_tasks import (
     ocr_parse_image,
     process_whatsapp_inbound,
+    send_customer_payment_reminders,
     send_daily_summaries,
     send_overdue_reminders,
     sync_provider_status,
@@ -49,6 +50,7 @@ __all__ = [
     # Messaging tasks
     "process_whatsapp_inbound",
     "send_overdue_reminders",
+    "send_customer_payment_reminders",
     "send_daily_summaries",
     "sync_provider_status",
     "ocr_parse_image",
