@@ -482,7 +482,7 @@ class InvoiceStatusMixin:
         products: list,
         purchase_order_id: int | None = None
     ) -> None:
-        """Send low stock alert to business owner via email."""
+        """Send low stock alert to business owner via email and WhatsApp."""
         try:
             user = self.db.query(models.User).filter(models.User.id == user_id).one_or_none()
             if not user:
@@ -506,6 +506,30 @@ class InvoiceStatusMixin:
                         logger.error("Failed to send low stock email: %s", exc)
             
             asyncio.run(_run())
+
+            # Also send WhatsApp template if configured
+            from app.core.config import settings as _settings
+
+            template_name = _settings.WHATSAPP_TEMPLATE_LOW_STOCK_ALERT
+            if template_name and user.phone:
+                try:
+                    from app.bot.whatsapp_client import WhatsAppClient
+
+                    client = WhatsAppClient(_settings.WHATSAPP_API_KEY)
+                    user_name = user.name.split()[0] if user.name else "there"
+                    lang = _settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                    components = [
+                        {
+                            "type": "body",
+                            "parameters": [
+                                {"type": "text", "text": user_name},
+                                {"type": "text", "text": str(len(products))},
+                            ],
+                        }
+                    ]
+                    client.send_template(user.phone, template_name, lang, components)
+                except Exception as exc:
+                    logger.error("Failed to send low stock WhatsApp: %s", exc)
             
         except Exception as e:
             logger.error("Low stock notification failed: %s", e)

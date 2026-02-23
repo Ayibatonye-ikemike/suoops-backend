@@ -151,6 +151,58 @@ def _get_user_name(user) -> str:
     return user.name.split()[0] if user.name else "there"
 
 
+# ── WhatsApp template helper ─────────────────────────────────────────
+
+def _send_wa_template(
+    phone: str | None,
+    template_name: str | None,
+    params: list[str],
+    wa_type: str,
+    db,
+    user_id: int,
+) -> bool:
+    """Send a WhatsApp template if configured and not yet sent.
+
+    Tracks delivery via ``UserEmailLog`` using ``wa_`` prefixed types
+    so templates are never sent twice to the same user.
+    Returns True if the template was delivered successfully.
+    """
+    if not phone or not template_name:
+        return False
+
+    if _was_sent(db, user_id, wa_type):
+        return False
+
+    try:
+        from app.bot.whatsapp_client import WhatsAppClient
+
+        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+        components = (
+            [
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": p} for p in params],
+                }
+            ]
+            if params
+            else None
+        )
+
+        ok = client.send_template(phone, template_name, lang, components)
+        if ok:
+            _record_sent(db, user_id, wa_type)
+        return ok
+    except Exception as e:
+        logger.warning(
+            "WhatsApp template '%s' failed for user %s: %s",
+            template_name,
+            user_id,
+            e,
+        )
+        return False
+
+
 # ── Main scheduled task ──────────────────────────────────────────────
 
 @celery_app.task(
@@ -178,6 +230,7 @@ def send_engagement_emails() -> dict[str, Any]:
         "activation_sent": 0,
         "monetization_sent": 0,
         "tips_sent": 0,
+        "whatsapp_sent": 0,
         "skipped": 0,
         "failed": 0,
     }
@@ -202,10 +255,11 @@ def send_engagement_emails() -> dict[str, Any]:
             db.commit()
 
         logger.info(
-            "Engagement emails complete: activation=%d monetization=%d tips=%d skipped=%d failed=%d",
+            "Engagement emails complete: activation=%d monetization=%d tips=%d whatsapp=%d skipped=%d failed=%d",
             stats["activation_sent"],
             stats["monetization_sent"],
             stats["tips_sent"],
+            stats["whatsapp_sent"],
             stats["skipped"],
             stats["failed"],
         )
@@ -235,15 +289,62 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
         _send_activation(db, user, name, signup_age.days, stats)
         return
 
-    # ── 2. MONETIZATION (FREE users with invoices) ───────────────────
+    # ── 2. FIRST INVOICE FOLLOW-UP (WhatsApp only) ──────────────────
+    if invoice_count >= 1 and not _was_sent(db, user.id, "wa_first_invoice"):
+        if _send_wa_template(
+            user.phone,
+            settings.WHATSAPP_TEMPLATE_FIRST_INVOICE,
+            [name],
+            "wa_first_invoice",
+            db,
+            user.id,
+        ):
+            stats["whatsapp_sent"] += 1
+
+    # ── 3. MONETIZATION (FREE users with invoices) ───────────────────
     if user.plan.value == "free" and invoice_count > 0:
         if _send_monetization(db, user, name, invoice_count, stats):
             return
 
-    # ── 3. EDUCATION TIPS (active FREE users, every 2 days) ──────────
+    # ── 4. PRO UPGRADE (STARTER users with 10+ invoices, WhatsApp) ──
+    if user.plan.value == "starter" and invoice_count >= 10:
+        if not _was_sent(db, user.id, "wa_pro_upgrade"):
+            if _send_wa_template(
+                user.phone,
+                settings.WHATSAPP_TEMPLATE_PRO_UPGRADE,
+                [name, str(invoice_count)],
+                "wa_pro_upgrade",
+                db,
+                user.id,
+            ):
+                stats["whatsapp_sent"] += 1
+
+    # ── 5. EDUCATION TIPS (active FREE users, every 2 days) ──────────
     if invoice_count > 0 and user.plan.value == "free":
         _send_tip(db, user, name, stats)
         return
+
+    # ── 6. WIN-BACK (any user inactive 7+ days, WhatsApp only) ───────
+    if invoice_count > 0 and not _was_sent(db, user.id, "wa_win_back"):
+        last_invoice_at = (
+            db.query(func.max(Invoice.created_at))
+            .filter(Invoice.issuer_id == user.id, Invoice.invoice_type == "revenue")
+            .scalar()
+        )
+        if last_invoice_at:
+            if last_invoice_at.tzinfo is None:
+                last_invoice_at = last_invoice_at.replace(tzinfo=timezone.utc)
+            if (now - last_invoice_at).days >= 7:
+                if _send_wa_template(
+                    user.phone,
+                    settings.WHATSAPP_TEMPLATE_WIN_BACK,
+                    [name],
+                    "wa_win_back",
+                    db,
+                    user.id,
+                ):
+                    stats["whatsapp_sent"] += 1
+                    return
 
     stats["skipped"] += 1
 
@@ -295,6 +396,18 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
         logger.info("Sent activation email '%s' to user %s", email_type, user.id)
     else:
         stats["failed"] += 1
+
+    # Also send WhatsApp activation template (Day 0 only)
+    if days_since_signup == 0 and user.phone:
+        if _send_wa_template(
+            user.phone,
+            settings.WHATSAPP_TEMPLATE_ACTIVATION_WELCOME,
+            [name],
+            "wa_activation_day0",
+            db,
+            user.id,
+        ):
+            stats["whatsapp_sent"] += 1
 
 
 def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str, int]) -> bool:
@@ -359,6 +472,30 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         logger.info("Sent monetization email '%s' to user %s", email_type, user.id)
     else:
         stats["failed"] += 1
+
+    # Also send corresponding WhatsApp template
+    if user.phone:
+        if email_type == EMAIL_LIMIT_REACHED:
+            if _send_wa_template(
+                user.phone,
+                settings.WHATSAPP_TEMPLATE_INVOICE_PACK_PROMO,
+                [name],
+                "wa_monetization_limit",
+                db,
+                user.id,
+            ):
+                stats["whatsapp_sent"] += 1
+        elif email_type == EMAIL_80PCT_LIMIT:
+            if _send_wa_template(
+                user.phone,
+                settings.WHATSAPP_TEMPLATE_LOW_BALANCE,
+                [name, str(invoice_balance)],
+                "wa_monetization_80pct",
+                db,
+                user.id,
+            ):
+                stats["whatsapp_sent"] += 1
+
     return True
 
 

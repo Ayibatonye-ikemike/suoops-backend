@@ -47,6 +47,14 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_TEMPLATE_PAYMENT_REMINDER: str | None = None  # Overdue reminder
     WHATSAPP_TEMPLATE_RECEIPT: str | None = None  # Payment receipt
     WHATSAPP_TEMPLATE_DAILY_SUMMARY: str | None = None  # Daily business summary
+    # Lifecycle / engagement templates
+    WHATSAPP_TEMPLATE_ACTIVATION_WELCOME: str | None = None  # New signup welcome
+    WHATSAPP_TEMPLATE_FIRST_INVOICE: str | None = None  # After first invoice
+    WHATSAPP_TEMPLATE_LOW_BALANCE: str | None = None  # 80% invoice limit reached
+    WHATSAPP_TEMPLATE_INVOICE_PACK_PROMO: str | None = None  # Invoice limit hit
+    WHATSAPP_TEMPLATE_PRO_UPGRADE: str | None = None  # Upsell to Pro plan
+    WHATSAPP_TEMPLATE_WIN_BACK: str | None = None  # Inactive user re-engagement
+    WHATSAPP_TEMPLATE_LOW_STOCK_ALERT: str | None = None  # Low inventory alert
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
     
     @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")

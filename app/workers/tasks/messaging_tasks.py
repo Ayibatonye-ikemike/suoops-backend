@@ -433,11 +433,52 @@ def _send_customer_whatsapp_reminder(
     tier: str,
     business_name: str,
 ) -> bool:
-    """Send a WhatsApp payment reminder to a customer."""
+    """Send a WhatsApp payment reminder to a customer.
+
+    Prefers the ``payment_reminder`` template (deliverable outside the 24-hour
+    window) and falls back to free-form text when the template is not configured.
+    """
     try:
         from app.bot.whatsapp_client import WhatsAppClient
 
         client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+
+        # Prefer template (works outside 24h window)
+        template_name = settings.WHATSAPP_TEMPLATE_PAYMENT_REMINDER
+        if template_name:
+            customer_name = customer.name or "Customer"
+            amount_str = f"₦{inv.amount:,.0f}"
+            payment_link = f"{settings.FRONTEND_URL}/pay/{inv.invoice_id}"
+
+            days_until_due = (inv.due_date.date() - date.today()).days
+            if days_until_due > 0:
+                days_info = f"due in {days_until_due} day(s)"
+            elif days_until_due == 0:
+                days_info = "due today"
+            else:
+                days_info = f"{abs(days_until_due)} day(s) overdue"
+
+            bank_name = issuer.bank_name or "N/A"
+            account_number = issuer.account_number or "N/A"
+
+            components = [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": customer_name},
+                        {"type": "text", "text": inv.invoice_id},
+                        {"type": "text", "text": amount_str},
+                        {"type": "text", "text": days_info},
+                        {"type": "text", "text": bank_name},
+                        {"type": "text", "text": account_number},
+                        {"type": "text", "text": payment_link},
+                    ],
+                }
+            ]
+            lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+            return client.send_template(customer.phone, template_name, lang, components)
+
+        # Fallback: free-form text (only works within 24h window)
         message = _format_customer_reminder(inv, tier, business_name)
         return client.send_text(customer.phone, message)
     except Exception as e:
