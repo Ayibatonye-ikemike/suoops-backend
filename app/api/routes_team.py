@@ -1,11 +1,12 @@
 """API routes for team management."""
 from typing import Annotated, TypeAlias
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from pydantic import BaseModel as PydanticBaseModel
 
+from app.api.rate_limit import limiter
 from app.api.routes_auth import get_current_user_id
 
 
@@ -138,7 +139,8 @@ def update_team(data: TeamUpdate, service: TeamServiceDep):
 # ============================================================================
 
 @router.post("/invitations", response_model=InvitationOut)
-def send_invitation(data: InvitationCreate, service: TeamServiceDep):
+@limiter.limit("5/minute")
+def send_invitation(request: Request, data: InvitationCreate, service: TeamServiceDep):
     """Send a team invitation to an email address (admin only)."""
     invitation = service.create_invitation(data)
     return InvitationOut(

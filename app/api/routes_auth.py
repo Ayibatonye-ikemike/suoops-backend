@@ -179,7 +179,10 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
     except HTTPException:
         raise
     except Exception:  # noqa: BLE001
-        pass  # Redis unavailable — fail-open (short access-token TTL limits risk)
+        if settings.ENV.lower() in {"prod", "production"}:
+            log_failure("auth.refresh", user_id=None, error="blocklist_unavailable")
+            raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+        # In dev/test, fail-open since Redis may not be running
 
     try:
         bundle = svc.refresh(refresh_value)

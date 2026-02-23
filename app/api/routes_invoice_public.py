@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.api.rate_limit import limiter
 from app.db.session import get_db
 from app.models import schemas
 from app.services.invoice_service import build_invoice_service
@@ -37,7 +38,8 @@ def get_invoice_public(invoice_id: str, db: Session = Depends(get_db)) -> schema
 
 
 @router.post("/{invoice_id}/confirm-transfer", response_model=schemas.InvoicePublicOut)
-def confirm_transfer(invoice_id: str, db: Session = Depends(get_db)) -> schemas.InvoicePublicOut:
+@limiter.limit("3/minute")
+def confirm_transfer(request: Request, invoice_id: str, db: Session = Depends(get_db)) -> schemas.InvoicePublicOut:
     svc = build_invoice_service(db)
     try:
         svc.confirm_transfer(invoice_id)

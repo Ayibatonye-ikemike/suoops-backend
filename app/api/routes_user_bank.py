@@ -2,10 +2,11 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import AdminUserDep
+from app.api.rate_limit import limiter
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import models, schemas
@@ -33,7 +34,9 @@ def get_bank_details(
 
 
 @router.patch("/me/bank-details", response_model=schemas.BankDetailsOut)
+@limiter.limit("10/minute")
 def update_bank_details(
+    request: Request,
     data: schemas.BankDetailsUpdate,
     current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
@@ -65,16 +68,20 @@ def update_bank_details(
 
 
 @router.post("/me/bank-details", response_model=schemas.BankDetailsOut)
+@limiter.limit("10/minute")
 def create_bank_details(
+    request: Request,
     data: schemas.BankDetailsUpdate,
     current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
 ):
-    return update_bank_details(data, current_user_id, db)
+    return update_bank_details(request, data, current_user_id, db)
 
 
 @router.delete("/me/bank-details", response_model=schemas.MessageOut)
+@limiter.limit("10/minute")
 def delete_bank_details(
+    request: Request,
     current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
 ):

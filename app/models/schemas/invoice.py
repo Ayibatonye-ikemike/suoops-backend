@@ -79,6 +79,9 @@ class InvoiceOut(BaseModel):
     created_by_user_id: int | None = None
     created_by_name: str | None = None
     
+    # Customer info for display/search
+    customer_name: str | None = None
+    
     # Status updater tracking (who marked as paid/cancelled)
     status_updated_by_user_id: int | None = None
     status_updated_by_name: str | None = None
@@ -87,12 +90,12 @@ class InvoiceOut(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def populate_user_names(cls, data: Any) -> Any:
-        """Extract user names from relationships."""
+        """Extract user names and customer info from relationships."""
         if not hasattr(data, "created_by"):
             return data
         
         result = {k: getattr(data, k, None) for k in cls.model_fields.keys() 
-                  if k not in {"created_by_name", "status_updated_by_name"}}
+                  if k not in {"created_by_name", "status_updated_by_name", "customer_name"}}
         
         # Populate created_by_name
         if hasattr(data, "created_by") and data.created_by is not None:
@@ -101,6 +104,10 @@ class InvoiceOut(BaseModel):
         # Populate status_updated_by_name
         if hasattr(data, "status_updated_by") and data.status_updated_by is not None:
             result["status_updated_by_name"] = data.status_updated_by.name
+
+        # Populate customer_name from relationship
+        if hasattr(data, "customer") and data.customer is not None:
+            result["customer_name"] = data.customer.name
         
         return result
 

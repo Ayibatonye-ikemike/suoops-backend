@@ -130,7 +130,9 @@ async def create_invoice(
 
 
 @router.post("/upload-receipt", response_model=schemas.ReceiptUploadOut)
+@limiter.limit("10/minute")
 async def upload_expense_receipt(
+    request: Request,
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     file: UploadFile = File(...),
@@ -235,39 +237,29 @@ def list_invoices(
     skip = max(0, skip)
     limit = max(1, min(limit, 200))
     
-    svc = get_invoice_service_for_user(data_owner_id, db)
-    # Pass invoice_type to query so filtering happens BEFORE the limit
-    invoices, total = svc.list_invoices(data_owner_id, invoice_type=invoice_type, skip=skip, limit=limit)
+    # Parse date strings into date objects for SQL-level filtering
+    parsed_start: date | None = None
+    parsed_end: date | None = None
+    if start_date:
+        try:
+            parsed_start = dt.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            parsed_end = dt.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            pass
     
-    # Filter by date range if specified (applied post-query for simplicity)
-    if start_date or end_date:
-        def get_invoice_date(inv) -> date | None:
-            """Extract date from invoice, handling various formats."""
-            d = inv.due_date or inv.created_at
-            if d is None:
-                return None
-            if isinstance(d, date):
-                return d if not hasattr(d, 'date') else d.date()
-            if isinstance(d, str):
-                try:
-                    return dt.strptime(d[:10], "%Y-%m-%d").date()
-                except (ValueError, TypeError):
-                    return None
-            return None
-        
-        if start_date:
-            try:
-                start = dt.strptime(start_date, "%Y-%m-%d").date()
-                invoices = [inv for inv in invoices if (d := get_invoice_date(inv)) and d >= start]
-            except ValueError:
-                pass  # Invalid date format, skip filter
-        
-        if end_date:
-            try:
-                end = dt.strptime(end_date, "%Y-%m-%d").date()
-                invoices = [inv for inv in invoices if (d := get_invoice_date(inv)) and d <= end]
-            except ValueError:
-                pass  # Invalid date format, skip filter
+    svc = get_invoice_service_for_user(data_owner_id, db)
+    invoices, total = svc.list_invoices(
+        data_owner_id,
+        invoice_type=invoice_type,
+        skip=skip,
+        limit=limit,
+        start_date=parsed_start,
+        end_date=parsed_end,
+    )
     
     return schemas.PaginatedResponse[schemas.InvoiceOut](
         items=invoices,

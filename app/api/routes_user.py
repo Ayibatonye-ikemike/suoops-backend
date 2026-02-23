@@ -135,7 +135,9 @@ class UpdateProfileResponse(BaseModel):
 
 
 @router.patch("/me", response_model=UpdateProfileResponse)
+@limiter.limit("10/minute")
 def update_profile(
+    req: Request,
     request: UpdateProfileRequest,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],

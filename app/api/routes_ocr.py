@@ -22,7 +22,7 @@ from app.api.rate_limit import RATE_LIMITS, limiter
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
 from app.models import schemas
-from app.services.invoice_service import InvoiceService
+from app.services.invoice_service import build_invoice_service
 from app.services.ocr_service import OCRService
 from app.utils.feature_gate import check_invoice_limit, check_voice_ocr_quota
 
@@ -198,7 +198,7 @@ async def create_invoice_from_image(
         )
     
     # Create invoice from parsed data
-    invoice_service = InvoiceService(db)
+    invoice_service = build_invoice_service(db, user_id=current_user_id)
     
     try:
         # Use extracted customer name or default
@@ -229,13 +229,13 @@ async def create_invoice_from_image(
             issuer_id=current_user_id
         )
         
-        logger.info(f"Invoice created from OCR: invoice_id={invoice.invoice_id}")
+        logger.info("Invoice created from OCR: invoice_id=%s", invoice.invoice_id)
         
         return invoice
         
     except Exception as e:
-        logger.error(f"Failed to create invoice from OCR data: {str(e)}")
+        logger.error("Failed to create invoice from OCR data: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create invoice: {str(e)}"
+            detail="Failed to create invoice from image. Please try again."
         )

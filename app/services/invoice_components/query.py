@@ -21,9 +21,11 @@ class InvoiceQueryMixin:
         invoice_type: str | None = None,
         skip: int = 0,
         limit: int = 50,
+        start_date: dt.date | None = None,
+        end_date: dt.date | None = None,
     ) -> tuple[list[models.Invoice], int]:
         """Return a page of invoices and the total count matching the filters."""
-        if self.cache and skip == 0 and limit >= 50:
+        if self.cache and skip == 0 and limit >= 50 and not start_date and not end_date:
             cached = self.cache.get_invoice_list(issuer_id)
             if cached is not None:
                 logger.info("Cache hit for user %s invoice list", issuer_id)
@@ -36,6 +38,14 @@ class InvoiceQueryMixin:
         # Filter by invoice_type before limit for correct results
         if invoice_type:
             query = query.filter(models.Invoice.invoice_type == invoice_type)
+
+        # Date filters applied at SQL level so pagination counts are accurate
+        from sqlalchemy import func as sa_func
+        date_col = sa_func.coalesce(models.Invoice.due_date, models.Invoice.created_at)
+        if start_date:
+            query = query.filter(sa_func.date(date_col) >= start_date)
+        if end_date:
+            query = query.filter(sa_func.date(date_col) <= end_date)
         
         # Get total count before applying pagination
         total = query.count()

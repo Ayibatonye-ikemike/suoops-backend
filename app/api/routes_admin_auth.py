@@ -9,11 +9,12 @@ from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
+from app.api.rate_limit import limiter
 from app.core.config import settings
 from app.core.security import TokenType, create_access_token, decode_token, hash_password, verify_password
 from app.db.session import get_db
@@ -126,7 +127,7 @@ async def get_current_admin(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Admin auth error: {e}")
+        logger.error("Admin auth error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication",
@@ -242,7 +243,7 @@ def send_admin_invite_email(to_email: str, name: str, invite_link: str) -> bool:
         
         return True
     except Exception as e:
-        logger.error(f"Failed to send admin invite email: {e}")
+        logger.error("Failed to send admin invite email: %s", e)
         return False
 
 
@@ -251,7 +252,8 @@ def send_admin_invite_email(to_email: str, name: str, invite_link: str) -> bool:
 # ============================================================================
 
 @router.post("/login", response_model=AdminLoginResponse)
-def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def admin_login(request: Request, payload: AdminLoginRequest, db: Session = Depends(get_db)):
     """Login to admin dashboard."""
     # Validate email domain - only @suoops.com emails allowed
     email_lower = payload.email.lower()
@@ -293,7 +295,7 @@ def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
     # Create admin token with 'admin:' prefix
     token = create_access_token(
         subject=f"admin:{admin.id}",
-        expires_minutes=60 * 8,  # 8 hours
+        expires_minutes=60 * 2,  # 2 hours
     )
     
     return AdminLoginResponse(
@@ -421,11 +423,22 @@ def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
             detail="Invitation already accepted",
         )
     
-    # Validate password
-    if len(payload.password) < 8:
+    # Validate password — same strength rules as change-password
+    pw = payload.password
+    if len(pw) < 12:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 8 characters",
+            detail="Password must be at least 12 characters",
+        )
+    if not any(c.isupper() for c in pw) or not any(c.islower() for c in pw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must contain both uppercase and lowercase letters",
+        )
+    if not any(c.isdigit() for c in pw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must contain at least one digit",
         )
     
     # Activate admin
@@ -439,7 +452,7 @@ def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
     # Create token
     token = create_access_token(
         subject=f"admin:{admin.id}",
-        expires_minutes=60 * 8,
+        expires_minutes=60 * 2,  # 2 hours
     )
     
     return AdminLoginResponse(
@@ -523,7 +536,7 @@ async def remove_admin(
     db.delete(admin_to_remove)
     db.commit()
     
-    logger.info(f"Admin {current_admin.email} removed admin {admin_to_remove.email}")
+    logger.info("Admin %s removed admin %s", current_admin.email, admin_to_remove.email)
     
     return {"success": True, "message": f"Admin {admin_to_remove.email} has been removed"}
 
@@ -580,8 +593,8 @@ def init_default_admin():
     try:
         admin = create_default_admin(db)
         if admin:
-            logger.info(f"Default admin ready: {DEFAULT_ADMIN_EMAIL}")
+            logger.info("Default admin ready: %s", DEFAULT_ADMIN_EMAIL)
     except Exception as e:
-        logger.error(f"Failed to create default admin: {e}")
+        logger.error("Failed to create default admin: %s", e)
     finally:
         db.close()

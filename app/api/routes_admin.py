@@ -269,22 +269,15 @@ async def get_user_detail(
     
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        return {"error": "User not found"}
+        raise HTTPException(status_code=404, detail="User not found")
     
-    # Count invoices
-    total_invoices = db.query(models.Invoice).filter(
-        models.Invoice.issuer_id == user_id
-    ).count()
-    
-    revenue_invoices = db.query(models.Invoice).filter(
-        models.Invoice.issuer_id == user_id,
-        models.Invoice.invoice_type == "revenue"
-    ).count()
-    
-    expense_invoices = db.query(models.Invoice).filter(
-        models.Invoice.issuer_id == user_id,
-        models.Invoice.invoice_type == "expense"
-    ).count()
+    # Count invoices in a single aggregated query (eliminates N+1)
+    from sqlalchemy import case as sa_case
+    invoice_counts = db.query(
+        func.count(models.Invoice.id).label("total"),
+        func.count(sa_case((models.Invoice.invoice_type == "revenue", 1))).label("revenue"),
+        func.count(sa_case((models.Invoice.invoice_type == "expense", 1))).label("expense"),
+    ).filter(models.Invoice.issuer_id == user_id).one()
     
     # Count unique customers via invoices (Customer doesn't have user_id, linked through Invoice)
     total_customers = db.query(models.Customer.id).join(
@@ -306,7 +299,7 @@ async def get_user_detail(
     # Calculate invoices used (total created minus current balance)
     # For new users with 5 free invoices, total would be total_invoices + remaining balance - 5
     # Simpler: invoices_used = total_invoices (each invoice created consumes 1)
-    invoices_used = total_invoices
+    invoices_used = invoice_counts.total
     
     # Build pack purchase history
     pack_purchases = []
@@ -334,9 +327,9 @@ async def get_user_detail(
             pro_override=getattr(user, 'pro_override', False),
         ),
         "activity": {
-            "total_invoices": total_invoices,
-            "revenue_invoices": revenue_invoices,
-            "expense_invoices": expense_invoices,
+            "total_invoices": invoice_counts.total,
+            "revenue_invoices": invoice_counts.revenue,
+            "expense_invoices": invoice_counts.expense,
             "total_customers": total_customers,
             "has_logo": user.logo_url is not None,
             "has_bank_details": user.account_number is not None,

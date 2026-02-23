@@ -2,10 +2,11 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import AdminUserDep
+from app.api.rate_limit import limiter
 from app.db.session import get_db
 from app.models import models, schemas
 from app.storage.s3_client import s3_client
@@ -16,7 +17,9 @@ router = APIRouter(tags=["users"])
 
 
 @router.post("/me/logo", response_model=schemas.MessageOut)
+@limiter.limit("5/minute")
 async def upload_logo(
+    request: Request,
     file: UploadFile = File(...),
     current_user_id: AdminUserDep = None,
     db: Annotated[Session, Depends(get_db)] = None,
@@ -52,7 +55,7 @@ async def upload_logo(
     except Exception as e:  # pragma: no cover
         logger.error("Failed to upload logo for user %s: %s", current_user_id, str(e), exc_info=True)
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to upload logo: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload logo. Please try again.")
 
 
 @router.delete("/me/logo", response_model=schemas.MessageOut)
