@@ -935,9 +935,22 @@ class InvoiceIntentProcessor:
         frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
         payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
         amount_text = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
-        
-        message = f"📄 Your invoice for {amount_text} is ready!\n\n🔗 View & Pay Online:\n{payment_link}"
-        
+        biz_name = getattr(issuer, "business_name", None) or getattr(issuer, "name", "your vendor")
+
+        # Build a line-items summary (max 3 lines)
+        items_summary = ""
+        inv_lines = getattr(invoice, "lines", None) or []
+        if inv_lines:
+            summaries = [f"  • {l.description}" for l in inv_lines[:3]]
+            if len(inv_lines) > 3:
+                summaries.append(f"  … and {len(inv_lines) - 3} more")
+            items_summary = "\n".join(summaries)
+
+        message = f"📄 *Invoice from {biz_name}*\nAmount: *{amount_text}*"
+        if items_summary:
+            message += f"\n\n📋 Items:\n{items_summary}"
+        message += f"\n\n🔗 View & Pay Securely:\n{payment_link}"
+
         # Add bank transfer details if available
         if issuer and issuer.bank_name and issuer.account_number:
             message += (
@@ -947,8 +960,10 @@ class InvoiceIntentProcessor:
             )
             if getattr(issuer, "account_name", None):
                 message += f"\nName: {issuer.account_name}"
-            message += "\n\n📝 After transfer, tap the link above and click 'I've sent the transfer'."
-        
+
+        message += "\n\n📝 After transfer, tap the link above and click 'I've sent the transfer'."
+        message += f"\n\n🔒 _Powered by Suoops — suoops.com_"
+
         return message
 
     def _send_template(

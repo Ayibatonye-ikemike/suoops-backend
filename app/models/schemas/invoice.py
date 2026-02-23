@@ -136,6 +136,18 @@ class InvoiceStatusUpdate(BaseModel):
     status: Literal["pending", "awaiting_confirmation", "paid", "cancelled", "refunded"]
 
 
+class InvoiceLinePublicOut(BaseModel):
+    """Minimal line-item data for the public payment page."""
+    model_config = ConfigDict(from_attributes=True)
+    description: str
+    quantity: int
+    unit_price: Decimal
+
+    @field_serializer("unit_price")
+    def _serialize_unit_price(self, value: Decimal) -> str:
+        return format_amount(value) or "0"
+
+
 class InvoicePublicOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -144,12 +156,15 @@ class InvoicePublicOut(BaseModel):
     currency: str = "NGN"
     status: str
     due_date: dt.datetime | None = None
+    created_at: dt.datetime | None = None
     customer_name: str | None = None
     business_name: str | None = None
+    business_logo_url: str | None = None
     bank_name: str | None = None
     account_number: str | None = None
     account_name: str | None = None
     paid_at: dt.datetime | None = None
+    lines: list[InvoiceLinePublicOut] = []
 
     @field_serializer("amount")
     def _serialize_amount(self, value: Decimal) -> str:

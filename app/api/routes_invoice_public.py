@@ -13,16 +13,25 @@ router = APIRouter(tags=["invoices-public"])
 
 def _public_invoice_payload(invoice, issuer) -> dict[str, object]:
     customer_name = getattr(invoice.customer, "name", None) if invoice.customer else None
+    lines_data = [
+        {"description": ln.description, "quantity": ln.quantity, "unit_price": ln.unit_price}
+        for ln in (invoice.lines or [])
+    ]
     return {
         "invoice_id": invoice.invoice_id,
         "amount": invoice.amount,
+        "currency": getattr(invoice, "currency", "NGN") or "NGN",
         "status": invoice.status,
         "due_date": invoice.due_date,
+        "created_at": invoice.created_at,
+        "paid_at": invoice.paid_at,
         "customer_name": customer_name,
         "business_name": getattr(issuer, "business_name", None),
+        "business_logo_url": getattr(issuer, "logo_url", None),
         "bank_name": getattr(issuer, "bank_name", None),
         "account_number": getattr(issuer, "account_number", None),
         "account_name": getattr(issuer, "account_name", None),
+        "lines": lines_data,
     }
 
 
