@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.get("/whatsapp")
 @limiter.limit(RATE_LIMITS["webhook_whatsapp_verify"])
-async def verify_whatsapp_webhook(
+def verify_whatsapp_webhook(
     request: Request,
     hub_mode: str = Query(None, alias="hub.mode"),
     hub_verify_token: str = Query(None, alias="hub.verify_token"),

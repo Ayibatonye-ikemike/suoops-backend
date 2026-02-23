@@ -446,9 +446,9 @@ def get_conversion_rate(currency: str) -> Decimal:
     if currency != "USD":
         return Decimal("1")
 
-    import os
+    from app.core.config import settings
 
-    rate_str = os.getenv("NGN_USD_RATE")
+    rate_str = settings.NGN_USD_RATE
     if rate_str:
         try:
             return Decimal(rate_str)

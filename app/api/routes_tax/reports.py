@@ -22,7 +22,7 @@ from app.services.pdf_service import PDFService
 from app.services.tax_reporting_service import TaxReportingService
 from app.utils.feature_gate import require_plan_feature
 
-from .schemas import AlertEventOut, ReportCsvOut, ReportDownloadOut, TaxReportOut
+from .schemas import ReportCsvOut, ReportDownloadOut, TaxReportOut
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -157,36 +157,6 @@ def generate_tax_report(
     except Exception as e:
         logger.exception("Failed to generate tax report")
         raise HTTPException(status_code=500, detail=f"Failed to generate tax report: {str(e)}")
-
-
-@router.get("/admin/alerts", response_model=list[AlertEventOut])
-def list_recent_alerts(
-    limit: int = Query(50, ge=1, le=200),
-    category: str | None = Query(None),
-    db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id),
-):
-    """Return recent alert events."""
-    try:
-        from app.models.alert_models import AlertEvent
-    except Exception:
-        raise HTTPException(status_code=500, detail="Alert model unavailable")
-
-    q = db.query(AlertEvent).order_by(AlertEvent.created_at.desc())
-    if category:
-        q = q.filter(AlertEvent.category == category)
-    records = q.limit(limit).all()
-
-    return [
-        AlertEventOut(
-            id=r.id,
-            category=r.category,
-            severity=r.severity,
-            message=r.message,
-            created_at=r.created_at.isoformat() if r.created_at else None,
-        )
-        for r in records
-    ]
 
 
 @router.get("/reports/{report_id}/download", response_model=ReportDownloadOut)

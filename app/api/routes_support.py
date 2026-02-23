@@ -267,7 +267,7 @@ SuoOps Support Team
 
 @router.post("/contact", response_model=ContactResponse)
 @limiter.limit("5/minute")
-async def submit_contact_form(
+def submit_contact_form(
     request: Request,
     contact: ContactRequest,
     db: Session = Depends(get_db),
@@ -339,7 +339,7 @@ async def submit_contact_form(
 # ============================================================================
 
 @router.get("/admin/stats", response_model=TicketStats)
-async def get_ticket_stats(
+def get_ticket_stats(
     db: Session = Depends(get_db),
     admin_user: AdminUser = Depends(get_current_admin),
 ) -> TicketStats:
@@ -389,7 +389,7 @@ async def get_ticket_stats(
 
 
 @router.get("/admin/tickets", response_model=list[TicketOut])
-async def list_tickets(
+def list_tickets(
     db: Session = Depends(get_db),
     admin_user: AdminUser = Depends(get_current_admin),
     skip: int = Query(0, ge=0),
@@ -452,7 +452,7 @@ async def list_tickets(
 
 
 @router.get("/admin/tickets/{ticket_id}", response_model=TicketOut)
-async def get_ticket(
+def get_ticket(
     ticket_id: int,
     db: Session = Depends(get_db),
     admin_user: AdminUser = Depends(get_current_admin),
@@ -486,7 +486,7 @@ async def get_ticket(
 
 
 @router.patch("/admin/tickets/{ticket_id}", response_model=TicketOut)
-async def update_ticket(
+def update_ticket(
     ticket_id: int,
     update: TicketUpdate,
     db: Session = Depends(get_db),
@@ -559,7 +559,7 @@ async def update_ticket(
 
 
 @router.get("/admin/dashboard", response_model=AdminDashboardStats)
-async def get_dashboard_stats(
+def get_dashboard_stats(
     db: Session = Depends(get_db),
     admin_user: AdminUser = Depends(get_current_admin),
 ) -> AdminDashboardStats:

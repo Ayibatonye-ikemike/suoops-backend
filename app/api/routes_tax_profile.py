@@ -28,7 +28,7 @@ class TaxProfileUpdate(BaseModel):
 
 
 @router.get("/profile")
-async def get_tax_profile(
+def get_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -42,7 +42,7 @@ async def get_tax_profile(
 
 
 @router.post("/profile")
-async def update_tax_profile(
+def update_tax_profile(
     data: TaxProfileUpdate,
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
@@ -70,7 +70,7 @@ async def update_tax_profile(
 
 
 @router.get("/small-business-check")
-async def small_business_check(
+def small_business_check(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -84,7 +84,7 @@ async def small_business_check(
 
 
 @router.get("/compliance")
-async def tax_compliance(
+def tax_compliance(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):

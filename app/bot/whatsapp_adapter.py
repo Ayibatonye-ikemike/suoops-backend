@@ -505,7 +505,7 @@ class WhatsAppHandler:
                 )
                 return
 
-            now = dt.datetime.utcnow()
+            now = dt.datetime.now(dt.timezone.utc)
             year = now.year
             month = now.month
 

@@ -37,14 +37,14 @@ router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 
 @router.options("/frontend")
-async def telemetry_options():
+def telemetry_options():
     """Handle CORS preflight for telemetry endpoint."""
     return {"status": "ok"}
 
 
 @router.post("/frontend", response_model=TelemetryAck, status_code=202)
 @limiter.limit("120/minute")  # IP-based limit to mitigate abuse
-async def ingest_frontend(event: TelemetryIn, request: Request):  # noqa: D401
+def ingest_frontend(event: TelemetryIn, request: Request):  # noqa: D401
     """Ingest a frontend telemetry event.
 
     Validates basic structure; increments Prometheus counter; persists to log.

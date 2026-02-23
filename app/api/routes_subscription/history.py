@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 @router.get("/history", response_model=PaymentHistoryOut)
-async def get_payment_history(
+def get_payment_history(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
     limit: int = 50,
@@ -115,7 +115,7 @@ async def get_payment_history(
 
 
 @router.get("/history/{payment_id}", response_model=PaymentDetailOut)
-async def get_payment_detail(
+def get_payment_detail(
     payment_id: int,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],

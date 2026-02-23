@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
 from functools import lru_cache
 
 try:
@@ -21,13 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 def _is_production() -> bool:
-    env = (os.getenv("APP_ENV") or os.getenv("ENV") or "dev").lower()
-    return env in ("prod", "production")
+    from app.core.config import settings
+    return settings.ENV.lower() in ("prod", "production")
 
 
 @lru_cache
 def _get_cipher() -> Fernet | None:
-    key = os.getenv("ENCRYPTION_KEY")
+    from app.core.config import settings
+    key = settings.ENCRYPTION_KEY
     if not key or Fernet is None:
         if _is_production():
             logger.error(

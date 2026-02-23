@@ -89,7 +89,7 @@ class PayoutBankDetailsUpdate(BaseModel):
 # ==================== ENDPOINTS ====================
 
 @router.get("/code", response_model=ReferralCodeResponse)
-async def get_referral_code(
+def get_referral_code(
     user_id: CurrentUserDep,
     db: DbDep,
 ):
@@ -109,7 +109,7 @@ async def get_referral_code(
 
 
 @router.get("/stats", response_model=ReferralStatsResponse)
-async def get_referral_stats(
+def get_referral_stats(
     user_id: CurrentUserDep,
     db: DbDep,
 ):
@@ -129,7 +129,7 @@ async def get_referral_stats(
 
 
 @router.get("/recent", response_model=list[RecentReferralResponse])
-async def get_recent_referrals(
+def get_recent_referrals(
     user_id: CurrentUserDep,
     db: DbDep,
     limit: int = 10,
@@ -143,7 +143,7 @@ async def get_recent_referrals(
 
 
 @router.post("/apply-reward", response_model=ApplyRewardResponse)
-async def apply_reward(
+def apply_reward(
     user_id: CurrentUserDep,
     db: DbDep,
     request: ApplyRewardRequest,
@@ -168,7 +168,7 @@ async def apply_reward(
 
 
 @router.post("/validate", response_model=ValidateCodeResponse)
-async def validate_referral_code(
+def validate_referral_code(
     db: DbDep,
     request: ValidateCodeRequest,
 ):
@@ -210,7 +210,7 @@ async def validate_referral_code(
 
 
 @router.get("/payout-bank", response_model=PayoutBankDetailsResponse)
-async def get_payout_bank_details(
+def get_payout_bank_details(
     user_id: CurrentUserDep,
     db: DbDep,
 ):
@@ -241,7 +241,7 @@ async def get_payout_bank_details(
 
 
 @router.patch("/payout-bank", response_model=PayoutBankDetailsResponse)
-async def update_payout_bank_details(
+def update_payout_bank_details(
     user_id: CurrentUserDep,
     db: DbDep,
     request: PayoutBankDetailsUpdate,
@@ -274,7 +274,7 @@ async def update_payout_bank_details(
 
 
 @router.delete("/payout-bank", response_model=MessageResponse)
-async def delete_payout_bank_details(
+def delete_payout_bank_details(
     user_id: CurrentUserDep,
     db: DbDep,
 ):

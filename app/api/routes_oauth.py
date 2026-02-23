@@ -154,7 +154,7 @@ def _extract_access_expiry(access_token: str) -> datetime:
 
 
 @router.get("/providers", response_model=schemas.OAuthProvidersOut)
-async def list_oauth_providers(db: Annotated[Session, Depends(get_db)]) -> dict:
+def list_oauth_providers(db: Annotated[Session, Depends(get_db)]) -> dict:
     """
     List available OAuth providers.
     
@@ -189,7 +189,7 @@ async def list_oauth_providers(db: Annotated[Session, Depends(get_db)]) -> dict:
 
 @router.get("/{provider}/login")
 @limiter.limit(RATE_LIMITS["oauth_login"])
-async def oauth_login(
+def oauth_login(
     provider: str,
     request: Request,  # included for rate limiter key_func
     redirect_uri: str | None = Query(None, description="Frontend redirect after auth"),
@@ -357,7 +357,7 @@ async def oauth_callback(
 
 
 @router.post("/{provider}/revoke")
-async def revoke_oauth_access(
+def revoke_oauth_access(
     provider: str,
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),

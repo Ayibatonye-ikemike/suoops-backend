@@ -24,7 +24,7 @@ router = APIRouter()
 
 
 @router.get("/vat/summary", response_model=VATSummaryOut)
-async def get_vat_summary(
+def get_vat_summary(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -45,7 +45,7 @@ async def get_vat_summary(
 
 
 @router.get("/vat/calculate", response_model=VATCalculateOut)
-async def calculate_vat(
+def calculate_vat(
     amount: float = Query(..., gt=0, description="Amount in Naira"),
     category: str = Query(
         "standard",
@@ -77,7 +77,7 @@ async def calculate_vat(
 
 
 @router.post("/vat/return", response_model=VATReturnOut)
-async def generate_vat_return(
+def generate_vat_return(
     year: int = Query(..., ge=2024, le=2030, description="Year"),
     month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
     current_user_id: int = Depends(get_current_user_id),

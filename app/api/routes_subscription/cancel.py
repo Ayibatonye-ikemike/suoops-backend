@@ -133,7 +133,7 @@ async def cancel_subscription(
 
 
 @router.get("/status", response_model=SubscriptionStatusOut)
-async def get_subscription_status(
+def get_subscription_status(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ):

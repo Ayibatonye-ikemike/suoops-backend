@@ -24,7 +24,7 @@ class FiscalizationStatus(BaseModel):
 
 
 @router.get("/config")
-async def tax_config(
+def tax_config(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -36,7 +36,7 @@ async def tax_config(
 
 
 @router.get("/fiscalization/status", response_model=FiscalizationStatus)
-async def get_fiscalization_status(
+def get_fiscalization_status(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -60,7 +60,7 @@ async def get_fiscalization_status(
 
 
 @router.get("/levy")
-async def development_levy(
+def development_levy(
     profit: float | None = Query(None, ge=0),
     year: int | None = Query(None, ge=2024, le=2030),
     month: int | None = Query(None, ge=1, le=12),

@@ -75,7 +75,7 @@ def healthz(db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
 
 
 @router.get("/live", response_model=HealthOut)
-async def live() -> dict[str, str]:
+def live() -> dict[str, str]:
     """Kubernetes-style liveness endpoint (no dependencies)."""
     return {"status": "alive"}
 
@@ -113,7 +113,7 @@ def ready(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
 
 
 @router.get("/sentry-debug")
-async def trigger_error():
+def trigger_error():
     """Test endpoint to verify Sentry integration."""
     raise ZeroDivisionError("Sentry test error")
     return {"message": "This should never be reached"}

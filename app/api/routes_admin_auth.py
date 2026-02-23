@@ -1,7 +1,6 @@
 """Admin authentication routes for support dashboard."""
 
 import logging
-import os
 import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
@@ -147,7 +146,7 @@ def create_default_admin(db: Session) -> AdminUser | None:
     if existing:
         return existing
     
-    default_password = os.environ.get("DEFAULT_ADMIN_PASSWORD")
+    default_password = settings.DEFAULT_ADMIN_PASSWORD
     if not default_password:
         logger.warning(
             "DEFAULT_ADMIN_PASSWORD env var not set — skipping default admin creation. "
@@ -496,7 +495,7 @@ def list_admins(
 
 
 @router.delete("/admins/{admin_id}", response_model=SuccessMessageOut)
-async def remove_admin(
+def remove_admin(
     admin_id: int,
     current_admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),

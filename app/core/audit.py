@@ -11,7 +11,9 @@ import os
 import time
 from typing import Any
 
-_AUDIT_LOG_PATH = os.getenv("AUDIT_LOG_FILE", "storage/audit.log")
+from app.core.config import settings
+
+_AUDIT_LOG_PATH = settings.AUDIT_LOG_FILE
 _logger = logging.getLogger("audit")
 
 

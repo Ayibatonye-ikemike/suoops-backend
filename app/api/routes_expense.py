@@ -3,7 +3,7 @@ Expense tracking API endpoints.
 
 Handles CRUD operations for business expenses and provides summary/stats endpoints.
 """
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated
 
@@ -196,7 +196,7 @@ def update_expense(
     for field, value in update_data.items():
         setattr(expense, field, value)
     
-    expense.updated_at = datetime.now()
+    expense.updated_at = datetime.now(timezone.utc)
     
     db.commit()
     db.refresh(expense)

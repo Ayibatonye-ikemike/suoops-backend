@@ -59,7 +59,7 @@ class UserActivity(BaseModel):
 
 
 @router.get("/", response_model=AdminRootOut)
-async def admin_root(admin_user=Depends(get_current_admin)) -> dict:
+def admin_root(admin_user=Depends(get_current_admin)) -> dict:
     """
     Admin API root - lists available endpoints.
     """
@@ -130,7 +130,7 @@ async def user_count(db: Session = Depends(get_db), admin_user=Depends(get_curre
 
 
 @router.get("/users/stats", response_model=UserStats)
-async def get_user_stats(
+def get_user_stats(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin)
 ) -> Any:
@@ -190,7 +190,7 @@ async def get_user_stats(
 
 
 @router.get("/users", response_model=list[UserListItem])
-async def list_users(
+def list_users(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
     skip: int = Query(0, ge=0),
@@ -257,7 +257,7 @@ async def list_users(
 
 
 @router.get("/users/{user_id}", response_model=UserDetailOut)
-async def get_user_detail(
+def get_user_detail(
     user_id: int,
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin)
@@ -341,7 +341,7 @@ async def get_user_detail(
 
 
 @router.post("/users/{user_id}/pro-override")
-async def toggle_pro_override(
+def toggle_pro_override(
     user_id: int,
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
@@ -407,7 +407,7 @@ class ReferralStats(BaseModel):
 
 
 @router.get("/referrals/stats", response_model=ReferralStats)
-async def get_referral_stats(
+def get_referral_stats(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin)
 ) -> Any:
@@ -550,7 +550,7 @@ class PayoutListResponse(BaseModel):
 
 
 @router.get("/referrals/payouts", response_model=PayoutListResponse)
-async def get_referral_payouts(
+def get_referral_payouts(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
     month: int | None = Query(None, description="Month (1-12), defaults to current"),
@@ -681,7 +681,7 @@ class PlatformMetrics(BaseModel):
 
 
 @router.get("/metrics", response_model=PlatformMetrics)
-async def get_platform_metrics(
+def get_platform_metrics(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin)
 ) -> Any:
@@ -825,7 +825,7 @@ class GrowthMetrics(BaseModel):
 
 
 @router.get("/metrics/growth", response_model=GrowthMetrics)
-async def get_growth_metrics(
+def get_growth_metrics(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin)
 ) -> Any:
@@ -1078,7 +1078,7 @@ class BusinessListResponse(BaseModel):
 
 
 @router.get("/businesses", response_model=BusinessListResponse)
-async def get_business_intelligence(
+def get_business_intelligence(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=5, le=100),
     sort_by: str = Query("health_score", regex="^(health_score|total_revenue|invoices_total|created_at|last_login|name|collection_rate)$"),
@@ -1369,7 +1369,7 @@ class UserSegmentExport(BaseModel):
 
 
 @router.get("/users/segments/inactive", response_model=list[UserSegmentExport])
-async def get_inactive_users(
+def get_inactive_users(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
     days_inactive: int = Query(7, description="Days since last login to consider inactive"),
@@ -1414,7 +1414,7 @@ async def get_inactive_users(
 
 
 @router.get("/users/segments/low-balance", response_model=list[UserSegmentExport])
-async def get_low_balance_users(
+def get_low_balance_users(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
     max_balance: int = Query(2, description="Maximum invoice balance to include"),
@@ -1461,7 +1461,7 @@ async def get_low_balance_users(
 
 
 @router.get("/users/segments/active-free", response_model=list[UserSegmentExport])
-async def get_active_free_users(
+def get_active_free_users(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
     min_invoices: int = Query(3, description="Minimum invoices created"),
@@ -1512,7 +1512,7 @@ async def get_active_free_users(
 
 
 @router.get("/users/segments/churned", response_model=list[UserSegmentExport])
-async def get_churned_users(
+def get_churned_users(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
     days_inactive: int = Query(14, description="Days since last login"),
@@ -1559,7 +1559,7 @@ async def get_churned_users(
 
 
 @router.get("/users/segments/starter", response_model=list[UserSegmentExport])
-async def get_starter_users(
+def get_starter_users(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
 ) -> list[UserSegmentExport]:
@@ -1602,7 +1602,7 @@ async def get_starter_users(
 
 
 @router.get("/users/segments/pro", response_model=list[UserSegmentExport])
-async def get_pro_users(
+def get_pro_users(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
 ) -> list[UserSegmentExport]:
@@ -1913,7 +1913,7 @@ async def create_brevo_list(
 
 
 @router.get("/users/export/csv")
-async def export_users_csv(
+def export_users_csv(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
 ):
@@ -1967,7 +1967,7 @@ ALLOWED_TASKS = {
 
 
 @router.get("/tasks/schedule")
-async def get_task_schedule(
+def get_task_schedule(
     admin_user=Depends(get_current_admin),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -2029,7 +2029,7 @@ async def get_task_schedule(
 
 
 @router.post("/tasks/{task_key}/trigger")
-async def trigger_task(
+def trigger_task(
     task_key: str,
     admin_user=Depends(get_current_admin),
 ) -> dict:

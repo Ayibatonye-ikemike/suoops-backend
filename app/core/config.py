@@ -106,6 +106,17 @@ class BaseAppSettings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str | None = None
     OAUTH_STATE_SECRET: str = "change_me_oauth_state"  # For CSRF protection
 
+    # External service keys
+    OPENAI_API_KEY: str | None = None  # For OCR service (GPT-4 Vision)
+    ENCRYPTION_KEY: str | None = None  # Fernet key for column encryption
+
+    # Admin bootstrap
+    DEFAULT_ADMIN_PASSWORD: str | None = None  # One-time admin bootstrap password
+
+    # Operational
+    NGN_USD_RATE: str | None = None  # Naira/USD conversion rate (e.g. "1600")
+    AUDIT_LOG_FILE: str = "storage/audit.log"  # Path to structured audit log
+
     # Feature flags / premium gating
     # When False, voice note invoice feature is available to all users regardless of plan.
     FEATURE_VOICE_REQUIRES_PAID: bool = True

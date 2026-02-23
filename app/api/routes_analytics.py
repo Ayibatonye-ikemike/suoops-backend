@@ -76,7 +76,7 @@ class ConversionFunnelOut(BaseModel):
 
 
 @router.get("/dashboard", response_model=AnalyticsDashboard)
-async def get_analytics_dashboard(
+def get_analytics_dashboard(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     db: DbDep,
@@ -135,7 +135,7 @@ async def get_analytics_dashboard(
 
 
 @router.get("/revenue-by-customer", response_model=RevenueByCustomerOut)
-async def get_revenue_by_customer(
+def get_revenue_by_customer(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     db: DbDep,
@@ -180,7 +180,7 @@ async def get_revenue_by_customer(
 
 
 @router.get("/conversion-funnel", response_model=ConversionFunnelOut)
-async def get_conversion_funnel(
+def get_conversion_funnel(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     db: DbDep,
@@ -246,7 +246,7 @@ class CashPositionOut(BaseModel):
 
 
 @router.get("/cash-position", response_model=CashPositionOut)
-async def get_cash_position(
+def get_cash_position(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     db: DbDep,
@@ -284,7 +284,7 @@ class CustomerInsightsOut(BaseModel):
 
 
 @router.get("/customer-insights", response_model=CustomerInsightsOut)
-async def get_customer_insights(
+def get_customer_insights(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     db: DbDep,
@@ -310,7 +310,7 @@ class ProfessionalismScoreOut(BaseModel):
 
 
 @router.get("/professionalism-score", response_model=ProfessionalismScoreOut)
-async def get_professionalism_score(
+def get_professionalism_score(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     db: DbDep,
@@ -352,7 +352,7 @@ class MarginInsightsOut(BaseModel):
 
 
 @router.get("/margin-insights", response_model=MarginInsightsOut)
-async def get_margin_insights(
+def get_margin_insights(
     current_user_id: CurrentUserDep,
     data_owner_id: DataOwnerDep,
     db: DbDep,

@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 @router.post("/switch-to-starter", response_model=SwitchPlanOut)
-async def switch_to_starter(
+def switch_to_starter(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ):

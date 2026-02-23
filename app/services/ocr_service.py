@@ -17,7 +17,6 @@ Accuracy: ~85-95% for clear photos
 import base64
 import io
 import logging
-import os
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -35,7 +34,8 @@ class OCRService:
     """
     
     def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        from app.core.config import settings
+        self.api_key = settings.OPENAI_API_KEY
         if not self.api_key:
             logger.warning("OPENAI_API_KEY not set - OCR will fail")
         

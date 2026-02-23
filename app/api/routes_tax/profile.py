@@ -29,7 +29,7 @@ router = APIRouter()
 
 
 @router.get("/profile", response_model=TaxSummaryOut)
-async def get_tax_profile(
+def get_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -43,7 +43,7 @@ async def get_tax_profile(
 
 
 @router.post("/profile", response_model=TaxProfileUpdateOut)
-async def update_tax_profile(
+def update_tax_profile(
     data: TaxProfileUpdate,
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
@@ -75,7 +75,7 @@ async def update_tax_profile(
 
 
 @router.get("/small-business-check", response_model=SmallBusinessCheckOut)
-async def small_business_check(
+def small_business_check(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -89,7 +89,7 @@ async def small_business_check(
 
 
 @router.get("/compliance", response_model=ComplianceSummaryOut)
-async def tax_compliance(
+def tax_compliance(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -106,7 +106,7 @@ async def tax_compliance(
 
 
 @router.get("/config", response_model=TaxConfigOut)
-async def tax_config(
+def tax_config(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):

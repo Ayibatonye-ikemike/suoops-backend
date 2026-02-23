@@ -25,7 +25,7 @@ router = APIRouter()
 
 
 @router.get("/fiscalization/status", response_model=FiscalizationStatus)
-async def get_fiscalization_status(
+def get_fiscalization_status(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -64,7 +64,7 @@ async def get_fiscalization_status(
 
 
 @router.get("/levy", response_model=DevelopmentLevyResponse)
-async def development_levy(
+def development_levy(
     profit: float | None = Query(None, ge=0, description="Override assessable profit base"),
     year: int | None = Query(None, ge=2024, le=2030, description="Year for computation"),
     month: int | None = Query(None, ge=1, le=12, description="Month for computation"),
