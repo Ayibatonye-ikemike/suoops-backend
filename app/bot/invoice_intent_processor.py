@@ -190,8 +190,8 @@ class InvoiceIntentProcessor:
                 "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
                 "📋 *EXAMPLES:*\n"
                 "• `Invoice Joy 08012345678, 12000 wig`\n"
-                "• `Invoice Ada $50 braids, $20 gel`\n\n"
-                "💡 *TIP:* Use $ for USD or ₦ for Naira",
+                "• `Invoice Ada 50 braids, 20 gel`\n\n"
+                "💡 *TIP:* Type *usd* or *naira* to switch your invoice currency",
             )
             return
 
@@ -205,7 +205,7 @@ class InvoiceIntentProcessor:
                     f"⚠️ Amount ${amount:,.2f} seems too low.\n\n"
                     "Minimum invoice amount is $1.\n"
                     "Did you mean a larger number?\n\n"
-                    "💡 *TIP:* Use $ or USD before the amount (e.g. $50 or USD 50)",
+                    "💡 *TIP:* Type *naira* to switch back to Naira",
                 )
             else:
                 currency = get_user_currency(self.db, issuer_id)

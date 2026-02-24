@@ -111,11 +111,35 @@ class NLPService:
             text = self._clean_speech_text(text)
         
         lower = text.lower()
-        if "invoice" in lower:
+        if "invoice" in lower and not self._is_question(lower):
             entities = self._extract_invoice(lower, caller_currency=caller_currency)
             return ParseResult(intent="create_invoice", entities=entities)
         return ParseResult(intent="unknown", entities={}, confidence=0.2)
-    
+
+    @staticmethod
+    def _is_question(text: str) -> bool:
+        """Return True if *text* is a question about invoices, not an invoice command.
+
+        Catches patterns like:
+            "Can I create invoice in dollar?"
+            "How do I invoice someone?"
+            "What is an invoice?"
+        """
+        # Starts with a question word
+        question_starters = (
+            "can i", "can we", "how do", "how to", "how can",
+            "what is", "what's", "what are", "is it", "is there",
+            "do you", "does it", "could i", "will it", "would it",
+            "why", "where", "when",
+        )
+        stripped = text.strip().rstrip("?")
+        if any(stripped.startswith(q) for q in question_starters):
+            return True
+        # Ends with "?" and doesn't start with "invoice" (an actual command)
+        if text.strip().endswith("?") and not stripped.startswith("invoice"):
+            return True
+        return False
+
     def _clean_speech_text(self, text: str) -> str:
         """
         Clean speech transcription artifacts.
