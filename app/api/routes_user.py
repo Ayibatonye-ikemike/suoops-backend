@@ -65,6 +65,16 @@ def get_profile(
     # Safely get invoice_balance (may not exist if migration hasn't run)
     invoice_balance = gate.get_invoice_balance()  # Uses safe access internally
     
+    # Generate a fresh presigned URL for the logo (the stored URL expires)
+    fresh_logo_url = None
+    if user.logo_url:
+        from app.storage.s3_client import s3_client
+        logo_key = s3_client.extract_key_from_url(user.logo_url)
+        if logo_key:
+            fresh_logo_url = s3_client.get_presigned_url(logo_key, expires_in=3600)
+        if not fresh_logo_url:
+            fresh_logo_url = user.logo_url  # fallback to stored URL
+
     return schemas.UserOut(
         id=user.id,
         phone=user.phone,
@@ -74,7 +84,7 @@ def get_profile(
         plan=user.effective_plan.value,  # Uses effective_plan to respect pro_override
         invoice_balance=invoice_balance,  # New billing model: available invoices
         invoices_this_month=0,  # Deprecated, kept for backward compat
-        logo_url=user.logo_url,
+        logo_url=fresh_logo_url,
         subscription_expires_at=user.subscription_expires_at,
         subscription_started_at=user.usage_reset_at,  # When current billing cycle started
     )
