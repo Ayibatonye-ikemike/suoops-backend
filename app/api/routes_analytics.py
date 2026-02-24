@@ -92,6 +92,17 @@ def get_exchange_rate(
     return get_exchange_rate_info()
 
 
+@router.post("/exchange-rate/refresh", response_model=ExchangeRateOut)
+def refresh_exchange_rate(
+    current_user_id: CurrentUserDep,
+):
+    """Force-refresh the exchange rate (busts the server cache)."""
+    from app.services.exchange_rate import force_refresh_rate, get_exchange_rate_info
+
+    force_refresh_rate()
+    return get_exchange_rate_info()
+
+
 @router.get("/dashboard", response_model=AnalyticsDashboard)
 def get_analytics_dashboard(
     current_user_id: CurrentUserDep,

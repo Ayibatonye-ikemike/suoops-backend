@@ -87,13 +87,21 @@ class NLPService:
         "solomon", "daniel", "samuel", "joshua", "rachel", "rebecca", "hannah",
     }
 
-    def parse_text(self, text: str, is_speech: bool = False) -> ParseResult:
+    def parse_text(
+        self,
+        text: str,
+        is_speech: bool = False,
+        caller_currency: str = "NGN",
+    ) -> ParseResult:
         """
         Parse text command into structured data.
         
         Args:
             text: User input text
             is_speech: Whether text is from speech transcription
+            caller_currency: The caller's preferred currency (e.g. "NGN" or "USD").
+                When "USD", small amounts (1+ digit) are accepted automatically
+                without requiring $ or "usd" markers in the message.
         
         Returns:
             ParseResult with intent and extracted entities
@@ -104,7 +112,7 @@ class NLPService:
         
         lower = text.lower()
         if "invoice" in lower:
-            entities = self._extract_invoice(lower)
+            entities = self._extract_invoice(lower, caller_currency=caller_currency)
             return ParseResult(intent="create_invoice", entities=entities)
         return ParseResult(intent="unknown", entities={}, confidence=0.2)
     
@@ -345,7 +353,12 @@ class NLPService:
         match = self.EMAIL_PATTERN.search(text)
         return match.group(0).lower() if match else None
     
-    def _extract_invoice(self, text: str) -> dict[str, object]:
+    def _extract_invoice(
+        self,
+        text: str,
+        *,
+        caller_currency: str = "NGN",
+    ) -> dict[str, object]:
         """
         Extract invoice data including support for multiple items.
         
@@ -361,13 +374,18 @@ class NLPService:
             Multiple items (comma separated, amount before item):
                 "invoice Joy 08012345678, 2000 boxers, 5000 hair"
                 "invoice Joy 08012345678, 1000 wig, 2000 shoe, 4000 belt"
+        
+        Args:
+            caller_currency: The caller's preferred currency.  When ``"USD"``,
+                amounts as small as 1 digit are accepted automatically.
         """
         tokens = text.split()
 
-        # Detect currency early — needed for amount-size heuristics
+        # Detect currency: honour the user's global toggle first,
+        # then fall back to per-message markers ($, "usd", "dollar").
         text_lower = text.lower()
         has_usd_marker = bool(self.USD_AMOUNT_PATTERN.search(text)) or "dollar" in text_lower
-        is_usd = has_usd_marker
+        is_usd = caller_currency == "USD" or has_usd_marker
         
         # Smart name extraction: check if second token looks like amount
         # If so, look for name elsewhere in the text

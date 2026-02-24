@@ -325,7 +325,21 @@ class WhatsAppHandler:
                 )
                 return
 
-        parse = self.nlp.parse_text(text, is_speech=False)
+        # Look up the caller's preferred currency so the NLP
+        # automatically uses the right amount-size heuristics
+        # (e.g. 1-digit amounts for USD, 3-digit for NGN).
+        caller_currency = "NGN"
+        issuer_id_for_currency = self.invoice_processor._resolve_issuer_id(sender)
+        if issuer_id_for_currency is not None:
+            user_row = (
+                self.db.query(models.User)
+                .filter(models.User.id == issuer_id_for_currency)
+                .first()
+            )
+            if user_row:
+                caller_currency = getattr(user_row, "preferred_currency", "NGN") or "NGN"
+
+        parse = self.nlp.parse_text(text, is_speech=False, caller_currency=caller_currency)
         
         # Check if user is trying to create an invoice but format is wrong
         # NLP will return "unknown" intent if the keyword is missing or format is too off

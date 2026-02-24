@@ -204,3 +204,79 @@ class TestUSDLineItems:
         assert parse.entities["currency"] == "USD"
         # At minimum, the integer part should be captured
         assert parse.entities["amount"] >= Decimal("50")
+
+
+# ── Global currency toggle tests ─────────────────────────────────
+
+
+class TestGlobalCurrencyToggle:
+    """
+    When a user has toggled their preferred_currency to USD, the NLP
+    should automatically recognise small amounts (1+ digit) WITHOUT
+    needing $ or 'usd' markers in each message.
+    """
+
+    def test_caller_usd_small_amount_no_marker(self, nlp):
+        """'Invoice Joy 08012345678, 50 wig' with caller_currency='USD'."""
+        parse = nlp.parse_text(
+            "Invoice Joy 08012345678, 50 wig",
+            is_speech=False,
+            caller_currency="USD",
+        )
+        assert parse.entities["currency"] == "USD"
+        assert parse.entities["amount"] == Decimal("50")
+
+    def test_caller_usd_single_digit(self, nlp):
+        """'Invoice Joy, 5 sticker' with caller_currency='USD'."""
+        parse = nlp.parse_text(
+            "Invoice Joy 08012345678, 5 sticker",
+            is_speech=False,
+            caller_currency="USD",
+        )
+        assert parse.entities["currency"] == "USD"
+        assert parse.entities["amount"] == Decimal("5")
+
+    def test_caller_usd_multiple_items(self, nlp):
+        """'Invoice Joy, 50 wig, 25 shoe' with caller_currency='USD'."""
+        parse = nlp.parse_text(
+            "Invoice Joy 08012345678, 50 wig, 25 shoe",
+            is_speech=False,
+            caller_currency="USD",
+        )
+        assert parse.entities["currency"] == "USD"
+        assert parse.entities["amount"] == Decimal("75")
+        lines = parse.entities["lines"]
+        assert len(lines) == 2
+
+    def test_caller_ngn_requires_3_digits(self, nlp):
+        """'Invoice Joy, 50 wig' with caller_currency='NGN' → qty-only."""
+        parse = nlp.parse_text(
+            "Invoice Joy 08012345678, 50 wig",
+            is_speech=False,
+            caller_currency="NGN",
+        )
+        assert parse.entities["currency"] == "NGN"
+        # 50 is 2 digits — in NGN mode it's a quantity, not a price
+        lines = parse.entities["lines"]
+        qty_only = [l for l in lines if l.get("unit_price") is None]
+        assert len(qty_only) >= 1
+
+    def test_dollar_marker_overrides_ngn_caller(self, nlp):
+        """'Invoice Joy, $50 wig' with caller_currency='NGN' → still USD."""
+        parse = nlp.parse_text(
+            "Invoice Joy, $50 wig",
+            is_speech=False,
+            caller_currency="NGN",
+        )
+        assert parse.entities["currency"] == "USD"
+        assert parse.entities["amount"] == Decimal("50")
+
+    def test_caller_usd_large_amount(self, nlp):
+        """'Invoice Joy, 1500 consulting' with caller_currency='USD' → $1500."""
+        parse = nlp.parse_text(
+            "Invoice Joy 08012345678, 1500 consulting",
+            is_speech=False,
+            caller_currency="USD",
+        )
+        assert parse.entities["currency"] == "USD"
+        assert parse.entities["amount"] == Decimal("1500")
