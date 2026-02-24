@@ -188,7 +188,7 @@
       <!-- Amount -->
       <div class="amount-box">
         <div class="amount-label">Amount Paid</div>
-        <div class="amount-value">&#x20A6;{{ "{:,.2f}".format(invoice.amount) }}</div>
+        <div class="amount-value">{{ currency_symbol|default('&#x20A6;') }}{{ "{:,.2f}".format(invoice.amount) }}</div>
       </div>
 
       <!-- Customer & Payment Info -->
@@ -238,8 +238,8 @@
           <tr>
             <td>{{ line.description }}</td>
             <td>{{ line.quantity }}</td>
-            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price) }}</td>
-            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
+            <td>{{ currency_symbol|default('&#x20A6;') }}{{ "{:,.2f}".format(line.unit_price) }}</td>
+            <td>{{ currency_symbol|default('&#x20A6;') }}{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
           </tr>
           {% endfor %}
         </tbody>

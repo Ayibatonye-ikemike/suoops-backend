@@ -233,8 +233,8 @@
           <tr>
             <td>{{ line.description }}</td>
             <td>{{ line.quantity }}</td>
-            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price) }}</td>
-            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
+            <td>{{ currency_symbol|default('&#x20A6;') }}{{ "{:,.2f}".format(line.unit_price) }}</td>
+            <td>{{ currency_symbol|default('&#x20A6;') }}{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -247,16 +247,16 @@
           {% if invoice.discount_amount %}
           <div class="totals-row">
             <span>Subtotal</span>
-            <span>&#x20A6;{{ "{:,.2f}".format(invoice.amount + invoice.discount_amount) }}</span>
+            <span>{{ currency_symbol|default('&#x20A6;') }}{{ "{:,.2f}".format(invoice.amount + invoice.discount_amount) }}</span>
           </div>
           <div class="totals-row discount">
             <span>Discount</span>
-            <span>&minus;&#x20A6;{{ "{:,.2f}".format(invoice.discount_amount) }}</span>
+            <span>&minus;{{ currency_symbol|default('&#x20A6;') }}{{ "{:,.2f}".format(invoice.discount_amount) }}</span>
           </div>
           {% endif %}
           <div class="totals-row grand-total">
             <span>Total Expense</span>
-            <span>&#x20A6;{{ "{:,.2f}".format(invoice.amount) }}</span>
+            <span>{{ currency_symbol|default('&#x20A6;') }}{{ "{:,.2f}".format(invoice.amount) }}</span>
           </div>
         </div>
       </div>

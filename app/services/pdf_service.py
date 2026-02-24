@@ -80,7 +80,8 @@ class PDFService:
         c.drawString(40, 800, f"Invoice {invoice.invoice_id}")
         c.setFont("Helvetica", 12)
         c.drawString(40, 780, f"Customer: {invoice.customer.name}")
-        c.drawString(40, 760, f"Amount: ₦{invoice.amount:,.2f}")
+        _sym = "$" if getattr(invoice, "currency", "NGN") == "USD" else "₦"
+        c.drawString(40, 760, f"Amount: {_sym}{invoice.amount:,.2f}")
         
         # Add bank transfer details
         if bank_details:
@@ -115,7 +116,7 @@ class PDFService:
         c.setFont("Helvetica", 10)
         y -= 20
         for line in invoice.lines:
-            c.drawString(50, y, f"- {line.description} x{line.quantity} @ ₦{line.unit_price:,.2f}")
+            c.drawString(50, y, f"- {line.description} x{line.quantity} @ {_sym}{line.unit_price:,.2f}")
             y -= 20
         c.showPage()
         c.save()
@@ -178,6 +179,10 @@ class PDFService:
                 if hasattr(invoice, 'status_updated_by') and invoice.status_updated_by:
                     confirmed_by_name = invoice.status_updated_by.name
                 
+                # Determine currency symbol from invoice
+                currency = getattr(invoice, "currency", "NGN") or "NGN"
+                currency_symbol = "$" if currency == "USD" else "&#x20A6;"
+
                 html_str = template.render(
                     invoice=invoice,
                     bank_details=None,
@@ -190,6 +195,7 @@ class PDFService:
                     is_receipt=True,
                     created_by_name=created_by_name,
                     confirmed_by_name=confirmed_by_name,
+                    currency_symbol=currency_symbol,
                 )
                 from weasyprint import HTML  # type: ignore
                 pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
@@ -209,7 +215,8 @@ class PDFService:
         y = 775
         c.drawString(40, y, f"Customer: {getattr(invoice.customer, 'name', 'Customer')}")
         y -= 15
-        c.drawString(40, y, f"Amount Paid: ₦{invoice.amount:,.2f}")
+        _sym = "$" if getattr(invoice, "currency", "NGN") == "USD" else "₦"
+        c.drawString(40, y, f"Amount Paid: {_sym}{invoice.amount:,.2f}")
         y -= 15
         c.drawString(40, y, "Status: PAID")
         y -= 15
@@ -284,6 +291,10 @@ class PDFService:
         if hasattr(invoice, 'issuer') and invoice.issuer:
             business_name = getattr(invoice.issuer, 'business_name', None)
         
+        # Determine currency symbol from invoice
+        currency = getattr(invoice, "currency", "NGN") or "NGN"
+        currency_symbol = "$" if currency == "USD" else "&#x20A6;"
+
         return template.render(
             invoice=invoice,
             bank_details=bank_details,
@@ -296,6 +307,7 @@ class PDFService:
             user_plan=user_plan.lower(),
             is_vat_eligible=is_vat_eligible,
             created_by_name=created_by_name,
+            currency_symbol=currency_symbol,
         )
 
     # ---------------- Monthly Tax Report PDF -----------------

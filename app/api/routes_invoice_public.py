@@ -17,6 +17,19 @@ def _public_invoice_payload(invoice, issuer) -> dict[str, object]:
         {"description": ln.description, "quantity": ln.quantity, "unit_price": ln.unit_price}
         for ln in (invoice.lines or [])
     ]
+
+    # Generate a fresh presigned URL for the business logo so it
+    # doesn't break when the original presigned URL expires.
+    logo_url: str | None = None
+    stored_logo = getattr(issuer, "logo_url", None)
+    if stored_logo:
+        from app.storage.s3_client import s3_client
+        logo_key = s3_client.extract_key_from_url(stored_logo)
+        if logo_key:
+            logo_url = s3_client.get_presigned_url(logo_key, expires_in=3600)
+        if not logo_url:
+            logo_url = stored_logo  # fallback to stored URL
+
     return {
         "invoice_id": invoice.invoice_id,
         "amount": invoice.amount,
@@ -27,7 +40,7 @@ def _public_invoice_payload(invoice, issuer) -> dict[str, object]:
         "paid_at": invoice.paid_at,
         "customer_name": customer_name,
         "business_name": getattr(issuer, "business_name", None),
-        "business_logo_url": getattr(issuer, "logo_url", None),
+        "business_logo_url": logo_url,
         "bank_name": getattr(issuer, "bank_name", None),
         "account_number": getattr(issuer, "account_number", None),
         "account_name": getattr(issuer, "account_name", None),

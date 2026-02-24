@@ -244,8 +244,8 @@
           <tr>
             <td>{{ line.description }}</td>
             <td>{{ line.quantity }}</td>
-            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price) }}</td>
-            <td>&#x20A6;{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
+            <td>{{ currency_symbol }}{{ "{:,.2f}".format(line.unit_price) }}</td>
+            <td>{{ currency_symbol }}{{ "{:,.2f}".format(line.unit_price * line.quantity) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -257,16 +257,16 @@
           {% if invoice.discount_amount %}
           <div class="totals-row">
             <span>Subtotal</span>
-            <span>&#x20A6;{{ "{:,.2f}".format(invoice.amount + invoice.discount_amount) }}</span>
+            <span>{{ currency_symbol }}{{ "{:,.2f}".format(invoice.amount + invoice.discount_amount) }}</span>
           </div>
           <div class="totals-row discount">
             <span>Discount</span>
-            <span>&minus;&#x20A6;{{ "{:,.2f}".format(invoice.discount_amount) }}</span>
+            <span>&minus;{{ currency_symbol }}{{ "{:,.2f}".format(invoice.discount_amount) }}</span>
           </div>
           {% endif %}
           <div class="totals-row grand-total">
             <span>Total</span>
-            <span>&#x20A6;{{ "{:,.2f}".format(invoice.amount) }}</span>
+            <span>{{ currency_symbol }}{{ "{:,.2f}".format(invoice.amount) }}</span>
           </div>
         </div>
       </div>
@@ -315,7 +315,7 @@
         <table class="tax-table">
           <tr><th>VAT Category</th><td>{{ (invoice.vat_category or 'standard')|upper }}</td></tr>
           <tr><th>VAT Rate</th><td>{{ (invoice.vat_rate if invoice.vat_rate is not none else 7.5) }}%</td></tr>
-          <tr><th>VAT Amount</th><td>&#x20A6;{{ "{:,.2f}".format(invoice.vat_amount or 0) }}</td></tr>
+          <tr><th>VAT Amount</th><td>{{ currency_symbol }}{{ "{:,.2f}".format(invoice.vat_amount or 0) }}</td></tr>
           <tr><th>Fiscal Code</th><td>{{ invoice.fiscal_code or '&mdash;' }}</td></tr>
         </table>
       </div>
