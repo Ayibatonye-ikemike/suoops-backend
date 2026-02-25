@@ -181,7 +181,7 @@ class PDFService:
                 
                 # Determine currency symbol from invoice
                 currency = getattr(invoice, "currency", "NGN") or "NGN"
-                currency_symbol = "$" if currency == "USD" else "&#x20A6;"
+                currency_symbol = "$" if currency == "USD" else "₦"
 
                 html_str = template.render(
                     invoice=invoice,
@@ -293,7 +293,7 @@ class PDFService:
         
         # Determine currency symbol from invoice
         currency = getattr(invoice, "currency", "NGN") or "NGN"
-        currency_symbol = "$" if currency == "USD" else "&#x20A6;"
+        currency_symbol = "$" if currency == "USD" else "₦"
 
         return template.render(
             invoice=invoice,
