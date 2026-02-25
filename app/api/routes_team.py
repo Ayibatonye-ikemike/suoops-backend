@@ -48,14 +48,15 @@ def require_team_feature(current_user_id: CurrentUserDep, db: DbDep) -> int:
     """
     gate = FeatureGate(db, current_user_id)
     # Team management uses same gate as inventory (Pro+)
-    if not gate.user.plan.features.get("inventory", False):
+    # Uses effective_plan to respect admin-granted PRO override
+    if not gate.user.effective_plan.features.get("inventory", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "error": "feature_gated",
                 "message": "Team Management requires Pro plan or higher",
                 "required_plan": "PRO",
-                "current_plan": gate.user.plan.value,
+                "current_plan": gate.user.effective_plan.value,
                 "upgrade_url": "/settings/subscription"
             }
         )

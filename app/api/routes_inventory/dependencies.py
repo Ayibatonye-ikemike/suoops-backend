@@ -27,15 +27,16 @@ def require_inventory_access(current_user_id: CurrentUserDep, data_owner_id: Dat
     Returns the current_user_id if access is granted.
     """
     # Check the DATA OWNER's plan (team admin for members, self for solo)
+    # Uses effective_plan to respect admin-granted PRO override
     gate = FeatureGate(db, data_owner_id)
-    if not gate.user.plan.features.get("inventory", False):
+    if not gate.user.effective_plan.features.get("inventory", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "error": "feature_gated",
                 "message": "Inventory Management requires Pro plan or higher",
                 "required_plan": "PRO",
-                "current_plan": gate.user.plan.value,
+                "current_plan": gate.user.effective_plan.value,
                 "upgrade_url": "/settings/subscription"
             }
         )

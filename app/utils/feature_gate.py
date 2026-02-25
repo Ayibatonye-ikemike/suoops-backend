@@ -363,8 +363,8 @@ def require_plan_feature(db: Session, user_id: int, feature_key: str, feature_na
             status_code=403,
             detail={
                 "error": "feature_not_available",
-                "message": f"{feature_display} is not available on your {gate.user.plan.value} plan. Please upgrade.",
-                "current_plan": gate.user.plan.value,
+                "message": f"{feature_display} is not available on your {gate.user.effective_plan.value} plan. Please upgrade.",
+                "current_plan": gate.user.effective_plan.value,
                 "required_feature": feature_key,
                 "upgrade_url": "/subscription/initialize"
             }

@@ -204,7 +204,7 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
     from app.utils.feature_gate import INVOICE_PACK_PRICE, INVOICE_PACK_SIZE
     
     gate = FeatureGate(db, data_owner_id)
-    plan = gate.user.plan
+    plan = gate.user.effective_plan  # Uses effective_plan to respect pro_override
     invoice_balance = gate.get_invoice_balance()  # Safe access
     can_create, _ = gate.can_create_invoice()
     purchase_url = "/invoices/purchase-pack" if not can_create else None

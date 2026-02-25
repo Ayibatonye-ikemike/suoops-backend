@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models import models
 from app.models.models import SubscriptionPlan
 from app.models.payment_models import PaymentStatus, PaymentTransaction
+from app.utils.feature_gate import INVOICE_PACK_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -304,10 +305,15 @@ def get_user_detail(
     # Build pack purchase history
     pack_purchases = []
     for purchase in invoice_pack_purchases:
+        # Read actual invoices added from transaction metadata, fallback to pack size
+        metadata = purchase.payment_metadata or {}
+        invoices_added = metadata.get("invoices_to_add") or (
+            metadata.get("quantity", 1) * INVOICE_PACK_SIZE
+        )
         pack_purchases.append({
             "reference": purchase.reference,
             "amount": purchase.amount / 100,  # Convert kobo to naira
-            "invoices_added": 100,  # Standard pack size
+            "invoices_added": invoices_added,
             "date": purchase.created_at.isoformat() if purchase.created_at else None
         })
     
