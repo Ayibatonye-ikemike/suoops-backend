@@ -86,7 +86,8 @@ echo ""
 
 echo "Step 1: Test Webhook Verification (GET request)"
 echo "------------------------------------------------"
-VERIFICATION=$(curl -s -X GET "$BASE_URL/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suoops_verify_2025&hub.challenge=test_challenge_123")
+VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-"set_your_verify_token"}
+VERIFICATION=$(curl -s -X GET "$BASE_URL/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=test_challenge_123")
 
 if [ "$VERIFICATION" = "test_challenge_123" ]; then
     echo -e "${GREEN}✅ Webhook verification successful!${NC}"

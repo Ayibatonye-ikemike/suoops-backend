@@ -99,6 +99,14 @@ async def parse_receipt_image(
             detail="Empty file uploaded"
         )
     
+    # Validate magic bytes match claimed content type (prevents spoofed Content-Type)
+    from app.utils.file_validation import validate_file_magic_bytes
+    if not validate_file_magic_bytes(contents, file.content_type):
+        raise HTTPException(
+            status_code=400,
+            detail="File content does not match its declared type. Upload a valid image."
+        )
+    
     logger.info(
         f"OCR parse request: user={current_user_id}, "
         f"filename={file.filename}, size={len(contents)} bytes, "

@@ -87,7 +87,8 @@ echo ""
 
 # Test 6: WhatsApp Webhook Verification
 echo "Test 6: WhatsApp Webhook Verification"
-WEBHOOK_RESPONSE=$(curl -s "${API_URL}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suoops_verify_2025&hub.challenge=test123" 2>&1)
+VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-"set_your_verify_token"}
+WEBHOOK_RESPONSE=$(curl -s "${API_URL}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=test123" 2>&1)
 
 if echo "$WEBHOOK_RESPONSE" | grep -q "test123"; then
     success "WhatsApp webhook verification is working"

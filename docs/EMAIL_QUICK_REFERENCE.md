@@ -252,8 +252,8 @@ aws sesv2 get-email-identity --email-identity suoops.com --region eu-north-1
 EMAIL_PROVIDER=gmail
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=ayibatonyeikemike9@gmail.com
-SMTP_PASSWORD=lzavczmdupyqslyc
+SMTP_USER=your_gmail@gmail.com
+SMTP_PASSWORD=<your-gmail-app-password>
 FROM_EMAIL=noreply@suoops.com
 
 # Future SES Setup (add when ready)

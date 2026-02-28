@@ -39,7 +39,7 @@ class BaseAppSettings(BaseSettings):
     # WhatsApp Configuration (Meta/Facebook)
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
-    WHATSAPP_VERIFY_TOKEN: str = "suoops_verify_2025"
+    WHATSAPP_VERIFY_TOKEN: str = ""  # REQUIRED: set a unique random value in env vars
     WHATSAPP_APP_SECRET: str | None = None  # Meta app secret for webhook signature verification
     # WhatsApp Message Templates
     WHATSAPP_TEMPLATE_INVOICE: str | None = None  # Basic invoice notification
@@ -156,12 +156,11 @@ class BaseAppSettings(BaseSettings):
                 default_violations.append("JWT_SECRET uses default placeholder")
             if self.OAUTH_STATE_SECRET == "change_me_oauth_state":
                 default_violations.append("OAUTH_STATE_SECRET uses default placeholder")
-            # WhatsApp verify token is non-critical (webhook handshake only) — warn, don't block.
-            if self.WHATSAPP_VERIFY_TOKEN in ("suoops_verify_2025", "suoops_verify_token_2024"):
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
-                    "WHATSAPP_VERIFY_TOKEN uses a default placeholder — "
-                    "set a unique value in production env vars."
+            # WhatsApp verify token — block startup if empty or using old defaults.
+            if not self.WHATSAPP_VERIFY_TOKEN or self.WHATSAPP_VERIFY_TOKEN in ("suoops_verify_2025", "suoops_verify_token_2024"):
+                default_violations.append(
+                    "WHATSAPP_VERIFY_TOKEN is empty or uses a known default — "
+                    "set a unique random value in production env vars"
                 )
             if missing:
                 raise ValueError(f"Missing required production settings: {', '.join(missing)}")

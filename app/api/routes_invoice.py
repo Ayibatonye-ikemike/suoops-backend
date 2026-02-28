@@ -160,6 +160,14 @@ async def upload_expense_receipt(
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="File is empty.")
     
+    # Validate magic bytes match claimed content type (prevents spoofed Content-Type)
+    from app.utils.file_validation import validate_file_magic_bytes
+    if not validate_file_magic_bytes(content, file.content_type):
+        raise HTTPException(
+            status_code=400,
+            detail="File content does not match its declared type. Upload a valid image or PDF."
+        )
+    
     try:
         # Upload to S3
         s3_client = S3Client()

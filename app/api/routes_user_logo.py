@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.models import models, schemas
 from app.storage.s3_client import s3_client
 from app.utils.feature_gate import require_plan_feature
+from app.utils.file_validation import get_safe_extension, validate_file_magic_bytes
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
@@ -38,11 +39,19 @@ async def upload_logo(
         max_size = 5 * 1024 * 1024
         if len(content) > max_size:
             raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
+        
+        # Validate magic bytes match claimed content type (prevents spoofed Content-Type)
+        if not validate_file_magic_bytes(content, file.content_type):
+            raise HTTPException(
+                status_code=400,
+                detail="File content does not match its declared type. Upload a valid image file."
+            )
+        
         user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "png"
+        ext = get_safe_extension(file.filename, file.content_type)
         key = f"logos/user_{current_user_id}.{ext}"
         logger.info("Uploading logo for user %s: %s bytes, type: %s", current_user_id, len(content), file.content_type)
         logo_url = await s3_client.upload_file(content, key, content_type=file.content_type)

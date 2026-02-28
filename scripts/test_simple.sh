@@ -23,7 +23,8 @@ echo ""
 
 # Test 3: Webhook Verification
 echo "✅ Test 3: WhatsApp Webhook Verification"
-curl -s "${HEROKU_URL}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suoops_verify_2025&hub.challenge=test123"
+VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-"set_your_verify_token"}
+curl -s "${HEROKU_URL}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=test123"
 echo ""
 echo ""
 

@@ -27,7 +27,9 @@ def verify_whatsapp_webhook(
     hub_challenge: str = Query(None, alias="hub.challenge"),
 ):
     """Webhook verification endpoint for WhatsApp Business API"""
-    verify_token = getattr(settings, "WHATSAPP_VERIFY_TOKEN", "suoops_verify_2025")
+    verify_token = settings.WHATSAPP_VERIFY_TOKEN
+    if not verify_token:
+        raise HTTPException(status_code=503, detail="Webhook verification not configured")
     
     if hub_mode == "subscribe" and hub_verify_token == verify_token:
         return PlainTextResponse(hub_challenge)
@@ -64,6 +66,11 @@ async def whatsapp_webhook(request: Request):
             logger.warning("WhatsApp webhook signature verification failed")
             raise HTTPException(status_code=401, detail="Invalid signature")
     else:
+        # In production, WHATSAPP_APP_SECRET is required (enforced by config validator).
+        # In dev/test, allow without signature but log a warning.
+        if settings.ENV.lower() == "prod":
+            logger.error("WHATSAPP_APP_SECRET missing in production — rejecting webhook")
+            raise HTTPException(status_code=500, detail="Webhook signature verification not configured")
         logger.warning(
             "WHATSAPP_APP_SECRET not configured — webhook signature verification SKIPPED. "
             "Set this in production to prevent spoofed messages."
