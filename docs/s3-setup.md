@@ -44,8 +44,7 @@ To allow the frontend to access uploaded files (PDFs and logos), you need to con
         "AllowedOrigins": [
             "https://suoops.com",
             "https://www.suoops.com",
-            "https://api.suoops.com",
-            "http://localhost:3000"
+            "https://api.suoops.com"
         ],
         "ExposeHeaders": [
             "ETag",
@@ -58,32 +57,16 @@ To allow the frontend to access uploaded files (PDFs and logos), you need to con
 
 4. **Save Changes**
 
-## Bucket Policy (Public Read for PDFs)
+## Bucket Policy
 
-If you want invoice PDFs to be publicly accessible (recommended for customer access), add this bucket policy:
+⚠️ **DO NOT add a public bucket policy.** All files are accessed via presigned URLs
+(already implemented in the code). A `Principal: "*"` policy would expose all
+invoice PDFs, logos, and tax reports to anyone with the URL.
 
-### Steps to Add Bucket Policy:
-
-1. In S3 Console → Select bucket → Permissions tab
-2. Scroll to "Bucket policy" → Click "Edit"
-3. Add this policy (replace `suopay-s3-bucket` if different):
-
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "PublicReadForInvoicePDFs",
-            "Effect": "Allow",
-            "Principal": "*",
-            "Action": "s3:GetObject",
-            "Resource": "arn:aws:s3:::suopay-s3-bucket/*"
-        }
-    ]
-}
-```
-
-⚠️ **Note:** This makes all files in the bucket publicly readable. If you prefer private access only, skip this and use presigned URLs (already implemented in the code).
+Ensure these settings are enabled in S3 Console → Bucket → Permissions:
+- **Block all public access:** ON
+- **Bucket policy:** Empty (no policy)
+- **ACL:** Bucket owner enforced
 
 ## IAM User Permissions
 
@@ -119,19 +102,22 @@ Your IAM user needs these permissions:
 
 ## Environment Variables
 
-### Production (Heroku)
-Already configured via Heroku CLI:
+### Production (Render)
+Configured via Render environment variables:
 ```bash
-S3_ACCESS_KEY=AKIAZVFYA3GDUWLKSF6C
-S3_SECRET_KEY=VnnO/oU5APSXWYw8GPpKFNQeyQXS+0xjptkrU6b
+S3_ACCESS_KEY=<your-aws-access-key>      # Get from AWS IAM Console
+S3_SECRET_KEY=<your-aws-secret-key>      # Get from AWS IAM Console
 S3_BUCKET=suopay-s3-bucket
 S3_REGION=eu-north-1
 ```
 
+> ⚠️ **NEVER commit real AWS credentials to this file or any file in the repo.**
+> Store them only in your hosting provider's environment variable settings.
+
 ### Local Development (.env)
 ```bash
-S3_ACCESS_KEY=AKIAZVFYA3GDUWLKSF6C
-S3_SECRET_KEY=VnnO/oU5APSXWYw8GPpKFNQeyQXS+0xjptkrU6b
+S3_ACCESS_KEY=<your-aws-access-key>
+S3_SECRET_KEY=<your-aws-secret-key>
 S3_BUCKET=suopay-s3-bucket
 S3_REGION=eu-north-1
 # Leave S3_ENDPOINT empty for AWS S3
@@ -213,10 +199,15 @@ Very affordable! 🎉
 - Access keys stored in environment variables (not in code)
 - Presigned URLs with 1-hour expiration
 - HTTPS-only access
+- Block all public access enabled
+- Server-side encryption (AES-256) on backups
 
-📋 **Recommended:**
+📋 **Required:**
 - Rotate access keys every 90 days
 - Enable S3 bucket versioning for backup
+- Never commit credentials to git — use env vars only
+- Keep "Block all public access" enabled at all times
+- Use separate IAM users for S3 and SES with least-privilege policies
 - Set up S3 lifecycle policies to archive old invoices
 - Enable CloudTrail for audit logging
 

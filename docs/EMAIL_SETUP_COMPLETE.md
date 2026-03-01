@@ -14,7 +14,7 @@
 |-----------|--------|---------|
 | Domain Verification | ✅ Verified | suoops.com |
 | DKIM Records | ✅ Active | 3 CNAME records in Vercel DNS |
-| SMTP Credentials | ✅ Created | AKIAZVFYA3GDQ2K5KZF5 |
+| SMTP Credentials | ✅ Created | *(stored in Render env vars)* |
 | Heroku Config | ✅ Set (v75) | SES_SMTP_HOST, SES_SMTP_USER, SES_SMTP_PASSWORD, FROM_EMAIL |
 | Region | ✅ eu-north-1 | Europe (Stockholm) |
 | Sender Address | ✅ noreply@suoops.com | |
@@ -24,10 +24,12 @@
 ```
 Host: email-smtp.eu-north-1.amazonaws.com
 Port: 587 (TLS/STARTTLS)
-User: AKIAZVFYA3GDQ2K5KZF5
-Password: BLnFIw+lEJ5SR0DfLHm/XOt+m3rta34J52TId3Js4ct9
+User: <SES_SMTP_USER>          # Stored in Render env vars
+Password: <SES_SMTP_PASSWORD>  # Stored in Render env vars
 From: noreply@suoops.com
 ```
+
+> ⚠️ **NEVER commit real SMTP credentials to this file.** Store them only in Render env vars.
 
 ---
 
