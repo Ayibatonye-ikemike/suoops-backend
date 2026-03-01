@@ -27,9 +27,10 @@ def upgrade() -> None:
     - Does NOT remove 'starter' from the PostgreSQL enum type (safe approach)
     """
     # Update all STARTER users to FREE
+    # Cast plan to text to avoid PostgreSQL enum validation on the WHERE clause
     op.execute(
         sa.text(
-            "UPDATE \"user\" SET plan = 'free' WHERE plan = 'starter'"
+            "UPDATE \"user\" SET plan = 'free' WHERE plan::text = 'starter'"
         )
     )
 
