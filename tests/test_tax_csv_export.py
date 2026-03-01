@@ -10,8 +10,8 @@ from app.models.models import User, Customer, Invoice, SubscriptionPlan
 
 def _setup_entities(db):
     user = User(phone="+234000000001", name="Test Biz")
-    # Tax reports are available to all plans now.
-    user.plan = SubscriptionPlan.FREE
+    # Tax reports require PRO plan.
+    user.plan = SubscriptionPlan.PRO
     db.add(user); db.commit(); db.refresh(user)
     cust = Customer(name="CSV Customer")
     db.add(cust); db.commit(); db.refresh(cust)

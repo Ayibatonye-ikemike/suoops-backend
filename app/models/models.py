@@ -122,12 +122,12 @@ class SubscriptionPlan(str, enum.Enum):
         Get feature access for this plan.
         
         BILLING MODEL (Small & Medium Business Focus):
-        - FREE: 5 free invoices to start, buy packs as needed, basic + tax features
-        - PRO: ₦3,250/month = 50 invoices + ALL premium features
+        - FREE: 5 free invoices to start, buy packs as needed, basic features
+        - PRO: ₦3,250/month = 50 invoices + ALL premium features (incl. tax)
         
         Note: STARTER removed - FREE users get 5 free invoices and buy packs.
         Note: BUSINESS plan removed - PRO now includes voice.
-        Note: Tax features available to ALL plans (helps with compliance).
+        Note: Tax reports & automation require PRO plan.
         """
         return {
             "invoice_pack_price": 1250,  # ₦1,250 per 50 invoices
@@ -136,9 +136,9 @@ class SubscriptionPlan(str, enum.Enum):
             "email_notifications": True,  # Available to all
             "pdf_generation": True,  # Available to all
             "qr_verification": True,  # Available to all
-            # Tax features: Available to all plans
-            "tax_automation": True,
-            "tax_reports": True,
+            # Tax features: PRO only
+            "tax_automation": self == SubscriptionPlan.PRO,
+            "tax_reports": self == SubscriptionPlan.PRO,
             # Custom branding: Pro only
             "custom_branding": self == SubscriptionPlan.PRO,
             # Inventory management: Pro only

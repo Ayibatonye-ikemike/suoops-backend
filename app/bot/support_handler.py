@@ -131,8 +131,7 @@ _FAQ_ENTRIES: list[dict[str, Any]] = [
         "answer": (
             "💰 *SuoOps Plans*\n\n"
             "🆓 *Starter (Free)* — 5 free invoices to try it out\n"
-            "   Buy packs: ₦1,250 for 50 invoices\n"
-            "   Includes: Tax reports, analytics\n\n"
+            "   Buy packs: ₦1,250 for 50 invoices\n\n"
             "👑 *Pro* — ₦3,250/month\n"
             "   50 invoices/month included\n"
             "   + Custom branding, inventory, voice invoicing, all features\n\n"
