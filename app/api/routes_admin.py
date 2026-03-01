@@ -671,6 +671,19 @@ class PaidUserInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PackBuyerInfo(BaseModel):
+    id: int
+    name: str
+    email: str | None
+    phone: str
+    business_name: str | None
+    invoice_balance: int
+    total_packs_bought: int
+    last_purchase_date: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PlatformMetrics(BaseModel):
     total_invoices: int
     paid_invoices: int
@@ -684,6 +697,7 @@ class PlatformMetrics(BaseModel):
     active_subscriptions: dict[str, int]
     total_customers: int
     paid_users: list[PaidUserInfo]
+    pack_buyers: list[PackBuyerInfo]
 
 
 @router.get("/metrics", response_model=PlatformMetrics)
@@ -734,6 +748,34 @@ def get_platform_metrics(
     # Customers
     total_customers = db.query(Customer).count()
     
+    # Get invoice pack buyers (FREE users who bought packs)
+    pack_buyer_rows = db.query(
+        models.User,
+        func.count(PaymentTransaction.id).label("pack_count"),
+        func.max(PaymentTransaction.created_at).label("last_purchase"),
+    ).join(
+        PaymentTransaction, PaymentTransaction.user_id == models.User.id
+    ).filter(
+        models.User.plan == SubscriptionPlan.FREE,
+        PaymentTransaction.reference.like("INVPACK-%"),
+        PaymentTransaction.status == PaymentStatus.SUCCESS,
+    ).group_by(models.User.id).order_by(
+        desc(func.max(PaymentTransaction.created_at))
+    ).all()
+
+    pack_buyers_list: list[PackBuyerInfo] = []
+    for user, pack_count, last_purchase in pack_buyer_rows:
+        pack_buyers_list.append(PackBuyerInfo(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            phone=user.phone,
+            business_name=user.business_name,
+            invoice_balance=getattr(user, 'invoice_balance', 0),
+            total_packs_bought=pack_count,
+            last_purchase_date=last_purchase.isoformat() if last_purchase else None,
+        ))
+
     # Get paying users (Pro only — STARTER removed)
     paid_plans = [SubscriptionPlan.PRO]
     paid_users_query = db.query(models.User).filter(
@@ -786,7 +828,8 @@ def get_platform_metrics(
         invoices_this_month=invoices_month,
         active_subscriptions=active_subs,
         total_customers=total_customers,
-        paid_users=paid_users_list
+        paid_users=paid_users_list,
+        pack_buyers=pack_buyers_list
     )
 
 
