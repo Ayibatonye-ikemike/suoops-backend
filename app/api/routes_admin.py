@@ -196,7 +196,7 @@ def list_users(
     admin_user=Depends(get_current_admin),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    plan: str | None = Query(None, description="Filter by plan (free, starter, pro, business)"),
+    plan: str | None = Query(None, description="Filter by plan (free, pro)"),
     verified_only: bool = Query(False, description="Show only verified users"),
     search: str | None = Query(None, description="Search by name, email, or phone")
 ) -> Any:
@@ -734,8 +734,8 @@ def get_platform_metrics(
     # Customers
     total_customers = db.query(Customer).count()
     
-    # Get paying users (Starter and Pro - BUSINESS removed)
-    paid_plans = [SubscriptionPlan.STARTER, SubscriptionPlan.PRO]
+    # Get paying users (Pro only — STARTER removed)
+    paid_plans = [SubscriptionPlan.PRO]
     paid_users_query = db.query(models.User).filter(
         models.User.plan.in_(paid_plans)
     ).order_by(desc(models.User.subscription_started_at)).all()
@@ -810,7 +810,7 @@ class GrowthMetrics(BaseModel):
     mrr_trend: list[MonthlyDataPoint]  # Last 6 months
     arr: float  # Annualized
     # Churn
-    churned_users: int  # Pro/Starter expired and not renewed
+    churned_users: int  # Pro expired and not renewed
     churn_rate: float  # % of paid users who churned this month
     # Activation
     activation_funnel: ActivationFunnel
@@ -826,7 +826,7 @@ class GrowthMetrics(BaseModel):
     power_users: int  # Users with 10+ invoices this month
     zero_invoice_users: int  # Signed up but never created an invoice
     # Subscription health
-    expired_subscriptions: int  # Pro/Starter with expired dates
+    expired_subscriptions: int  # Pro with expired dates
     expiring_soon: int  # Expiring within 7 days
 
 
@@ -845,19 +845,14 @@ def get_growth_metrics(
     month_start = today_start.replace(day=1)
 
     # ── MRR ──
-    # Starter = ₦1,250/mo, Pro = ₦3,250/mo
-    PLAN_PRICES = {"starter": 1250, "pro": 3250}
-    active_starter = db.query(models.User).filter(
-        models.User.plan == SubscriptionPlan.STARTER,
-        (models.User.subscription_expires_at.is_(None)) |
-        (models.User.subscription_expires_at >= now)
-    ).count()
+    # Pro = ₦3,250/mo (STARTER removed — was pay-per-pack, not MRR)
+    PLAN_PRICES = {"pro": 3250}
     active_pro = db.query(models.User).filter(
         models.User.plan == SubscriptionPlan.PRO,
         (models.User.subscription_expires_at.is_(None)) |
         (models.User.subscription_expires_at >= now)
     ).count()
-    mrr = (active_starter * PLAN_PRICES["starter"]) + (active_pro * PLAN_PRICES["pro"])
+    mrr = active_pro * PLAN_PRICES["pro"]
     arr = mrr * 12
 
     # ── MRR Trend (last 6 months from payment transactions) ──
@@ -884,13 +879,13 @@ def get_growth_metrics(
     # ── Churn ──
     # Users on paid plans whose subscription expired and didn't renew
     churned = db.query(models.User).filter(
-        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO]),
+        models.User.plan == SubscriptionPlan.PRO,
         models.User.subscription_expires_at.isnot(None),
         models.User.subscription_expires_at < now,
     ).count()
 
     total_paid = db.query(models.User).filter(
-        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO])
+        models.User.plan == SubscriptionPlan.PRO
     ).count()
     churn_rate = (churned / total_paid * 100) if total_paid > 0 else 0
 
@@ -909,7 +904,7 @@ def get_growth_metrics(
 
     # Users who upgraded to a paid plan
     upgraded = db.query(models.User).filter(
-        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO])
+        models.User.plan == SubscriptionPlan.PRO
     ).count()
 
     funnel = ActivationFunnel(
@@ -998,14 +993,14 @@ def get_growth_metrics(
 
     # ── Subscription Health ──
     expired = db.query(models.User).filter(
-        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO]),
+        models.User.plan == SubscriptionPlan.PRO,
         models.User.subscription_expires_at.isnot(None),
         models.User.subscription_expires_at < now,
     ).count()
 
     seven_days = now + dt.timedelta(days=7)
     expiring = db.query(models.User).filter(
-        models.User.plan.in_([SubscriptionPlan.STARTER, SubscriptionPlan.PRO]),
+        models.User.plan == SubscriptionPlan.PRO,
         models.User.subscription_expires_at.isnot(None),
         models.User.subscription_expires_at >= now,
         models.User.subscription_expires_at <= seven_days,
@@ -1108,9 +1103,9 @@ def get_business_intelligence(
     if plan_filter:
         plan_enum = {
             "free": SubscriptionPlan.FREE,
-            "starter": SubscriptionPlan.STARTER,
+            "starter": SubscriptionPlan.FREE,  # Legacy: STARTER mapped to FREE
             "pro": SubscriptionPlan.PRO,
-        }[plan_filter]
+        }.get(plan_filter, SubscriptionPlan.FREE)
         q = q.filter(models.User.plan == plan_enum)
 
     if search:
@@ -1201,7 +1196,7 @@ def get_business_intelligence(
         # Subscription status
         sub_status = "free"
         days_until = None
-        if u.plan in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO):
+        if u.plan == SubscriptionPlan.PRO:
             if u.subscription_expires_at:
                 if u.subscription_expires_at < now:
                     sub_status = "expired"
@@ -1262,8 +1257,6 @@ def get_business_intelligence(
         # Paid plan bonus
         if u.plan == SubscriptionPlan.PRO:
             score += 10
-        elif u.plan == SubscriptionPlan.STARTER:
-            score += 5
 
         # Subscription expired penalty
         if sub_status == "expired":
@@ -1570,15 +1563,18 @@ def get_starter_users(
     admin_user=Depends(get_current_admin),
 ) -> list[UserSegmentExport]:
     """
-    Get STARTER plan users (bought invoice packs).
+    Get FREE plan users who have bought invoice packs (legacy "starter" users).
     Perfect for Pro upsell campaign - "Unlock analytics, inventory, team management"
+    Note: STARTER plan removed — returns FREE users with invoice packs purchased.
     """
     log_audit_event("admin.segments.starter", user_id=admin_user.id)
     
     now = dt.datetime.now(dt.timezone.utc)
     
+    # Return FREE users who have purchased packs (invoice_balance > 5 or have transactions)
     starter_users = db.query(models.User).filter(
-        models.User.plan == SubscriptionPlan.STARTER
+        models.User.plan == SubscriptionPlan.FREE,
+        models.User.invoice_balance > 5,  # More than the initial 5 free invoices
     ).all()
     
     result = []
@@ -1740,9 +1736,10 @@ async def sync_segment_to_brevo(
         ).all()
     
     elif segment == "starter":
-        # STARTER plan users (bought invoice packs) - for Pro upsell
+        # Legacy: FREE users who bought packs (invoice_balance > 5) - for Pro upsell
         users = db.query(models.User).filter(
-            models.User.plan == SubscriptionPlan.STARTER
+            models.User.plan == SubscriptionPlan.FREE,
+            models.User.invoice_balance > 5,
         ).all()
     
     elif segment == "pro":
