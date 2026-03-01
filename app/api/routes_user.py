@@ -147,8 +147,8 @@ class UpdateProfileResponse(BaseModel):
 @router.patch("/me", response_model=UpdateProfileResponse)
 @limiter.limit("10/minute")
 def update_profile(
-    req: Request,
-    request: UpdateProfileRequest,
+    request: Request,
+    body: UpdateProfileRequest,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -165,7 +165,7 @@ def update_profile(
         raise HTTPException(status_code=404, detail="User not found")
     
     # Update name
-    user.name = request.name.strip()
+    user.name = body.name.strip()
     
     try:
         db.commit()
