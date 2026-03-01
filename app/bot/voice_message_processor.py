@@ -86,9 +86,8 @@ class VoiceMessageProcessor:
                     "🔒 Voice Invoice Feature\n\n"
                     "Voice message invoices are only available on the Pro plan.\n\n"
                     "📊 Plans:\n"
-                    "• Free: 5 free invoices to start\n"
-                    "• Starter: No monthly fee, buy packs (₦2,500 for 100)\n"
-                    "• Pro (₦5,000/mo): 100 invoices + Voice & all features\n\n"
+                    "• Starter (Free): 5 free invoices to start, buy packs (₦1,250 for 50)\n"
+                    "• Pro (₦3,250/mo): 50 invoices + Voice & all premium features\n\n"
                     "Visit suoops.com/dashboard/subscription to upgrade!"
                 )
                 return

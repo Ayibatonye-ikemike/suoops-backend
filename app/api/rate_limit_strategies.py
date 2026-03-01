@@ -8,11 +8,12 @@ Follows SOLID principles:
 - Dependency Inversion: rate_limit.py depends on protocol, not concrete strategies
 
 Rate limits by plan:
-- FREE: 10 requests/minute (strict limits to prevent abuse)
-- STARTER: 30 requests/minute
+- FREE: 30 requests/minute (includes pack buyers, generous for small businesses)
 - PRO: 60 requests/minute  
 - BUSINESS: 100 requests/minute
-"""
+
+Note: STARTER plan removed. FREE users get the same rate limits.
+"""""
 
 from __future__ import annotations
 
@@ -34,20 +35,8 @@ class RateLimitStrategy(Protocol):
 class FreeplanRateLimitStrategy:
     """Rate limit strategy for FREE tier users.
     
-    Conservative limits to prevent abuse while allowing basic usage.
-    """
-    
-    def get_limit(self) -> str:
-        return "10/minute"
-    
-    def get_requests_per_minute(self) -> int:
-        return 10
-
-
-class StarterPlanRateLimitStrategy:
-    """Rate limit strategy for STARTER tier users.
-    
-    Moderate limits for small businesses getting started.
+    Generous limits for small businesses (includes pack buyers).
+    STARTER plan was removed - all non-Pro users are FREE.
     """
     
     def get_limit(self) -> str:
@@ -103,7 +92,7 @@ def get_rate_limit_strategy(plan: str) -> RateLimitStrategy:
     """
     strategies: dict[str, type[RateLimitStrategy]] = {
         "free": FreeplanRateLimitStrategy,
-        "starter": StarterPlanRateLimitStrategy,
+        "starter": FreeplanRateLimitStrategy,  # Legacy: treat any remaining starter users as free
         "pro": ProPlanRateLimitStrategy,
         "business": BusinessPlanRateLimitStrategy,
     }

@@ -152,8 +152,8 @@ def apply_reward(
     Apply a pending reward to the user's account.
     
     This will:
-    - Upgrade user to Starter plan (if on Free)
-    - Add 1 month to their subscription
+    - Add bonus invoices to the user's balance
+    - Add 1 month to their subscription (if Pro)
     """
     service = ReferralService(db)
     success, message = service.apply_reward(user_id, request.reward_id)

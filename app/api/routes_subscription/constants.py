@@ -5,7 +5,7 @@
 # When using a plan code, Paystack ignores the 'amount' param and uses the plan's amount
 PLAN_PRICES = {
     "FREE": 0,
-    "STARTER": 0,      # No monthly fee - pay-per-invoice (₦1,250/50 invoices) + Tax features
+    # STARTER removed - users are FREE and buy invoice packs as needed
     "PRO": 3250,       # Display: ₦3,250/month. Paystack plan charges ₦3,402 (includes fees)
     "BUSINESS": 10000, # ₦10,000/month - 50 invoices included + Photo OCR (15 max)
 }

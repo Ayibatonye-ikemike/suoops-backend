@@ -3,14 +3,13 @@ Feature gating utilities for subscription-based access control.
 
 NEW BILLING MODEL:
 - Invoice Packs: 50 invoices for ₦1,250 (one-time purchase, never expires)
-- FREE: 5 free invoices to start, then purchase packs
-- STARTER: No monthly fee, just buy invoice packs
-- PRO (₦3,250/mo): Premium features (branding, inventory, team, voice, API) + buy invoice packs
+- FREE: 5 free invoices to start, then purchase packs. Tax features included.
+- PRO (₦3,250/mo): Premium features (branding, inventory, team, voice) + buy invoice packs
 
+Note: STARTER plan removed. Users start FREE, buy packs as needed.
+Frontend shows "Starter" as a UX label for non-Pro users.
 Invoice balance is decremented per use. All plans can purchase more packs.
 Pro users keep features even when invoices are exhausted.
-
-Note: OCR feature has been removed to focus on core invoicing.
 """
 import datetime as dt
 import logging
@@ -52,9 +51,9 @@ class FeatureGate:
         Check if user's Pro/Business subscription has expired.
         
         When expired:
-        - Pro/Business → Starter (lose all premium features including tax)
+        - Pro/Business → FREE (lose all premium features)
         - Invoice balance is preserved (they paid for those invoices)
-        - Starter has no expiry (just buy invoice packs)
+        - FREE users can still buy invoice packs as needed
         """
         user = self._user
         now = dt.datetime.now(dt.timezone.utc)
@@ -71,14 +70,14 @@ class FeatureGate:
             expiry = expiry.replace(tzinfo=dt.timezone.utc)
         
         if now > expiry:
-            # Subscription has expired - downgrade to Starter (basic invoicing only)
+            # Subscription has expired - downgrade to FREE (basic invoicing only)
             old_plan = user.plan.value
-            user.plan = models.SubscriptionPlan.STARTER
+            user.plan = models.SubscriptionPlan.FREE
             user.subscription_expires_at = None
             # Keep invoice_balance - they paid for those!
             self.db.commit()
             logger.info(
-                "Subscription expired for user %s: downgraded from %s to STARTER (invoice balance: %d)",
+                "Subscription expired for user %s: downgraded from %s to FREE (invoice balance: %d)",
                 user.id, old_plan, getattr(user, 'invoice_balance', 0)
             )
     

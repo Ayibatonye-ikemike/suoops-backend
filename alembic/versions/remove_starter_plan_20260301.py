@@ -1,0 +1,39 @@
+"""Remove STARTER plan - migrate all STARTER users to FREE.
+
+STARTER plan is no longer needed since users get 5 free invoices
+and can buy invoice packs without a plan change.
+Frontend shows "Starter" as a UX-only display label.
+
+Revision ID: remove_starter_plan
+Revises: None (run after latest migration)
+Create Date: 2026-03-01
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers
+revision = "remove_starter_plan_20260301"
+down_revision = None  # Update this to the latest migration revision ID
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    """Migrate all STARTER users to FREE plan.
+    
+    - Updates all users with plan = 'starter' to plan = 'free'
+    - Preserves invoice_balance (users paid for those invoices)
+    - Does NOT remove 'starter' from the PostgreSQL enum type (safe approach)
+    """
+    # Update all STARTER users to FREE
+    op.execute(
+        sa.text(
+            "UPDATE \"user\" SET plan = 'free' WHERE plan = 'starter'"
+        )
+    )
+
+
+def downgrade() -> None:
+    """No downgrade needed - STARTER plan is removed by design."""
+    pass

@@ -63,29 +63,29 @@ class SubscriptionPlan(str, enum.Enum):
     """Subscription tiers for feature access.
     
     BILLING MODEL (Small & Medium Business Focus):
-    - Invoice Packs: 100 invoices for ₦2,500 (one-time, doesn't expire)
-    - FREE: 5 free invoices, then must purchase packs
-    - STARTER: No monthly fee - just purchase invoice packs as needed + tax features
-    - PRO: ₦5,000/month for all premium features including voice/API
+    - Invoice Packs: 50 invoices for ₦1,250 (one-time, doesn't expire)
+    - FREE: 5 free invoices to start, then buy invoice packs as needed
+    - PRO: ₦3,250/month for all premium features including voice/API
     
+    Note: STARTER plan removed - FREE users get 5 free invoices and can buy
+    packs without needing a plan change. Frontend shows "Starter" as UX label.
     Note: BUSINESS plan removed - we focus on businesses under ₦100M annual revenue.
     PRO now includes all features that were previously BUSINESS-only.
     """
     FREE = "free"
-    STARTER = "starter"
     PRO = "pro"
+    # STARTER removed - no need for plan toggle, users just buy invoice packs
     # BUSINESS removed - all users migrated to PRO
 
     @property
     def monthly_price(self) -> int:
         """Monthly subscription price in Naira.
         
-        Starter has no monthly fee - users just buy invoice packs.
-        Pro/Business include 100 invoices + premium features.
+        FREE has no monthly fee - users just buy invoice packs.
+        Pro includes 50 invoices + premium features.
         """
         prices = {
             SubscriptionPlan.FREE: 0,
-            SubscriptionPlan.STARTER: 0,  # No monthly fee, pay per invoice pack
             SubscriptionPlan.PRO: 3250,  # 50 invoices + all premium features
         }
         return prices.get(self, 0)
@@ -100,7 +100,7 @@ class SubscriptionPlan(str, enum.Enum):
         """Number of invoices included with monthly subscription.
         
         Pro plan includes 50 invoices per month.
-        Free/Starter don't have monthly subscription, use invoice packs.
+        Free users get 5 free invoices to start, then buy packs.
         """
         if self == SubscriptionPlan.PRO:
             return 50
@@ -114,7 +114,7 @@ class SubscriptionPlan(str, enum.Enum):
     @property
     def has_premium_features(self) -> bool:
         """Check if plan has access to premium features (voice, etc)."""
-        return self != SubscriptionPlan.FREE
+        return self == SubscriptionPlan.PRO
     
     @property
     def features(self) -> dict:
@@ -122,23 +122,23 @@ class SubscriptionPlan(str, enum.Enum):
         Get feature access for this plan.
         
         BILLING MODEL (Small & Medium Business Focus):
-        - FREE: 5 free invoices to start, basic features
-        - STARTER: No monthly fee, buy invoice packs (100 = ₦2,500) + tax features
-        - PRO: ₦5,000/month = 100 invoices + ALL premium features
+        - FREE: 5 free invoices to start, buy packs as needed, basic + tax features
+        - PRO: ₦3,250/month = 50 invoices + ALL premium features
         
+        Note: STARTER removed - FREE users get 5 free invoices and buy packs.
         Note: BUSINESS plan removed - PRO now includes voice.
-        Note: OCR and API features removed to focus on core invoicing.
+        Note: Tax features available to ALL plans (helps with compliance).
         """
         return {
-            "invoice_pack_price": 2500,  # ₦2,500 per 100 invoices
-            "invoice_pack_size": 100,  # 100 invoices per pack
+            "invoice_pack_price": 1250,  # ₦1,250 per 50 invoices
+            "invoice_pack_size": 50,  # 50 invoices per pack
             "whatsapp_bot": True,  # Available to all
             "email_notifications": True,  # Available to all
             "pdf_generation": True,  # Available to all
             "qr_verification": True,  # Available to all
-            # Tax features: Starter+
-            "tax_automation": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO),
-            "tax_reports": self in (SubscriptionPlan.STARTER, SubscriptionPlan.PRO),
+            # Tax features: Available to all plans
+            "tax_automation": True,
+            "tax_reports": True,
             # Custom branding: Pro only
             "custom_branding": self == SubscriptionPlan.PRO,
             # Inventory management: Pro only

@@ -31,7 +31,7 @@ async def cancel_subscription(
     **Flow:**
     1. Disable subscription on Paystack
     2. Clear subscription code from user
-    3. User keeps plan until expiry, then auto-downgrades to STARTER
+    3. User keeps plan until expiry, then auto-downgrades to FREE
     
     **Returns:**
     - success: Confirmation message

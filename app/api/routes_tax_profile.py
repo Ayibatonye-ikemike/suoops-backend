@@ -1,5 +1,5 @@
 """Tax profile & small business endpoints split from routes_tax.py for modularity.
-Requires STARTER or PRO plan for access.
+Tax features available to all plans.
 """
 from decimal import Decimal
 from typing import Optional
@@ -32,7 +32,7 @@ def get_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Get user's tax profile. Requires STARTER or PRO plan."""
+    """Get user's tax profile. Available to all plans."""
     require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
     try:
         service = TaxProfileService(db)
@@ -47,7 +47,7 @@ def update_tax_profile(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Update user's tax profile. Requires STARTER or PRO plan."""
+    """Update user's tax profile. Available to all plans."""
     require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
     try:
         service = TaxProfileService(db)
@@ -74,7 +74,7 @@ def small_business_check(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Check small business eligibility. Requires STARTER or PRO plan."""
+    """Check small business eligibility. Available to all plans."""
     require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
     try:
         service = TaxProfileService(db)
@@ -88,7 +88,7 @@ def tax_compliance(
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Get tax compliance summary. Requires STARTER or PRO plan."""
+    """Get tax compliance summary. Available to all plans."""
     require_plan_feature(db, current_user_id, "tax_reports", "Tax Reports")
     try:
         service = TaxProfileService(db)

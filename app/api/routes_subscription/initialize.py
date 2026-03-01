@@ -53,13 +53,6 @@ async def initialize_subscription_payment(
     if plan == "FREE":
         raise HTTPException(status_code=400, detail="Cannot upgrade to FREE plan. Already default.")
     
-    # STARTER has no monthly subscription fee (pay-per-invoice only)
-    if plan == "STARTER":
-        raise HTTPException(
-            status_code=400, 
-            detail="STARTER has no monthly fee. Use the switch-to-starter endpoint or buy invoice packs."
-        )
-    
     # Check if plan has a Paystack plan code
     if plan not in PAYSTACK_PLAN_CODES:
         raise HTTPException(status_code=400, detail=f"Plan {plan} is not available for subscription yet.")
