@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = "remove_starter_plan_20260301"
-down_revision = None  # Update this to the latest migration revision ID
+down_revision = "invoice_currency_20260223"
 branch_labels = None
 depends_on = None
 

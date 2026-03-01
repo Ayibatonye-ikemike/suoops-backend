@@ -101,17 +101,10 @@ class PaymentDetailOut(BaseModel):
     failure_reason: str | None = None
 
 
-# ── Cancel / switch plan ──────────────────────────────────────────────
+# ── Cancel plan ───────────────────────────────────────────────────────
 
 class CancelSubscriptionOut(BaseModel):
     status: str
     message: str
     plan: str | None = None
     expires_at: str | None = None
-
-
-class SwitchPlanOut(BaseModel):
-    status: str
-    message: str
-    old_plan: str
-    new_plan: str

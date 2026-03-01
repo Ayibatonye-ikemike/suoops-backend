@@ -17,22 +17,23 @@ logger = logging.getLogger(__name__)
 
 # Brevo list IDs (matching your Brevo setup)
 BREVO_LIST_ALL_USERS = 12       # All Users (master list)
-BREVO_LIST_STARTER = 9          # Starter Users (Pro Upsell)
+BREVO_LIST_STARTER = 9          # Legacy Starter list (now merged with Free/Active)
 BREVO_LIST_PRO = 10             # Pro Users (Retention)
-BREVO_LIST_ACTIVE_FREE = 7      # Active Free Users
+BREVO_LIST_ACTIVE_FREE = 7      # Active Free/Starter Users
 BREVO_LIST_LOW_BALANCE = 6      # Low Balance Users
 BREVO_LIST_INACTIVE = 5         # Inactive Users
 
 # Plan to segment list mapping
+# STARTER plan removed — "starter" maps to Active Free list for legacy compatibility
 PLAN_TO_LIST_MAP = {
     "FREE": BREVO_LIST_ACTIVE_FREE,
-    "STARTER": BREVO_LIST_STARTER,
+    "STARTER": BREVO_LIST_ACTIVE_FREE,  # Legacy: treat as FREE
     "PRO": BREVO_LIST_PRO,
 }
 
 # All segment lists (used for removal when switching plans)
 ALL_SEGMENT_LISTS = [
-    BREVO_LIST_STARTER,
+    BREVO_LIST_STARTER,   # Keep for removal of legacy contacts
     BREVO_LIST_PRO,
     BREVO_LIST_ACTIVE_FREE,
 ]
@@ -105,7 +106,7 @@ async def sync_user_to_brevo(user: "models.User") -> bool:
     """
     Sync a single user to Brevo lists:
     1. Master "All Users" list (always)
-    2. Plan-specific segment list (FREE→#7, STARTER→#9, PRO→#10)
+    2. Plan-specific segment list (FREE→#7, PRO→#10)
     
     Called on:
     - User signup (new user)

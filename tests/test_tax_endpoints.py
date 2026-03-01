@@ -27,11 +27,10 @@ def _auth_client() -> tuple[TestClient, str]:
     v = client.post("/auth/signup/verify", json={"phone": phone, "otp": otp})
     assert v.status_code == 200, v.text
 
-    # Tax endpoints are premium-gated; upgrade the test user to a plan
-    # that includes tax features.
+    # Tax endpoints are available to all plans now.
     db = next(get_db())
     user = db.query(models.User).filter(models.User.phone == phone).one()
-    user.plan = models.SubscriptionPlan.STARTER
+    user.plan = models.SubscriptionPlan.FREE
     db.commit()
 
     access = v.json()["access_token"]

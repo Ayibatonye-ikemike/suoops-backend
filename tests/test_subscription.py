@@ -19,7 +19,7 @@ def _create_test_user(db) -> models.User:
         phone="+234" + secrets.token_hex(4),
         name="Sub Test User",
         email=f"subtest-{secrets.token_hex(3)}@test.com",
-        plan=models.SubscriptionPlan.STARTER,
+        plan=models.SubscriptionPlan.FREE,
         invoice_balance=10,
     )
     db.add(user)
@@ -51,8 +51,8 @@ class TestSubscriptionStatus:
             # Must NOT leak the Paystack subscription code
             assert "subscription_code" not in data
             # Should still show plan info
-            assert data["plan"] == "starter"
-            assert data["is_recurring"] is True
+            assert data["plan"] == "free"
+            assert data["is_recurring"] is False
             assert "invoice_balance" in data
         finally:
             db.close()
@@ -136,39 +136,17 @@ class TestPaymentHistory:
 
 
 class TestSwitchPlan:
-    def test_switch_to_starter(self):
-        """POST /switch-to-starter should work and return proper schema."""
+    def test_switch_to_starter_removed(self):
+        """POST /switch-to-starter endpoint should no longer exist (STARTER plan removed)."""
         client = TestClient(app)
         db = SessionLocal()
         try:
             user = _create_test_user(db)
-            # Set to FREE so we can switch to STARTER
-            user.plan = models.SubscriptionPlan.FREE
-            db.commit()
-
             resp = client.post(
                 "/subscriptions/switch-to-starter",
                 headers=_auth_headers(user.id),
             )
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["status"] == "success"
-            assert data["new_plan"] == "STARTER"
-            assert data["old_plan"] == "free"
-        finally:
-            db.close()
-
-    def test_switch_to_starter_already_starter(self):
-        """Should reject if already on STARTER."""
-        client = TestClient(app)
-        db = SessionLocal()
-        try:
-            user = _create_test_user(db)
-            # Already STARTER
-            resp = client.post(
-                "/subscriptions/switch-to-starter",
-                headers=_auth_headers(user.id),
-            )
-            assert resp.status_code == 400
+            # Endpoint removed — expect 404 or 405
+            assert resp.status_code in (404, 405)
         finally:
             db.close()

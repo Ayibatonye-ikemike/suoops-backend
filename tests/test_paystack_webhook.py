@@ -41,7 +41,7 @@ def test_paystack_subscription_charge_upgrades_plan():
             "reference": "SUB-12345",
             "metadata": {
                 "user_id": user_id,
-                "plan": "starter",
+                "plan": "pro",
             },
         },
     }
@@ -56,8 +56,8 @@ def test_paystack_subscription_charge_upgrades_plan():
     assert result.status_code == 200, result.text
     payload = result.json()
     assert payload["status"] == "success"
-    assert payload["new_plan"] == "starter"
+    assert payload["new_plan"] == "pro"
 
     refreshed = client.get("/users/me", headers=headers)
     assert refreshed.status_code == 200
-    assert refreshed.json()["plan"].lower() == "starter"
+    assert refreshed.json()["plan"].lower() == "pro"
