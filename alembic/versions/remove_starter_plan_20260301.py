@@ -28,9 +28,10 @@ def upgrade() -> None:
     """
     # Update all STARTER users to FREE
     # Cast plan to text to avoid PostgreSQL enum validation on the WHERE clause
+    # PostgreSQL enum values are UPPERCASE (see 0007_fix_enum_case migration)
     op.execute(
         sa.text(
-            "UPDATE \"user\" SET plan = 'free' WHERE plan::text = 'starter'"
+            "UPDATE \"user\" SET plan = 'FREE' WHERE plan::text = 'STARTER'"
         )
     )
 
