@@ -1294,6 +1294,7 @@ def send_daily_summaries() -> dict[str, Any]:
 
     sent = 0
     failed = 0
+    email_sent = 0
 
     try:
         with session_scope() as db:
@@ -1321,13 +1322,13 @@ def send_daily_summaries() -> dict[str, Any]:
                 pro_count, with_phone,
             )
 
-            # Get users who have at least one invoice and a phone number
-            # PRO users and users with admin-granted pro_override get daily summaries
+            # Get PRO / pro_override users who have a phone OR email
+            # (email-only users still deserve their daily summary)
             active_users = (
                 db.query(User)
                 .filter(
-                    User.phone != None,  # noqa: E711
                     (User.plan == SubscriptionPlan.PRO) | (User.pro_override.is_(True)),
+                    (User.phone != None) | (User.email != None),  # noqa: E711
                 )
                 .outerjoin(Invoice, Invoice.issuer_id == User.id)
                 .group_by(User.id)
@@ -1354,6 +1355,8 @@ def send_daily_summaries() -> dict[str, Any]:
 
             for user in active_users:
                 try:
+                    has_phone = _is_valid_phone(user.phone)
+
                     # Revenue collected today
                     revenue_today = (
                         db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
@@ -1401,76 +1404,96 @@ def send_daily_summaries() -> dict[str, Any]:
                         .scalar()
                     ) or 0
 
+                    rev = float(revenue_today)
+                    exp = float(expenses_today)
+                    net = rev - exp
+                    out = float(outstanding)
+
                     # PRO users always get a daily summary, even on quiet days
 
                     message = _format_daily_summary(
                         revenue_today, expenses_today, outstanding, overdue_count
                     )
 
-                    # Try template first (works outside WhatsApp 24h window),
-                    # fall back to plain text only if user messaged recently.
-                    success = False
-                    if summary_template:
-                        rev = float(revenue_today)
-                        exp = float(expenses_today)
-                        net = rev - exp
-                        out = float(outstanding)
+                    # Try WhatsApp first (template → plain text), then email
+                    wa_success = False
 
-                        success = client.send_template(
-                            user.phone,
-                            summary_template,
-                            template_lang,
-                            components=[{
-                                "type": "body",
-                                "parameters": [
-                                    {"type": "text", "text": f"₦{rev:,.0f}"},
-                                    {"type": "text", "text": f"₦{exp:,.0f}"},
-                                    {"type": "text", "text": f"₦{net:,.0f}"},
-                                    {"type": "text", "text": f"₦{out:,.0f}"},
-                                    {"type": "text", "text": str(overdue_count)},
-                                ],
-                            }],
-                        )
-                        if not success:
-                            logger.warning(
-                                "Template delivery failed for user %s, trying plain text",
-                                user.id,
+                    if has_phone:
+                        # Template first (works outside 24h window)
+                        if summary_template:
+                            wa_success = client.send_template(
+                                user.phone,
+                                summary_template,
+                                template_lang,
+                                components=[{
+                                    "type": "body",
+                                    "parameters": [
+                                        {"type": "text", "text": f"₦{rev:,.0f}"},
+                                        {"type": "text", "text": f"₦{exp:,.0f}"},
+                                        {"type": "text", "text": f"₦{net:,.0f}"},
+                                        {"type": "text", "text": f"₦{out:,.0f}"},
+                                        {"type": "text", "text": str(overdue_count)},
+                                    ],
+                                }],
                             )
+                            if not wa_success:
+                                logger.warning(
+                                    "Template delivery failed for user %s, trying plain text",
+                                    user.id,
+                                )
 
-                    # Plain text only works within the 24-hour conversation
-                    # window. Skip users outside it to avoid WhatsApp API errors.
-                    if not success:
-                        if is_window_open(user.phone):
-                            success = client.send_text(user.phone, message)
-                        else:
-                            skipped_window += 1
-                            logger.debug(
-                                "Skipping daily summary for user %s — outside 24h window",
-                                user.id,
-                            )
+                        # Plain text only works within the 24-hour window
+                        if not wa_success:
+                            if is_window_open(user.phone):
+                                wa_success = client.send_text(user.phone, message)
+                            else:
+                                skipped_window += 1
+                                logger.debug(
+                                    "Daily summary outside 24h window for user %s, trying email",
+                                    user.id,
+                                )
 
-                    if success:
+                    if wa_success:
                         sent += 1
-                    elif not success and is_window_open(user.phone):
-                        # Only count as failed if we actually attempted delivery
-                        failed += 1
-                        logger.warning(
-                            "Daily summary delivery failed for user %s (phone=%s…)",
-                            user.id,
-                            user.phone[:6] if user.phone else "none",
+                        continue
+
+                    # ── Email fallback ──────────────────────────────
+                    if user.email:
+                        email_ok = _send_daily_summary_email(
+                            to_email=user.email,
+                            name=user.name or user.business_name,
+                            revenue=rev,
+                            expenses=exp,
+                            net=net,
+                            outstanding=out,
+                            overdue_count=overdue_count,
                         )
+                        if email_ok:
+                            email_sent += 1
+                            continue
+
+                    # Neither channel succeeded
+                    failed += 1
+                    logger.warning(
+                        "Daily summary delivery failed for user %s "
+                        "(phone=%s… email=%s)",
+                        user.id,
+                        user.phone[:6] if user.phone else "none",
+                        "yes" if user.email else "no",
+                    )
 
                 except Exception as e:
                     logger.warning("Failed daily summary for user %s: %s", user.id, e)
                     failed += 1
 
         logger.info(
-            "Daily summaries: sent=%d failed=%d skipped_24h_window=%d",
-            sent, failed, skipped_window,
+            "Daily summaries: wa_sent=%d email_sent=%d failed=%d skipped_24h_window=%d",
+            sent, email_sent, failed, skipped_window,
         )
         return {
             "success": True,
             "sent": sent,
+            "email_sent": email_sent,
             "failed": failed,
             "skipped_window": skipped_window,
         }
@@ -1516,3 +1539,102 @@ def _format_daily_summary(
 
     msg += "\n🔗 suoops.com/dashboard"
     return msg
+
+
+def _send_daily_summary_email(
+    to_email: str,
+    name: str | None,
+    revenue: float,
+    expenses: float,
+    net: float,
+    outstanding: float,
+    overdue_count: int,
+) -> bool:
+    """Send the daily business summary via email when WhatsApp is unavailable."""
+    import os
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    from jinja2 import Template
+
+    display_name = (name or "").split()[0] if name else "there"
+
+    # Build HTML body
+    lines: list[str] = []
+    if revenue > 0:
+        lines.append(f"💰 Cash In: <b>₦{revenue:,.0f}</b>")
+    if expenses > 0:
+        lines.append(f"💸 Expenses: <b>₦{expenses:,.0f}</b>")
+    if revenue > 0 or expenses > 0:
+        emoji = "📈" if net >= 0 else "📉"
+        lines.append(f"{emoji} Net: <b>₦{net:,.0f}</b>")
+    if outstanding > 0:
+        lines.append(f"⏳ Outstanding: <b>₦{outstanding:,.0f}</b>")
+    if overdue_count > 0:
+        s = "s" if overdue_count != 1 else ""
+        lines.append(f"⚠️ Overdue: <b>{overdue_count}</b> invoice{s}")
+
+    if not lines:
+        body_html = "✨ All clear today — no new transactions or outstanding invoices."
+    else:
+        body_html = "<br>".join(lines)
+
+    headline = "Your Daily Business Summary"
+
+    tpl_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "templates", "email", "engagement_tip.html"
+    )
+    try:
+        with open(tpl_path) as f:
+            tpl = Template(f.read())
+        html_body = tpl.render(
+            headline=headline,
+            name=display_name,
+            body_text=body_html,
+            tip_text="Check your dashboard for the full picture.",
+            cta_url="https://suoops.com/dashboard",
+            cta_label="View Dashboard →",
+        )
+    except Exception:
+        html_body = f"<p>Hi {display_name},</p><p>{headline}</p><p>{body_html}</p>"
+
+    plain_lines = [
+        line.replace("<b>", "").replace("</b>", "").replace("<br>", "\n")
+        for line in lines
+    ]
+    plain_body = (
+        f"Hi {display_name},\n\n{headline}\n\n"
+        + "\n".join(plain_lines)
+        + "\n\nView dashboard: https://suoops.com/dashboard"
+    )
+
+    subject = "📊 Your Daily Business Summary — SuoOps"
+
+    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
+    smtp_port = getattr(settings, "SMTP_PORT", 587)
+    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
+    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+
+    if not smtp_user or not smtp_password:
+        logger.warning("SMTP not configured, cannot send daily summary email to %s", to_email)
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(plain_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        logger.info("Daily summary email sent to %s", to_email)
+        return True
+    except Exception as e:
+        logger.warning("Daily summary email failed for %s: %s", to_email, e)
+        return False
