@@ -24,7 +24,7 @@ def upgrade():
     # These users signed up with email and had their email stuffed into
     # the phone column as a placeholder.
     op.execute(
-        "UPDATE users SET phone = NULL, phone_verified = false "
+        'UPDATE "user" SET phone = NULL, phone_verified = false '
         "WHERE phone LIKE '%@%'"
     )
 
@@ -32,6 +32,6 @@ def upgrade():
 def downgrade():
     # Restore email as phone placeholder for users with no phone
     op.execute(
-        "UPDATE users SET phone = email "
+        'UPDATE "user" SET phone = email '
         "WHERE phone IS NULL AND email IS NOT NULL"
     )
