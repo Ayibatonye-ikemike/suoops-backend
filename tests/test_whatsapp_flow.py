@@ -120,6 +120,7 @@ def business_user(db_session):
 class TestWhatsAppThreeWayFlow:
     """Test complete Business → Bot → Customer flow"""
 
+    @patch('app.core.config.settings.WHATSAPP_VERIFY_TOKEN', 'suoops_verify_2025')
     def test_webhook_verification(self):
         """Test WhatsApp webhook verification (GET request from Meta)"""
         client = TestClient(app)
@@ -137,6 +138,7 @@ class TestWhatsAppThreeWayFlow:
         assert response.status_code == 200
         assert response.text == "test_challenge_string"
 
+    @patch('app.core.config.settings.WHATSAPP_VERIFY_TOKEN', 'suoops_verify_2025')
     def test_webhook_verification_fails_with_wrong_token(self):
         """Test webhook verification fails with incorrect token"""
         client = TestClient(app)

@@ -798,10 +798,21 @@ def send_daily_summaries() -> dict[str, Any]:
             logger.info("Daily summary: %d users after join", len(active_users))
 
             from app.bot.whatsapp_client import WhatsAppClient
+            from app.bot.conversation_window import is_window_open
 
             client = WhatsAppClient(settings.WHATSAPP_API_KEY)
             summary_template = getattr(settings, "WHATSAPP_TEMPLATE_DAILY_SUMMARY", None)
             template_lang = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en")
+
+            if not summary_template:
+                logger.warning(
+                    "WHATSAPP_TEMPLATE_DAILY_SUMMARY not configured — "
+                    "daily summaries will only reach users who messaged the bot today. "
+                    "Set up a WhatsApp message template in Meta Business Manager "
+                    "and add it to your env vars for full coverage."
+                )
+
+            skipped_window = 0
 
             for user in active_users:
                 try:
@@ -859,7 +870,7 @@ def send_daily_summaries() -> dict[str, Any]:
                     )
 
                     # Try template first (works outside WhatsApp 24h window),
-                    # fall back to plain text if no template configured.
+                    # fall back to plain text only if user messaged recently.
                     success = False
                     if summary_template:
                         rev = float(revenue_today)
@@ -888,12 +899,22 @@ def send_daily_summaries() -> dict[str, Any]:
                                 user.id,
                             )
 
+                    # Plain text only works within the 24-hour conversation
+                    # window. Skip users outside it to avoid WhatsApp API errors.
                     if not success:
-                        success = client.send_text(user.phone, message)
+                        if is_window_open(user.phone):
+                            success = client.send_text(user.phone, message)
+                        else:
+                            skipped_window += 1
+                            logger.debug(
+                                "Skipping daily summary for user %s — outside 24h window",
+                                user.id,
+                            )
 
                     if success:
                         sent += 1
-                    else:
+                    elif not success and is_window_open(user.phone):
+                        # Only count as failed if we actually attempted delivery
                         failed += 1
                         logger.warning(
                             "Daily summary delivery failed for user %s (phone=%s…)",
@@ -905,8 +926,16 @@ def send_daily_summaries() -> dict[str, Any]:
                     logger.warning("Failed daily summary for user %s: %s", user.id, e)
                     failed += 1
 
-        logger.info("Daily summaries: sent=%d failed=%d", sent, failed)
-        return {"success": True, "sent": sent, "failed": failed}
+        logger.info(
+            "Daily summaries: sent=%d failed=%d skipped_24h_window=%d",
+            sent, failed, skipped_window,
+        )
+        return {
+            "success": True,
+            "sent": sent,
+            "failed": failed,
+            "skipped_window": skipped_window,
+        }
 
     except Exception as exc:
         logger.error("Daily summary task failed: %s", exc)

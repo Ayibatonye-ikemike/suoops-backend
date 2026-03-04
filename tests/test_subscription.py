@@ -52,7 +52,8 @@ class TestSubscriptionStatus:
             assert "subscription_code" not in data
             # Should still show plan info
             assert data["plan"] == "free"
-            assert data["is_recurring"] is False
+            # User has a subscription code set, so is_recurring should be True
+            assert data["is_recurring"] is True
             assert "invoice_balance" in data
         finally:
             db.close()

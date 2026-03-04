@@ -17,6 +17,7 @@ from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart
 from app.bot.support_handler import SupportHandler
 from app.bot.voice_message_processor import VoiceMessageProcessor
 from app.bot.whatsapp_client import WhatsAppClient
+from app.bot.conversation_window import mark_conversation_active
 from app.core.config import settings
 from app.models import models
 from app.services.analytics_service import (
@@ -93,6 +94,9 @@ class WhatsAppHandler:
                 logger.warning("Missing sender in message: %s", message)
                 return
 
+            # Track 24-hour conversation window for outbound messaging
+            mark_conversation_active(sender)
+
             msg_type = message.get("type", "text")
 
             if msg_type == "text":
@@ -150,12 +154,20 @@ class WhatsAppHandler:
 
         # Separate help vs greeting for different responses
         help_keywords = {"help", "menu", "guide", "how", "instructions", "commands"}
-        greeting_keywords = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "start"}
+        greeting_keywords = {
+            "hi", "hello", "hey", "good morning", "good afternoon",
+            "good evening", "start", "yo", "sup", "what's up",
+            "whats up", "howdy", "hiya",
+        }
         optin_keywords = {"ok", "yes", "sure", "yea", "yeah", "yep", "👍", "okay"}
         
         is_help = text_lower in help_keywords
         is_greeting = text_lower in greeting_keywords
         is_optin = text_lower in optin_keywords
+
+        # ── Conversational responses ─────────────────────────────
+        if self._handle_conversational(sender, text_lower):
+            return
 
         # ── Product browsing flow (PRO only) ────────────────────────
         # Check if user has an active cart session (mid-flow)
@@ -309,19 +321,20 @@ class WhatsAppHandler:
         if is_greeting or is_optin:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
-                # This is a registered business - send short greeting
+                # This is a registered business - send contextual greeting
                 self._send_business_greeting(sender, issuer_id)
                 return
             else:
-                # Not a business and not a found customer - send short response
+                # Not a business and not a found customer - warm intro
                 self.client.send_text(
                     sender,
-                    "👋 Hi! I'm the SuoOps invoice assistant.\n\n"
-                    "📥 *Received an invoice?* I'll send payment details when it arrives.\n\n"
-                    "📤 *Want to send invoices?* Register free at suoops.com\n\n"
-                    "🚀 Type *get started* for a step-by-step setup guide\n"
-                    "❓ *Ask me anything* — e.g. \"how to register\"\n"
-                    "🆘 Type *support* to reach our team"
+                    "👋 Hey there! I'm SuoOps — your WhatsApp invoice assistant.\n\n"
+                    "I help Nigerian businesses create and send professional invoices "
+                    "right from WhatsApp. 🇳🇬\n\n"
+                    "📥 *Got an invoice?* I'll send you the payment details.\n\n"
+                    "📤 *Run a business?* Register free at suoops.com and "
+                    "start invoicing in seconds!\n\n"
+                    "Just ask me anything — I'm here to help 😊"
                 )
                 return
 
@@ -368,8 +381,11 @@ class WhatsAppHandler:
             )
             expense_handled = True  # Error message sent, don't double-fire
 
+        if expense_handled:
+            return
+
         # Only try invoice processor if expense processor didn't handle it
-        if not expense_handled:
+        if parse.intent == "create_invoice":
             try:
                 await self.invoice_processor.handle(sender, parse, message)
             except Exception as exc:
@@ -378,80 +394,186 @@ class WhatsAppHandler:
                     sender,
                     "⚠️ Something went wrong creating your invoice. Please try again.",
                 )
+            return
 
         # ── Support FAQ, onboarding & escalation ─────────────────
-        # Try support handler for any question-like or support message
-        # before falling through to the generic nudge.
-        if not expense_handled:
-            try:
-                support_handled = self.support_handler.try_handle(sender, text)
-                if support_handled:
-                    return
-            except Exception as exc:
-                logger.exception("Error in support handler: %s", exc)
+        try:
+            support_handled = self.support_handler.try_handle(sender, text)
+            if support_handled:
+                return
+        except Exception as exc:
+            logger.exception("Error in support handler: %s", exc)
         # ── End support ───────────────────────────────────────────
 
-        # If we get here with an unknown intent, send a gentle nudge
-        if not expense_handled and parse.intent == "unknown":
-            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
-            if issuer_id is not None:
-                # Registered business — nudge toward creating an invoice
-                nudge = (
-                    "🤔 I'm not sure what you mean.\n\n"
-                    "Here's what I can do:\n"
-                    "📝 *Create invoice:* `Invoice Joy 5000 wig`\n"
-                    "📊 *Business report:* Type *report*\n"
-                )
-                # Only show inventory option if user has PRO plan
-                user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-                if user and user.effective_plan.value == "pro":
-                    nudge += "📦 *From inventory:* Type *products*\n"
-                nudge += (
-                    "❓ *Full guide:* Type *help*\n"
-                    "💬 *Ask a question:* e.g. \"how to get paid\"\n"
-                    "🆘 *Need help?* Type *support*"
-                )
-                self.client.send_text(sender, nudge)
-            else:
-                # Unregistered user with unknown message — don't leave them in silence
-                self.client.send_text(
-                    sender,
-                    "👋 Hi! I'm the SuoOps invoice assistant.\n\n"
-                    "📤 *Send invoices?* Register free at suoops.com\n"
-                    "📥 *Received an invoice?* Reply *Hi* to see payment details.\n\n"
-                    "🚀 Type *get started* for setup guide\n"
-                    "❓ *Ask me anything* — e.g. \"how to register\"\n"
-                    "🆘 Type *support* to reach our team"
-                )
+        # If we get here with an unknown intent, send a friendly nudge
+        issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+        if issuer_id is not None:
+            user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+            nudge = (
+                "Hmm, I didn't quite catch that 😅\n\n"
+                "Here's what I can help with:\n\n"
+                "📝 *Invoice:* `Invoice Joy 5000 wig`\n"
+                "💸 *Expense:* `Expense: 5000 transport`\n"
+                "📊 *Report:* Type *report*\n"
+            )
+            if user and user.effective_plan.value == "pro":
+                nudge += "📦 *Inventory:* Type *products*\n"
+            nudge += (
+                "\n❓ Or just ask me a question!\n"
+                "e.g. \"how do I get paid?\" or \"what are the plans?\""
+            )
+            self.client.send_text(sender, nudge)
+        else:
+            self.client.send_text(
+                sender,
+                "I'm not sure I understood that 😊\n\n"
+                "I'm SuoOps — I help businesses send invoices via WhatsApp.\n\n"
+                "📤 *Want to send invoices?* Register free at suoops.com\n"
+                "📥 *Got an invoice?* Just reply *Hi*\n\n"
+                "Ask me anything — e.g. \"how to register\" or \"pricing\""
+            )
     
     def _send_business_greeting(self, sender: str, issuer_id: int) -> None:
-        """Send short greeting to a returning business user."""
-        msg = (
-            "👋 Welcome back!\n\n"
-            "📝 *Create invoice:*\n"
-            "`Invoice Joy 08012345678, 5000 wig`\n\n"
-        )
-        # Only show inventory option if user has PRO plan
+        """Send a warm, contextual greeting to a returning business user."""
+        import datetime as _dt
+
         user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-        if user and user.effective_plan.value == "pro":
-            msg += (
-                "📦 *From inventory:*\n"
-                "Type *products* to browse your stock\n\n"
-            )
+        name = getattr(user, "business_name", None) or getattr(user, "full_name", None) or ""
+
+        # Time-of-day greeting
+        hour = _dt.datetime.now(_dt.timezone.utc).hour + 1  # WAT = UTC+1
+        if hour < 12:
+            time_greeting = "Good morning"
+        elif hour < 17:
+            time_greeting = "Good afternoon"
+        else:
+            time_greeting = "Good evening"
+
+        if name:
+            msg = f"👋 {time_greeting}, {name.split()[0]}! Welcome back.\n\n"
+        else:
+            msg = f"👋 {time_greeting}! Welcome back.\n\n"
+
+        msg += "What would you like to do?\n\n"
         msg += (
-            "💸 *Track expense:*\n"
-            "`Expense: ₦5,000 for transport`\n\n"
-            "📊 *Business report:*\n"
-            "Type *report* for your analytics\n"
-            "Type *tax report* for tax summary + PDF\n\n"
-            "💱 *Currency:*\n"
-            "Type *usd* or *naira* to switch display currency\n\n"
-            "🚀 Type *setup* to check your account status\n"
-            "❓ *Ask me anything* — e.g. \"how to get paid\"\n"
-            "🆘 Type *support* to reach our team\n\n"
-            "Type *help* for full guide."
+            "📝 *Create invoice* — just type:\n"
+            "`Invoice Joy 08012345678, 5000 wig`\n\n"
+            "💸 *Log an expense:*\n"
+            "`Expense: 5,000 transport`\n\n"
+            "📊 Type *report* for your business snapshot\n"
+        )
+        if user and user.effective_plan.value == "pro":
+            msg += "📦 Type *products* to invoice from inventory\n"
+        msg += (
+            "\nOr just ask me anything — I'm here to help! 😊"
         )
         self.client.send_text(sender, msg)
+
+    def _handle_conversational(self, sender: str, text_lower: str) -> bool:
+        """Handle conversational/social messages naturally.
+
+        Returns True if a response was sent, False to continue processing.
+        """
+        # ── Thank-you ──
+        thank_phrases = {
+            "thanks", "thank you", "thank u", "thanx", "thx",
+            "thanks a lot", "thanks so much", "much appreciated",
+            "appreciate it", "cheers", "awesome thanks",
+            "okay thanks", "ok thanks", "alright thanks",
+            "great thanks", "cool thanks", "wonderful",
+        }
+        if text_lower in thank_phrases or text_lower.startswith("thank"):
+            self.client.send_text(
+                sender,
+                "You're welcome! 😊\n\n"
+                "Let me know if you need anything else — I'm always here."
+            )
+            return True
+
+        # ── Goodbye ──
+        bye_phrases = {
+            "bye", "goodbye", "good bye", "good night", "goodnight",
+            "later", "see you", "see ya", "talk later", "gotta go",
+            "bye bye", "take care", "night", "nighty night",
+        }
+        if text_lower in bye_phrases:
+            self.client.send_text(
+                sender,
+                "Goodbye! 👋 Have a great one.\n\n"
+                "I'm here whenever you need me — just send a message!"
+            )
+            return True
+
+        # ── How are you / smalltalk ──
+        smalltalk_phrases = {
+            "how are you", "how are u", "how you dey",
+            "how far", "how body", "how e dey go",
+            "what's good", "how's it going", "how is it going",
+            "how do you do", "how's your day",
+        }
+        if text_lower in smalltalk_phrases:
+            self.client.send_text(
+                sender,
+                "I'm doing great, thanks for asking! 😄\n\n"
+                "Ready to help with invoices, expenses, or anything else.\n"
+                "What can I do for you today?"
+            )
+            return True
+
+        # ── Positive feedback ──
+        positive_phrases = {
+            "nice", "cool", "great", "awesome", "perfect",
+            "amazing", "love it", "fantastic", "brilliant",
+            "sweet", "dope", "lit", "fire", "legit",
+            "well done", "good job", "excellent",
+        }
+        if text_lower in positive_phrases:
+            self.client.send_text(
+                sender,
+                "Glad to hear that! 🎉\n\n"
+                "Need anything else? Just ask!"
+            )
+            return True
+
+        # ── Laughter ──
+        laugh_phrases = {"lol", "haha", "hahaha", "😂", "🤣", "😁", "😄", "lmao"}
+        if text_lower in laugh_phrases:
+            self.client.send_text(
+                sender,
+                "😄 Glad I could bring a smile!\n\n"
+                "Anything I can help with?"
+            )
+            return True
+
+        # ── Emoji-only messages ──
+        if all(
+            not c.isalnum() and not c.isspace()
+            for c in text_lower
+        ) and len(text_lower.strip()) > 0:
+            # Pure emoji/symbol message
+            self.client.send_text(
+                sender,
+                "😊 Nice!\n\nAnything I can help you with?"
+            )
+            return True
+
+        # ── "Who are you" / identity ──
+        identity_phrases = {
+            "who are you", "what are you", "are you a bot",
+            "are you real", "are you human", "is this a bot",
+            "what is this", "what's this number",
+        }
+        if text_lower in identity_phrases:
+            self.client.send_text(
+                sender,
+                "I'm *SuoOps* 🇳🇬 — your AI-powered invoice assistant!\n\n"
+                "I help you create invoices, track expenses, and manage "
+                "your business — all from WhatsApp.\n\n"
+                "Type *help* to see everything I can do."
+            )
+            return True
+
+        return False
     
     def _send_analytics(self, sender: str, issuer_id: int) -> None:
         """Send business analytics snapshot via WhatsApp."""
@@ -812,22 +934,15 @@ class WhatsAppHandler:
             "2️⃣ They reply 'Hi' → get payment details + PDF\n"
             "3️⃣ They pay & tap 'I've Paid' → you're notified!\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "� *TRACK EXPENSES*\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "• `Expense: ₦5,000 for transport`\n"
-            "• `Spent 3000 naira on data`\n"
-            "• Send a photo of your receipt 📸\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "�📊 *BUSINESS REPORT*\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Type *report* — get revenue, invoices & customer stats\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
             "💸 *TRACK EXPENSES*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "• `Expense: ₦5,000 for transport`\n"
             "• `Spent 3000 naira on data`\n"
             "• Send a photo of your receipt 📸\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "📊 *BUSINESS REPORT*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Type *report* — get revenue, invoices & customer stats\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "🏛️ *TAX REPORT (Pro)*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
