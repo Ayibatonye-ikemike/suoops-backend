@@ -416,11 +416,14 @@ class WhatsAppHandler:
                 "📝 *Invoice:* `Invoice Joy 5000 wig`\n"
                 "💸 *Expense:* `Expense: 5000 transport`\n"
                 "📊 *Report:* Type *report*\n"
+                "📊 *Tax report:* Type *tax report*\n"
             )
             if user and user.effective_plan.value == "pro":
                 nudge += "📦 *Inventory:* Type *products*\n"
             nudge += (
-                "\n❓ Or just ask me a question!\n"
+                "💱 *Currency:* Type *usd* or *naira*\n"
+                "🚀 *Setup:* Type *setup*\n\n"
+                "❓ Or just ask me a question!\n"
                 "e.g. \"how do I get paid?\" or \"what are the plans?\""
             )
             self.client.send_text(sender, nudge)
@@ -457,16 +460,26 @@ class WhatsAppHandler:
 
         msg += "What would you like to do?\n\n"
         msg += (
-            "📝 *Create invoice* — just type:\n"
+            "📝 *Create invoice:*\n"
             "`Invoice Joy 08012345678, 5000 wig`\n\n"
-            "💸 *Log an expense:*\n"
+            "💸 *Track expense:*\n"
             "`Expense: 5,000 transport`\n\n"
-            "📊 Type *report* for your business snapshot\n"
         )
         if user and user.effective_plan.value == "pro":
-            msg += "📦 Type *products* to invoice from inventory\n"
+            msg += (
+                "📦 *From inventory:*\n"
+                "Type *products* to browse your stock\n\n"
+            )
         msg += (
-            "\nOr just ask me anything — I'm here to help! 😊"
+            "📊 *Business report:*\n"
+            "Type *report* for your analytics\n"
+            "Type *tax report* for tax summary + PDF\n\n"
+            "💱 *Currency:*\n"
+            "Type *usd* or *naira* to switch display currency\n\n"
+            "🚀 Type *setup* to check your account status\n"
+            "❓ Ask me anything — e.g. \"how to get paid\"\n"
+            "🆘 Type *support* to reach our team\n\n"
+            "Type *help* for full guide."
         )
         self.client.send_text(sender, msg)
 
