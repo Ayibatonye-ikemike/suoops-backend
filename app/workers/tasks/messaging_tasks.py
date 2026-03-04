@@ -160,8 +160,34 @@ def send_overdue_reminders() -> dict[str, Any]:
 
                 try:
                     wa_delivered = False
-                    # Check conversation window — send_text only works within 24h
-                    if is_window_open(user.phone):
+
+                    # 1) Try template first (works outside 24h window)
+                    overdue_tpl = settings.WHATSAPP_TEMPLATE_OVERDUE_REPORT
+                    if overdue_tpl:
+                        total_inv = sum(len(v) for v in tiers.values())
+                        total_amt = sum(inv.amount for vs in tiers.values() for inv in vs)
+                        critical_cnt = len(tiers["owner_critical"])
+                        urgent_cnt = len(tiers["owner_urgent"])
+                        tpl_lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                        wa_delivered = client.send_template(
+                            user.phone,
+                            overdue_tpl,
+                            tpl_lang,
+                            components=[{
+                                "type": "body",
+                                "parameters": [
+                                    {"type": "text", "text": str(total_inv)},
+                                    {"type": "text", "text": f"₦{total_amt:,.0f}"},
+                                    {"type": "text", "text": str(critical_cnt)},
+                                    {"type": "text", "text": str(urgent_cnt)},
+                                ],
+                            }],
+                        )
+                        if wa_delivered:
+                            sent += 1
+
+                    # 2) Fallback to plain text (only within 24h window)
+                    if not wa_delivered and is_window_open(user.phone):
                         wa_delivered = client.send_text(user.phone, message)
                         if wa_delivered:
                             sent += 1
@@ -172,7 +198,7 @@ def send_overdue_reminders() -> dict[str, Any]:
                                 user.phone[:6] if user.phone else "none",
                             )
 
-                    # Email fallback: send if WhatsApp didn't deliver
+                    # 3) Email fallback: send if WhatsApp didn't deliver
                     if not wa_delivered and user.email:
                         email_ok = _send_owner_overdue_email(
                             user.email, user.name, tiers, today
@@ -968,13 +994,34 @@ def send_mark_paid_nudges() -> dict[str, Any]:
 
                 try:
                     delivered = False
-                    # Try WhatsApp first (only works within 24h window)
-                    if is_window_open(user.phone):
+
+                    # 1) Try template first (works outside 24h window)
+                    nudge_tpl = settings.WHATSAPP_TEMPLATE_MARK_PAID_NUDGE
+                    if nudge_tpl:
+                        tpl_lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                        delivered = client.send_template(
+                            user.phone,
+                            nudge_tpl,
+                            tpl_lang,
+                            components=[{
+                                "type": "body",
+                                "parameters": [
+                                    {"type": "text", "text": str(pending_count)},
+                                    {"type": "text", "text": f"₦{pending_total:,.0f}"},
+                                    {"type": "text", "text": str(days_oldest)},
+                                ],
+                            }],
+                        )
+                        if delivered:
+                            sent += 1
+
+                    # 2) Fallback to plain text (only within 24h window)
+                    if not delivered and is_window_open(user.phone):
                         delivered = client.send_text(user.phone, msg)
                         if delivered:
                             sent += 1
 
-                    # Email fallback if WhatsApp didn't deliver
+                    # 3) Email fallback if WhatsApp didn't deliver
                     if not delivered and user.email:
                         email_ok = _send_mark_paid_email(
                             user.email, user.name, pending_count,

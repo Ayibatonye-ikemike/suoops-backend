@@ -55,6 +55,8 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_TEMPLATE_PRO_UPGRADE: str | None = None  # Upsell to Pro plan
     WHATSAPP_TEMPLATE_WIN_BACK: str | None = None  # Inactive user re-engagement
     WHATSAPP_TEMPLATE_LOW_STOCK_ALERT: str | None = None  # Low inventory alert
+    WHATSAPP_TEMPLATE_OVERDUE_REPORT: str | None = None  # Owner overdue summary
+    WHATSAPP_TEMPLATE_MARK_PAID_NUDGE: str | None = None  # Owner mark-as-paid nudge
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
     
     @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")
