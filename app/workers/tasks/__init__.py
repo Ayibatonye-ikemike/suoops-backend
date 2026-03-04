@@ -9,14 +9,10 @@ Sub-modules:
 - messaging_tasks: WhatsApp, OCR, and payment sync
 - tax_tasks: Tax reports and fiscalization
 - expense_tasks: Expense summaries and reminders
-- campaign_tasks: Marketing campaign bulk sending
+- engagement_tasks: Lifecycle email notifications
 """
 from __future__ import annotations
 
-from .campaign_tasks import (
-    send_campaign_async,
-    send_single_email_async,
-)
 from .engagement_tasks import (
     send_engagement_emails,
 )
@@ -60,9 +56,6 @@ __all__ = [
     # Expense tasks
     "send_expense_summary",
     "send_expense_reminders",
-    # Campaign tasks
-    "send_campaign_async",
-    "send_single_email_async",
     # Engagement tasks
     "send_engagement_emails",
 ]

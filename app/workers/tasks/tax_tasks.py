@@ -241,6 +241,7 @@ def _notify_tax_report_whatsapp(
 
         # Template first
         if template_name:
+            first_name = (user.name or "").split()[0] or "there"
             ok = client.send_template(
                 user.phone,
                 template_name,
@@ -248,7 +249,7 @@ def _notify_tax_report_whatsapp(
                 components=[{
                     "type": "body",
                     "parameters": [
-                        {"type": "text", "text": (user.name or "").split()[0] or "there"},
+                        {"type": "text", "text": f"{first_name}, your "},
                         {"type": "text", "text": period},
                     ],
                 }],
