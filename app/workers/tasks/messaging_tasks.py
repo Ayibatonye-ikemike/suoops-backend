@@ -72,6 +72,7 @@ def send_overdue_reminders() -> dict[str, Any]:
     from app.models.models import InvoiceReminderLog, Invoice, User
 
     sent = 0
+    email_sent = 0
     skipped = 0
     failed = 0
     skipped_window = 0
@@ -158,39 +159,46 @@ def send_overdue_reminders() -> dict[str, Any]:
                     continue
 
                 try:
+                    wa_delivered = False
                     # Check conversation window — send_text only works within 24h
-                    if not is_window_open(user.phone):
+                    if is_window_open(user.phone):
+                        wa_delivered = client.send_text(user.phone, message)
+                        if wa_delivered:
+                            sent += 1
+                        else:
+                            logger.warning(
+                                "Overdue reminder delivery failed for user %s (phone=%s…)",
+                                issuer_id,
+                                user.phone[:6] if user.phone else "none",
+                            )
+
+                    # Email fallback: send if WhatsApp didn't deliver
+                    if not wa_delivered and user.email:
+                        email_ok = _send_owner_overdue_email(
+                            user.email, user.name, tiers, today
+                        )
+                        if email_ok:
+                            email_sent += 1
+                        else:
+                            failed += 1
+                    elif not wa_delivered and not user.email:
                         skipped_window += 1
-                        logger.debug(
-                            "Skipping owner reminder for user %s — outside 24h window",
-                            issuer_id,
-                        )
-                        continue
-
-                    success = client.send_text(user.phone, message)
-                    if not success:
-                        logger.warning(
-                            "Overdue reminder delivery failed for user %s (phone=%s…)",
-                            issuer_id,
-                            user.phone[:6] if user.phone else "none",
-                        )
-                        failed += 1
-                        continue
-
-                    sent += 1
 
                     # Log all tiers we just notified about
-                    for tier, tier_invoices in tiers.items():
-                        for inv in tier_invoices:
-                            db.add(
-                                InvoiceReminderLog(
-                                    invoice_id=inv.id,
-                                    reminder_type=tier,
-                                    channel="whatsapp",
-                                    recipient=user.phone,
+                    if wa_delivered or (user.email and not wa_delivered):
+                        channel = "whatsapp" if wa_delivered else "email"
+                        recipient = user.phone if wa_delivered else user.email
+                        for tier, tier_invoices in tiers.items():
+                            for inv in tier_invoices:
+                                db.add(
+                                    InvoiceReminderLog(
+                                        invoice_id=inv.id,
+                                        reminder_type=tier,
+                                        channel=channel,
+                                        recipient=recipient,
+                                    )
                                 )
-                            )
-                    db.commit()
+                        db.commit()
                 except Exception as e:
                     logger.warning(
                         "Failed owner overdue reminder for user %s: %s", issuer_id, e
@@ -198,8 +206,9 @@ def send_overdue_reminders() -> dict[str, Any]:
                     failed += 1
 
         logger.info(
-            "Owner overdue reminders: sent=%d skipped=%d failed=%d skipped_window=%d",
+            "Owner overdue reminders: wa_sent=%d email_sent=%d skipped=%d failed=%d skipped_window=%d",
             sent,
+            email_sent,
             skipped,
             failed,
             skipped_window,
@@ -207,6 +216,7 @@ def send_overdue_reminders() -> dict[str, Any]:
         return {
             "success": True,
             "sent": sent,
+            "email_sent": email_sent,
             "skipped": skipped,
             "failed": failed,
             "skipped_window": skipped_window,
@@ -268,6 +278,183 @@ def _build_owner_escalation_message(
     footer = "\n\n🔗 Review all invoices at suoops.com/dashboard"
 
     return header + "\n\n".join(parts) + footer
+
+
+# ── Email fallback helpers ───────────────────────────────────────────
+
+
+def _send_owner_overdue_email(
+    to_email: str, name: str | None, tiers: dict[str, list[Any]], today: date
+) -> bool:
+    """Send the overdue invoice report via email when WhatsApp is unavailable."""
+    import os
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    from jinja2 import Template
+
+    total = sum(len(v) for v in tiers.values())
+    total_owed = sum(inv.amount for invs in tiers.values() for inv in invs)
+    display_name = (name or "").split()[0] if name else "there"
+
+    # Build HTML body text
+    lines: list[str] = []
+    tier_labels = {
+        "owner_critical": ("🔴 CRITICAL", "14+ days overdue"),
+        "owner_urgent": ("🟠 URGENT", "8-14 days overdue"),
+        "owner_action": ("🟡 Action Required", "4-7 days overdue"),
+        "owner_light": ("🟢 Heads Up", "1-3 days overdue"),
+    }
+    for key, (label, desc) in tier_labels.items():
+        invoices = tiers.get(key, [])
+        if invoices:
+            lines.append(f"<b>{label}</b> — {len(invoices)} invoice(s) {desc}.")
+
+    body_html = "<br>".join(lines)
+    headline = f"You have {total} overdue invoice(s) totalling ₦{total_owed:,.0f}"
+
+    # Load template
+    tpl_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "templates", "email", "engagement_tip.html"
+    )
+    try:
+        with open(tpl_path) as f:
+            tpl = Template(f.read())
+        html_body = tpl.render(
+            headline=headline,
+            name=display_name,
+            body_text=body_html,
+            tip_text="A quick follow-up call recovers 70% of late payments.",
+            cta_url="https://suoops.com/dashboard",
+            cta_label="Review Invoices →",
+        )
+    except Exception:
+        html_body = f"<p>Hi {display_name},</p><p>{headline}.</p><p>{body_html}</p>"
+
+    plain_body = (
+        f"Hi {display_name},\n\n{headline}.\n\n"
+        + "\n".join(f"- {l}" for l in lines)
+        + "\n\nReview at https://suoops.com/dashboard"
+    )
+
+    subject = f"⚠️ {total} Overdue Invoice(s) — Action Needed"
+
+    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
+    smtp_port = getattr(settings, "SMTP_PORT", 587)
+    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
+    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+
+    if not smtp_user or not smtp_password:
+        logger.warning("SMTP not configured, cannot send overdue email to %s", to_email)
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(plain_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        logger.info("Overdue email sent to %s", to_email)
+        return True
+    except Exception as e:
+        logger.warning("Overdue email failed for %s: %s", to_email, e)
+        return False
+
+
+def _send_mark_paid_email(
+    to_email: str,
+    name: str | None,
+    pending_count: int,
+    pending_total: float,
+    days_oldest: int,
+    oldest_invoices: list,
+    today: date,
+) -> bool:
+    """Send mark-as-paid nudge via email when WhatsApp is unavailable."""
+    import os
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    from jinja2 import Template
+
+    display_name = (name or "").split()[0] if name else "there"
+
+    inv_lines = []
+    for inv in oldest_invoices:
+        cust_name = inv.customer.name if inv.customer else "Unknown"
+        age = (today - inv.due_date.date()).days
+        inv_lines.append(f"• {cust_name} — ₦{inv.amount:,.0f} ({age}d overdue)")
+
+    body_html = (
+        f"You have <b>{pending_count}</b> pending invoices totalling "
+        f"<b>₦{pending_total:,.0f}</b> — the oldest is {days_oldest} days overdue.<br><br>"
+        + "<br>".join(inv_lines)
+        + "<br><br>If any of these were paid offline, mark them as paid to keep your records accurate."
+    )
+    headline = f"{pending_count} invoices still marked as pending"
+
+    tpl_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "templates", "email", "engagement_tip.html"
+    )
+    try:
+        with open(tpl_path) as f:
+            tpl = Template(f.read())
+        html_body = tpl.render(
+            headline=headline,
+            name=display_name,
+            body_text=body_html,
+            tip_text="Keeping invoices accurate helps you track real revenue.",
+            cta_url="https://suoops.com/dashboard",
+            cta_label="Mark Invoices as Paid →",
+        )
+    except Exception:
+        html_body = f"<p>Hi {display_name},</p><p>{headline}.</p><p>{body_html}</p>"
+
+    plain_body = (
+        f"Hi {display_name},\n\n"
+        f"You have {pending_count} pending invoices totalling ₦{pending_total:,.0f}.\n\n"
+        + "\n".join(inv_lines)
+        + "\n\nIf any were paid offline, mark them as paid at https://suoops.com/dashboard"
+    )
+
+    subject = f"📋 {pending_count} Invoices Still Pending — Were They Paid?"
+
+    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
+    smtp_port = getattr(settings, "SMTP_PORT", 587)
+    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
+    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+
+    if not smtp_user or not smtp_password:
+        logger.warning("SMTP not configured, cannot send mark-paid email to %s", to_email)
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(plain_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        logger.info("Mark-paid email sent to %s", to_email)
+        return True
+    except Exception as e:
+        logger.warning("Mark-paid email failed for %s: %s", to_email, e)
+        return False
 
 
 # ── Customer-Facing Payment Reminders ────────────────────────────────
@@ -576,13 +763,6 @@ def _notify_owner_escalation(
         client = WhatsAppClient(settings.WHATSAPP_API_KEY)
         customer_name = customer.name or "a customer"
 
-        if not is_window_open(issuer.phone):
-            logger.debug(
-                "Skipping owner escalation for user %s — outside 24h window",
-                issuer.id,
-            )
-            return
-
         msg = (
             f"🔴 *Escalation Alert*\n\n"
             f"Invoice {inv.invoice_id} for {customer_name} "
@@ -591,7 +771,73 @@ def _notify_owner_escalation(
             "Consider calling them directly or reviewing your collection options.\n\n"
             "🔗 suoops.com/dashboard"
         )
-        client.send_text(issuer.phone, msg)
+
+        delivered = False
+        if is_window_open(issuer.phone):
+            delivered = client.send_text(issuer.phone, msg)
+
+        # Email fallback
+        if not delivered and issuer.email:
+            import os
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            from jinja2 import Template
+
+            display_name = (issuer.name or "").split()[0] if issuer.name else "there"
+            headline = f"Escalation: Invoice {inv.invoice_id} is 14+ days overdue"
+            body_html = (
+                f"Invoice <b>{inv.invoice_id}</b> for <b>{customer_name}</b> "
+                f"(₦{inv.amount:,.0f}) is now 14+ days overdue.<br><br>"
+                "We've sent a final reminder to the customer. "
+                "Consider calling them directly or reviewing your collection options."
+            )
+            tpl_path = os.path.join(
+                os.path.dirname(__file__), "..", "..", "..", "templates", "email", "engagement_tip.html"
+            )
+            try:
+                with open(tpl_path) as f:
+                    tpl = Template(f.read())
+                html_body = tpl.render(
+                    headline=headline,
+                    name=display_name,
+                    body_text=body_html,
+                    tip_text="A quick phone call often recovers severely overdue payments.",
+                    cta_url="https://suoops.com/dashboard",
+                    cta_label="View Invoice →",
+                )
+            except Exception:
+                html_body = f"<p>Hi {display_name},</p><p>{headline}.</p><p>{body_html}</p>"
+
+            plain_body = (
+                f"Hi {display_name},\n\n{headline}.\n\n"
+                f"Invoice {inv.invoice_id} for {customer_name} (₦{inv.amount:,.0f}) "
+                "is severely overdue. Consider calling the customer directly.\n\n"
+                "Review at https://suoops.com/dashboard"
+            )
+
+            smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
+            smtp_port = getattr(settings, "SMTP_PORT", 587)
+            smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
+            smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+            from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+
+            if smtp_user and smtp_password:
+                email_msg = MIMEMultipart("alternative")
+                email_msg["From"] = from_email
+                email_msg["To"] = issuer.email
+                email_msg["Subject"] = f"🔴 {headline}"
+                email_msg.attach(MIMEText(plain_body, "plain"))
+                email_msg.attach(MIMEText(html_body, "html"))
+                try:
+                    with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                        server.starttls()
+                        server.login(smtp_user, smtp_password)
+                        server.send_message(email_msg)
+                    logger.info("Escalation email sent to %s for invoice %s", issuer.email, inv.invoice_id)
+                except Exception as e:
+                    logger.warning("Escalation email failed for %s: %s", issuer.email, e)
     except Exception as e:
         logger.warning(
             "Owner escalation alert failed for invoice %s: %s", inv.invoice_id, e
@@ -679,15 +925,6 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                 if not user or not user.phone:
                     continue
 
-                # Check conversation window for plain text
-                if not is_window_open(user.phone):
-                    skipped_window += 1
-                    logger.debug(
-                        "Skipping mark-paid nudge for user %s — outside 24h window",
-                        issuer_id,
-                    )
-                    continue
-
                 # Get the 3 oldest pending invoices for specificity
                 oldest_invoices = (
                     db.query(Invoice)
@@ -730,14 +967,31 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                 )
 
                 try:
-                    success = client.send_text(user.phone, msg)
-                    if success:
-                        sent += 1
+                    delivered = False
+                    # Try WhatsApp first (only works within 24h window)
+                    if is_window_open(user.phone):
+                        delivered = client.send_text(user.phone, msg)
+                        if delivered:
+                            sent += 1
+
+                    # Email fallback if WhatsApp didn't deliver
+                    if not delivered and user.email:
+                        email_ok = _send_mark_paid_email(
+                            user.email, user.name, pending_count,
+                            pending_total, days_oldest, oldest_invoices, today,
+                        )
+                        if email_ok:
+                            sent += 1
+                        else:
+                            failed += 1
+                    elif not delivered and not user.email:
+                        skipped_window += 1
+                        continue  # no channel available, skip cooldown
+
+                    if delivered or user.email:
                         # Set 7-day cooldown
                         if redis:
                             redis.set(cooldown_key, "1", ex=7 * 86400)
-                    else:
-                        failed += 1
                 except Exception as e:
                     logger.warning(
                         "Mark-paid nudge failed for user %s: %s", issuer_id, e
