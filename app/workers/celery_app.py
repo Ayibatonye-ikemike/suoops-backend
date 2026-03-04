@@ -10,6 +10,8 @@ from app.core.redis_utils import get_ssl_options, prepare_redis_url
 def _create_celery() -> Celery:
     # For Celery, don't add SSL params to URL - use broker_use_ssl instead
     redis_url = prepare_redis_url(settings.REDIS_URL, add_ssl_params=False)
+    # RedBeat needs the URL with SSL query params (it uses redis-py directly)
+    redbeat_redis_url = prepare_redis_url(settings.REDIS_URL, add_ssl_params=True)
     ssl_options = get_ssl_options()
     celery = Celery(
         "whatsinvoice",
@@ -25,6 +27,10 @@ def _create_celery() -> Celery:
         timezone="UTC",
         enable_utc=True,
         task_always_eager=settings.ENV.lower() in {"test"},
+        # Use RedBeat so the beat schedule persists in Redis across deploys
+        beat_scheduler="redbeat.RedBeatScheduler",
+        redbeat_redis_url=redbeat_redis_url,
+        redbeat_key_prefix="suoops-beat",
     )
     if ssl_options:
         celery.conf.update(
