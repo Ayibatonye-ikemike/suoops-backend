@@ -43,6 +43,10 @@ EMAIL_3_INVOICES_SENT = "monetization_3_invoices"
 EMAIL_80PCT_LIMIT = "monetization_80pct_limit"
 EMAIL_LIMIT_REACHED = "monetization_limit_reached"
 
+# Phone verification nudge (email-only, users without verified phone)
+EMAIL_PHONE_NUDGE_DAY5 = "phone_nudge_day5"
+EMAIL_PHONE_NUDGE_DAY10 = "phone_nudge_day10"
+
 # Education tips (rotating, tracked by index)
 EMAIL_TIP_PREFIX = "tip_"
 
@@ -230,6 +234,7 @@ def send_engagement_emails() -> dict[str, Any]:
         "activation_sent": 0,
         "monetization_sent": 0,
         "tips_sent": 0,
+        "phone_nudge_sent": 0,
         "whatsapp_sent": 0,
         "skipped": 0,
         "failed": 0,
@@ -255,10 +260,11 @@ def send_engagement_emails() -> dict[str, Any]:
             db.commit()
 
         logger.info(
-            "Engagement emails complete: activation=%d monetization=%d tips=%d whatsapp=%d skipped=%d failed=%d",
+            "Engagement emails complete: activation=%d monetization=%d tips=%d phone_nudge=%d whatsapp=%d skipped=%d failed=%d",
             stats["activation_sent"],
             stats["monetization_sent"],
             stats["tips_sent"],
+            stats["phone_nudge_sent"],
             stats["whatsapp_sent"],
             stats["skipped"],
             stats["failed"],
@@ -284,6 +290,12 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
         .scalar()
     ) or 0
 
+    # ── 0. PHONE VERIFICATION NUDGE (users without verified phone) ──
+    if not getattr(user, "phone_verified", False) and signup_age.days >= 5:
+        _send_phone_nudge(db, user, name, signup_age.days, stats)
+        # Don't return — continue to other segments so user still gets
+        # monetization / tips / win-back emails too.
+
     # ── 1. ACTIVATION (users with 0 invoices, first 3 days) ──────────
     if invoice_count == 0 and signup_age.days <= 3:
         _send_activation(db, user, name, signup_age.days, stats)
@@ -306,8 +318,8 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
         if _send_monetization(db, user, name, invoice_count, stats):
             return
 
-    # ── 4. PRO UPGRADE (STARTER users with 10+ invoices, WhatsApp) ──
-    if user.plan.value == "starter" and invoice_count >= 10:
+    # ── 4. PRO UPGRADE (FREE users with 10+ invoices, WhatsApp) ────
+    if user.plan.value == "free" and invoice_count >= 10:
         if not _was_sent(db, user.id, "wa_pro_upgrade"):
             if _send_wa_template(
                 user.phone,
@@ -347,6 +359,71 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
                     return
 
     stats["skipped"] += 1
+
+
+# ── Phone-verification nudge ─────────────────────────────────────────
+
+def _send_phone_nudge(db, user, name: str, days_since_signup: int, stats: dict[str, int]) -> None:
+    """Email users who haven't verified a phone number to connect WhatsApp.
+
+    - Day 5:  First nudge ("Create invoices via WhatsApp")
+    - Day 10: Second nudge ("You're missing out — WhatsApp invoicing is faster")
+
+    Uses the existing ``whatsapp_bot_promotion.html`` template.
+    Only sent via email (can't reach these users on WhatsApp by definition).
+    """
+    from datetime import datetime
+
+    nudge_map: dict[int, tuple[str, str]] = {
+        5: (
+            EMAIL_PHONE_NUDGE_DAY5,
+            "Create invoices via WhatsApp — connect your number!",
+        ),
+        10: (
+            EMAIL_PHONE_NUDGE_DAY10,
+            "You're missing out — WhatsApp invoicing is faster",
+        ),
+    }
+
+    entry = nudge_map.get(days_since_signup)
+    if not entry:
+        return
+
+    email_type, subject = entry
+
+    if not user.email:
+        return
+
+    if _was_sent(db, user.id, email_type):
+        return
+
+    template = _jinja_env.get_template("whatsapp_bot_promotion.html")
+    html = template.render(
+        user_name=name,
+        dashboard_url="https://suoops.com/dashboard/settings",
+        help_url="https://support.suoops.com",
+        unsubscribe_url="https://suoops.com/unsubscribe",
+        current_year=datetime.now().year,
+    )
+    plain = (
+        f"Hi {name},\n\n"
+        "You signed up for SuoOps but haven't connected your WhatsApp yet.\n"
+        "With the WhatsApp bot you can create invoices in seconds — just send a message!\n\n"
+        "Steps:\n"
+        "1. Log in at suoops.com → Settings\n"
+        "2. Click 'Connect WhatsApp'\n"
+        "3. Enter your phone number and verify with the OTP\n\n"
+        "Our WhatsApp number: +234 818 376 3636\n\n"
+        "Connect now: https://suoops.com/dashboard/settings\n\n"
+        "— SuoOps"
+    )
+
+    if _send_smtp_email(user.email, subject, html, plain):
+        _record_sent(db, user.id, email_type)
+        stats["phone_nudge_sent"] += 1
+        logger.info("Sent phone nudge '%s' to user %s", email_type, user.id)
+    else:
+        stats["failed"] += 1
 
 
 def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[str, int]) -> None:
