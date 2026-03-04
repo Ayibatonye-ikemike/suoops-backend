@@ -459,7 +459,7 @@ async def initialize_invoice_pack_purchase(
         status=PaymentStatus.PENDING,
         plan_before=current_plan,
         plan_after=current_plan,  # Invoice pack doesn't change plan
-        customer_email=user.email or f"{user.phone}@suoops.com",
+        customer_email=user.email or (f"{user.phone}@suoops.com" if user.phone else None),
         customer_phone=user.phone,
         payment_metadata={
             "payment_type": "invoice_pack",
@@ -480,7 +480,7 @@ async def initialize_invoice_pack_purchase(
                     "Content-Type": "application/json",
                 },
                 json={
-                    "email": user.email or f"{user.phone}@suoops.com",
+                    "email": user.email or (f"{user.phone}@suoops.com" if user.phone else f"user{current_user_id}@suoops.com"),
                     "amount": int(total_amount * 100),  # Paystack expects kobo (includes fees)
                     "reference": reference,
                     "callback_url": f"{settings.FRONTEND_URL}/dashboard/billing/success?reference={reference}",

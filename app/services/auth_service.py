@@ -133,15 +133,11 @@ class AuthService:
             encrypted_email = encrypt_value(plaintext_email)
             user_data["email"] = plaintext_email
             user_data["email_enc"] = encrypted_email
-            # Use email as phone placeholder (required field) - NOT verified
-            user_data["phone"] = stored_data.get("phone") or plaintext_email
+            # Phone is nullable — only set if an actual phone number was provided
+            user_data["phone"] = stored_data.get("phone") or None
         else:
             # Phone signup - use the actual phone number
             user_data["phone"] = stored_data.get("phone") or identifier
-
-        # Final safety: ensure phone is never None (model constraint) even if upstream data was missing.
-        if not user_data.get("phone"):
-            user_data["phone"] = identifier
             
         user = models.User(**user_data)
         user.last_login = datetime.now(timezone.utc)

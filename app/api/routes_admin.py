@@ -533,7 +533,7 @@ class PayoutUserInfo(BaseModel):
     user_id: int
     name: str
     email: str | None
-    phone: str
+    phone: str | None
     payout_bank_name: str | None
     payout_account_number: str | None
     payout_account_name: str | None
@@ -675,7 +675,7 @@ class PackBuyerInfo(BaseModel):
     id: int
     name: str
     email: str | None
-    phone: str
+    phone: str | None
     business_name: str | None
     invoice_balance: int
     total_packs_bought: int
@@ -1400,7 +1400,7 @@ def get_business_intelligence(
 class UserSegmentExport(BaseModel):
     """User data formatted for Brevo campaign import."""
     name: str
-    phone: str
+    phone: str | None
     email: str | None
     plan: str
     invoice_balance: int
