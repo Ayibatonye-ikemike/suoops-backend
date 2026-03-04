@@ -47,6 +47,10 @@ def _create_celery() -> Celery:
                 "task": "reminders.send_customer_payment_reminders",
                 "schedule": crontab(minute=30, hour=8),  # 08:30 UTC = 09:30 WAT
             },
+            "daily-mark-paid-nudges": {
+                "task": "reminders.send_mark_paid_nudges",
+                "schedule": crontab(minute=0, hour=11),  # 11:00 UTC = 12:00 WAT
+            },
             "daily-business-summary": {
                 "task": "summary.send_daily_summaries",
                 "schedule": crontab(minute=0, hour=18),  # 18:00 UTC = 19:00 WAT

@@ -68,11 +68,13 @@ def send_overdue_reminders() -> dict[str, Any]:
     """
     from sqlalchemy.orm import joinedload
 
+    from app.bot.conversation_window import is_window_open
     from app.models.models import InvoiceReminderLog, Invoice, User
 
     sent = 0
     skipped = 0
     failed = 0
+    skipped_window = 0
 
     try:
         with session_scope() as db:
@@ -156,6 +158,15 @@ def send_overdue_reminders() -> dict[str, Any]:
                     continue
 
                 try:
+                    # Check conversation window — send_text only works within 24h
+                    if not is_window_open(user.phone):
+                        skipped_window += 1
+                        logger.debug(
+                            "Skipping owner reminder for user %s — outside 24h window",
+                            issuer_id,
+                        )
+                        continue
+
                     success = client.send_text(user.phone, message)
                     if not success:
                         logger.warning(
@@ -187,16 +198,18 @@ def send_overdue_reminders() -> dict[str, Any]:
                     failed += 1
 
         logger.info(
-            "Owner overdue reminders: sent=%d skipped=%d failed=%d",
+            "Owner overdue reminders: sent=%d skipped=%d failed=%d skipped_window=%d",
             sent,
             skipped,
             failed,
+            skipped_window,
         )
         return {
             "success": True,
             "sent": sent,
             "skipped": skipped,
             "failed": failed,
+            "skipped_window": skipped_window,
             "total_overdue": len(overdue_invoices),
         }
 
@@ -284,7 +297,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
 
     from app.models.models import InvoiceReminderLog, Invoice, User
 
-    stats = {"whatsapp_sent": 0, "email_sent": 0, "skipped": 0, "failed": 0}
+    stats = {"whatsapp_sent": 0, "email_sent": 0, "skipped": 0, "failed": 0, "wa_skipped_window": 0}
 
     try:
         with session_scope() as db:
@@ -361,7 +374,33 @@ def send_customer_payment_reminders() -> dict[str, Any]:
                             )
                             stats["whatsapp_sent"] += 1
                         else:
-                            stats["failed"] += 1
+                            stats["wa_skipped_window"] += 1
+                            # WhatsApp failed (likely outside 24h window or
+                            # no template) — try email as fallback if available
+                            if customer_email and not (
+                                db.query(InvoiceReminderLog)
+                                .filter(
+                                    InvoiceReminderLog.invoice_id == inv.id,
+                                    InvoiceReminderLog.reminder_type == tier,
+                                    InvoiceReminderLog.channel == "email",
+                                )
+                                .first()
+                            ):
+                                email_ok = _send_customer_email_reminder(
+                                    inv, customer, issuer, tier, business_name
+                                )
+                                if email_ok:
+                                    db.add(
+                                        InvoiceReminderLog(
+                                            invoice_id=inv.id,
+                                            reminder_type=tier,
+                                            channel="email",
+                                            recipient=customer_email,
+                                        )
+                                    )
+                                    stats["email_sent"] += 1
+                                else:
+                                    stats["failed"] += 1
 
                 # --- Email ---
                 if customer_email:
@@ -410,18 +449,21 @@ def send_customer_payment_reminders() -> dict[str, Any]:
 def _classify_customer_tier(days_until_due: int) -> str | None:
     """Map days-until-due to customer reminder tier.
 
+    Uses ranges instead of exact days so reminders are never missed
+    if the Celery beat task skips a day or the worker is temporarily down.
+    Each tier is sent only once per invoice thanks to InvoiceReminderLog.
+
     Returns None if the invoice doesn't match any tier window.
     """
-    if days_until_due == 3:
+    if 1 <= days_until_due <= 3:
         return "customer_pre_due"
     elif days_until_due == 0:
         return "customer_due_today"
-    elif days_until_due == -1:
+    elif -3 <= days_until_due <= -1:
         return "customer_overdue_1d"
-    elif days_until_due == -7:
+    elif -13 <= days_until_due <= -4:
         return "customer_overdue_7d"
     elif days_until_due <= -14:
-        # Only trigger once at -14 (the log prevents re-sends)
         return "customer_overdue_14d"
     return None
 
@@ -437,8 +479,10 @@ def _send_customer_whatsapp_reminder(
 
     Prefers the ``payment_reminder`` template (deliverable outside the 24-hour
     window) and falls back to free-form text when the template is not configured.
+    Checks the 24h conversation window before attempting plain text.
     """
     try:
+        from app.bot.conversation_window import is_window_open
         from app.bot.whatsapp_client import WhatsAppClient
 
         client = WhatsAppClient(settings.WHATSAPP_API_KEY)
@@ -479,6 +523,12 @@ def _send_customer_whatsapp_reminder(
             return client.send_template(customer.phone, template_name, lang, components)
 
         # Fallback: free-form text (only works within 24h window)
+        if not is_window_open(customer.phone):
+            logger.debug(
+                "Skipping WhatsApp reminder for customer %s — outside 24h window",
+                customer.phone[:6] if customer.phone else "none",
+            )
+            return False
         message = _format_customer_reminder(inv, tier, business_name)
         return client.send_text(customer.phone, message)
     except Exception as e:
@@ -522,9 +572,18 @@ def _notify_owner_escalation(
     """Alert the business owner about a severely overdue invoice."""
     try:
         from app.bot.whatsapp_client import WhatsAppClient
+        from app.bot.conversation_window import is_window_open
 
         client = WhatsAppClient(settings.WHATSAPP_API_KEY)
         customer_name = customer.name or "a customer"
+
+        if not is_window_open(issuer.phone):
+            logger.debug(
+                "Skipping owner escalation for user %s — outside 24h window",
+                issuer.id,
+            )
+            return
+
         msg = (
             f"🔴 *Escalation Alert*\n\n"
             f"Invoice {inv.invoice_id} for {customer_name} "
@@ -538,6 +597,169 @@ def _notify_owner_escalation(
         logger.warning(
             "Owner escalation alert failed for invoice %s: %s", inv.invoice_id, e
         )
+
+
+# ── Mark-as-Paid Nudge ──────────────────────────────────────────
+
+
+@celery_app.task(
+    name="reminders.send_mark_paid_nudges",
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def send_mark_paid_nudges() -> dict[str, Any]:
+    """Nudge business owners to mark invoices as paid if they've been settled.
+
+    Many invoices stay "pending" because the customer pays via bank transfer
+    or cash, but the business owner forgets to mark them as paid in SuoOps.
+    This task sends a weekly nudge per business owner listing their oldest
+    pending invoices and encouraging them to update status.
+
+    Tracked via Redis key to avoid spamming — one nudge per owner per 7 days.
+    Runs daily at 12:00 WAT (11:00 UTC).
+    """
+    from sqlalchemy import func as sqlfunc
+    from sqlalchemy.orm import joinedload
+
+    from app.bot.conversation_window import is_window_open
+    from app.db.redis_client import get_redis_client
+    from app.models.models import Invoice, User
+
+    sent = 0
+    skipped_cooldown = 0
+    skipped_window = 0
+    failed = 0
+
+    try:
+        redis = get_redis_client()
+        with session_scope() as db:
+            today = date.today()
+            # Find business owners with 2+ pending revenue invoices older than 5 days
+            cutoff = datetime.combine(today - timedelta(days=5), datetime.min.time())
+
+            owners_with_pending = (
+                db.query(
+                    Invoice.issuer_id,
+                    sqlfunc.count(Invoice.id).label("pending_count"),
+                    sqlfunc.sum(Invoice.amount).label("pending_total"),
+                    sqlfunc.min(Invoice.created_at).label("oldest"),
+                )
+                .filter(
+                    Invoice.status == "pending",
+                    Invoice.invoice_type == "revenue",
+                    Invoice.created_at < cutoff,
+                )
+                .group_by(Invoice.issuer_id)
+                .having(sqlfunc.count(Invoice.id) >= 2)
+                .all()
+            )
+
+            if not owners_with_pending:
+                logger.info("No owners with stale pending invoices for mark-paid nudge")
+                return {"success": True, "sent": 0}
+
+            from app.bot.whatsapp_client import WhatsAppClient
+
+            client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+
+            for row in owners_with_pending:
+                issuer_id = row.issuer_id
+                pending_count = row.pending_count
+                pending_total = float(row.pending_total or 0)
+                oldest_date = row.oldest
+
+                # Check 7-day cooldown via Redis
+                cooldown_key = f"nudge:mark_paid:{issuer_id}"
+                if redis and redis.get(cooldown_key):
+                    skipped_cooldown += 1
+                    continue
+
+                user = db.query(User).filter(User.id == issuer_id).first()
+                if not user or not user.phone:
+                    continue
+
+                # Check conversation window for plain text
+                if not is_window_open(user.phone):
+                    skipped_window += 1
+                    logger.debug(
+                        "Skipping mark-paid nudge for user %s — outside 24h window",
+                        issuer_id,
+                    )
+                    continue
+
+                # Get the 3 oldest pending invoices for specificity
+                oldest_invoices = (
+                    db.query(Invoice)
+                    .options(joinedload(Invoice.customer))
+                    .filter(
+                        Invoice.issuer_id == issuer_id,
+                        Invoice.status == "pending",
+                        Invoice.invoice_type == "revenue",
+                        Invoice.created_at < cutoff,
+                    )
+                    .order_by(Invoice.created_at.asc())
+                    .limit(3)
+                    .all()
+                )
+
+                # Build the nudge message
+                days_oldest = (today - oldest_date.date()).days if oldest_date else 0
+                owner_name = (user.name or "").split()[0] if user.name else ""
+                greeting = f"Hi {owner_name}! 👋\n\n" if owner_name else "Hi there! 👋\n\n"
+
+                msg = (
+                    f"{greeting}"
+                    f"You have *{pending_count} pending invoice(s)* "
+                    f"totalling *₦{pending_total:,.0f}* — "
+                    f"the oldest is {days_oldest} days old.\n\n"
+                )
+
+                if oldest_invoices:
+                    msg += "Here are the oldest ones:\n"
+                    for inv in oldest_invoices:
+                        cust_name = inv.customer.name if inv.customer else "Unknown"
+                        age = (today - inv.created_at.date()).days
+                        msg += f"• {inv.invoice_id} — {cust_name} — ₦{inv.amount:,.0f} ({age}d ago)\n"
+                    msg += "\n"
+
+                msg += (
+                    "💡 *If any of these have been paid* (bank transfer, cash, POS), "
+                    "please mark them as paid in your dashboard so your records stay accurate.\n\n"
+                    "🔗 suoops.com/dashboard"
+                )
+
+                try:
+                    success = client.send_text(user.phone, msg)
+                    if success:
+                        sent += 1
+                        # Set 7-day cooldown
+                        if redis:
+                            redis.set(cooldown_key, "1", ex=7 * 86400)
+                    else:
+                        failed += 1
+                except Exception as e:
+                    logger.warning(
+                        "Mark-paid nudge failed for user %s: %s", issuer_id, e
+                    )
+                    failed += 1
+
+        logger.info(
+            "Mark-paid nudges: sent=%d skipped_cooldown=%d skipped_window=%d failed=%d",
+            sent, skipped_cooldown, skipped_window, failed,
+        )
+        return {
+            "success": True,
+            "sent": sent,
+            "skipped_cooldown": skipped_cooldown,
+            "skipped_window": skipped_window,
+            "failed": failed,
+        }
+
+    except Exception as exc:
+        logger.warning("Mark-paid nudge task failed: %s", exc)
+        raise
 
 
 def _format_customer_reminder(inv: Any, tier: str, business_name: str) -> str:
