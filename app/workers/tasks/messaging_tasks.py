@@ -495,12 +495,11 @@ def _send_customer_whatsapp_reminder(
             payment_link = f"{settings.FRONTEND_URL}/pay/{inv.invoice_id}"
 
             days_until_due = (inv.due_date.date() - date.today()).days
-            if days_until_due > 0:
-                days_info = f"due in {days_until_due} day(s)"
-            elif days_until_due == 0:
-                days_info = "due today"
+            # Template text: "⏰ Overdue: {{4}} days" — send just the number
+            if days_until_due >= 0:
+                days_info = str(days_until_due)
             else:
-                days_info = f"{abs(days_until_due)} day(s) overdue"
+                days_info = str(abs(days_until_due))
 
             bank_name = issuer.bank_name or "N/A"
             account_number = issuer.account_number or "N/A"

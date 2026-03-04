@@ -41,7 +41,7 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
     WHATSAPP_VERIFY_TOKEN: str = ""  # REQUIRED: set a unique random value in env vars
     WHATSAPP_APP_SECRET: str | None = None  # Meta app secret for webhook signature verification
-    # WhatsApp Message Templates
+    # WhatsApp Message Templates (set via env vars — names must match Meta Business Manager)
     WHATSAPP_TEMPLATE_INVOICE: str | None = None  # Basic invoice notification
     WHATSAPP_TEMPLATE_INVOICE_PAYMENT: str | None = None  # Invoice with bank details
     WHATSAPP_TEMPLATE_PAYMENT_REMINDER: str | None = None  # Overdue reminder
