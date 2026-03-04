@@ -134,7 +134,7 @@ _FAQ_ENTRIES: list[dict[str, Any]] = [
             "   Buy packs: ₦1,250 for 50 invoices anytime\n\n"
             "👑 *Pro* — ₦3,250/month\n"
             "   50 invoices/month included\n"
-            "   + Analytics, inventory, tax reports, voice invoicing & more\n\n"
+            "   + Analytics, inventory, tax reports, expense tracking & more\n\n"
             "Manage your plan at suoops.com/dashboard/settings"
         ),
     },
