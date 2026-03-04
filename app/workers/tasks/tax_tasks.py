@@ -58,11 +58,17 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
         reporting = TaxReportingService(db)
         pdf_service = PDFService(s3_client)
 
-        user_id_iter = db.query(User.id).yield_per(100)
+        # Fetch users with phone/email so we can notify after generation
+        users = db.query(User).yield_per(100)
         total = 0
         failures = 0
+        notified_wa = 0
+        notified_email = 0
+        month_label = MONTH_NAMES[prev_month]
+        period_label = f"{month_label} {year}"
 
-        for (user_id,) in user_id_iter:
+        for user in users:
+            user_id = user.id
             total += 1
             try:
                 report = reporting.generate_monthly_report(
@@ -85,6 +91,23 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
                     "Generated monthly tax report for user=%s period=%s-%02d",
                     user_id, year, prev_month,
                 )
+
+                # ── Notify user that report is ready ─────────────
+                wa_ok = _notify_tax_report_whatsapp(
+                    user, period_label, report.pdf_url,
+                )
+                if wa_ok:
+                    notified_wa += 1
+                elif user.email:
+                    email_ok = _send_tax_report_email(
+                        to_email=user.email,
+                        name=user.name or user.business_name,
+                        period=period_label,
+                        pdf_url=report.pdf_url,
+                    )
+                    if email_ok:
+                        notified_email += 1
+
             except Exception as e:
                 failures += 1
                 logger.exception("Failed generating report for user %s: %s", user_id, e)
@@ -105,8 +128,9 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
         rss_final = _rss_mb()
         if rss_final > 0:
             logger.info(
-                "[tax.generate_previous_month_reports] completed users=%s rss_final=%.1fMB failures=%s",
-                total, rss_final, failures,
+                "[tax.generate_previous_month_reports] completed users=%s "
+                "rss_final=%.1fMB failures=%s wa_notified=%s email_notified=%s",
+                total, rss_final, failures, notified_wa, notified_email,
             )
     gc.collect()
 
@@ -183,3 +207,135 @@ def _record_transmission_failure(db, fiscal_code: str, error: Exception) -> None
         db.commit()
     except Exception:
         db.rollback()
+
+
+# ── Tax report notification helpers ──────────────────────────────────
+
+
+def _is_valid_phone(phone: str | None) -> bool:
+    """Return True if phone looks like real digits (not an OAuth placeholder)."""
+    if not phone:
+        return False
+    digits = phone.lstrip("+")
+    return digits.isdigit() and len(digits) >= 10
+
+
+def _notify_tax_report_whatsapp(
+    user: "User", period: str, pdf_url: str | None,
+) -> bool:
+    """Try to send a tax-report-ready notification via WhatsApp.
+
+    Attempts template first (works outside 24h window), then plain text
+    if the conversation window is open.
+    """
+    if not _is_valid_phone(user.phone):
+        return False
+
+    try:
+        from app.bot.conversation_window import is_window_open
+        from app.bot.whatsapp_client import WhatsAppClient
+
+        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        template_name = getattr(settings, "WHATSAPP_TEMPLATE_TAX_REPORT_READY", None)
+        template_lang = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en")
+
+        # Template first
+        if template_name:
+            ok = client.send_template(
+                user.phone,
+                template_name,
+                template_lang,
+                components=[{
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": (user.name or "").split()[0] or "there"},
+                        {"type": "text", "text": period},
+                    ],
+                }],
+            )
+            if ok:
+                return True
+
+        # Plain text fallback (only inside 24h window)
+        if is_window_open(user.phone):
+            msg = (
+                f"\U0001f4ca Your *{period} Tax Report* is ready!\n\n"
+                "View and download it from your dashboard:\n"
+                "\U0001f517 suoops.com/dashboard/tax-reports"
+            )
+            return client.send_text(user.phone, msg)
+
+    except Exception as e:
+        logger.warning("Tax report WA notification failed for user %s: %s", user.id, e)
+
+    return False
+
+
+def _send_tax_report_email(
+    to_email: str, name: str | None, period: str, pdf_url: str | None,
+) -> bool:
+    """Send a tax-report-ready notification via email."""
+    display_name = (name or "").split()[0] if name else "there"
+
+    headline = f"Your {period} Tax Report Is Ready"
+    body_html = (
+        f"Your monthly tax report for <b>{period}</b> has been generated "
+        "and is ready to view on your dashboard."
+    )
+    if pdf_url:
+        body_html += f'<br><br><a href="{pdf_url}">Download PDF</a>'
+
+    tpl_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "templates", "email", "engagement_tip.html"
+    )
+    try:
+        with open(tpl_path) as f:
+            tpl = Template(f.read())
+        html_body = tpl.render(
+            headline=headline,
+            name=display_name,
+            body_text=body_html,
+            tip_text="Keep your records tidy — download and store your reports monthly.",
+            cta_url="https://suoops.com/dashboard/tax-reports",
+            cta_label="View Tax Report \u2192",
+        )
+    except Exception:
+        html_body = f"<p>Hi {display_name},</p><p>{headline}.</p><p>{body_html}</p>"
+
+    plain_body = (
+        f"Hi {display_name},\n\n"
+        f"Your {period} tax report has been generated.\n\n"
+        f"View it at https://suoops.com/dashboard/tax-reports"
+    )
+    if pdf_url:
+        plain_body += f"\nDirect download: {pdf_url}"
+
+    subject = f"\U0001f4ca Your {period} Tax Report Is Ready \u2014 SuoOps"
+
+    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
+    smtp_port = getattr(settings, "SMTP_PORT", 587)
+    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
+    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+
+    if not smtp_user or not smtp_password:
+        logger.warning("SMTP not configured, cannot send tax report email to %s", to_email)
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(plain_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        logger.info("Tax report email sent to %s", to_email)
+        return True
+    except Exception as e:
+        logger.warning("Tax report email failed for %s: %s", to_email, e)
+        return False
