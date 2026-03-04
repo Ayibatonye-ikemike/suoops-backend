@@ -20,6 +20,14 @@ from app.workers.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
+def _is_valid_phone(phone: str | None) -> bool:
+    """Return True if phone looks like real digits (not an OAuth placeholder)."""
+    if not phone:
+        return False
+    digits = phone.lstrip("+")
+    return digits.isdigit() and len(digits) >= 10
+
+
 @celery_app.task(
     bind=True,
     name="whatsapp.process_inbound",
@@ -115,7 +123,12 @@ def send_overdue_reminders() -> dict[str, Any]:
 
             for issuer_id, invoices in by_issuer.items():
                 user = db.query(User).filter(User.id == issuer_id).first()
-                if not user or not user.phone:
+                if not user:
+                    continue
+                has_phone = _is_valid_phone(user.phone)
+
+                # Skip users with no reachable channel at all
+                if not has_phone and not user.email:
                     continue
 
                 # Classify invoices by escalation tier
@@ -163,7 +176,7 @@ def send_overdue_reminders() -> dict[str, Any]:
 
                     # 1) Try template first (works outside 24h window)
                     overdue_tpl = settings.WHATSAPP_TEMPLATE_OVERDUE_REPORT
-                    if overdue_tpl:
+                    if overdue_tpl and has_phone:
                         total_inv = sum(len(v) for v in tiers.values())
                         total_amt = sum(inv.amount for vs in tiers.values() for inv in vs)
                         critical_cnt = len(tiers["owner_critical"])
@@ -187,7 +200,7 @@ def send_overdue_reminders() -> dict[str, Any]:
                             sent += 1
 
                     # 2) Fallback to plain text (only within 24h window)
-                    if not wa_delivered and is_window_open(user.phone):
+                    if not wa_delivered and has_phone and is_window_open(user.phone):
                         wa_delivered = client.send_text(user.phone, message)
                         if wa_delivered:
                             sent += 1
@@ -948,7 +961,10 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                     continue
 
                 user = db.query(User).filter(User.id == issuer_id).first()
-                if not user or not user.phone:
+                if not user:
+                    continue
+                has_phone = _is_valid_phone(user.phone)
+                if not has_phone and not user.email:
                     continue
 
                 # Get the 3 oldest pending invoices for specificity
@@ -997,7 +1013,7 @@ def send_mark_paid_nudges() -> dict[str, Any]:
 
                     # 1) Try template first (works outside 24h window)
                     nudge_tpl = settings.WHATSAPP_TEMPLATE_MARK_PAID_NUDGE
-                    if nudge_tpl:
+                    if nudge_tpl and has_phone:
                         tpl_lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
                         delivered = client.send_template(
                             user.phone,
@@ -1016,7 +1032,7 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                             sent += 1
 
                     # 2) Fallback to plain text (only within 24h window)
-                    if not delivered and is_window_open(user.phone):
+                    if not delivered and has_phone and is_window_open(user.phone):
                         delivered = client.send_text(user.phone, msg)
                         if delivered:
                             sent += 1

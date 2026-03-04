@@ -86,7 +86,8 @@ class WhatsAppHandler:
         try:
             message = extract_message(payload)
             if not message:
-                logger.warning("Unsupported WhatsApp payload: %s", payload)
+                # Status webhooks (sent/delivered/read) are normal — not errors
+                logger.debug("Non-message webhook payload (status update): %s", payload)
                 return
 
             sender = message.get("from")
