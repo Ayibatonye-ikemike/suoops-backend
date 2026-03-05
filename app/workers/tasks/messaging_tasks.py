@@ -152,12 +152,12 @@ def send_overdue_reminders() -> dict[str, Any]:
                         tier = "owner_light"
 
                     # Check if this tier was already sent for this invoice
+                    # (any channel — prevents duplicate emails when WA fails)
                     already = (
                         db.query(InvoiceReminderLog)
                         .filter(
                             InvoiceReminderLog.invoice_id == inv.id,
                             InvoiceReminderLog.reminder_type == tier,
-                            InvoiceReminderLog.channel == "whatsapp",
                         )
                         .first()
                     )
@@ -573,6 +573,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
                 business_name = issuer.business_name or issuer.name
 
                 # --- WhatsApp ---
+                wa_delivered = False
                 if customer_phone:
                     already = (
                         db.query(InvoiceReminderLog)
@@ -585,6 +586,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
                     )
                     if already:
                         stats["skipped"] += 1
+                        wa_delivered = True  # Already sent via WA before
                     else:
                         ok = _send_customer_whatsapp_reminder(
                             inv, customer, issuer, tier, business_name
@@ -599,6 +601,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
                                 )
                             )
                             stats["whatsapp_sent"] += 1
+                            wa_delivered = True
                         else:
                             stats["wa_skipped_window"] += 1
                             # WhatsApp failed (likely outside 24h window or
@@ -628,8 +631,8 @@ def send_customer_payment_reminders() -> dict[str, Any]:
                                 else:
                                     stats["failed"] += 1
 
-                # --- Email ---
-                if customer_email:
+                # --- Email (only for email-only customers, skip if WA delivered) ---
+                if customer_email and not wa_delivered:
                     already = (
                         db.query(InvoiceReminderLog)
                         .filter(

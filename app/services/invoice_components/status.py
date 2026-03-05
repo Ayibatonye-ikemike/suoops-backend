@@ -520,7 +520,7 @@ class InvoiceStatusMixin:
             
             asyncio.run(_run())
 
-            # Also send WhatsApp template if configured
+            # Also send WhatsApp template if configured (one per product)
             from app.core.config import settings as _settings
 
             template_name = _settings.WHATSAPP_TEMPLATE_LOW_STOCK_ALERT
@@ -529,18 +529,22 @@ class InvoiceStatusMixin:
                     from app.bot.whatsapp_client import WhatsAppClient
 
                     client = WhatsAppClient(_settings.WHATSAPP_API_KEY)
-                    user_name = user.name.split()[0] if user.name else "there"
                     lang = _settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
-                    components = [
-                        {
-                            "type": "body",
-                            "parameters": [
-                                {"type": "text", "text": user_name},
-                                {"type": "text", "text": str(len(products))},
-                            ],
-                        }
-                    ]
-                    client.send_template(user.phone, template_name, lang, components)
+                    for product in products:
+                        product_name = product.name or "Unknown product"
+                        qty = str(product.quantity_in_stock)
+                        reorder_level = str(product.reorder_level)
+                        components = [
+                            {
+                                "type": "body",
+                                "parameters": [
+                                    {"type": "text", "text": product_name},
+                                    {"type": "text", "text": qty},
+                                    {"type": "text", "text": reorder_level},
+                                ],
+                            }
+                        ]
+                        client.send_template(user.phone, template_name, lang, components)
                 except Exception as exc:
                     logger.error("Failed to send low stock WhatsApp: %s", exc)
             
