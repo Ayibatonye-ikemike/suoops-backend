@@ -2008,6 +2008,8 @@ ALLOWED_TASKS = {
     "engagement": "engagement.send_lifecycle_emails",
     "daily_summary": "summary.send_daily_summaries",
     "overdue_reminders": "maintenance.send_overdue_reminders",
+    "customer_reminders": "reminders.send_customer_payment_reminders",
+    "mark_paid_nudges": "reminders.send_mark_paid_nudges",
     "tax_reports": "tax.generate_previous_month_reports",
 }
 

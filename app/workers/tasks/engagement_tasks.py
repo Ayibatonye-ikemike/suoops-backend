@@ -474,13 +474,13 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
     else:
         stats["failed"] += 1
 
-    # Also send WhatsApp activation template (Day 0 only)
-    if days_since_signup == 0 and user.phone:
+    # Also send WhatsApp activation template (once, on first eligible day)
+    if user.phone:
         if _send_wa_template(
             user.phone,
             settings.WHATSAPP_TEMPLATE_ACTIVATION_WELCOME,
             [name],
-            "wa_activation_day0",
+            "wa_activation_welcome",
             db,
             user.id,
         ):
