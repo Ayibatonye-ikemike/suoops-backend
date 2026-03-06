@@ -23,6 +23,9 @@ from .customer_engagement_tasks import (
     send_dormant_customer_nudges,
     send_post_payment_referrals,
 )
+from .welcome_tasks import (
+    send_instant_welcome,
+)
 from .expense_tasks import (
     send_expense_reminders,
     send_expense_summary,
@@ -70,4 +73,6 @@ __all__ = [
     # Customer engagement
     "send_dormant_customer_nudges",
     "send_post_payment_referrals",
+    # Instant welcome
+    "send_instant_welcome",
 ]

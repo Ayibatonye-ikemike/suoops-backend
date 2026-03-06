@@ -297,8 +297,12 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
         # monetization / tips / win-back emails too.
 
     # ── 1. ACTIVATION (users with 0 invoices, first 3 days) ──────────
+    #    Skip Day 0 if instant welcome was already sent at signup.
     if invoice_count == 0 and signup_age.days <= 3:
-        _send_activation(db, user, name, signup_age.days, stats)
+        if signup_age.days == 0 and _was_sent(db, user.id, "instant_welcome"):
+            stats["skipped"] += 1
+        else:
+            _send_activation(db, user, name, signup_age.days, stats)
         return
 
     # ── 2. FIRST INVOICE FOLLOW-UP (WhatsApp only) ──────────────────

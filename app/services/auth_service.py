@@ -186,7 +186,15 @@ class AuthService:
             sync_user_to_brevo_sync(user)
         except Exception as e:
             logger.warning(f"Failed to sync user to Brevo: {e}")
-        
+
+        # Fire instant welcome message (async — doesn't block API response)
+        try:
+            from app.workers.tasks.welcome_tasks import send_instant_welcome
+            send_instant_welcome.delay(user.id)
+            logger.info("Queued instant welcome for user %s", user.id)
+        except Exception as e:
+            logger.warning(f"Failed to queue instant welcome: {e}")
+
         return self._issue_tokens(user)
 
     # ----------------------------- Login -----------------------------
