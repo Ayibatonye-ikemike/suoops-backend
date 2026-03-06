@@ -16,6 +16,9 @@ from __future__ import annotations
 from .engagement_tasks import (
     send_engagement_emails,
 )
+from .morning_insights_tasks import (
+    send_morning_insights,
+)
 from .expense_tasks import (
     send_expense_reminders,
     send_expense_summary,
@@ -58,4 +61,6 @@ __all__ = [
     "send_expense_reminders",
     # Engagement tasks
     "send_engagement_emails",
+    # Morning insights
+    "send_morning_insights",
 ]

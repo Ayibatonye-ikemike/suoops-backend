@@ -58,6 +58,7 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_TEMPLATE_OVERDUE_REPORT: str | None = None  # Owner overdue summary
     WHATSAPP_TEMPLATE_MARK_PAID_NUDGE: str | None = None  # Owner mark-as-paid nudge
     WHATSAPP_TEMPLATE_TAX_REPORT_READY: str | None = None  # Monthly tax report ready
+    WHATSAPP_TEMPLATE_MORNING_TIP: str | None = None  # Daily morning business insight
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
     
     @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")

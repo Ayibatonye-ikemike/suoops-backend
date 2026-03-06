@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Good Morning — SuoOps</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:40px 20px;">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;">
+  <!-- Header — warm morning gradient -->
+  <tr><td style="background:linear-gradient(135deg,#f59e0b,#ef4444,#ec4899);padding:30px 40px;text-align:center;">
+    <p style="color:#ffffff;margin:0 0 6px;font-size:28px;">☀️</p>
+    <h1 style="color:#ffffff;margin:0;font-size:20px;font-weight:700;">Good Morning, {{ name }}!</h1>
+    <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">Your daily business insight from SuoOps</p>
+  </td></tr>
+  <!-- Headline -->
+  <tr><td style="padding:28px 40px 0;">
+    <h2 style="color:#1e293b;font-size:18px;font-weight:700;margin:0;">{{ headline }}</h2>
+  </td></tr>
+  <!-- Body -->
+  <tr><td style="padding:16px 40px 0;">
+    <p style="color:#334155;font-size:15px;line-height:1.7;margin:0;">{{ body_text }}</p>
+  </td></tr>
+  <!-- Tip callout -->
+  {% if tip_text %}
+  <tr><td style="padding:20px 40px 0;">
+    <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:14px 18px;border-radius:0 8px 8px 0;">
+      <p style="color:#92400e;font-size:14px;line-height:1.6;margin:0;"><strong>💡 Quick Action:</strong> {{ tip_text }}</p>
+    </div>
+  </td></tr>
+  {% endif %}
+  <!-- Motivational sign-off -->
+  <tr><td style="padding:24px 40px 0;">
+    <p style="color:#334155;font-size:15px;line-height:1.6;margin:0;">Have a productive day! 🚀</p>
+    <p style="color:#64748b;font-size:14px;line-height:1.6;margin:8px 0 0;">— Your SuoOps Team</p>
+  </td></tr>
+  <!-- Footer -->
+  <tr><td style="padding:24px 40px;border-top:1px solid #e2e8f0;text-align:center;margin-top:16px;">
+    <p style="color:#94a3b8;font-size:12px;margin:0;">SuoOps · Simple invoicing for Nigerian businesses</p>
+    <p style="color:#94a3b8;font-size:11px;margin:8px 0 0;">You're getting this because you're part of the SuoOps family. We send one quick tip every morning to help your business grow.</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

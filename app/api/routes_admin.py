@@ -2011,6 +2011,7 @@ ALLOWED_TASKS = {
     "customer_reminders": "reminders.send_customer_payment_reminders",
     "mark_paid_nudges": "reminders.send_mark_paid_nudges",
     "tax_reports": "tax.generate_previous_month_reports",
+    "morning_insights": "insights.send_morning_insights",
 }
 
 
