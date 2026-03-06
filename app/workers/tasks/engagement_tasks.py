@@ -427,28 +427,74 @@ def _send_phone_nudge(db, user, name: str, days_since_signup: int, stats: dict[s
 
 
 def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[str, int]) -> None:
-    """Send activation email based on days since signup."""
+    """Send activation email based on days since signup.
+
+    Day 0 — Welcome: feature showcase (invoicing, WhatsApp, reminders, receipts,
+             expenses, customer DB) + CTA to create first invoice.
+    Day 1 — Feature tour: deep dive into 5 key features users may not know about.
+    Day 3 — Pro intro: full Pro plan pitch (₦3,250/mo, all premium features) +
+             invoice pack option (₦1,250/50).
+    """
+    # Each day maps to: (email_type, subject, template_file, plain_text_fallback)
     email_map = {
         0: (
             EMAIL_WELCOME_FIRST_INVOICE,
-            "Welcome to SuoOps — Create Your First Invoice",
-            "Create Your First Invoice",
-            "You just signed up for SuoOps — great move! The best way to get started is simple: "
-            "create your first invoice right now. It takes less than a minute.",
+            "Welcome to SuoOps — Here's Everything You Can Do 🎉",
+            "activation_day0_welcome.html",
+            (
+                f"Hi {name},\n\n"
+                "Welcome to SuoOps! You just made a smart move.\n\n"
+                "Here's what you can do right now:\n"
+                "📄 Send professional invoices in under 60 seconds\n"
+                "💬 Create invoices by chatting on WhatsApp\n"
+                "🔔 Auto payment reminders — no more chasing customers\n"
+                "🧾 Receipts with QR verification for every payment\n"
+                "💰 Track expenses to see your real profit\n"
+                "👥 Customer database built automatically from invoices\n\n"
+                "You have 5 free invoices to get started.\n\n"
+                "Create your first invoice: https://suoops.com/dashboard/invoices/new\n\n"
+                "— SuoOps"
+            ),
         ),
         1: (
             EMAIL_SEND_ONE_INVOICE,
-            "Send 1 invoice today",
-            "Send 1 Invoice Today",
-            "Just one invoice. That's all it takes to see how SuoOps keeps your business organized. "
-            "Enter a customer name, amount, and hit send.",
+            "Did You Know SuoOps Can Do All This? 🔍",
+            "activation_day1_features.html",
+            (
+                f"Hi {name},\n\n"
+                "Most people sign up for invoicing — but SuoOps does a lot more:\n\n"
+                "🔔 Automatic Payment Reminders — customers get nudged, you stay professional\n"
+                "💸 Expense Tracking — see your real profit, not just revenue\n"
+                "💬 WhatsApp Invoicing — say 'Invoice Ade ₦15,000 for website design' and it's done\n"
+                "👥 Customer Database — purchase history built automatically from invoices\n"
+                "🧾 Receipts with QR — anyone can scan to verify a payment is real\n\n"
+                "All these features are available on your free plan.\n\n"
+                "Explore your dashboard: https://suoops.com/dashboard\n\n"
+                "— SuoOps"
+            ),
         ),
         3: (
             EMAIL_DAILY_HABIT,
-            "Most businesses use SuoOps daily",
-            "Make Invoicing a Habit",
-            "The businesses that grow fastest are the ones that track every naira. "
-            "SuoOps makes it easy — create invoices, track payments, and stay on top of your cash flow.",
+            "Ready to Level Up? Meet SuoOps Pro ⭐",
+            "activation_day3_pro.html",
+            (
+                f"Hi {name},\n\n"
+                "You've been using SuoOps for a few days. Ready to unlock the full toolkit?\n\n"
+                "SuoOps Pro — ₦3,250/month:\n"
+                "✅ 50 invoices/month (vs 5 on free)\n"
+                "✅ Tax reports — PIT & CIT generated automatically\n"
+                "✅ Inventory management with low-stock alerts\n"
+                "✅ Custom logo branding on invoices & receipts\n"
+                "✅ Team management — add up to 3 members\n"
+                "✅ Daily WhatsApp business summary\n"
+                "✅ Business insights — customer value, margin analysis\n"
+                "✅ Voice invoicing — 15/month\n"
+                "✅ Priority support\n\n"
+                "₦3,250/month is less than a business lunch — but saves hours every week.\n\n"
+                "Not ready? Buy 50 invoices for ₦1,250 anytime.\n\n"
+                "Upgrade: https://suoops.com/dashboard/settings/subscription\n\n"
+                "— SuoOps"
+            ),
         ),
     }
 
@@ -457,15 +503,14 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
         stats["skipped"] += 1
         return
 
-    email_type, subject, headline, body_text = entry
+    email_type, subject, template_file, plain = entry
 
     if _was_sent(db, user.id, email_type):
         stats["skipped"] += 1
         return
 
-    template = _jinja_env.get_template("engagement_first_invoice.html")
-    html = template.render(name=name, headline=headline, body_text=body_text)
-    plain = f"Hi {name},\n\n{body_text}\n\nCreate your first invoice: https://suoops.com/dashboard/invoices/new\n\n— SuoOps"
+    template = _jinja_env.get_template(template_file)
+    html = template.render(name=name)
 
     if _send_smtp_email(user.email, subject, html, plain):
         _record_sent(db, user.id, email_type)
