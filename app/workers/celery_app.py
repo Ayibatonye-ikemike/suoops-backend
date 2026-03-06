@@ -69,6 +69,14 @@ def _create_celery() -> Celery:
                 "task": "insights.send_morning_insights",
                 "schedule": crontab(minute=0, hour=7),  # 07:00 UTC = 08:00 WAT
             },
+            "daily-dormant-customer-nudges": {
+                "task": "customer_engagement.send_dormant_customer_nudges",
+                "schedule": crontab(minute=0, hour=10),  # 10:00 UTC = 11:00 WAT
+            },
+            "daily-post-payment-referrals": {
+                "task": "customer_engagement.send_post_payment_referrals",
+                "schedule": crontab(minute=30, hour=14),  # 14:30 UTC = 15:30 WAT
+            },
         }
     return celery
 

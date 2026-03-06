@@ -2012,6 +2012,8 @@ ALLOWED_TASKS = {
     "mark_paid_nudges": "reminders.send_mark_paid_nudges",
     "tax_reports": "tax.generate_previous_month_reports",
     "morning_insights": "insights.send_morning_insights",
+    "dormant_nudges": "customer_engagement.send_dormant_customer_nudges",
+    "referral_asks": "customer_engagement.send_post_payment_referrals",
 }
 
 

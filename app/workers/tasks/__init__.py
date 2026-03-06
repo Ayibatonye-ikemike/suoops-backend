@@ -19,6 +19,10 @@ from .engagement_tasks import (
 from .morning_insights_tasks import (
     send_morning_insights,
 )
+from .customer_engagement_tasks import (
+    send_dormant_customer_nudges,
+    send_post_payment_referrals,
+)
 from .expense_tasks import (
     send_expense_reminders,
     send_expense_summary,
@@ -63,4 +67,7 @@ __all__ = [
     "send_engagement_emails",
     # Morning insights
     "send_morning_insights",
+    # Customer engagement
+    "send_dormant_customer_nudges",
+    "send_post_payment_referrals",
 ]

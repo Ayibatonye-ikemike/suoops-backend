@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thank You for Your Payment!</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:40px 20px;">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;">
+
+  <!-- Header -->
+  <tr><td style="background:linear-gradient(135deg,#10b981,#059669);padding:32px 40px;text-align:center;">
+    <p style="color:#ffffff;margin:0 0 8px;font-size:32px;">🎉</p>
+    <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:700;">Thank You, {{ customer_name }}!</h1>
+    <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:14px;">Your payment to {{ business_name }} is confirmed</p>
+  </td></tr>
+
+  <!-- Body -->
+  <tr><td style="padding:28px 40px;">
+    <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 16px;">
+      Hi {{ customer_name }},
+    </p>
+    <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 16px;">
+      Thank you for doing business with <strong>{{ business_name }}</strong>! We appreciate your trust
+      and hope you had a great experience. 🙏
+    </p>
+    <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 20px;">
+      If you enjoyed the service, would you do us a quick favour?
+    </p>
+
+    <!-- Referral ask card -->
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:22px 24px;text-align:center;margin:0 0 20px;">
+      <p style="color:#166534;font-size:16px;font-weight:700;margin:0 0 10px;">
+        Know someone who might need {{ business_name }}'s services?
+      </p>
+      <p style="color:#15803d;font-size:14px;line-height:1.6;margin:0 0 14px;">
+        A simple recommendation to a friend, colleague, or family member
+        goes a long way in helping a small business grow. 💚
+      </p>
+      <p style="color:#334155;font-size:14px;line-height:1.7;margin:0;">
+        Just tell them about <strong>{{ business_name }}</strong> — that's all it takes!
+      </p>
+      {% if business_phone %}
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid #bbf7d0;">
+        <p style="color:#64748b;font-size:13px;margin:0;">
+          📞 They can reach {{ business_name }} at: <strong>{{ business_phone }}</strong>
+        </p>
+      </div>
+      {% endif %}
+    </div>
+
+    <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0;">
+      Thank you for supporting small business! 🇳🇬
+    </p>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:20px 40px;border-top:1px solid #e2e8f0;text-align:center;">
+    <p style="color:#94a3b8;font-size:12px;margin:0;">Sent on behalf of {{ business_name }} · Powered by SuoOps</p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
