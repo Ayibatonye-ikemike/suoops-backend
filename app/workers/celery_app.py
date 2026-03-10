@@ -31,6 +31,9 @@ def _create_celery() -> Celery:
         beat_scheduler="redbeat.RedBeatScheduler",
         redbeat_redis_url=redbeat_redis_url,
         redbeat_key_prefix="suoops-beat",
+        # Limit Redis connections to avoid "max number of clients reached"
+        broker_pool_limit=3,
+        redis_backend_transport_options={"max_connections": 5},
     )
     if ssl_options:
         celery.conf.update(
