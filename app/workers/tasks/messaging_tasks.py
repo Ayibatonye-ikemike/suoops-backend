@@ -574,7 +574,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
 
                 # --- WhatsApp ---
                 wa_delivered = False
-                if customer_phone:
+                if customer_phone and _is_valid_phone(customer_phone):
                     already = (
                         db.query(InvoiceReminderLog)
                         .filter(

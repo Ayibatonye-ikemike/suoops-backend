@@ -120,8 +120,8 @@ class ExpenseOCRService:
         
         # Upload to S3
         receipt_url = await self.s3_client.upload_file(
-            file_data=image_bytes,
-            object_name=filename,
+            data=image_bytes,
+            key=filename,
             content_type="image/jpeg",
         )
         

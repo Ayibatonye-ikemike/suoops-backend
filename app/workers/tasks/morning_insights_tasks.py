@@ -445,8 +445,8 @@ def _is_valid_phone(phone: str | None) -> bool:
     autoretry_for=(Exception,),
     retry_backoff=60,
     retry_kwargs={"max_retries": 2},
-    soft_time_limit=300,
-    time_limit=360,
+    soft_time_limit=1740,
+    time_limit=1800,
 )
 def send_morning_insights() -> dict[str, Any]:
     """Send a daily morning business insight to all users.
