@@ -2115,3 +2115,130 @@ def trigger_task(
         "message": f"Task '{task_key}' dispatched to worker. Check Render worker logs for output.",
     }
 
+
+# ============================================================================
+# Testimonial Management
+# ============================================================================
+
+
+class AdminTestimonialItem(BaseModel):
+    id: int
+    user_id: int
+    user_name: str
+    business_name: str | None
+    email: str | None
+    text: str
+    rating: int
+    approved: bool
+    featured: bool
+    created_at: dt.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/testimonials", response_model=list[AdminTestimonialItem])
+def list_testimonials(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    status: str = Query("all", description="Filter: all, pending, approved"),
+) -> Any:
+    """List all testimonials for admin review."""
+    from app.models.models import Testimonial
+
+    log_audit_event("admin.testimonials.list", user_id=admin_user.id)
+
+    query = db.query(Testimonial).join(models.User, Testimonial.user_id == models.User.id)
+
+    if status == "pending":
+        query = query.filter(Testimonial.approved.is_(False))
+    elif status == "approved":
+        query = query.filter(Testimonial.approved.is_(True))
+
+    testimonials = query.order_by(desc(Testimonial.created_at)).limit(100).all()
+
+    return [
+        AdminTestimonialItem(
+            id=t.id,
+            user_id=t.user_id,
+            user_name=t.user.name,
+            business_name=t.user.business_name,
+            email=t.user.email,
+            text=t.text,
+            rating=t.rating,
+            approved=t.approved,
+            featured=t.featured,
+            created_at=t.created_at,
+        )
+        for t in testimonials
+    ]
+
+
+class TestimonialUpdateIn(BaseModel):
+    approved: bool | None = None
+    featured: bool | None = None
+
+
+@router.patch("/testimonials/{testimonial_id}")
+def update_testimonial(
+    testimonial_id: int,
+    body: TestimonialUpdateIn,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Approve, feature, or reject a testimonial."""
+    from app.models.models import Testimonial
+
+    testimonial = db.query(Testimonial).filter(Testimonial.id == testimonial_id).first()
+    if not testimonial:
+        raise HTTPException(status_code=404, detail="Testimonial not found")
+
+    if body.approved is not None:
+        testimonial.approved = body.approved
+    if body.featured is not None:
+        testimonial.featured = body.featured
+
+    db.commit()
+
+    log_audit_event(
+        "admin.testimonials.update",
+        user_id=admin_user.id,
+        testimonial_id=testimonial_id,
+        approved=testimonial.approved,
+        featured=testimonial.featured,
+    )
+    logger.info(
+        "Admin %s updated testimonial %d: approved=%s featured=%s",
+        admin_user.id, testimonial_id, testimonial.approved, testimonial.featured,
+    )
+
+    return {
+        "id": testimonial_id,
+        "approved": testimonial.approved,
+        "featured": testimonial.featured,
+        "message": "Testimonial updated",
+    }
+
+
+@router.delete("/testimonials/{testimonial_id}")
+def delete_testimonial(
+    testimonial_id: int,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Delete a testimonial."""
+    from app.models.models import Testimonial
+
+    testimonial = db.query(Testimonial).filter(Testimonial.id == testimonial_id).first()
+    if not testimonial:
+        raise HTTPException(status_code=404, detail="Testimonial not found")
+
+    db.delete(testimonial)
+    db.commit()
+
+    log_audit_event(
+        "admin.testimonials.delete",
+        user_id=admin_user.id,
+        testimonial_id=testimonial_id,
+    )
+    return {"message": "Testimonial deleted"}
+

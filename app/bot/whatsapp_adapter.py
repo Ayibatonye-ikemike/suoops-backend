@@ -153,6 +153,18 @@ class WhatsAppHandler:
                 logger.info("Handled payment confirmation from customer %s", sender)
                 return
 
+        # ── Feedback collection ──────────────────────────────────
+        # If user has a pending feedback request and sends a substantial
+        # reply (10+ chars, not a short keyword), capture it as a testimonial.
+        if len(text) >= 10 and text_lower not in {"help", "menu", "hi", "hello", "hey", "start", "invoice", "report"}:
+            from app.workers.tasks.feedback_tasks import (
+                is_feedback_pending,
+                clear_feedback_pending,
+            )
+            if is_feedback_pending(sender):
+                if self._save_feedback(sender, text):
+                    return
+
         # Separate help vs greeting for different responses
         help_keywords = {"help", "menu", "guide", "how", "instructions", "commands"}
         greeting_keywords = {
@@ -482,6 +494,46 @@ class WhatsAppHandler:
             "Type *help* for full guide."
         )
         self.client.send_text(sender, msg)
+
+    def _save_feedback(self, sender: str, text: str) -> bool:
+        """Save a feedback reply as a testimonial and thank the user.
+
+        Returns True if feedback was captured, False otherwise.
+        """
+        from app.workers.tasks.feedback_tasks import clear_feedback_pending
+
+        issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+        if issuer_id is None:
+            return False
+
+        # Check they don't already have one
+        existing = (
+            self.db.query(models.Testimonial)
+            .filter(models.Testimonial.user_id == issuer_id)
+            .first()
+        )
+        if existing:
+            clear_feedback_pending(sender)
+            return False
+
+        testimonial = models.Testimonial(
+            user_id=issuer_id,
+            text=text[:500],
+            rating=5,
+        )
+        self.db.add(testimonial)
+        self.db.commit()
+        clear_feedback_pending(sender)
+
+        self.client.send_text(
+            sender,
+            "🙏 *Thank you for your feedback!*\n\n"
+            "Your words mean a lot to us. We may feature your review "
+            "on our website to help other businesses discover SuoOps.\n\n"
+            "Keep growing! 💪",
+        )
+        logger.info("Feedback captured from user %d via WhatsApp", issuer_id)
+        return True
 
     def _handle_conversational(self, sender: str, text_lower: str) -> bool:
         """Handle conversational/social messages naturally.

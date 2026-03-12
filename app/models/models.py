@@ -500,3 +500,27 @@ class InvoiceReminderLog(Base):
         default=utcnow,
         server_default=func.now(),
     )
+
+
+class Testimonial(Base):
+    """User-submitted testimonial/feedback for the landing page.
+
+    Workflow:
+    1. Authenticated user submits via POST /testimonials
+    2. Admin approves via PATCH /admin/testimonials/{id}
+    3. Approved testimonials shown on public landing page via GET /public/testimonials
+    """
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, default=5)  # 1-5 stars
+    approved: Mapped[bool] = mapped_column(default=False, index=True)
+    featured: Mapped[bool] = mapped_column(default=False, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
+
+    user: Mapped[User] = relationship("User")

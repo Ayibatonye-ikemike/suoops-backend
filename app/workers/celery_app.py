@@ -80,6 +80,10 @@ def _create_celery() -> Celery:
                 "task": "customer_engagement.send_post_payment_referrals",
                 "schedule": crontab(minute=30, hour=14),  # 14:30 UTC = 15:30 WAT
             },
+            "weekly-feedback-collection": {
+                "task": "feedback.collect_user_feedback",
+                "schedule": crontab(minute=0, hour=12, day_of_week=3),  # Wed 12:00 UTC = 13:00 WAT
+            },
         }
     return celery
 

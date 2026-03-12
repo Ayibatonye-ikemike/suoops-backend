@@ -23,6 +23,9 @@ from .customer_engagement_tasks import (
     send_dormant_customer_nudges,
     send_post_payment_referrals,
 )
+from .feedback_tasks import (
+    collect_user_feedback,
+)
 from .welcome_tasks import (
     send_instant_welcome,
 )

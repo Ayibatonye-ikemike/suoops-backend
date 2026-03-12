@@ -34,6 +34,8 @@ from app.api.routes_support import router as support_router
 from app.api.routes_tax_main import router as tax_router
 from app.api.routes_team import router as team_router
 from app.api.routes_telemetry import router as telemetry_router
+from app.api.routes_testimonials import auth_router as testimonial_router
+from app.api.routes_testimonials import public_router as testimonial_public_router
 from app.api.routes_user import router as user_router
 from app.api.routes_user_bank import router as user_bank_router
 from app.api.routes_user_logo import router as user_logo_router
@@ -183,6 +185,8 @@ def create_app() -> FastAPI:
     app.include_router(team_router, tags=["team"])
     app.include_router(referral_router, tags=["referrals"])
     app.include_router(support_router, tags=["support"])
+    app.include_router(testimonial_public_router, prefix="/public", tags=["public"])
+    app.include_router(testimonial_router, tags=["testimonials"])
     app.include_router(admin_auth_router, tags=["admin-auth"])
     app.include_router(admin_router)
     app.include_router(health_router)
