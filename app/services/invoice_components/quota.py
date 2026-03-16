@@ -68,11 +68,21 @@ class InvoiceQuotaMixin:
         """Raise if the issuer has no invoice balance (revenue invoices only)."""
         if invoice_type != "revenue":
             return  # Expense invoices don't consume balance
-        
-        quota = self.check_invoice_quota(issuer_id)
-        if not quota["can_create"]:
+
+        # Lock the user row to prevent concurrent invoice creation from
+        # bypassing the balance check (race condition).
+        user = (
+            self.db.query(models.User)
+            .with_for_update()
+            .filter(models.User.id == issuer_id)
+            .one_or_none()
+        )
+        if not user:
+            raise UserNotFoundError()
+        balance = self._get_invoice_balance_safe(user)
+        if balance <= 0:
             raise InvoiceBalanceExhaustedError(
-                balance=quota["invoice_balance"],
+                balance=0,
                 pack_price=INVOICE_PACK_PRICE,
                 pack_size=INVOICE_PACK_SIZE,
             )

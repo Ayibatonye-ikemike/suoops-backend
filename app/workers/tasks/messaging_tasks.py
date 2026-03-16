@@ -35,6 +35,8 @@ def _is_valid_phone(phone: str | None) -> bool:
     retry_backoff=True,
     retry_jitter=True,
     retry_kwargs={"max_retries": 5},
+    soft_time_limit=120,
+    time_limit=150,
 )
 def process_whatsapp_inbound(self: Task, payload: dict[str, Any]) -> None:
     """Process inbound WhatsApp message.

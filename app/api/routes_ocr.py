@@ -233,8 +233,8 @@ async def create_invoice_from_image(
         )
         
         invoice = invoice_service.create_invoice(
-            invoice_data=invoice_data,
-            issuer_id=current_user_id
+            issuer_id=current_user_id,
+            data=invoice_data.model_dump(),
         )
         
         logger.info("Invoice created from OCR: invoice_id=%s", invoice.invoice_id)
