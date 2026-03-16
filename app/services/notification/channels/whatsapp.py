@@ -91,33 +91,12 @@ class WhatsAppChannel:
             if not template_sent:
                 return False
             
-            # Try to send PDF immediately as a regular message
-            # This will succeed if customer happens to have messaged within last 24 hours
-            if pdf_url and pdf_url.startswith("http"):
-                try:
-                    logger.info("[WHATSAPP] Attempting to send PDF immediately to %s", recipient_phone)
-                    client.send_document(
-                        recipient_phone,
-                        pdf_url,
-                        f"Invoice_{invoice.invoice_id}.pdf",
-                        f"📄 Invoice {invoice.invoice_id} - ₦{invoice.amount:,.2f}",
-                    )
-                    # If we reach here, PDF was sent successfully
-                    logger.info("[WHATSAPP] PDF sent immediately to %s (within 24-hour window)", recipient_phone)
-                    # Clear pending flag since they already have the PDF
-                    if getattr(invoice, "whatsapp_delivery_pending", False):
-                        invoice.whatsapp_delivery_pending = False
-                    return True
-                except Exception as e:
-                    # PDF send failed - likely outside 24-hour messaging window
-                    logger.info(
-                        "[WHATSAPP] Could not send PDF immediately to %s (outside 24-hour window): %s. "
-                        "Will send when customer replies.",
-                        recipient_phone,
-                        str(e)[:100]
-                    )
-                    # whatsapp_delivery_pending stays True, PDF sent when they reply
-            
+            # Don't send PDF here — wait for customer to reply (opt-in).
+            # Sending PDF immediately wastes an API call because
+            # send_document() silently fails (returns False, no exception)
+            # when the customer hasn't messaged within the 24-hour window.
+            # The PDF will be delivered via handle_customer_optin() when
+            # they reply to the template.
             return True
                 
         except Exception as e:  # pragma: no cover - network failures
@@ -308,8 +287,6 @@ class WhatsAppChannel:
             logger.info("[WHATSAPP] Full invoice template sent to %s with payment details", recipient_phone)
         else:
             logger.warning("[WHATSAPP] Failed to send full invoice template to %s", recipient_phone)
-        
-        return template_sent
         
         return template_sent
 

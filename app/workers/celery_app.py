@@ -68,17 +68,17 @@ def _create_celery() -> Celery:
                 "task": "engagement.send_lifecycle_emails",
                 "schedule": crontab(minute=0, hour=9),  # 09:00 UTC = 10:00 WAT
             },
-            "daily-morning-insights": {
+            "morning-insights-mon-thu": {
                 "task": "insights.send_morning_insights",
-                "schedule": crontab(minute=0, hour=7),  # 07:00 UTC = 08:00 WAT
+                "schedule": crontab(minute=0, hour=7, day_of_week="1,4"),  # Mon+Thu 07:00 UTC
             },
-            "daily-dormant-customer-nudges": {
+            "weekly-dormant-customer-nudges": {
                 "task": "customer_engagement.send_dormant_customer_nudges",
-                "schedule": crontab(minute=0, hour=10),  # 10:00 UTC = 11:00 WAT
+                "schedule": crontab(minute=0, hour=10, day_of_week="2"),  # Tue 10:00 UTC
             },
-            "daily-post-payment-referrals": {
+            "weekly-post-payment-referrals": {
                 "task": "customer_engagement.send_post_payment_referrals",
-                "schedule": crontab(minute=30, hour=14),  # 14:30 UTC = 15:30 WAT
+                "schedule": crontab(minute=30, hour=14, day_of_week="5"),  # Fri 14:30 UTC
             },
             "weekly-feedback-collection": {
                 "task": "feedback.collect_user_feedback",

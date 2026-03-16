@@ -155,7 +155,7 @@ def get_top_users(db: Session = Depends(get_db)):
         for inv in top_items:
             if inv.lines:
                 descriptions.extend(line.description for line in inv.lines[:2])
-        what_they_sell = ", ".join(dict.fromkeys(descriptions)[:3]) if descriptions else None
+        what_they_sell = ", ".join(list(dict.fromkeys(descriptions))[:3]) if descriptions else None
 
         top_users.append(
             TopUserOut(

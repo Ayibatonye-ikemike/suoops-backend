@@ -449,9 +449,9 @@ def _is_valid_phone(phone: str | None) -> bool:
     time_limit=1800,
 )
 def send_morning_insights() -> dict[str, Any]:
-    """Send a daily morning business insight to all users.
+    """Send a morning business insight to all users every 3 days.
 
-    Runs at 07:00 UTC (08:00 WAT) every day.
+    Runs at 07:00 UTC (08:00 WAT) on Mon/Thu (every ~3 days).
 
     Sends via:
     1. WhatsApp template (if user has phone + template configured)
@@ -459,7 +459,7 @@ def send_morning_insights() -> dict[str, Any]:
 
     Tips rotate through a pool of 30 and cycle after exhaustion.
     Each user gets the next tip they haven't received yet.
-    Daily dedup prevents double-sends if the task runs twice.
+    Per-user dedup prevents double-sends if the task runs twice.
     """
     from app.models.models import User
 

@@ -143,7 +143,7 @@ def send_dormant_customer_nudges() -> dict[str, Any]:
     try:
         with session_scope() as db:
             today = date.today()
-            cutoff = today - timedelta(days=DORMANT_DAYS)
+            cutoff = today - timedelta(days=max(DORMANT_DAYS, 30))
 
             # Find each (customer_id, issuer_id) pair where:
             # - last invoice was created 21+ days ago

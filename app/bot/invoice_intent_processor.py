@@ -526,6 +526,15 @@ class InvoiceIntentProcessor:
         else:
             business_message += "\n✅ Full invoice sent to customer via WhatsApp!"
         
+        # Append low balance warning to same message (saves an API call)
+        if remaining_balance is not None and 0 < remaining_balance <= 5:
+            pack_price = quota_check.get("pack_price", 2500) if quota_check else 2500
+            pack_size = quota_check.get("pack_size", 100) if quota_check else 100
+            business_message += (
+                f"\n⚠️ Running low! {remaining_balance} invoice{'s' if remaining_balance != 1 else ''} left.\n"
+                f"💳 Buy more: ₦{pack_price:,} for {pack_size} → suoops.com/dashboard/billing/purchase"
+            )
+
         self.client.send_text(sender, business_message)
         
         # Send invoice PDF as document (better UX than URL link)
@@ -535,18 +544,6 @@ class InvoiceIntentProcessor:
                 invoice.pdf_url,
                 f"Invoice_{invoice.invoice_id}.pdf",
                 f"📄 Invoice {invoice.invoice_id} - {fmt_money_full(invoice.amount, inv_currency, convert=False)}",
-            )
-        
-        # Show low balance warning AFTER successful creation (better UX)
-        if remaining_balance is not None and 0 < remaining_balance <= 5:
-            pack_price = quota_check.get("pack_price", 2500) if quota_check else 2500
-            pack_size = quota_check.get("pack_size", 100) if quota_check else 100
-            self.client.send_text(
-                sender,
-                f"⚠️ Running low on invoices!\n\n"
-                f"You have {remaining_balance} invoice{'s' if remaining_balance != 1 else ''} left.\n\n"
-                f"💳 Buy more: ₦{pack_price:,} for {pack_size} invoices\n"
-                "Visit: suoops.com/dashboard/billing/purchase"
             )
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> bool:
@@ -673,20 +670,13 @@ class InvoiceIntentProcessor:
         
         if template_sent:
             logger.info("[TEMPLATE] Template sent successfully to %s", customer_phone)
-            # Send the PDF document right after the template.
-            # The template opens a 24-hour messaging window, so the document
-            # send is allowed immediately after the template is delivered.
-            if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-                amount_text_pdf = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
-                self.client.send_document(
-                    customer_phone,
-                    invoice.pdf_url,
-                    f"Invoice_{invoice.invoice_id}.pdf",
-                    f"Invoice {invoice.invoice_id} - {amount_text_pdf}",
-                )
-                logger.info("[TEMPLATE] PDF sent to customer %s for invoice %s", customer_phone, invoice.invoice_id)
-            else:
-                logger.warning("[TEMPLATE] No PDF URL available for invoice %s, skipping PDF send", invoice.invoice_id)
+            # Don't send PDF here — wait for customer to reply (opt-in).
+            # Sending PDF immediately after template wastes an API call
+            # because it fails silently if the customer hasn't messaged us
+            # within the 24-hour window.  The PDF will be delivered in
+            # handle_customer_optin() when they reply.
+            if not invoice.pdf_url or not invoice.pdf_url.startswith("http"):
+                logger.warning("[TEMPLATE] No PDF URL available for invoice %s, will skip PDF on opt-in", invoice.invoice_id)
         else:
             logger.error(
                 "[TEMPLATE] Failed to send template to %s for invoice %s. "
@@ -837,37 +827,33 @@ class InvoiceIntentProcessor:
         
         logger.info("[OPTIN] Sending PDF for invoice %s", invoice.invoice_id)
         
-        # Send a simple confirmation with the PDF
+        # Send PDF with caption (single API call instead of text + document)
         if invoice.pdf_url and invoice.pdf_url.startswith("http"):
-            self.client.send_text(
-                customer_phone,
-                f"📄 Here's your invoice:"
+            tip_suffix = (
+                "\n\n💡 You're also a registered business! Type *help* to create your own invoices."
+                if issuer_id is not None else ""
             )
             self.client.send_document(
                 customer_phone,
                 invoice.pdf_url,
                 f"Invoice_{invoice.invoice_id}.pdf",
-                f"Invoice {invoice.invoice_id} - {amount_text}",
+                f"📄 Here's your invoice ({amount_text}){tip_suffix}",
             )
         else:
             # No PDF available - just acknowledge
+            tip_suffix = (
+                "\n\n💡 You're also a registered business! Type *help* to create your own invoices."
+                if issuer_id is not None else ""
+            )
             self.client.send_text(
                 customer_phone,
                 f"✅ Thanks! Invoice {invoice.invoice_id} for {amount_text} is ready.\n\n"
-                "Use the payment link above to pay."
+                f"Use the payment link above to pay.{tip_suffix}"
             )
         
         # Mark as delivered
         invoice.whatsapp_delivery_pending = False
         self.db.commit()
-        
-        # If they're also a business, remind them they can create invoices too
-        # issuer_id already resolved above
-        if issuer_id is not None:
-            self.client.send_text(
-                customer_phone,
-                "💡 *Tip:* You're also a registered business!\n"
-                "Type *help* to see how to create your own invoices."
             )
         
         return True

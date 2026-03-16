@@ -305,8 +305,10 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
             _send_activation(db, user, name, signup_age.days, stats)
         return
 
-    # ── 2. FIRST INVOICE FOLLOW-UP (WhatsApp only) ──────────────────
+    # ── 2. FIRST INVOICE FOLLOW-UP (email + optional WhatsApp) ─────
     if invoice_count >= 1 and not _was_sent(db, user.id, "wa_first_invoice"):
+        sent_any = False
+        # WhatsApp (if template still exists)
         if _send_wa_template(
             user.phone,
             settings.WHATSAPP_TEMPLATE_FIRST_INVOICE,
@@ -316,6 +318,33 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
             user.id,
         ):
             stats["whatsapp_sent"] += 1
+            sent_any = True
+        # Email fallback/complement
+        if user.email and not _was_sent(db, user.id, "email_first_invoice"):
+            try:
+                tpl = _jinja_env.get_template("engagement_first_invoice.html")
+                html = tpl.render(
+                    name=name,
+                    headline="Congrats on Your First Invoice! 🎊",
+                    body_text=(
+                        "You just created your first invoice on SuoOps — "
+                        "welcome to stress-free invoicing! Did you know you can also:\n\n"
+                        "📱 Track expenses on WhatsApp\n"
+                        "📊 Get daily business summaries\n"
+                        "📧 Send professional PDF invoices\n\n"
+                        "Visit your dashboard to explore!"
+                    ),
+                )
+                plain = (
+                    f"Congrats {name}! You just created your first invoice on SuoOps. "
+                    "Visit suoops.com/dashboard to explore more features."
+                )
+                if _send_smtp_email(user.email, "Congrats on your first invoice! 🎊", html, plain):
+                    _record_sent(db, user.id, "email_first_invoice")
+                    stats["emails_sent"] = stats.get("emails_sent", 0) + 1
+                    sent_any = True
+            except Exception as e:
+                logger.warning("First-invoice email failed for user %s: %s", user.id, e)
 
     # ── 3. MONETIZATION (FREE users with invoices) ───────────────────
     if user.plan.value == "free" and invoice_count > 0:
@@ -644,7 +673,7 @@ def _send_tip(db, user, name: str, stats: dict[str, int]) -> None:
         last_sent = last_tip[0]
         if last_sent.tzinfo is None:
             last_sent = last_sent.replace(tzinfo=timezone.utc)
-        if (datetime.now(timezone.utc) - last_sent).days < 2:
+        if (datetime.now(timezone.utc) - last_sent).days < 4:
             stats["skipped"] += 1
             return
 
