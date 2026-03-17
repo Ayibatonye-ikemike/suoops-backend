@@ -54,7 +54,7 @@ class AuthService:
                 .one_or_none()
             )
             if existing:
-                raise ValueError("Email already registered")
+                raise ValueError("An account with this identifier already exists")
         else:
             identifier = self._normalize_phone(payload.phone)
             # Check if phone already registered
@@ -64,7 +64,7 @@ class AuthService:
                 .one_or_none()
             )
             if existing:
-                raise ValueError("Phone number already registered")
+                raise ValueError("An account with this identifier already exists")
         
         data = payload.model_dump()
         logger.info(f"start_signup: payload data keys={list(data.keys())}, referral_code={data.get('referral_code')}")
@@ -223,7 +223,7 @@ class AuthService:
             )
             
         if not user:
-            raise ValueError("User not registered")
+            raise ValueError("Invalid credentials")
         self.otp.request_login(identifier)
 
     def verify_login(self, payload: schemas.LoginVerify) -> TokenBundle:

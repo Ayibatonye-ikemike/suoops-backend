@@ -166,6 +166,12 @@ class InvoicePublicOut(BaseModel):
     paid_at: dt.datetime | None = None
     lines: list[InvoiceLinePublicOut] = []
 
+    @field_serializer("account_number")
+    def _mask_account_number(self, value: str | None) -> str | None:
+        if not value or len(value) < 6:
+            return value
+        return value[:3] + "*" * (len(value) - 6) + value[-3:]
+
     @field_serializer("amount")
     def _serialize_amount(self, value: Decimal) -> str:
         return format_amount(value) or "0"

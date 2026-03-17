@@ -628,8 +628,24 @@ class PDFService:
         """
         try:
             import mimetypes
+            from urllib.parse import urlparse
 
             import requests
+            
+            # SSRF protection: only allow HTTPS URLs from trusted domains
+            parsed = urlparse(receipt_url)
+            if parsed.scheme not in ("https", "http"):
+                logger.warning("Blocked non-HTTP receipt URL scheme: %s", parsed.scheme)
+                return None
+            allowed_hosts = {
+                "s3.amazonaws.com",
+                "whatsinvoice.s3.amazonaws.com",
+                "whatsinvoice.s3.us-east-1.amazonaws.com",
+            }
+            host = (parsed.hostname or "").lower()
+            if not any(host == h or host.endswith(f".{h}") for h in allowed_hosts):
+                logger.warning("Blocked receipt URL from untrusted host: %s", host)
+                return None
             
             # Fetch the image from S3 with timeout
             response = requests.get(receipt_url, timeout=15)

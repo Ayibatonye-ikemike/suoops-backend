@@ -315,7 +315,9 @@ def admin_login(request: Request, payload: AdminLoginRequest, db: Session = Depe
 
 
 @router.post("/invite", response_model=AdminInviteResponse)
+@limiter.limit("3/minute")
 def invite_admin(
+    request: Request,
     payload: AdminInviteRequest,
     current_admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
@@ -399,7 +401,8 @@ def invite_admin(
 
 
 @router.post("/accept-invite", response_model=AdminLoginResponse)
-def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def accept_invite(request: Request, payload: AcceptInviteRequest, db: Session = Depends(get_db)):
     """Accept an admin invitation and set password."""
     admin = db.query(AdminUser).filter(AdminUser.invite_token == payload.token).first()
     
