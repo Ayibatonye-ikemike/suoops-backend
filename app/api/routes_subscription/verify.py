@@ -66,7 +66,11 @@ async def verify_subscription_payment(
             user_id = metadata.get("user_id")
             
             # Verify user ID matches (convert to int since metadata comes as string from JSON)
-            if int(user_id) != current_user_id:
+            try:
+                user_id_int = int(user_id)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid user_id in payment metadata")
+            if user_id_int != current_user_id:
                 raise HTTPException(status_code=403, detail="Payment reference does not belong to you")
             
             # Find payment transaction

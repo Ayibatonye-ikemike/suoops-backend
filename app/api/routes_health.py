@@ -116,4 +116,3 @@ def ready(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
 def trigger_error():
     """Test endpoint to verify Sentry integration."""
     raise ZeroDivisionError("Sentry test error")
-    return {"message": "This should never be reached"}

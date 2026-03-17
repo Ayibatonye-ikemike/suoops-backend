@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -171,6 +172,11 @@ class Customer(Base):
 
 
 class Invoice(Base):
+    __table_args__ = (
+        Index("ix_invoice_issuer_wa_pending", "issuer_id", "whatsapp_delivery_pending"),
+        Index("ix_invoice_customer_status", "customer_id", "status"),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_id: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     issuer_id: Mapped[int] = mapped_column(ForeignKey("user.id"))  # type: ignore

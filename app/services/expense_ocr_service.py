@@ -72,6 +72,11 @@ class ExpenseOCRService:
         )
         
         if not ocr_result.get("success"):
+            # Clean up S3 file since we won't create a record
+            try:
+                await self.s3_client.delete_file(receipt_url)
+            except Exception:
+                logger.warning("Failed to clean up S3 file %s after OCR failure", receipt_url)
             logger.error("OCR failed for user %s: %s", user_id, ocr_result.get('error'))
             raise ValueError(f"Could not read receipt: {ocr_result.get('error', 'Unknown error')}")
         
@@ -94,9 +99,18 @@ class ExpenseOCRService:
             notes=f"OCR confidence: {receipt_data['confidence']}",
         )
         
-        self.db.add(expense)
-        self.db.commit()
-        self.db.refresh(expense)
+        try:
+            self.db.add(expense)
+            self.db.commit()
+            self.db.refresh(expense)
+        except Exception:
+            self.db.rollback()
+            # Clean up orphaned S3 file
+            try:
+                await self.s3_client.delete_file(receipt_url)
+            except Exception:
+                logger.warning("Failed to clean up S3 file %s after DB failure", receipt_url)
+            raise
         
         logger.info(
             "Created expense from receipt for user %s: ₦%s, category=%s",

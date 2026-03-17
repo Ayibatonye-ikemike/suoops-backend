@@ -78,7 +78,7 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
                     pdf_url = pdf_service.generate_monthly_tax_report_pdf(report, basis=basis)
                     reporting.attach_report_pdf(report, pdf_url)
 
-                if total % 25 == 0:
+                if total % 5 == 0:
                     gc.collect()
                     rss = _rss_mb()
                     if rss > 0:

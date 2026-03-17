@@ -313,6 +313,7 @@ async def oauth_callback(
 
         if not access_token or not refresh_token:
             logger.error("OAuth provider response missing tokens")
+            _get_redirect_uri(state, consume=True)  # Consume state to prevent replay
             raise HTTPException(status_code=500, detail="Failed to issue authentication tokens")
 
         access_expires_at = _extract_access_expiry(access_token)
@@ -342,6 +343,7 @@ async def oauth_callback(
 
     except OAuthProviderError as e:
         logger.error("OAuth authentication failed | provider=%s error=%s", provider, e)
+        _get_redirect_uri(state, consume=True)  # Consume state to prevent replay
         # Return JSON error for fetch requests to avoid CORS issues
         raise HTTPException(
             status_code=400,
@@ -349,6 +351,7 @@ async def oauth_callback(
         )
     except Exception:
         logger.exception("OAuth callback unexpected error | provider=%s", provider)
+        _get_redirect_uri(state, consume=True)  # Consume state to prevent replay
         # Return JSON error for unexpected errors
         raise HTTPException(
             status_code=500,
