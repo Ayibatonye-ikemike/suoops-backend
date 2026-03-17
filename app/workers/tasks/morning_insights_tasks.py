@@ -475,9 +475,9 @@ def send_morning_insights() -> dict[str, Any]:
                     # ── WhatsApp ──
                     if has_phone and template_name:
                         try:
-                            from app.bot.whatsapp_client import WhatsAppClient
+                            from app.core.whatsapp import get_whatsapp_client
 
-                            client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+                            client = get_whatsapp_client()
 
                             # Template params: {{1}} = name, {{2}} = headline,
                             # {{3}} = tip body

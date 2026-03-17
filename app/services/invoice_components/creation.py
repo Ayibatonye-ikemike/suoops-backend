@@ -251,38 +251,10 @@ class InvoiceCreationMixin:
         }
 
     def _normalize_phone(self, phone: str) -> str:
-        """Normalize phone number to consistent format for storage and lookup.
-        
-        Supports both Nigerian and international phone numbers.
-        """
-        if not phone:
-            return phone
-        
-        # If already starts with +, assume it's properly formatted international
-        if phone.startswith('+'):
-            return phone
-        
-        # Remove all non-digit characters
-        digits = "".join(ch for ch in phone if ch.isdigit())
-        if not digits:
-            return phone
-        
-        # Canonicalize Nigerian numbers to +234XXXXXXXXXX for storage.
-        # Accept: +2348012345678, 2348012345678, 08012345678, 8012345678
-        if digits.startswith("234") and len(digits) == 13:
-            return "+" + digits
-        if digits.startswith("0") and len(digits) == 11 and digits[1] in "789":
-            return "+234" + digits[1:]
-        if len(digits) == 10 and digits[0] in "789":
-            return "+234" + digits
-        
-        # For other international numbers, add + prefix if needed
-        # This handles cases like "14155551234" → "+14155551234"
-        if len(digits) >= 7:
-            return "+" + digits
-        
-        # For very short numbers, keep original input
-        return phone
+        """Normalize phone number to consistent format for storage and lookup."""
+        from app.utils.phone import normalize_phone
+
+        return normalize_phone(phone)
 
     def _get_or_create_customer(
         self, name: str, phone: str | None, email: str | None = None

@@ -111,9 +111,9 @@ def send_instant_welcome(user_id: int) -> dict:
         # ── 2. WhatsApp ──────────────────────────────────────────────
         if user.phone and settings.WHATSAPP_TEMPLATE_ACTIVATION_WELCOME:
             try:
-                from app.bot.whatsapp_client import WhatsAppClient
+                from app.core.whatsapp import get_whatsapp_client
 
-                client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+                client = get_whatsapp_client()
                 lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
                 components = [
                     {

@@ -108,16 +108,9 @@ class WhatsAppChannel:
         from sqlalchemy.orm import object_session
 
         from app.models import models
+        from app.utils.phone import normalize_phone
         
-        # Normalize phone for lookup
-        normalized = phone.replace(" ", "").replace("-", "")
-        if not normalized.startswith("+"):
-            if normalized.startswith("0"):
-                normalized = "+234" + normalized[1:]
-            elif normalized.startswith("234"):
-                normalized = "+" + normalized
-            else:
-                normalized = "+" + normalized
+        normalized = normalize_phone(phone)
         
         # Get db session from invoice object
         db = object_session(invoice)

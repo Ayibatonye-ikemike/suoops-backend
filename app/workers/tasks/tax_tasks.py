@@ -233,9 +233,9 @@ def _notify_tax_report_whatsapp(
 
     try:
         from app.bot.conversation_window import is_window_open
-        from app.bot.whatsapp_client import WhatsAppClient
+        from app.core.whatsapp import get_whatsapp_client
 
-        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        client = get_whatsapp_client()
         template_name = getattr(settings, "WHATSAPP_TEMPLATE_TAX_REPORT_READY", None)
         template_lang = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en")
 

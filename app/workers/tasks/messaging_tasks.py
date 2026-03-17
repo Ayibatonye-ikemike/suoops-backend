@@ -44,11 +44,12 @@ def process_whatsapp_inbound(self: Task, payload: dict[str, Any]) -> None:
     Heavy NLP / adapter imports are done lazily to keep baseline worker RSS low.
     """
     from app.bot.nlp_service import NLPService
-    from app.bot.whatsapp_adapter import WhatsAppClient, WhatsAppHandler
+    from app.bot.whatsapp_adapter import WhatsAppHandler
+    from app.core.whatsapp import get_whatsapp_client
 
     with session_scope() as db:
         handler = WhatsAppHandler(
-            client=WhatsAppClient(settings.WHATSAPP_API_KEY),
+            client=get_whatsapp_client(),
             nlp=NLPService(),
             db=db,
         )
@@ -119,9 +120,9 @@ def send_overdue_reminders() -> dict[str, Any]:
                 len(by_issuer),
             )
 
-            from app.bot.whatsapp_client import WhatsAppClient
+            from app.core.whatsapp import get_whatsapp_client
 
-            client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+            client = get_whatsapp_client()
 
             for issuer_id, invoices in by_issuer.items():
                 user = db.query(User).filter(User.id == issuer_id).first()
@@ -714,9 +715,9 @@ def _send_customer_whatsapp_reminder(
     """
     try:
         from app.bot.conversation_window import is_window_open
-        from app.bot.whatsapp_client import WhatsAppClient
+        from app.core.whatsapp import get_whatsapp_client
 
-        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        client = get_whatsapp_client()
 
         # Prefer template (works outside 24h window)
         template_name = settings.WHATSAPP_TEMPLATE_PAYMENT_REMINDER
@@ -801,10 +802,10 @@ def _notify_owner_escalation(
 ) -> None:
     """Alert the business owner about a severely overdue invoice."""
     try:
-        from app.bot.whatsapp_client import WhatsAppClient
+        from app.core.whatsapp import get_whatsapp_client
         from app.bot.conversation_window import is_window_open
 
-        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        client = get_whatsapp_client()
         customer_name = customer.name or "a customer"
 
         msg = (
@@ -949,9 +950,9 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                 logger.info("No owners with stale pending invoices for mark-paid nudge")
                 return {"success": True, "sent": 0}
 
-            from app.bot.whatsapp_client import WhatsAppClient
+            from app.core.whatsapp import get_whatsapp_client
 
-            client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+            client = get_whatsapp_client()
 
             for row in owners_with_pending:
                 issuer_id = row.issuer_id
@@ -1341,10 +1342,10 @@ def send_daily_summaries() -> dict[str, Any]:
             )
             logger.info("Daily summary: %d users after join", len(active_users))
 
-            from app.bot.whatsapp_client import WhatsAppClient
+            from app.core.whatsapp import get_whatsapp_client
             from app.bot.conversation_window import is_window_open
 
-            client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+            client = get_whatsapp_client()
             summary_template = getattr(settings, "WHATSAPP_TEMPLATE_DAILY_SUMMARY", None)
             template_lang = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en")
 

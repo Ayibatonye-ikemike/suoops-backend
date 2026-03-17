@@ -325,17 +325,12 @@ class AuthService:
 
     @staticmethod
     def _normalize_phone(phone: str) -> str:
+        from app.utils.phone import normalize_phone
+
         sanitized = phone.strip().replace(" ", "")
         if not sanitized:
             raise ValueError("Phone number is required")
-        if sanitized.startswith("+"):
-            return sanitized
-        digits = sanitized.lstrip("+")
-        if digits.startswith("234"):
-            return f"+{digits}"
-        if digits.startswith("0"):
-            return f"+234{digits[1:]}"
-        return f"+{digits}"
+        return normalize_phone(sanitized)
 
 
 def get_auth_service(db: Annotated[Session, Depends(get_db)]) -> AuthService:

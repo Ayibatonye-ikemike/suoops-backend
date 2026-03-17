@@ -73,15 +73,9 @@ class InvoiceIntentProcessor:
         if issuer_id is None:
             # Check if user exists but phone is unverified
             from app.models import models as _m
-            clean_digits = "".join(ch for ch in sender if ch.isdigit())
-            phone_candidates: set[str] = {sender}
-            if sender.startswith("+"):
-                phone_candidates.add(sender[1:])
-            if clean_digits:
-                phone_candidates.add(clean_digits)
-                if clean_digits.startswith("234"):
-                    phone_candidates.add(f"+{clean_digits}")
-                    phone_candidates.add("0" + clean_digits[3:])
+            from app.utils.phone import get_phone_variants
+
+            phone_candidates = get_phone_variants(sender)
             unverified_user = (
                 self.db.query(_m.User)
                 .filter(
@@ -725,24 +719,10 @@ class InvoiceIntentProcessor:
         import datetime as dt
 
         from app.models import models
+        from app.utils.phone import get_phone_variants
         
         # Normalize phone number for lookup - handle all Nigerian formats
-        clean_digits = "".join(ch for ch in customer_phone if ch.isdigit())
-        candidates = {customer_phone}
-        if customer_phone.startswith("+"):
-            candidates.add(customer_phone[1:])
-        if clean_digits:
-            candidates.add(clean_digits)
-            if clean_digits.startswith("234"):
-                candidates.add(f"+{clean_digits}")
-                # Also add local format (0xxx) - remove 234 prefix and add 0
-                local_number = "0" + clean_digits[3:]
-                candidates.add(local_number)
-            elif clean_digits.startswith("0"):
-                # Local format - also try international
-                intl_number = "234" + clean_digits[1:]
-                candidates.add(intl_number)
-                candidates.add(f"+{intl_number}")
+        candidates = get_phone_variants(customer_phone)
         
         logger.info("[OPTIN] Looking up customer with phone candidates: %s", candidates)
         
@@ -868,18 +848,10 @@ class InvoiceIntentProcessor:
 
         from app.models import models
         from app.services.invoice_components.status import InvoiceStatusComponent
+        from app.utils.phone import get_phone_variants
         
         # Normalize phone number for lookup - build all possible formats
-        clean_digits = "".join(ch for ch in customer_phone if ch.isdigit())
-        candidates: set[str] = {customer_phone}
-        if customer_phone.startswith("+"):
-            candidates.add(customer_phone[1:])
-        if clean_digits:
-            candidates.add(clean_digits)
-            if clean_digits.startswith("234"):
-                candidates.add(f"+{clean_digits}")
-                # Also add 0-prefixed local format
-                candidates.add("0" + clean_digits[3:])
+        candidates = get_phone_variants(customer_phone)
         
         logger.info("[PAID] Looking for customer with phone variants: %s", candidates)
         
@@ -1360,30 +1332,12 @@ class InvoiceIntentProcessor:
 
     def _resolve_issuer_id(self, sender_phone: str | None) -> int | None:
         from app.models import models
+        from app.utils.phone import get_phone_variants
 
         if not sender_phone:
             return None
 
-        clean_digits = "".join(ch for ch in sender_phone if ch.isdigit())
-        candidates: set[str] = {sender_phone}
-
-        if sender_phone.startswith("+"):
-            candidates.add(sender_phone[1:])
-
-        if clean_digits:
-            candidates.add(clean_digits)
-            if clean_digits.startswith("234"):
-                candidates.add(f"+{clean_digits}")
-                # Also add local format (0xxx) - remove 234 prefix and add 0
-                local_number = "0" + clean_digits[3:]
-                candidates.add(local_number)
-            elif clean_digits.startswith("0"):
-                # Local format - also try international
-                intl_number = "234" + clean_digits[1:]
-                candidates.add(intl_number)
-                candidates.add(f"+{intl_number}")
-
-        candidates = {c for c in candidates if c}
+        candidates = get_phone_variants(sender_phone)
         if not candidates:
             return None
         

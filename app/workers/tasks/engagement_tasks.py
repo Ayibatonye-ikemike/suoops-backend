@@ -148,9 +148,9 @@ def _send_wa_template(
         return False
 
     try:
-        from app.bot.whatsapp_client import WhatsAppClient
+        from app.core.whatsapp import get_whatsapp_client
 
-        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        client = get_whatsapp_client()
         lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
         components = (
             [

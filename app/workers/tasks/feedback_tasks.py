@@ -175,9 +175,9 @@ def collect_user_feedback() -> dict[str, Any]:
                     # ── WhatsApp ──
                     if _is_valid_phone(user.phone) and template_name:
                         try:
-                            from app.bot.whatsapp_client import WhatsAppClient
+                            from app.core.whatsapp import get_whatsapp_client
 
-                            client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+                            client = get_whatsapp_client()
                             components = [
                                 {
                                     "type": "body",

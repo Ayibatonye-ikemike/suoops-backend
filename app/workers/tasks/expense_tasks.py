@@ -102,7 +102,7 @@ def send_expense_reminders(self: Task) -> dict[str, Any]:
     Returns:
         Statistics on reminders sent
     """
-    from app.bot.whatsapp_client import WhatsAppClient
+    from app.core.whatsapp import get_whatsapp_client
     from app.models.expense import Expense
 
     with session_scope() as db:
@@ -128,7 +128,7 @@ def send_expense_reminders(self: Task) -> dict[str, Any]:
         )
 
         sent_count = 0
-        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        client = get_whatsapp_client()
 
         for user in users:
             if user.phone:
@@ -222,10 +222,10 @@ def _format_summary_message(
 
 def _send_whatsapp_message(phone: str, message: str, user_id: int, period: str) -> None:
     """Send WhatsApp message."""
-    from app.bot.whatsapp_client import WhatsAppClient
+    from app.core.whatsapp import get_whatsapp_client
 
     try:
-        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        client = get_whatsapp_client()
         client.send_text(phone, message)
         logger.info("Sent %s expense summary to user %s", period, user_id)
     except Exception as e:

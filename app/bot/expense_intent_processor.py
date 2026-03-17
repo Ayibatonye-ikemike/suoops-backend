@@ -49,18 +49,9 @@ class ExpenseIntentProcessor:
         
         # Get user from phone number (handle all Nigerian phone format variants)
         from app.models.models import User
-        clean_digits = "".join(ch for ch in sender if ch.isdigit())
-        phone_candidates: set[str] = {sender}
-        if sender.startswith("+"):
-            phone_candidates.add(sender[1:])
-        if clean_digits:
-            phone_candidates.add(clean_digits)
-            if clean_digits.startswith("234"):
-                phone_candidates.add(f"+{clean_digits}")
-                phone_candidates.add("0" + clean_digits[3:])
-            elif clean_digits.startswith("0"):
-                phone_candidates.add("234" + clean_digits[1:])
-                phone_candidates.add("+234" + clean_digits[1:])
+        from app.utils.phone import get_phone_variants
+
+        phone_candidates = get_phone_variants(sender)
         user = (
             self.db.query(User)
             .filter(User.phone.in_(list(phone_candidates)))

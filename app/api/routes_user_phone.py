@@ -18,21 +18,10 @@ from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import models, schemas
+from app.utils.phone import normalize_phone as _normalize_phone
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
-
-
-def _normalize_phone(phone: str) -> str:
-    """Normalize phone to E.164 format (+234...)."""
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    if phone.startswith("+"):
-        return phone
-    if phone.startswith("0"):
-        return f"+234{phone[1:]}"
-    if phone.startswith("234"):
-        return f"+{phone}"
-    return f"+{phone}"
 
 
 @router.post("/me/phone/request", response_model=schemas.MessageOut)
