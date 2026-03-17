@@ -2,10 +2,11 @@
 Referral API routes for managing referral codes, tracking referrals, and claiming rewards.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import CurrentUserDep, DbDep
+from app.api.rate_limit import limiter
 from app.services.referral_service import ReferralService
 
 router = APIRouter(prefix="/referrals", tags=["Referrals"])
@@ -168,9 +169,11 @@ def apply_reward(
 
 
 @router.post("/validate", response_model=ValidateCodeResponse)
+@limiter.limit("10/minute")
 def validate_referral_code(
+    request: Request,
     db: DbDep,
-    request: ValidateCodeRequest,
+    payload: ValidateCodeRequest,
 ):
     """
     Validate a referral code (public endpoint for signup form).
@@ -183,7 +186,7 @@ def validate_referral_code(
     from app.models.models import User
     from app.models.referral_models import ReferralCode
     
-    code = request.code.upper().strip()
+    code = payload.code.upper().strip()
     
     # Look up the code
     referral_code = db.execute(

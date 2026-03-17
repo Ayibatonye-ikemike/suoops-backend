@@ -49,7 +49,8 @@ def _public_invoice_payload(invoice, issuer) -> dict[str, object]:
 
 
 @router.get("/{invoice_id}", response_model=schemas.InvoicePublicOut)
-def get_invoice_public(invoice_id: str, db: Session = Depends(get_db)) -> schemas.InvoicePublicOut:
+@limiter.limit("15/minute")
+def get_invoice_public(request: Request, invoice_id: str, db: Session = Depends(get_db)) -> schemas.InvoicePublicOut:
     svc = build_invoice_service(db)
     try:
         invoice, issuer = svc.get_public_invoice(invoice_id)
