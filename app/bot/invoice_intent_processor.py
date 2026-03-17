@@ -834,7 +834,6 @@ class InvoiceIntentProcessor:
         # Mark as delivered
         invoice.whatsapp_delivery_pending = False
         self.db.commit()
-            )
         
         return True
 
