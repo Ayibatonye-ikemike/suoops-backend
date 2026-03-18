@@ -197,8 +197,8 @@ def collect_user_feedback() -> dict[str, Any]:
                         except Exception as e:
                             logger.warning("Feedback WA failed for user %s: %s", user.id, e)
 
-                    # ── Email fallback ──
-                    if user.email and not delivered:
+                    # ── Email (always send if user has email) ──
+                    if user.email:
                         try:
                             from app.api.routes_testimonials import create_feedback_token
                             token = create_feedback_token(user.id)
