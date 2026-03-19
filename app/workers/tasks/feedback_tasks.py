@@ -108,12 +108,11 @@ def collect_user_feedback() -> dict[str, Any]:
     3. Haven't been asked in the last 90 days
     4. Don't already have a testimonial
 
-    Sends via WhatsApp template (primary) and email (secondary).
+    Sends feedback request emails to eligible users.
     """
     from app.models.models import Invoice, Testimonial, User
 
     stats: dict[str, int] = {
-        "whatsapp_sent": 0,
         "email_sent": 0,
         "skipped": 0,
         "failed": 0,
@@ -142,9 +141,6 @@ def collect_user_feedback() -> dict[str, Any]:
 
             logger.info("Feedback collection: %d candidate users", len(users_with_counts))
 
-            template_name = getattr(settings, "WHATSAPP_TEMPLATE_FEEDBACK", None)
-            template_lang = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en")
-
             for user, invoice_count in users_with_counts:
                 try:
                     # Check milestone
@@ -172,32 +168,7 @@ def collect_user_feedback() -> dict[str, Any]:
                     name = (user.name or "").split()[0] if user.name else "there"
                     delivered = False
 
-                    # ── WhatsApp ──
-                    if _is_valid_phone(user.phone) and template_name:
-                        try:
-                            from app.core.whatsapp import get_whatsapp_client
-
-                            client = get_whatsapp_client()
-                            components = [
-                                {
-                                    "type": "body",
-                                    "parameters": [
-                                        {"type": "text", "text": name},
-                                        {"type": "text", "text": str(invoice_count)},
-                                    ],
-                                }
-                            ]
-                            ok = client.send_template(
-                                user.phone, template_name, template_lang, components
-                            )
-                            if ok:
-                                stats["whatsapp_sent"] += 1
-                                mark_feedback_pending(user.phone)
-                                delivered = True
-                        except Exception as e:
-                            logger.warning("Feedback WA failed for user %s: %s", user.id, e)
-
-                    # ── Email (always send if user has email) ──
+                    # ── Email ──
                     if user.email:
                         try:
                             from app.api.routes_testimonials import create_feedback_token
@@ -258,18 +229,28 @@ def _send_feedback_email(email: str, name: str, invoice_count: int, token: str) 
         "— The SuoOps Team"
     )
 
+    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
+    smtp_port = getattr(settings, "SMTP_PORT", 587)
+    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
+    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+
+    if not smtp_user or not smtp_password:
+        logger.warning("SMTP not configured, skipping feedback email to %s", email)
+        return False
+
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = settings.SMTP_FROM
+        msg["From"] = from_email
         msg["To"] = email
         msg["Reply-To"] = "feedback@suoops.com"
         msg.attach(MIMEText(plain, "plain"))
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
             server.starttls()
-            server.login(settings.SMTP_USER, settings.SMTP_PASS)
+            server.login(smtp_user, smtp_password)
             server.send_message(msg)
         return True
     except Exception as e:
