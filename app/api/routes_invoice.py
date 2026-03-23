@@ -343,7 +343,12 @@ def download_invoice_pdf(invoice_id: str, current_user_id: CurrentUserDep, data_
     # If it's a file:// URL, serve from local filesystem
     if invoice.pdf_url.startswith("file://"):
         file_path = invoice.pdf_url.replace("file://", "")
-        path = Path(file_path)
+        path = Path(file_path).resolve()
+        
+        # Defense-in-depth: restrict to the storage directory
+        storage_root = Path("storage").resolve()
+        if not str(path).startswith(str(storage_root)):
+            raise HTTPException(status_code=403, detail="Access denied")
         
         if not path.exists():
             raise HTTPException(status_code=404, detail="PDF file not found on disk")
