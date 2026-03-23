@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
+from app.api.routes_admin_auth import get_current_admin
 from app.db.session import get_db
 from app.models.models import Invoice
 from app.services.fiscalization_service import FiscalizationService
@@ -103,7 +104,7 @@ def list_recent_alerts(
     limit: int = Query(50, ge=1, le=200),
     category: str | None = Query(None),
     db: Session = Depends(get_db),
-    current_user_id: int = Depends(get_current_user_id),
+    admin_user = Depends(get_current_admin),
 ):
     try:
         from app.models.alert_models import AlertEvent  # type: ignore

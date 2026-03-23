@@ -298,8 +298,11 @@ def update_invoice_status(
     """Update invoice status. Only the creator or admin (issuer) can update it."""
     from app.models.models import Invoice
     
-    # Check if user is allowed to update this invoice
-    invoice = db.query(Invoice).filter(Invoice.invoice_id == invoice_id).first()
+    # Scope lookup to data_owner to prevent cross-tenant information leaks
+    invoice = db.query(Invoice).filter(
+        Invoice.invoice_id == invoice_id,
+        Invoice.issuer_id == data_owner_id,
+    ).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     
