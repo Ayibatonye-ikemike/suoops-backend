@@ -185,6 +185,19 @@ def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.Refres
         # In dev/test, fail-open since Redis may not be running
 
     try:
+        # Revoke old refresh token before issuing new one (rotation)
+        try:
+            from app.core.security import TokenType, decode_token
+            from app.core.token_blocklist import revoke_token
+            from app.db.redis_client import get_redis_client
+
+            old_payload = decode_token(refresh_value, expected_type=TokenType.REFRESH)
+            from datetime import datetime, timezone
+            old_exp = datetime.fromtimestamp(old_payload["exp"], tz=timezone.utc)
+            revoke_token(get_redis_client(), refresh_value, expires_at=old_exp)
+        except Exception:  # noqa: BLE001
+            pass  # Best-effort; old token will expire naturally
+
         bundle = svc.refresh(refresh_value)
         # Extract user_id from the new access token
         from app.core.security import TokenType, decode_token

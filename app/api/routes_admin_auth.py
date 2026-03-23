@@ -250,7 +250,7 @@ def send_admin_invite_email(to_email: str, name: str, invite_link: str) -> bool:
 # ============================================================================
 
 @router.post("/login", response_model=AdminLoginResponse)
-@limiter.limit("5/minute")
+@limiter.limit("3/minute;10/hour")
 def admin_login(request: Request, payload: AdminLoginRequest, db: Session = Depends(get_db)):
     """Login to admin dashboard."""
     # Validate email domain - only @suoops.com emails allowed
