@@ -30,9 +30,11 @@ def save_phone_number(
     db: Annotated[Session, Depends(get_db)],
 ):
     """
-    Save phone number and auto-verify for WhatsApp bot access.
+    Save phone number for WhatsApp bot access.
 
-    The user is already authenticated via JWT, so no additional OTP is needed.
+    The phone is stored as unverified. It becomes verified automatically
+    when the user messages the WhatsApp bot from this number — that proves
+    ownership since WhatsApp guarantees the sender's phone.
     """
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
     if not user:
@@ -52,13 +54,13 @@ def save_phone_number(
         )
 
     user.phone = normalized_phone
-    user.phone_verified = True
+    user.phone_verified = False  # Verified when user messages the bot from this number
     user.phone_otp = None
     db.commit()
 
-    logger.info("Phone linked for user %s: %s", current_user_id, normalized_phone)
+    logger.info("Phone saved (pending verification) for user %s: %s", current_user_id, normalized_phone)
     return schemas.PhoneVerificationResponse(
-        detail="Phone number saved! You can now create invoices via WhatsApp.",
+        detail="Phone number saved! Now message our WhatsApp bot to activate it.",
         phone=normalized_phone,
     )
 

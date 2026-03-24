@@ -71,38 +71,13 @@ class InvoiceIntentProcessor:
 
         issuer_id = self._resolve_issuer_id(sender)
         if issuer_id is None:
-            # Check if user exists but phone is unverified
-            from app.models import models as _m
-            from app.utils.phone import get_phone_variants
-
-            phone_candidates = get_phone_variants(sender)
-            unverified_user = (
-                self.db.query(_m.User)
-                .filter(
-                    _m.User.phone.in_(list(phone_candidates)),
-                    _m.User.phone_verified.is_(False),
-                )
-                .first()
-            )
-            if unverified_user:
-                logger.info("Unverified phone for user %s (sender: %s)", unverified_user.id, sender)
-                self.client.send_text(
-                    sender,
-                    "📱 *Almost there! Verify your phone first.*\n\n"
-                    "Your account exists but your WhatsApp number isn't verified yet.\n\n"
-                    "1. Go to suoops.com/dashboard/settings\n"
-                    "2. Click *Verify Phone*\n"
-                    "3. Enter the OTP code you receive\n\n"
-                    "Once verified, come back and send your invoice! 🚀",
-                )
-            else:
-                logger.warning("Unable to resolve issuer for WhatsApp sender: %s", sender)
-                self.client.send_text(
-                    sender,
-                    "👋 Hi! I don't recognise this number yet.\n\n"
-                    "📲 *Already have an account?*\n"
-                    "Make sure this WhatsApp number is added & verified "
-                    "in your profile at suoops.com/dashboard/settings\n\n"
+            logger.warning("Unable to resolve issuer for WhatsApp sender: %s", sender)
+            self.client.send_text(
+                sender,
+                "👋 Hi! I don't recognise this number yet.\n\n"
+                "📲 *Already have an account?*\n"
+                "Make sure this WhatsApp number is added "
+                "in your profile at suoops.com/dashboard/settings\n\n"
                     "🆕 *New to SuoOps?*\n"
                     "Register free at suoops.com — start sending invoices "
                     "via WhatsApp in under 2 minutes!",
@@ -1342,13 +1317,12 @@ class InvoiceIntentProcessor:
         
         logger.info("[RESOLVE_ISSUER] Looking for user with phone candidates: %s", candidates)
 
-        # Only match users with VERIFIED phone numbers
-        # This prevents someone from hijacking a number after another business removes it
+        # First try verified phones
         user = (
             self.db.query(models.User)
             .filter(
                 models.User.phone.in_(list(candidates)),
-                models.User.phone_verified.is_(True),  # Must be verified!
+                models.User.phone_verified.is_(True),
             )
             .first()
         )
@@ -1362,6 +1336,26 @@ class InvoiceIntentProcessor:
                 user_identifier,
             )
             return user.id
+
+        # Auto-verify: user saved this phone in settings and is now messaging
+        # from it — WhatsApp guarantees the sender's number, so this proves ownership
+        unverified_user = (
+            self.db.query(models.User)
+            .filter(
+                models.User.phone.in_(list(candidates)),
+                models.User.phone_verified.is_(False),
+            )
+            .first()
+        )
+        if unverified_user:
+            unverified_user.phone_verified = True
+            self.db.commit()
+            logger.info(
+                "Auto-verified phone for user %s (sender: %s)",
+                unverified_user.id,
+                sender_phone,
+            )
+            return unverified_user.id
 
         logger.warning("No user found for WhatsApp number: %s", sender_phone)
         return None
