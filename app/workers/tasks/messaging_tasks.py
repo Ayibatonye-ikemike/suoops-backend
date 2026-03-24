@@ -1304,8 +1304,8 @@ def send_daily_summaries() -> dict[str, Any]:
 
     try:
         with session_scope() as db:
-            today = date.today()
-            start_of_day = datetime.combine(today, datetime.min.time())
+            now_utc = datetime.now(timezone.utc)
+            start_of_day = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
 
             # Debug: count PRO / pro_override users first
             pro_count = (
@@ -1414,6 +1414,11 @@ def send_daily_summaries() -> dict[str, Any]:
                     exp = float(expenses_today)
                     net = rev - exp
                     out = float(outstanding)
+
+                    logger.info(
+                        "Daily summary user %s: rev=%.0f exp=%.0f outstanding=%.0f overdue=%d",
+                        user.id, rev, exp, out, overdue_count,
+                    )
 
                     # PRO users always get a daily summary, even on quiet days
 
