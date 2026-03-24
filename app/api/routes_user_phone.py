@@ -1,21 +1,20 @@
-"""Phone verification related endpoints extracted from routes_user.py.
+"""Phone linking endpoints for WhatsApp integration.
 
 Allows users to link their WhatsApp phone number to their account.
-Flow:
-1. POST /users/me/phone/request - Set phone and send OTP via WhatsApp
-2. POST /users/me/phone/verify - Verify OTP and mark phone as verified
-3. DELETE /users/me/phone - Remove phone from account
+When a phone number is saved, it is automatically verified — no OTP needed.
+The user already proved their identity during signup.
+
+Endpoints:
+1. POST /users/me/phone   - Save phone number (auto-verified)
+2. DELETE /users/me/phone  - Remove phone from account
 """
 import logging
-import random
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_user_id
-from app.bot.whatsapp_client import WhatsAppClient
-from app.core.config import settings
 from app.db.session import get_db
 from app.models import models, schemas
 from app.utils.phone import normalize_phone as _normalize_phone
@@ -24,156 +23,79 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
 
 
-@router.post("/me/phone/request", response_model=schemas.MessageOut)
-def request_phone_otp(
+@router.post("/me/phone", response_model=schemas.PhoneVerificationResponse)
+def save_phone_number(
     payload: schemas.PhoneVerificationRequest,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """
-    Set phone number and send OTP via WhatsApp.
-    
-    This endpoint:
-    1. Saves the phone number to user (unverified)
-    2. Generates a 6-digit OTP
-    3. Sends OTP via WhatsApp
+    Save phone number and auto-verify for WhatsApp bot access.
+
+    The user is already authenticated via JWT, so no additional OTP is needed.
     """
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     normalized_phone = _normalize_phone(payload.phone)
-    
-    # Check if phone is already used by another user (verified or not - unique constraint)
+
+    # Check if phone is already used by another user
     existing = db.query(models.User).filter(
         models.User.phone == normalized_phone,
         models.User.id != current_user_id,
     ).first()
     if existing:
         raise HTTPException(
-            status_code=400, 
-            detail="This phone number is already linked to another account"
+            status_code=400,
+            detail="This phone number is already linked to another account",
         )
-    
-    # Generate OTP
-    otp = f"{random.randint(100000, 999999)}"
-    
-    # Save phone and OTP
+
     user.phone = normalized_phone
-    user.phone_otp = otp
-    user.phone_verified = False
+    user.phone_verified = True
+    user.phone_otp = None
     db.commit()
-    
-    # Send OTP via WhatsApp
-    # First try authentication template (bypasses 24-hour window)
-    # If that fails, try regular text message (requires recent conversation)
-    try:
-        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
-        
-        # Try template first
-        success = client.send_otp_template(
-            to=normalized_phone,
-            otp_code=otp,
-            template_name="otp_verifications",
-            language="en",
-        )
-        
-        if success:
-            logger.info("Sent phone verification OTP to %s via WhatsApp template", normalized_phone)
-        else:
-            # Template failed - try regular text message (24-hour window)
-            logger.warning("OTP template failed for %s, trying text message", normalized_phone)
-            text_success = client.send_text(
-                normalized_phone,
-                f"🔐 Your SuoOps verification code is: *{otp}*\n\nThis code expires in 10 minutes."
-            )
-            if text_success:
-                logger.info("Sent phone verification OTP to %s via text message", normalized_phone)
-            else:
-                logger.warning("Failed to send OTP to %s (both template and text failed)", normalized_phone)
-                raise HTTPException(
-                    status_code=500, 
-                    detail="Failed to send OTP via WhatsApp. Make sure you've messaged our bot first."
-                )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to send OTP via WhatsApp to %s: %s", normalized_phone, e)
-        raise HTTPException(status_code=500, detail="Failed to send OTP. Please try again.")
-    
-    return schemas.MessageOut(detail="OTP sent to WhatsApp")
+
+    logger.info("Phone linked for user %s: %s", current_user_id, normalized_phone)
+    return schemas.PhoneVerificationResponse(
+        detail="Phone number saved! You can now create invoices via WhatsApp.",
+        phone=normalized_phone,
+    )
 
 
-# Legacy endpoint for backward compatibility
+# ── Legacy endpoints (backward compatibility) ────────────────────────
+# Keep these so old frontend versions don't break during rollout.
+
+@router.post("/me/phone/request", response_model=schemas.MessageOut, include_in_schema=False)
+def request_phone_otp_legacy(
+    payload: schemas.PhoneVerificationRequest,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Legacy: save phone + auto-verify (no OTP sent)."""
+    result = save_phone_number(payload, current_user_id, db)
+    return schemas.MessageOut(detail=result.detail)
+
+
 @router.post("/me/phone/send-otp", response_model=schemas.MessageOut, include_in_schema=False)
 def send_phone_otp_legacy(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    """Legacy endpoint - redirects to new flow."""
-    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
-    if not user or not user.phone:
-        raise HTTPException(status_code=400, detail="Use /me/phone/request to add phone number")
-    
-    # Re-send OTP to existing phone
-    otp = f"{random.randint(100000, 999999)}"
-    user.phone_otp = otp
-    db.commit()
-    
-    try:
-        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
-        
-        # Try template first, fallback to text
-        success = client.send_otp_template(
-            to=user.phone,
-            otp_code=otp,
-            template_name="otp_verifications",
-            language="en",
-        )
-        if not success:
-            success = client.send_text(
-                user.phone,
-                f"🔐 Your SuoOps verification code is: *{otp}*\n\nThis code expires in 10 minutes."
-            )
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to send OTP via WhatsApp")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to send OTP via WhatsApp to %s: %s", user.phone, e)
-        raise HTTPException(status_code=500, detail="Failed to send OTP")
-    
-    return schemas.MessageOut(detail="OTP sent")
+    """Legacy: no-op, phone is already verified on save."""
+    return schemas.MessageOut(detail="Phone is already verified.")
 
 
-@router.post("/me/phone/verify", response_model=schemas.PhoneVerificationResponse)
-def verify_phone(
+@router.post("/me/phone/verify", response_model=schemas.PhoneVerificationResponse, include_in_schema=False)
+def verify_phone_legacy(
     payload: schemas.PhoneVerificationVerify,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    """
-    Verify phone number with OTP.
-    
-    After successful verification, the phone number is marked as verified
-    and can be used for WhatsApp invoice creation.
-    """
+    """Legacy: phone is already verified on save, return current state."""
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not user.phone:
-        raise HTTPException(status_code=400, detail="No phone number pending verification")
-    if not user.phone_otp:
-        raise HTTPException(status_code=400, detail="No OTP pending. Request a new one.")
-    if payload.otp != user.phone_otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP")
-    
-    # Verify the phone
-    user.phone_verified = True
-    user.phone_otp = None
-    db.commit()
-    
-    logger.info("Phone verified for user %s: %s", current_user_id, user.phone)
+    if not user or not user.phone:
+        raise HTTPException(status_code=400, detail="No phone number on account")
     return schemas.PhoneVerificationResponse(
         detail="Phone verified successfully! You can now create invoices via WhatsApp.",
         phone=user.phone,
@@ -192,5 +114,6 @@ def remove_phone_number(
         raise HTTPException(status_code=404, detail="No phone number configured")
     user.phone = None
     user.phone_verified = False
+    user.phone_otp = None
     db.commit()
     return schemas.MessageOut(detail="Phone number removed")
