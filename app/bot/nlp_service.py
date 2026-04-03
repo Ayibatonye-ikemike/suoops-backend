@@ -577,33 +577,59 @@ class NLPService:
         matches = list(amount_pattern.finditer(clean_text))
         
         if matches:
-            for i, match in enumerate(matches):
-                amount_str = match.group(1)
-                
-                # Skip if it looks like a phone number
-                if amount_str in phone_variants:
-                    continue
-                
-                amount_start = match.end()
-                
-                # Description ends at next amount or end of string
-                if i + 1 < len(matches):
-                    desc_end = matches[i + 1].start()
-                else:
-                    desc_end = len(clean_text)
-                
-                # Extract description between this amount and the next
-                description = clean_text[amount_start:desc_end].strip()
-                
-                # Clean up description - remove leading/trailing punctuation
-                description = re.sub(r"^[\s,]+|[\s,]+$", "", description)
-                
-                if description and not description.isdigit():
-                    lines.append({
-                        "description": description.capitalize(),
-                        "quantity": 1,
-                        "unit_price": Decimal(amount_str),
-                    })
+            # Determine format: description-first vs amount-first.
+            # If there's meaningful text before the first amount, descriptions
+            # precede their amounts (e.g. "Airport pick up 6000, 4kg 209000")
+            pre_first = clean_text[:matches[0].start()].strip()
+            desc_before_amount = bool(pre_first) and any(c.isalpha() for c in pre_first)
+
+            if desc_before_amount:
+                # Description-first: pair text before each amount with that amount
+                prev_end = 0
+                for match in matches:
+                    amount_str = match.group(1)
+                    if amount_str in phone_variants:
+                        prev_end = match.end()
+                        continue
+                    description = clean_text[prev_end:match.start()].strip()
+                    description = re.sub(r"^[\s,]+|[\s,]+$", "", description)
+
+                    if description and not description.isdigit():
+                        lines.append({
+                            "description": description.capitalize(),
+                            "quantity": 1,
+                            "unit_price": Decimal(amount_str),
+                        })
+                    prev_end = match.end()
+            else:
+                # Amount-first: pair each amount with text after it
+                for i, match in enumerate(matches):
+                    amount_str = match.group(1)
+
+                    # Skip if it looks like a phone number
+                    if amount_str in phone_variants:
+                        continue
+
+                    amount_start = match.end()
+
+                    # Description ends at next amount or end of string
+                    if i + 1 < len(matches):
+                        desc_end = matches[i + 1].start()
+                    else:
+                        desc_end = len(clean_text)
+
+                    # Extract description between this amount and the next
+                    description = clean_text[amount_start:desc_end].strip()
+
+                    # Clean up description - remove leading/trailing punctuation
+                    description = re.sub(r"^[\s,]+|[\s,]+$", "", description)
+
+                    if description and not description.isdigit():
+                        lines.append({
+                            "description": description.capitalize(),
+                            "quantity": 1,
+                            "unit_price": Decimal(amount_str),
+                        })
         
         # Fallback: if no lines found with amount-first, try item-first pattern
         # e.g., "wig 1000, shoe 2000"
