@@ -25,11 +25,6 @@ class InvoiceQueryMixin:
         end_date: dt.date | None = None,
     ) -> tuple[list[models.Invoice], int]:
         """Return a page of invoices and the total count matching the filters."""
-        if self.cache and skip == 0 and limit >= 50 and not start_date and not end_date:
-            cached = self.cache.get_invoice_list(issuer_id)
-            if cached is not None:
-                logger.info("Cache hit for user %s invoice list", issuer_id)
-
         query = (
             self.db.query(models.Invoice)
             .filter(models.Invoice.issuer_id == issuer_id)
@@ -54,10 +49,9 @@ class InvoiceQueryMixin:
             query
             .options(
                 joinedload(models.Invoice.customer),
-                selectinload(models.Invoice.lines),
                 joinedload(models.Invoice.issuer),
-                joinedload(models.Invoice.created_by),  # Load creator for name display
-                joinedload(models.Invoice.status_updated_by),  # Load status updater for name display
+                joinedload(models.Invoice.created_by),
+                joinedload(models.Invoice.status_updated_by),
             )
             .order_by(models.Invoice.id.desc())
             .offset(skip)
@@ -70,19 +64,14 @@ class InvoiceQueryMixin:
         return invoices, total
 
     def get_invoice(self, issuer_id: int, invoice_id: str) -> models.Invoice:
-        if self.cache:
-            cached = self.cache.get_invoice(invoice_id)
-            if cached:
-                logger.info("Cache hit for invoice %s", invoice_id)
-
         invoice = (
             self.db.query(models.Invoice)
             .options(
                 selectinload(models.Invoice.lines),
                 joinedload(models.Invoice.customer),
                 joinedload(models.Invoice.issuer),
-                joinedload(models.Invoice.created_by),  # Load creator for name display
-                joinedload(models.Invoice.status_updated_by),  # Load status updater for name display
+                joinedload(models.Invoice.created_by),
+                joinedload(models.Invoice.status_updated_by),
             )
             .filter(models.Invoice.invoice_id == invoice_id, models.Invoice.issuer_id == issuer_id)
             .one_or_none()
