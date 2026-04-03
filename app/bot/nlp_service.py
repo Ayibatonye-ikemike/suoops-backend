@@ -422,8 +422,28 @@ class NLPService:
                 # Amount came first - look for name after the comma or amount
                 name = self._extract_name_from_text(text)
             else:
-                # Standard format - name is second token
-                name = tokens[1].rstrip(",.")
+                # Standard format - name is second token, possibly multi-word
+                # Collect consecutive alphabetic tokens until we hit a phone, amount, or comma-separated item
+                name_parts = [tokens[1].rstrip(",.")]
+                for t in tokens[2:]:
+                    clean_t = t.rstrip(",.")
+                    # Stop at phone numbers, amounts, or tokens with digits (like prices)
+                    if clean_t.replace("+", "").replace("-", "").isdigit():
+                        break
+                    if self.PHONE_PATTERN.match(clean_t):
+                        break
+                    if not clean_t.isalpha():
+                        break
+                    # Stop if we hit a known item/description word (not a name)
+                    if clean_t.lower() in self.COMMON_NAMES and len(name_parts) >= 1:
+                        # Could be a second name — only stop if we already have 2+ parts
+                        if len(name_parts) >= 2:
+                            break
+                    name_parts.append(clean_t)
+                    # Cap at 3 name parts (first middle last)
+                    if len(name_parts) >= 3:
+                        break
+                name = " ".join(name_parts)
         
         # Extract phone number first so we can avoid treating it as amount
         phone = self._extract_phone(text)
@@ -524,11 +544,16 @@ class NLPService:
         # Remove common prefixes to focus on item data
         clean_text = text.lower()
         
-        # Remove "invoice" and customer name (first word after invoice)
-        clean_text = re.sub(r"^invoice\s+[a-zA-Z]+\s*", "", clean_text)
+        # Remove "invoice" and customer name (consecutive alpha tokens after invoice)
+        clean_text = re.sub(r"^invoice(?:\s+[a-zA-Z]+)+\s*", "", clean_text)
+        
+        # Expand 'k' shorthand BEFORE stripping symbols (5k→5000, 10k→10000)
+        clean_text = re.sub(r"\b(\d+)k\b", lambda m: str(int(m.group(1)) * 1000), clean_text)
         
         # Strip currency symbols/prefixes so amounts are clean digits
+        # Support 'N' as informal Naira shorthand (N5000 → 5000)
         clean_text = clean_text.replace("₦", "").replace("$", "")
+        clean_text = re.sub(r"\bn(\d{3,})", r"\1", clean_text)  # N5000 → 5000
         clean_text = re.sub(r"\busd\b", "", clean_text)
         clean_text = re.sub(r"\bngn\b", "", clean_text)
         clean_text = re.sub(r"\bdollars?\b", "", clean_text)

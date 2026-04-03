@@ -41,8 +41,11 @@ def log_audit_event(action: str, user_id: int | None = None, status: str = "succ
             f.write(line + "\n")
     except Exception:  # noqa: BLE001
         _logger.debug("Failed to write audit event to file: %s", event)
-    # Emit via logger for aggregation
-    _logger.info(line)
+    # Emit via logger — downgrade expected noise to DEBUG
+    if status == "failure" and metadata.get("error") == "missing_refresh_token":
+        _logger.debug(line)
+    else:
+        _logger.info(line)
 
 
 def log_denied(action: str, user_id: int | None = None, reason: str | None = None, **extra: Any) -> None:
