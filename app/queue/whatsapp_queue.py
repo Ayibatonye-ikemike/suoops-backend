@@ -8,10 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import redis
-
 from app.core.config import settings
-from app.core.redis_utils import prepare_redis_url
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +17,8 @@ _fallback_buffer: list[dict[str, Any]] = []
 
 
 try:  # pragma: no cover - connection attempt
-    redis_url = prepare_redis_url(settings.REDIS_URL)
-    _redis = redis.Redis.from_url(redis_url, socket_timeout=0.5)
+    from app.db.redis_client import get_redis_client
+    _redis = get_redis_client()
     _redis.ping()
     _ENABLED = True
 except Exception:  # noqa: BLE001

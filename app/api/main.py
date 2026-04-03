@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+import redis.exceptions
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -52,6 +53,28 @@ from app.core.monitoring import init_monitoring
 async def _rate_limit_handler(request, exc: RateLimitExceeded):
     increment_rate_limit_exceeded()
     return JSONResponse(status_code=429, content={"detail": "Too many requests"})
+
+
+class ResilientSlowAPIMiddleware(SlowAPIMiddleware):
+    """SlowAPI middleware that fails open when Redis is unavailable.
+
+    If the rate-limiter storage (Redis) is unreachable, the request is
+    allowed through instead of returning a 500 error.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await super().dispatch(request, call_next)
+        except redis.exceptions.ConnectionError:
+            logging.getLogger("app.rate_limit").warning(
+                "Redis unavailable for rate limiting — allowing request through"
+            )
+            return await call_next(request)
+        except redis.exceptions.RedisError:
+            logging.getLogger("app.rate_limit").warning(
+                "Redis error in rate limiting — allowing request through"
+            )
+            return await call_next(request)
 
 
 async def _suoops_exception_handler(request: Request, exc: SuoOpsException):
@@ -142,7 +165,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.state.limiter = limiter
-    app.add_middleware(SlowAPIMiddleware)
+    app.add_middleware(ResilientSlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
     app.add_exception_handler(SuoOpsException, _suoops_exception_handler)
     
