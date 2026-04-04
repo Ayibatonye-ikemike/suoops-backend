@@ -2242,3 +2242,21 @@ def delete_testimonial(
     )
     return {"message": "Testimonial deleted"}
 
+
+@router.post("/testimonials/send-requests")
+def send_testimonial_requests(
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Trigger feedback collection emails to eligible users now."""
+    from app.workers.celery_app import celery_app as celery
+
+    log_audit_event(
+        "admin.testimonials.send_requests",
+        user_id=admin_user.id,
+    )
+    try:
+        celery.send_task("feedback.collect_user_feedback")
+    except Exception:
+        raise HTTPException(status_code=503, detail="Worker unavailable, try again later")
+    return {"message": "Feedback request emails queued"}
+
