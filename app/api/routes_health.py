@@ -4,6 +4,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -116,3 +117,15 @@ def ready(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
 def trigger_error():
     """Test endpoint to verify Sentry integration."""
     raise ZeroDivisionError("Sentry test error")
+
+
+_ROBOTS_TXT = """\
+User-agent: *
+Disallow: /
+"""
+
+
+@router.get("/robots.txt", response_class=PlainTextResponse)
+def robots_txt():
+    """Block all crawlers from the API domain."""
+    return _ROBOTS_TXT
