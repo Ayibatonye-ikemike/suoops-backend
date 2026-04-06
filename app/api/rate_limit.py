@@ -58,13 +58,15 @@ def _create_redis_storage_uri() -> str:
         return "memory://"
     
     redis_url = settings.REDIS_URL
-    if not redis_url or not redis_url.startswith("rediss://"):
-        return redis_url or "memory://"
+    if not redis_url:
+        return "memory://"
     
-    # For Heroku Redis with SSL, we need to create a custom connection
-    # since SlowAPI doesn't properly handle SSL parameters from query string
-    logger.info("Rate limiter will use custom Redis client with proper SSL config")
-    return "memory://"  # Fallback for now, will use custom storage below
+    # For TLS Redis, use the shared connection pool via custom storage below
+    if redis_url.startswith("rediss://"):
+        logger.info("Rate limiter will use custom Redis client with proper SSL config")
+        return "memory://"  # Placeholder — overridden by custom storage below
+    
+    return redis_url
 
 
 def _create_custom_redis_client() -> redis.Redis | None:
@@ -112,7 +114,8 @@ if _custom_redis_client:
         logger.error("Failed to create custom Redis storage for rate limiter: %s, using memory", e)
         limiter = Limiter(key_func=get_user_identifier, storage_uri="memory://")
 else:
-    # Fall back to default (memory in dev, or if Redis unavailable)
+    if settings.ENV.lower() == "prod":
+        logger.warning("Rate limiter using in-memory storage in PRODUCTION — Redis unavailable")
     limiter = Limiter(key_func=get_user_identifier, storage_uri=storage_uri)
 
 RATE_LIMITS = {

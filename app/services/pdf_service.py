@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from io import BytesIO
 from typing import TYPE_CHECKING
 
@@ -23,6 +24,14 @@ except Exception:  # noqa: BLE001
     _WEASY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+_PDF_TIMEOUT = 30  # seconds — kill WeasyPrint if it hangs
+_pdf_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="weasy")
+
+
+def _weasy_render(html_str: str) -> bytes:
+    """Run WeasyPrint in a thread so we can enforce a timeout."""
+    return HTML(string=html_str).write_pdf()  # type: ignore
 
 
 class PDFService:
@@ -66,11 +75,13 @@ class PDFService:
                     qr_code_data,
                     user_plan,  # Pass plan to template
                 )
-                pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
+                pdf_bytes = _pdf_pool.submit(_weasy_render, html_str).result(timeout=_PDF_TIMEOUT)
                 key = f"invoices/{invoice.invoice_id}.pdf"
                 url = self.s3.upload_bytes(pdf_bytes, key)
                 logger.info("Uploaded HTML PDF for %s", invoice.invoice_id)
                 return url
+            except FuturesTimeoutError:
+                logger.error("WeasyPrint timed out after %ds for %s", _PDF_TIMEOUT, invoice.invoice_id)
             except Exception as e:  # noqa: BLE001
                 logger.warning("HTML PDF generation failed (%s); falling back to ReportLab", e)
         # fallback path
@@ -198,11 +209,13 @@ class PDFService:
                     currency_symbol=currency_symbol,
                 )
                 from weasyprint import HTML  # type: ignore
-                pdf_bytes = HTML(string=html_str).write_pdf()  # type: ignore
+                pdf_bytes = _pdf_pool.submit(_weasy_render, html_str).result(timeout=_PDF_TIMEOUT)
                 key = f"receipts/{invoice.invoice_id}.pdf"
                 url = self.s3.upload_bytes(pdf_bytes, key)
                 logger.info("Uploaded receipt HTML PDF for %s", invoice.invoice_id)
                 return url
+            except FuturesTimeoutError:
+                logger.error("WeasyPrint receipt timed out after %ds for %s", _PDF_TIMEOUT, invoice.invoice_id)
             except Exception as e:  # noqa: BLE001
                 logger.warning("Receipt HTML generation failed (%s); using fallback", e)
 

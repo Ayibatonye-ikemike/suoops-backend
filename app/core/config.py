@@ -198,7 +198,6 @@ class ProdSettings(BaseAppSettings):
         "https://www.suoops.com",
         "https://support.suoops.com",
         "https://suoops-frontend.vercel.app",
-        "https://suoops-frontend-ikemike.vercel.app",
         "https://suoops-support.vercel.app",
         # NOTE: localhost removed from production — use DevSettings for local dev
     ]
