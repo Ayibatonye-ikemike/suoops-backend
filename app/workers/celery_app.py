@@ -84,6 +84,14 @@ def _create_celery() -> Celery:
                 "task": "feedback.collect_user_feedback",
                 "schedule": crontab(minute=0, hour=12, day_of_week=3),  # Wed 12:00 UTC = 13:00 WAT
             },
+            "daily-subscription-expiry": {
+                "task": "maintenance.downgrade_expired_subscriptions",
+                "schedule": crontab(minute=0, hour=1),  # 01:00 UTC = 02:00 WAT
+            },
+            "weekly-webhook-cleanup": {
+                "task": "maintenance.cleanup_stale_webhooks",
+                "schedule": crontab(minute=0, hour=3, day_of_week=0),  # Sun 03:00 UTC
+            },
         }
     return celery
 

@@ -26,6 +26,10 @@ from .customer_engagement_tasks import (
 from .feedback_tasks import (
     collect_user_feedback,
 )
+from .maintenance_tasks import (
+    cleanup_stale_webhooks,
+    downgrade_expired_subscriptions,
+)
 from .welcome_tasks import (
     send_instant_welcome,
 )
@@ -78,4 +82,7 @@ __all__ = [
     "send_post_payment_referrals",
     # Instant welcome
     "send_instant_welcome",
+    # Maintenance
+    "downgrade_expired_subscriptions",
+    "cleanup_stale_webhooks",
 ]
