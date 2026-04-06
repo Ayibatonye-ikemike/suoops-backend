@@ -777,7 +777,19 @@ def get_platform_metrics(
         ))
 
     # Get paying users (Pro only — STARTER removed)
+    # Auto-downgrade expired subscriptions first
     paid_plans = [SubscriptionPlan.PRO]
+    expired_users = db.query(models.User).filter(
+        models.User.plan.in_(paid_plans),
+        models.User.subscription_expires_at.isnot(None),
+        models.User.subscription_expires_at < now,
+    ).all()
+    for u in expired_users:
+        u.plan = SubscriptionPlan.FREE
+    if expired_users:
+        db.commit()
+        logger.info("Auto-downgraded %d expired PRO users to FREE", len(expired_users))
+
     paid_users_query = db.query(models.User).filter(
         models.User.plan.in_(paid_plans)
     ).order_by(desc(models.User.subscription_started_at)).all()
