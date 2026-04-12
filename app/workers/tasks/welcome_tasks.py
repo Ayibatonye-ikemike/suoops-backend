@@ -131,6 +131,21 @@ def send_instant_welcome(user_id: int) -> dict:
             except Exception as e:
                 logger.warning("Instant welcome WhatsApp failed for user %s: %s", user_id, e)
 
+        # ── 3. Guided onboarding (start first-invoice flow on WhatsApp) ──
+        if user.phone and result.get("whatsapp_sent"):
+            try:
+                import time
+                time.sleep(3)  # Brief pause so welcome template arrives first
+                from app.bot.onboarding_flow import send_onboarding_prompt, start_onboarding
+                from app.core.whatsapp import get_whatsapp_client
+
+                client = get_whatsapp_client()
+                start_onboarding(user.phone, user.id)
+                send_onboarding_prompt(client, user.phone, name)
+                logger.info("Started onboarding flow for user %s", user_id)
+            except Exception as e:
+                logger.warning("Onboarding prompt failed for user %s: %s", user_id, e)
+
         # ── Record so Daily activation skips duplicate welcome ───────
         if result["email_sent"] or result["whatsapp_sent"]:
             db.add(UserEmailLog(user_id=user_id, email_type="instant_welcome"))

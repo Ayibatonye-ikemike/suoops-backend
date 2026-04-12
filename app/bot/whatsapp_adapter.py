@@ -13,6 +13,11 @@ from app.bot.invoice_intent_processor import (
 )
 from app.bot.message_extractor import extract_message
 from app.bot.nlp_service import NLPService
+from app.bot.onboarding_flow import (
+    clear_onboarding,
+    get_onboarding_session,
+    handle_onboarding_reply,
+)
 from app.bot.product_invoice_flow import ProductInvoiceFlow, get_cart
 from app.bot.support_handler import SupportHandler
 from app.bot.voice_message_processor import VoiceMessageProcessor
@@ -146,6 +151,28 @@ class WhatsAppHandler:
 
         text_lower = text.lower()
         
+        # ── Guided onboarding flow (new users creating first invoice) ──
+        onboarding = get_onboarding_session(sender)
+        if onboarding:
+            # Let user break out of onboarding with explicit commands
+            if text_lower in {"help", "menu", "invoice"} or text_lower.startswith("invoice "):
+                clear_onboarding(sender)
+                # Fall through to normal processing
+            else:
+                invoice_data = handle_onboarding_reply(
+                    onboarding, self.client, sender, text,
+                )
+                if invoice_data:
+                    # Onboarding complete — create the actual invoice
+                    issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+                    if issuer_id:
+                        invoice_service = build_invoice_service(self.db, user_id=issuer_id)
+                        if self.invoice_processor._enforce_quota(invoice_service, issuer_id, sender):
+                            await self.invoice_processor._create_invoice(
+                                invoice_service, issuer_id, sender, invoice_data, {},
+                            )
+                return
+
         # Check if customer is confirming payment
         paid_keywords = {"paid", "i paid", "i've paid", "ive paid", "payment done", "sent", "transferred", "done"}
         if text_lower in paid_keywords:

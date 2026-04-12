@@ -62,6 +62,8 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_TEMPLATE_DORMANT_CUSTOMER: str | None = None  # Dormant customer "we miss you"
     WHATSAPP_TEMPLATE_REFERRAL_ASK: str | None = None  # Post-payment referral ask
     WHATSAPP_TEMPLATE_FEEDBACK: str | None = None  # Feedback/testimonial request
+    WHATSAPP_TEMPLATE_UNPAID_ALERT: str | None = None  # Aggregate unpaid notification
+    WHATSAPP_TEMPLATE_PAYMENT_UPSELL: str | None = None  # Payment-triggered Pro upsell
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
     
     @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")

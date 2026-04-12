@@ -92,6 +92,18 @@ def _create_celery() -> Celery:
                 "task": "maintenance.cleanup_stale_webhooks",
                 "schedule": crontab(minute=0, hour=3, day_of_week=0),  # Sun 03:00 UTC
             },
+            "biweekly-aggregate-unpaid-alerts": {
+                "task": "growth.send_aggregate_unpaid_alerts",
+                "schedule": crontab(minute=0, hour=8, day_of_week="1,4"),  # Mon+Thu 08:00 UTC = 09:00 WAT
+            },
+            "weekly-free-user-summary": {
+                "task": "growth.send_weekly_free_summary",
+                "schedule": crontab(minute=0, hour=8, day_of_week=1),  # Mon 08:00 UTC = 09:00 WAT
+            },
+            "daily-payment-upsells": {
+                "task": "growth.send_payment_upsells",
+                "schedule": crontab(minute=0, hour=14),  # 14:00 UTC = 15:00 WAT
+            },
         }
     return celery
 

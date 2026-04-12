@@ -30,6 +30,11 @@ from .maintenance_tasks import (
     cleanup_stale_webhooks,
     downgrade_expired_subscriptions,
 )
+from .growth_tasks import (
+    send_aggregate_unpaid_alerts,
+    send_payment_upsells,
+    send_weekly_free_summary,
+)
 from .welcome_tasks import (
     send_instant_welcome,
 )
@@ -85,4 +90,8 @@ __all__ = [
     # Maintenance
     "downgrade_expired_subscriptions",
     "cleanup_stale_webhooks",
+    # Growth tasks
+    "send_aggregate_unpaid_alerts",
+    "send_weekly_free_summary",
+    "send_payment_upsells",
 ]
