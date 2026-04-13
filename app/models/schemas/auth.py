@@ -54,6 +54,9 @@ class UserOut(BaseModel):
     phone_verified: bool = False
     email: str | None = None
     name: str
+    business_name: str | None = None
+    bank_name: str | None = None
+    account_number: str | None = None
     plan: str  # FREE, STARTER, PRO, BUSINESS
     invoice_balance: int = 0  # Available invoices (new billing model)
     invoices_this_month: int = 0  # Deprecated, kept for backward compat
