@@ -114,16 +114,10 @@ def get_analytics_dashboard(
     """
     Get comprehensive analytics dashboard with revenue, invoices, customers, and aging.
     
-    Args:
-        current_user_id: Authenticated user ID
-        data_owner_id: Data owner ID (team admin for members)
-        db: Database session
-        period: Time period (7d, 30d, 90d, 1y, all)
-        currency: Display currency (NGN or USD)
-        
-    Returns:
-        Complete analytics dashboard data (team data for team members)
+    Requires a paid plan (Pro or higher).
     """
+    require_plan_feature(db, current_user_id, "cash_dashboard", "Analytics Dashboard")
+
     # Calculate date range and conversion rate
     start_date, end_date = get_date_range(period)
     conversion_rate = get_conversion_rate(currency)

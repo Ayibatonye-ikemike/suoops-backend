@@ -101,7 +101,8 @@ class BaseAppSettings(BaseSettings):
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "img-src 'self' data: https://fastapi.tiangolo.com; "
         "font-src 'self' data:; "
-        "connect-src 'self'"
+        "connect-src 'self'; "
+        "frame-ancestors 'none'"
     )
     HSTS_SECONDS: int = 31_536_000
     LOG_LEVEL: str = "INFO"

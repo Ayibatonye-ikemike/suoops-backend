@@ -123,19 +123,44 @@ class FeatureGate:
         return True, None
     
     def deduct_invoice(self) -> None:
+        """Atomically deduct one invoice from user's balance.
+
+        Uses SELECT FOR UPDATE to prevent race conditions where concurrent
+        requests could both pass the balance check before either deducts.
         """
-        Deduct one invoice from user's balance after creating a revenue invoice.
-        
-        Should be called after successfully creating a revenue invoice.
-        """
-        balance = self._get_invoice_balance_safe()
-        if balance > 0:
-            self._set_invoice_balance_safe(balance - 1)
-            self.db.commit()
-            logger.info(
-                "Deducted 1 invoice from user %s balance (remaining: %d)",
-                self.user_id, self._get_invoice_balance_safe()
+        from sqlalchemy import text
+
+        # Lock the user row and read the current balance atomically
+        result = self.db.execute(
+            text("SELECT invoice_balance FROM \"user\" WHERE id = :uid FOR UPDATE"),
+            {"uid": self.user_id},
+        ).fetchone()
+
+        if not result:
+            return
+
+        balance = result[0] or 0
+        if balance <= 0:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "invoice_balance_exhausted",
+                    "message": "No invoice balance remaining.",
+                    "invoice_balance": 0,
+                },
             )
+
+        self.db.execute(
+            text("UPDATE \"user\" SET invoice_balance = invoice_balance - 1 WHERE id = :uid AND invoice_balance > 0"),
+            {"uid": self.user_id},
+        )
+        self.db.commit()
+        # Refresh the ORM object so subsequent reads see the new balance
+        self.db.refresh(self.user)
+        logger.info(
+            "Deducted 1 invoice from user %s balance (remaining: %d)",
+            self.user_id, self._get_invoice_balance_safe(),
+        )
     
     def add_invoice_pack(self, quantity: int = 1) -> int:
         """

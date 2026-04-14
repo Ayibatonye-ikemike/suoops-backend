@@ -228,9 +228,18 @@ class TeamService:
     # ========================================================================
     
     def create_invitation(self, data: InvitationCreate) -> TeamInvitation:
-        """Create and send a team invitation (admin only)."""
+        """Create and send a team invitation (admin only).
+
+        Uses SELECT FOR UPDATE on the team row to prevent race conditions
+        from concurrent invitation requests.
+        """
         team = self._require_admin_access()
-        
+
+        # Lock the team row to prevent concurrent invitation race conditions
+        self.db.execute(
+            select(Team).where(Team.id == team.id).with_for_update()
+        )
+
         # Check if team is at capacity
         if len(team.members) >= team.max_members:
             raise HTTPException(
