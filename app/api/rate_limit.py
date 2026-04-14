@@ -118,6 +118,26 @@ else:
         logger.warning("Rate limiter using in-memory storage in PRODUCTION — Redis unavailable")
     limiter = Limiter(key_func=get_user_identifier, storage_uri=storage_uri)
 
+
+# ── Monkey-patch slowapi to fail-open on Redis errors ─────────────
+# When Redis reaches max connections, slowapi crashes the entire request.
+# We wrap the check to catch connection errors and let the request through
+# rather than killing the service.
+_original_check = limiter._check_request_limit
+
+def _resilient_check(request, func, in_middleware):
+    try:
+        return _original_check(request, func, in_middleware)
+    except redis.exceptions.ConnectionError as e:
+        logger.warning("Rate limiter Redis unavailable, allowing request: %s", e)
+    except Exception as e:
+        if "max number of clients" in str(e).lower():
+            logger.warning("Rate limiter Redis max clients, allowing request: %s", e)
+        else:
+            raise
+
+limiter._check_request_limit = _resilient_check
+
 RATE_LIMITS = {
     # Auth flows (same for all users - before authentication)
     "signup_request": "5/minute" if settings.ENV.lower() == "prod" else "50/minute",
