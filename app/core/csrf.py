@@ -40,6 +40,7 @@ EXEMPT_PATHS = {
     "/webhooks/paystack",  # External webhook — verified via HMAC signature
     "/public/invoices/",   # Public read-only endpoints
     "/public/feedback",    # Public feedback form (token-authenticated, no session)
+    "/referrals/",         # Public referral code validation (pre-signup, no session)
     "/support/",           # Public contact form
     "/admin/",             # Admin endpoints use JWT Bearer auth, not session cookies
     "/telemetry/",         # Frontend telemetry without auth

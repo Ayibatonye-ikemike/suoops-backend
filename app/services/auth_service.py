@@ -38,24 +38,18 @@ class AuthService:
     # ----------------------------- Signup -----------------------------
 
     def start_signup(self, payload: schemas.SignupStart) -> None:
-        """Start signup with phone OR email (temporary email support for pre-launch)."""
+        """Start signup with phone OR email.
+
+        Phone-first: if phone is provided, use it as the primary identifier
+        so OTP is sent via WhatsApp. Email is stored but not used as identifier.
+        """
         
         # Validate that either phone or email is provided
         if not payload.phone and not payload.email:
             raise ValueError("Either phone or email is required")
         
-        # For now, prioritize email if both are provided (pre-launch mode)
-        if payload.email:
-            identifier = payload.email.lower().strip()
-            # Check if email already registered
-            existing = (
-                self.db.query(models.User)
-                .filter(models.User.email == identifier)
-                .one_or_none()
-            )
-            if existing:
-                raise ValueError("An account with this identifier already exists")
-        else:
+        # Phone-first: prioritize phone if provided
+        if payload.phone:
             identifier = self._normalize_phone(payload.phone)
             # Check if phone already registered
             existing = (
@@ -65,13 +59,26 @@ class AuthService:
             )
             if existing:
                 raise ValueError("An account with this identifier already exists")
+        else:
+            identifier = payload.email.lower().strip()
+            # Check if email already registered
+            existing = (
+                self.db.query(models.User)
+                .filter(models.User.email == identifier)
+                .one_or_none()
+            )
+            if existing:
+                raise ValueError("An account with this identifier already exists")
         
         data = payload.model_dump()
         logger.info(f"start_signup: payload data keys={list(data.keys())}, referral_code={data.get('referral_code')}")
-        if payload.email:
-            data["email"] = identifier
-        else:
+        if payload.phone:
             data["phone"] = identifier
+            # Store email too if provided (but phone is the OTP identifier)
+            if payload.email:
+                data["email"] = payload.email.lower().strip()
+        else:
+            data["email"] = identifier
             
         self.otp.request_signup(identifier, data)
 

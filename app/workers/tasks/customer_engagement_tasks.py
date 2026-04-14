@@ -158,8 +158,9 @@ def send_dormant_customer_nudges() -> dict[str, Any]:
                         stats["skipped"] += 1
                         continue
 
-                    # Check if we already sent a dormant nudge for this invoice
-                    if _already_sent(db, last_invoice_pk, "customer_dormant_21d", "email"):
+                    # Check if we already sent a dormant nudge for this invoice (any channel)
+                    if _already_sent(db, last_invoice_pk, "customer_dormant_21d", "email") or \
+                       _already_sent(db, last_invoice_pk, "customer_dormant_21d", "whatsapp"):
                         stats["skipped"] += 1
                         continue
 
