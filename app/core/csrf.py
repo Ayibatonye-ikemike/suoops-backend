@@ -43,6 +43,7 @@ EXEMPT_PATHS = {
     "/referrals/",         # Public referral code validation (pre-signup, no session)
     "/support/",           # Public contact form
     "/admin/",             # Admin endpoints use JWT Bearer auth, not session cookies
+    "/users/admin/",       # Admin user management uses JWT Bearer auth
     "/telemetry/",         # Frontend telemetry without auth
 }
 
