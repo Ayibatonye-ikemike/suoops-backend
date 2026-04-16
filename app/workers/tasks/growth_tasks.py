@@ -164,11 +164,9 @@ def send_aggregate_unpaid_alerts() -> dict[str, Any]:
 
                 if sent:
                     db.add(UserEmailLog(user_id=user.id, email_type="aggregate_unpaid"))
-                    db.flush()
+                    db.commit()  # Commit immediately so retries won't re-send
                 else:
                     stats["failed"] += 1
-
-            db.commit()
 
         logger.info(
             "Aggregate unpaid alerts: wa=%d email=%d skipped=%d failed=%d",
@@ -493,11 +491,9 @@ def send_payment_upsells() -> dict[str, Any]:
 
                 if sent:
                     db.add(UserEmailLog(user_id=user.id, email_type="payment_upsell"))
-                    db.flush()
+                    db.commit()  # Commit immediately so retries won't re-send
                 else:
                     stats["failed"] += 1
-
-            db.commit()
 
         logger.info(
             "Payment upsells: wa=%d email=%d skipped=%d failed=%d",
