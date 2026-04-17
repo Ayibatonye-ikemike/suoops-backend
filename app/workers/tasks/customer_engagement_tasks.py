@@ -169,30 +169,7 @@ def send_dormant_customer_nudges() -> dict[str, Any]:
 
                     delivered = False
 
-                    # ── Email ──
-                    if customer.email:
-                        try:
-                            template = _jinja_env.get_template("customer_dormant_nudge.html")
-                            html = template.render(
-                                customer_name=customer_name,
-                                business_name=business_name,
-                            )
-                            plain = (
-                                f"Hi {customer_name}! 👋\n\n"
-                                f"It's been a while since your last visit to {business_name}. "
-                                f"We'd love to see you again!\n\n"
-                                f"{business_name} is still here to serve you with the same "
-                                f"quality you enjoyed before.\n\n"
-                                f"Have a great day!\n"
-                                f"— {business_name} (via SuoOps)"
-                            )
-                            subject = f"{business_name} misses you! 👋"
-                            if _send_smtp_email(customer.email, subject, html, plain):
-                                _record_send(db, last_invoice_pk, "customer_dormant_21d", "email", customer.email)
-                                stats["email_sent"] += 1
-                                delivered = True
-                        except Exception as e:
-                            logger.warning("Dormant nudge email failed for customer %s: %s", customer.id, e)
+                    # ── Email DISABLED (WhatsApp-only to cut email volume) ──
 
                     # ── WhatsApp ──
                     if _is_valid_phone(customer.phone) and customer.whatsapp_opted_in:
@@ -320,33 +297,7 @@ def send_post_payment_referrals() -> dict[str, Any]:
 
                     delivered = False
 
-                    # ── Email ──
-                    if customer.email:
-                        try:
-                            template = _jinja_env.get_template("customer_referral_ask.html")
-                            html = template.render(
-                                customer_name=customer_name,
-                                business_name=business_name,
-                                business_phone=business_phone,
-                            )
-                            plain = (
-                                f"Hi {customer_name}! 🎉\n\n"
-                                f"Thank you for your payment to {business_name}!\n\n"
-                                f"If you enjoyed the service, would you recommend "
-                                f"{business_name} to a friend or colleague who might "
-                                f"need similar services?\n\n"
-                                f"A simple recommendation goes a long way in helping "
-                                f"small businesses grow. 🙏\n\n"
-                                f"Thank you!\n"
-                                f"— {business_name} (via SuoOps)"
-                            )
-                            subject = f"Enjoyed {business_name}'s service? Tell a friend! 🙏"
-                            if _send_smtp_email(customer.email, subject, html, plain):
-                                _record_send(db, inv.id, "post_payment_referral", "email", customer.email)
-                                stats["email_sent"] += 1
-                                delivered = True
-                        except Exception as e:
-                            logger.warning("Referral email failed for invoice %s: %s", inv.invoice_id, e)
+                    # ── Email DISABLED (WhatsApp-only to cut email volume) ──
 
                     # ── WhatsApp ──
                     if _is_valid_phone(customer.phone) and customer.whatsapp_opted_in:

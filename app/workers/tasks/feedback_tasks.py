@@ -168,17 +168,33 @@ def collect_user_feedback() -> dict[str, Any]:
                     name = (user.name or "").split()[0] if user.name else "there"
                     delivered = False
 
-                    # ── Email ──
-                    if user.email:
+                    # ── Email DISABLED (WhatsApp feedback template handles this) ──
+                    # WhatsApp feedback is sent via the WHATSAPP_TEMPLATE_FEEDBACK
+                    # template in the same task (handled separately).
+
+                    # ── WhatsApp ──
+                    has_phone = _is_valid_phone(user.phone)
+                    if has_phone:
                         try:
-                            from app.api.routes_testimonials import create_feedback_token
-                            token = create_feedback_token(user.id)
-                            ok = _send_feedback_email(user.email, name, invoice_count, token)
-                            if ok:
-                                stats["email_sent"] += 1
-                                delivered = True
+                            from app.core.whatsapp import get_whatsapp_client
+                            template_name = getattr(settings, "WHATSAPP_TEMPLATE_FEEDBACK", None)
+                            if template_name:
+                                client = get_whatsapp_client()
+                                lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                                components = [{
+                                    "type": "body",
+                                    "parameters": [
+                                        {"type": "text", "text": name},
+                                        {"type": "text", "text": str(invoice_count)},
+                                    ],
+                                }]
+                                if client.send_template(user.phone, template_name, lang, components):
+                                    from app.workers.tasks.feedback_tasks import mark_feedback_pending
+                                    mark_feedback_pending(user.phone)
+                                    stats["whatsapp_sent"] = stats.get("whatsapp_sent", 0) + 1
+                                    delivered = True
                         except Exception as e:
-                            logger.warning("Feedback email failed for user %s: %s", user.id, e)
+                            logger.warning("Feedback WhatsApp failed for user %s: %s", user.id, e)
 
                     if delivered:
                         _mark_asked(user.id)

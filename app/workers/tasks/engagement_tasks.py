@@ -260,16 +260,17 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
         .scalar()
     ) or 0
 
-    # ── 0. PHONE VERIFICATION NUDGE (users without verified phone) ──
-    if not getattr(user, "phone_verified", False) and signup_age.days >= 5:
-        _send_phone_nudge(db, user, name, signup_age.days, stats)
-        # Don't return — continue to other segments so user still gets
-        # monetization / tips / win-back emails too.
+    # ── 0. PHONE VERIFICATION NUDGE — DISABLED (phone-first signup) ──
+    # With phone-first signup, users already have WhatsApp connected.
+    # No need to nudge them to connect.
 
     # ── 1. ACTIVATION (users with 0 invoices, first 3 days) ──────────
+    #    Only send Day 0 welcome and Day 3 Pro pitch. Day 1 removed.
     #    Skip Day 0 if instant welcome was already sent at signup.
     if invoice_count == 0 and signup_age.days <= 3:
-        if signup_age.days == 0 and _was_sent(db, user.id, "instant_welcome"):
+        if signup_age.days == 1:
+            stats["skipped"] += 1  # Day 1 email removed — WhatsApp onboarding covers this
+        elif signup_age.days == 0 and _was_sent(db, user.id, "instant_welcome"):
             stats["skipped"] += 1
         else:
             _send_activation(db, user, name, signup_age.days, stats)
@@ -334,9 +335,10 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
             ):
                 stats["whatsapp_sent"] += 1
 
-    # ── 5. EDUCATION TIPS (active FREE users, every 2 days) ──────────
+    # ── 5. EDUCATION TIPS — DISABLED (cut email volume) ──────────
+    # Tips are now delivered via WhatsApp morning insights only.
     if invoice_count > 0 and user.plan.value == "free":
-        _send_tip(db, user, name, stats)
+        stats["skipped"] += 1
         return
 
     # ── 6. WIN-BACK (any user inactive 7+ days, WhatsApp only) ───────
