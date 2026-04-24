@@ -28,7 +28,9 @@ from .feedback_tasks import (
 )
 from .maintenance_tasks import (
     cleanup_stale_webhooks,
+    delete_inactive_accounts,
     downgrade_expired_subscriptions,
+    warn_inactive_accounts,
 )
 from .growth_tasks import (
     send_aggregate_unpaid_alerts,
@@ -90,6 +92,8 @@ __all__ = [
     # Maintenance
     "downgrade_expired_subscriptions",
     "cleanup_stale_webhooks",
+    "warn_inactive_accounts",
+    "delete_inactive_accounts",
     # Growth tasks
     "send_aggregate_unpaid_alerts",
     "send_weekly_free_summary",
