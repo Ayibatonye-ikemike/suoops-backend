@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 INVOICE_PACK_SIZE = 50
 INVOICE_PACK_PRICE = 1250  # ₦1,250
 
+# Small pack option
+INVOICE_SMALL_PACK_SIZE = 25
+INVOICE_SMALL_PACK_PRICE = 625  # ₦625
+
+PACK_OPTIONS = {
+    "standard": {"size": INVOICE_PACK_SIZE, "price": INVOICE_PACK_PRICE},
+    "small": {"size": INVOICE_SMALL_PACK_SIZE, "price": INVOICE_SMALL_PACK_PRICE},
+}
+
 
 class FeatureGate:
     """Check if user has access to features and invoice balance."""

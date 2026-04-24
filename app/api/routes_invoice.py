@@ -414,17 +414,14 @@ async def initialize_invoice_pack_purchase(
     current_user_id: CurrentUserDep,
     db: DbDep,
     quantity: int = 1,
+    pack_type: str = "standard",
 ):
     """
     Initialize Paystack payment for invoice pack purchase.
     
-    NEW BILLING MODEL:
-    - 100 invoices = ₦2,500 per pack
-    - Available to all plans (FREE, STARTER, PRO, BUSINESS)
-    - Invoice balance never expires
-    
     **Parameters:**
     - quantity: Number of packs to purchase (default 1)
+    - pack_type: \"standard\" (50 for ₦1,250) or \"small\" (25 for ₦625)
     
     **Returns:**
     - authorization_url: Paystack checkout URL
@@ -439,19 +436,26 @@ async def initialize_invoice_pack_purchase(
     from app.core.config import settings
     from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
     from app.services.payment_providers import calculate_amount_with_paystack_fee
-    from app.utils.feature_gate import INVOICE_PACK_PRICE, INVOICE_PACK_SIZE
+    from app.utils.feature_gate import PACK_OPTIONS
     
     if quantity < 1 or quantity > 10:
         raise HTTPException(status_code=400, detail="Quantity must be between 1 and 10 packs")
+    
+    pack = PACK_OPTIONS.get(pack_type)
+    if not pack:
+        raise HTTPException(status_code=400, detail="Invalid pack_type. Use 'standard' or 'small'")
     
     user = db.query(models.User).filter(models.User.id == current_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    pack_price = pack["price"]
+    pack_size = pack["size"]
+    
     # Calculate total - add Paystack fees so customer pays them
-    base_amount = INVOICE_PACK_PRICE * quantity
+    base_amount = pack_price * quantity
     total_amount = calculate_amount_with_paystack_fee(base_amount)
-    invoices_to_add = INVOICE_PACK_SIZE * quantity
+    invoices_to_add = pack_size * quantity
     
     # Generate unique reference
     reference = f"INVPACK-{current_user_id}-{uuid.uuid4().hex[:8].upper()}"
