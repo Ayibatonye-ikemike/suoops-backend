@@ -2064,6 +2064,9 @@ def purge_inactive_accounts(
 
     log_audit_event("admin.purge_inactive", user_id=admin_user.id, days=days, channel=channel)
 
+    if days < 14:
+        raise HTTPException(status_code=400, detail="Minimum 14 days threshold for safety")
+
     now = _dt.datetime.now(_dt.timezone.utc)
     cutoff = now - _dt.timedelta(days=days)
 
