@@ -184,8 +184,23 @@ class AccountDeletionService:
         - Users can delete their own account
         - Admins can delete any account
         - Staff cannot delete accounts
+        
+        Returns:
+            tuple of (can_delete, reason)
         """
-        # (existing implementation continues...)
+        requester = self.db.query(User).filter(User.id == requester_id).one_or_none()
+        if not requester:
+            return False, "Requester not found"
+        
+        # Self-deletion is always allowed
+        if requester_id == target_user_id:
+            return True, "Self-deletion"
+        
+        # Admin can delete any account
+        if requester.role == "admin":
+            return True, "Admin privilege"
+        
+        return False, "You can only delete your own account"
 
     @staticmethod
     def _remove_from_brevo(email: str) -> None:
@@ -212,20 +227,3 @@ class AccountDeletionService:
                     logger.warning("Brevo delete contact %s: %s", email, resp.status_code)
         except Exception as e:
             logger.warning("Brevo delete contact error for %s: %s", email, e)
-        
-        Returns:
-            tuple of (can_delete, reason)
-        """
-        requester = self.db.query(User).filter(User.id == requester_id).one_or_none()
-        if not requester:
-            return False, "Requester not found"
-        
-        # Self-deletion is always allowed
-        if requester_id == target_user_id:
-            return True, "Self-deletion"
-        
-        # Admin can delete any account
-        if requester.role == "admin":
-            return True, "Admin privilege"
-        
-        return False, "You can only delete your own account"
