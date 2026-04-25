@@ -2046,23 +2046,27 @@ ALLOWED_TASKS = {
 def purge_inactive_accounts(
     days: int = 60,
     channel: str = "all",
+    max_invoices: int = 0,
     admin_user=Depends(get_current_admin),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Immediately delete inactive empty accounts older than N days.
+    """Immediately delete inactive accounts older than N days.
 
-    No warning — direct deletion. Only deletes FREE users with zero invoices.
+    No warning — direct deletion. Only deletes FREE users.
 
     Parameters:
     - days: Minimum inactive days (default 60)
     - channel: "all", "email_only" (no WhatsApp), or "whatsapp" (phone verified)
+    - max_invoices: Maximum invoice count to qualify for deletion (default 0 = zero invoices only)
     """
     import datetime as _dt
+
+    from sqlalchemy import func as sqlfunc
 
     from app.models.models import Invoice, SubscriptionPlan, User
     from app.services.account_deletion_service import AccountDeletionService
 
-    log_audit_event("admin.purge_inactive", user_id=admin_user.id, days=days, channel=channel)
+    log_audit_event("admin.purge_inactive", user_id=admin_user.id, days=days, channel=channel, max_invoices=max_invoices)
 
     if days < 14:
         raise HTTPException(status_code=400, detail="Minimum 14 days threshold for safety")
@@ -2070,13 +2074,23 @@ def purge_inactive_accounts(
     now = _dt.datetime.now(_dt.timezone.utc)
     cutoff = now - _dt.timedelta(days=days)
 
-    # Find inactive free users with zero invoices
-    users_with_invoices = db.query(Invoice.issuer_id).distinct().subquery()
+    # Count invoices per user
+    invoice_counts = (
+        db.query(Invoice.issuer_id, sqlfunc.count(Invoice.id).label("cnt"))
+        .group_by(Invoice.issuer_id)
+        .subquery()
+    )
+
+    # Find inactive free users with invoices <= max_invoices
     query = (
         db.query(User)
+        .outerjoin(invoice_counts, User.id == invoice_counts.c.issuer_id)
         .filter(
             User.plan == SubscriptionPlan.FREE,
-            ~User.id.in_(db.query(users_with_invoices)),
+            (
+                (invoice_counts.c.cnt == None)  # noqa: E711 — zero invoices
+                | (invoice_counts.c.cnt <= max_invoices)
+            ),
             (
                 ((User.last_login != None) & (User.last_login < cutoff))  # noqa: E711
                 | ((User.last_login == None) & (User.created_at < cutoff))  # noqa: E711
