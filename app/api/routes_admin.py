@@ -2045,28 +2045,31 @@ ALLOWED_TASKS = {
 @router.post("/purge-inactive-accounts")
 def purge_inactive_accounts(
     days: int = 60,
+    channel: str = "all",
     admin_user=Depends(get_current_admin),
     db: Session = Depends(get_db),
 ) -> dict:
     """Immediately delete inactive empty accounts older than N days.
 
     No warning — direct deletion. Only deletes FREE users with zero invoices.
+
+    Parameters:
+    - days: Minimum inactive days (default 60)
+    - channel: "all", "email_only" (no WhatsApp), or "whatsapp" (phone verified)
     """
     import datetime as _dt
-
-    from sqlalchemy import func as sqlfunc
 
     from app.models.models import Invoice, SubscriptionPlan, User
     from app.services.account_deletion_service import AccountDeletionService
 
-    log_audit_event("admin.purge_inactive", user_id=admin_user.id, days=days)
+    log_audit_event("admin.purge_inactive", user_id=admin_user.id, days=days, channel=channel)
 
     now = _dt.datetime.now(_dt.timezone.utc)
     cutoff = now - _dt.timedelta(days=days)
 
     # Find inactive free users with zero invoices
     users_with_invoices = db.query(Invoice.issuer_id).distinct().subquery()
-    inactive = (
+    query = (
         db.query(User)
         .filter(
             User.plan == SubscriptionPlan.FREE,
@@ -2076,8 +2079,20 @@ def purge_inactive_accounts(
                 | ((User.last_login == None) & (User.created_at < cutoff))  # noqa: E711
             ),
         )
-        .all()
     )
+
+    # Channel filter
+    if channel == "email_only":
+        query = query.filter(
+            (User.phone_verified.is_(False)) | (User.phone == None)  # noqa: E711
+        )
+    elif channel == "whatsapp":
+        query = query.filter(
+            User.phone_verified.is_(True),
+            User.phone != None,  # noqa: E711
+        )
+
+    inactive = query.all()
 
     if not inactive:
         return {"deleted": 0, "message": "No inactive empty accounts found"}
