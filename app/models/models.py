@@ -296,7 +296,7 @@ class User(Base):
     )
     # Invoice balance: purchased invoices available to use (100 invoices = ₦2,500 pack)
     # Decremented when creating revenue invoices. Users buy packs to replenish.
-    invoice_balance: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    invoice_balance: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
     # Legacy field - kept for backward compatibility, will be deprecated
     # Track monthly invoice usage (resets based on subscription start, not calendar month)
     invoices_this_month: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

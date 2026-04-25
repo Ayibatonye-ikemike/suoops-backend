@@ -99,8 +99,8 @@ class FeatureGate:
         return self.user.effective_plan != models.SubscriptionPlan.FREE
     
     def _get_invoice_balance_safe(self) -> int:
-        """Safely get invoice_balance, defaulting to 5 if column doesn't exist yet."""
-        return getattr(self.user, 'invoice_balance', 5)
+        """Safely get invoice_balance, defaulting to 2 if column doesn't exist yet."""
+        return getattr(self.user, 'invoice_balance', 2)
     
     def _set_invoice_balance_safe(self, value: int) -> None:
         """Safely set invoice_balance if column exists."""

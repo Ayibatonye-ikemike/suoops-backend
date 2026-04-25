@@ -880,6 +880,8 @@ class GrowthMetrics(BaseModel):
     avg_invoices_per_user: float
     power_users: int  # Users with 10+ invoices this month
     zero_invoice_users: int  # Signed up but never created an invoice
+    whatsapp_users: int  # Users with verified WhatsApp phone
+    email_only_users: int  # Users without WhatsApp (email only)
     # Subscription health
     expired_subscriptions: int  # Pro with expired dates
     expiring_soon: int  # Expiring within 7 days
@@ -1046,6 +1048,13 @@ def get_growth_metrics(
         ~models.User.id.in_(db.query(users_with_any_invoice))
     ).count()
 
+    # ── Channel Segmentation ──
+    whatsapp_users = db.query(models.User).filter(
+        models.User.phone_verified.is_(True),
+        models.User.phone != None,  # noqa: E711
+    ).count()
+    email_only_users = total_signups - whatsapp_users
+
     # ── Subscription Health ──
     expired = db.query(models.User).filter(
         models.User.plan == SubscriptionPlan.PRO,
@@ -1076,6 +1085,8 @@ def get_growth_metrics(
         avg_invoices_per_user=avg_invoices_per_user,
         power_users=power_users,
         zero_invoice_users=zero_invoice,
+        whatsapp_users=whatsapp_users,
+        email_only_users=email_only_users,
         expired_subscriptions=expired,
         expiring_soon=expiring,
     )
