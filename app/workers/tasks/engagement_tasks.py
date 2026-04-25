@@ -510,16 +510,31 @@ def _send_zero_invoice_nudge(db, user, name: str, day: int, stats: dict[str, int
         if _send_smtp_email(user.email, subject, None, plain_email):
             sent = True
 
-    # WhatsApp plain text (free within 24h window)
-    if user.phone and is_window_open(user.phone):
-        try:
-            from app.core.whatsapp import get_whatsapp_client
-            client = get_whatsapp_client()
-            if client.send_text(user.phone, wa_message):
-                stats["whatsapp_sent"] = stats.get("whatsapp_sent", 0) + 1
-                sent = True
-        except Exception as e:
-            logger.warning("Day %d WhatsApp nudge failed for user %s: %s", day, user.id, e)
+    # WhatsApp: try free plain text first, fall back to win_back template
+    if user.phone:
+        wa_sent = False
+        if is_window_open(user.phone):
+            try:
+                from app.core.whatsapp import get_whatsapp_client
+                client = get_whatsapp_client()
+                if client.send_text(user.phone, wa_message):
+                    wa_sent = True
+            except Exception as e:
+                logger.warning("Day %d WhatsApp nudge failed for user %s: %s", day, user.id, e)
+
+        # Fall back to win_back_reminder template (outside 24h window)
+        if not wa_sent:
+            win_back_tpl = getattr(settings, "WHATSAPP_TEMPLATE_WIN_BACK", None)
+            if win_back_tpl:
+                if _send_wa_template(
+                    user.phone, win_back_tpl, [name],
+                    f"wa_nudge_day{day}", db, user.id,
+                ):
+                    wa_sent = True
+
+        if wa_sent:
+            stats["whatsapp_sent"] = stats.get("whatsapp_sent", 0) + 1
+            sent = True
 
     if sent:
         _record_sent(db, user.id, email_type)
