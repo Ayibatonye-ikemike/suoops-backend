@@ -2037,7 +2037,78 @@ ALLOWED_TASKS = {
     "morning_insights": "insights.send_morning_insights",
     "dormant_nudges": "customer_engagement.send_dormant_customer_nudges",
     "referral_asks": "customer_engagement.send_post_payment_referrals",
+    "warn_inactive": "maintenance.warn_inactive_accounts",
+    "delete_inactive": "maintenance.delete_inactive_accounts",
 }
+
+
+@router.post("/purge-inactive-accounts")
+def purge_inactive_accounts(
+    days: int = 60,
+    admin_user=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Immediately delete inactive empty accounts older than N days.
+
+    No warning — direct deletion. Only deletes FREE users with zero invoices.
+    """
+    import datetime as _dt
+
+    from sqlalchemy import func as sqlfunc
+
+    from app.models.models import Invoice, SubscriptionPlan, User
+    from app.services.account_deletion_service import AccountDeletionService
+
+    log_audit_event("admin.purge_inactive", user_id=admin_user.id, days=days)
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    cutoff = now - _dt.timedelta(days=days)
+
+    # Find inactive free users with zero invoices
+    users_with_invoices = db.query(Invoice.issuer_id).distinct().subquery()
+    inactive = (
+        db.query(User)
+        .filter(
+            User.plan == SubscriptionPlan.FREE,
+            ~User.id.in_(db.query(users_with_invoices)),
+            (
+                ((User.last_login != None) & (User.last_login < cutoff))  # noqa: E711
+                | ((User.last_login == None) & (User.created_at < cutoff))  # noqa: E711
+            ),
+        )
+        .all()
+    )
+
+    if not inactive:
+        return {"deleted": 0, "message": "No inactive empty accounts found"}
+
+    service = AccountDeletionService(db)
+    deleted = 0
+    failed = 0
+    deleted_ids = []
+
+    for user in inactive:
+        try:
+            uid = user.id
+            service.delete_account(user_id=uid, deleted_by_user_id=None)
+            deleted += 1
+            deleted_ids.append(uid)
+        except Exception as e:
+            failed += 1
+            logger.warning("Failed to purge user %s: %s", user.id, e)
+
+    logger.info(
+        "Admin %s purged %d inactive accounts (days=%d, failed=%d)",
+        admin_user.id, deleted, days, failed,
+    )
+
+    return {
+        "deleted": deleted,
+        "failed": failed,
+        "days_threshold": days,
+        "deleted_user_ids": deleted_ids[:50],  # Limit response size
+        "message": f"Deleted {deleted} inactive empty accounts (inactive {days}+ days)",
+    }
 
 
 @router.get("/tasks/schedule")
