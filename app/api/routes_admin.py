@@ -2124,8 +2124,96 @@ def purge_inactive_accounts(
         "deleted": deleted,
         "failed": failed,
         "days_threshold": days,
-        "deleted_user_ids": deleted_ids[:50],  # Limit response size
-        "message": f"Deleted {deleted} inactive empty accounts (inactive {days}+ days)",
+        "channel": channel,
+        "deleted_user_ids": deleted_ids[:50],
+        "message": f"Deleted {deleted} inactive empty accounts (inactive {days}+ days, channel={channel})",
+    }
+
+
+@router.post("/sync-brevo-contacts")
+def sync_brevo_contacts(
+    admin_user=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Sync Brevo contacts with current database.
+
+    Fetches all contacts from Brevo, cross-references with DB,
+    and deletes contacts whose emails no longer exist in the DB.
+    Also re-syncs all current users to ensure lists are accurate.
+    """
+    import httpx
+
+    log_audit_event("admin.sync_brevo", user_id=admin_user.id)
+
+    brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
+    if not brevo_api_key:
+        raise HTTPException(status_code=400, detail="BREVO_CONTACTS_API_KEY not configured")
+
+    # Get all current user emails from DB
+    db_emails = set()
+    for row in db.query(models.User.email).filter(models.User.email != None).all():  # noqa: E711
+        if row.email:
+            db_emails.add(row.email.lower())
+
+    # Fetch all contacts from Brevo (paginated)
+    headers = {"api-key": brevo_api_key, "Content-Type": "application/json"}
+    brevo_contacts = []
+    offset = 0
+    limit = 50
+
+    with httpx.Client(timeout=15.0) as client:
+        while True:
+            resp = client.get(
+                f"https://api.brevo.com/v3/contacts?limit={limit}&offset={offset}",
+                headers=headers,
+            )
+            if resp.status_code != 200:
+                logger.warning("Brevo fetch contacts failed: %s", resp.status_code)
+                break
+            data = resp.json()
+            contacts = data.get("contacts", [])
+            if not contacts:
+                break
+            brevo_contacts.extend(contacts)
+            offset += limit
+            if offset >= data.get("count", 0):
+                break
+
+    # Find contacts in Brevo that aren't in the DB
+    orphaned = []
+    for contact in brevo_contacts:
+        email = contact.get("email", "").lower()
+        if email and email not in db_emails:
+            orphaned.append(email)
+
+    # Delete orphaned contacts from Brevo
+    deleted = 0
+    with httpx.Client(timeout=10.0) as client:
+        for email in orphaned:
+            try:
+                encoded = email.replace("@", "%40")
+                resp = client.delete(
+                    f"https://api.brevo.com/v3/contacts/{encoded}",
+                    headers=headers,
+                )
+                if resp.status_code in (200, 204, 404):
+                    deleted += 1
+                else:
+                    logger.warning("Brevo delete %s: %s", email, resp.status_code)
+            except Exception as e:
+                logger.warning("Brevo delete error %s: %s", email, e)
+
+    logger.info(
+        "Admin %s synced Brevo: %d total contacts, %d orphaned, %d deleted",
+        admin_user.id, len(brevo_contacts), len(orphaned), deleted,
+    )
+
+    return {
+        "total_brevo_contacts": len(brevo_contacts),
+        "current_db_users": len(db_emails),
+        "orphaned_contacts": len(orphaned),
+        "deleted_from_brevo": deleted,
+        "message": f"Removed {deleted} orphaned contacts from Brevo",
     }
 
 

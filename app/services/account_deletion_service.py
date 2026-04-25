@@ -137,6 +137,13 @@ class AccountDeletionService:
             self.db.delete(user)
             self.db.commit()
             
+            # 9. Remove from Brevo contact lists (async-safe, fire and forget)
+            if user_info.get("email"):
+                try:
+                    self._remove_from_brevo(user_info["email"])
+                except Exception as e:
+                    logger.warning("Brevo contact removal failed for %s: %s", user_info["email"], e)
+            
             # Log audit event
             log_audit_event(
                 action="account.deleted",
@@ -177,6 +184,34 @@ class AccountDeletionService:
         - Users can delete their own account
         - Admins can delete any account
         - Staff cannot delete accounts
+        """
+        # (existing implementation continues...)
+
+    @staticmethod
+    def _remove_from_brevo(email: str) -> None:
+        """Remove a contact from Brevo entirely (all lists + delete contact)."""
+        import httpx
+        from app.core.config import settings
+
+        api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
+        if not api_key:
+            return
+
+        headers = {"api-key": api_key, "Content-Type": "application/json"}
+        encoded_email = email.replace("@", "%40")
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.delete(
+                    f"https://api.brevo.com/v3/contacts/{encoded_email}",
+                    headers=headers,
+                )
+                if resp.status_code in (200, 204, 404):
+                    logger.info("Removed %s from Brevo contacts", email)
+                else:
+                    logger.warning("Brevo delete contact %s: %s", email, resp.status_code)
+        except Exception as e:
+            logger.warning("Brevo delete contact error for %s: %s", email, e)
         
         Returns:
             tuple of (can_delete, reason)
