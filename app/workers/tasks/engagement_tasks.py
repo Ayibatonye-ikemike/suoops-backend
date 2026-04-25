@@ -34,6 +34,8 @@ _jinja_env = Environment(
 EMAIL_WELCOME_FIRST_INVOICE = "activation_day0"
 EMAIL_SEND_ONE_INVOICE = "activation_day1"
 EMAIL_DAILY_HABIT = "activation_day3"
+EMAIL_NUDGE_DAY7 = "activation_day7"
+EMAIL_NUDGE_DAY14 = "activation_day14"
 
 # Monetization (one-time sends based on behavior)
 EMAIL_3_INVOICES_SENT = "monetization_3_invoices"
@@ -264,14 +266,20 @@ def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
     # With phone-first signup, users already have WhatsApp connected.
     # No need to nudge them to connect.
 
-    # ── 1. ACTIVATION (users with 0 invoices, first 3 days) ──────────
-    #    Only send Day 0 welcome and Day 3 Pro pitch. Day 1 removed.
-    #    Skip Day 0 if instant welcome was already sent at signup.
-    if invoice_count == 0 and signup_age.days <= 3:
+    # ── 1. ACTIVATION (users with 0 invoices) ──────────────────────
+    #    Day 0: Welcome email
+    #    Day 3: Pro pitch
+    #    Day 7: "Your invoices are waiting" nudge
+    #    Day 14: Final "last chance" nudge
+    if invoice_count == 0 and signup_age.days <= 14:
         if signup_age.days == 1:
-            stats["skipped"] += 1  # Day 1 email removed — WhatsApp onboarding covers this
+            stats["skipped"] += 1  # Day 1 removed — WhatsApp onboarding covers this
         elif signup_age.days == 0 and _was_sent(db, user.id, "instant_welcome"):
             stats["skipped"] += 1
+        elif signup_age.days == 7:
+            _send_zero_invoice_nudge(db, user, name, 7, stats)
+        elif signup_age.days == 14:
+            _send_zero_invoice_nudge(db, user, name, 14, stats)
         else:
             _send_activation(db, user, name, signup_age.days, stats)
         return
@@ -427,6 +435,96 @@ def _send_phone_nudge(db, user, name: str, days_since_signup: int, stats: dict[s
         _record_sent(db, user.id, email_type)
         stats["phone_nudge_sent"] += 1
         logger.info("Sent phone nudge '%s' to user %s", email_type, user.id)
+    else:
+        stats["failed"] += 1
+
+
+def _send_zero_invoice_nudge(db, user, name: str, day: int, stats: dict[str, int]) -> None:
+    """Send a re-engagement nudge to zero-invoice users on Day 7 or Day 14.
+
+    Uses email + free WhatsApp plain text (within 24h window).
+    """
+    from app.bot.conversation_window import is_window_open
+
+    nudge_map = {
+        7: (
+            EMAIL_NUDGE_DAY7,
+            "Your free invoices are waiting!",
+            (
+                f"Hi {name},\n\n"
+                "You signed up for SuoOps a week ago but haven't sent your first invoice yet.\n\n"
+                "It takes 30 seconds — just text our WhatsApp bot:\n"
+                "\"Invoice Joy 5000 wig\"\n\n"
+                "...and your invoice goes out instantly with a payment link!\n\n"
+                "Your 2 free invoices are ready to use.\n\n"
+                "Create your first invoice: https://suoops.com/dashboard\n\n"
+                "— The SuoOps Team"
+            ),
+            (
+                f"👋 Hi {name}! You signed up a week ago but haven't sent your first invoice yet.\n\n"
+                "It's super easy — just text me:\n"
+                "`Invoice Joy 5000 wig`\n\n"
+                "...and your customer gets a professional invoice instantly! 🧾\n\n"
+                "You have 2 free invoices waiting. Try it now!"
+            ),
+        ),
+        14: (
+            EMAIL_NUDGE_DAY14,
+            "Last chance — your free invoices expire soon",
+            (
+                f"Hi {name},\n\n"
+                "It's been 2 weeks since you signed up for SuoOps.\n\n"
+                "Your 2 free invoices are still waiting. Here's what you can do in 30 seconds:\n\n"
+                "1. Open WhatsApp\n"
+                "2. Text: \"Invoice Joy 5000 wig\"\n"
+                "3. Done — your customer gets a professional invoice\n\n"
+                "No forms, no complexity. Just text and send.\n\n"
+                "Create your first invoice: https://suoops.com/dashboard\n\n"
+                "— The SuoOps Team"
+            ),
+            (
+                f"⏰ {name}, it's been 2 weeks! Your free invoices are still waiting.\n\n"
+                "Just text me something like:\n"
+                "`Invoice Ade 10000 for design work`\n\n"
+                "Your customer gets a professional invoice with payment details instantly.\n\n"
+                "Don't let your free invoices go to waste! 🚀"
+            ),
+        ),
+    }
+
+    entry = nudge_map.get(day)
+    if not entry:
+        stats["skipped"] += 1
+        return
+
+    email_type, subject, plain_email, wa_message = entry
+
+    if _was_sent(db, user.id, email_type):
+        stats["skipped"] += 1
+        return
+
+    sent = False
+
+    # Email
+    if user.email:
+        if _send_smtp_email(user.email, subject, None, plain_email):
+            sent = True
+
+    # WhatsApp plain text (free within 24h window)
+    if user.phone and is_window_open(user.phone):
+        try:
+            from app.core.whatsapp import get_whatsapp_client
+            client = get_whatsapp_client()
+            if client.send_text(user.phone, wa_message):
+                stats["whatsapp_sent"] = stats.get("whatsapp_sent", 0) + 1
+                sent = True
+        except Exception as e:
+            logger.warning("Day %d WhatsApp nudge failed for user %s: %s", day, user.id, e)
+
+    if sent:
+        _record_sent(db, user.id, email_type)
+        stats["activation_sent"] += 1
+        logger.info("Sent day_%d nudge to user %s", day, user.id)
     else:
         stats["failed"] += 1
 
