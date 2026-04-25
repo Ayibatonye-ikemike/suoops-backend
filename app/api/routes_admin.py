@@ -2143,9 +2143,11 @@ def sync_brevo_contacts(
     """
     import httpx
 
+    from app.core.config import settings as _settings
+
     log_audit_event("admin.sync_brevo", user_id=admin_user.id)
 
-    brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
+    brevo_api_key = getattr(_settings, "BREVO_CONTACTS_API_KEY", None)
     if not brevo_api_key:
         raise HTTPException(status_code=400, detail="BREVO_CONTACTS_API_KEY not configured")
 
