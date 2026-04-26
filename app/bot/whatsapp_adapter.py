@@ -281,6 +281,21 @@ class WhatsAppHandler:
                     return
         # ── End product browsing flow ──────────────────────────────
 
+        # ── Quick Status Check (all users, free) ─────────────────
+        status_keywords = {"status", "pending", "my invoices", "my invoice", "balance", "how many invoices", "invoice balance"}
+        if text_lower in status_keywords:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._send_quick_status(sender, issuer_id)
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+            return
+        # ── End status check ──────────────────────────────────────
+
         # ── Analytics / Insights command (Pro only) ──────────────
         analytics_keywords = {"report", "analytics", "insights", "summary", "dashboard", "stats", "my stats", "my report"}
         if text_lower in analytics_keywords:
@@ -493,6 +508,8 @@ class WhatsAppHandler:
         """Send a warm, contextual greeting to a returning business user."""
         import datetime as _dt
 
+        from sqlalchemy import func as sqlfunc
+
         user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
         name = getattr(user, "business_name", None) or getattr(user, "full_name", None) or ""
 
@@ -509,6 +526,31 @@ class WhatsAppHandler:
             msg = f"👋 {time_greeting}, {name.split()[0]}! Welcome back.\n\n"
         else:
             msg = f"👋 {time_greeting}! Welcome back.\n\n"
+
+        # Contextual business snapshot
+        from app.models.models import Invoice
+        pending_total = (
+            self.db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
+            .filter(
+                Invoice.issuer_id == issuer_id,
+                Invoice.invoice_type == "revenue",
+                Invoice.status.in_(["pending", "awaiting_confirmation"]),
+            )
+            .scalar()
+        )
+        pending_count = (
+            self.db.query(sqlfunc.count(Invoice.id))
+            .filter(
+                Invoice.issuer_id == issuer_id,
+                Invoice.invoice_type == "revenue",
+                Invoice.status.in_(["pending", "awaiting_confirmation"]),
+            )
+            .scalar()
+        ) or 0
+
+        if pending_count > 0 and float(pending_total) > 0:
+            s = "s" if pending_count != 1 else ""
+            msg += f"💰 You have *₦{float(pending_total):,.0f}* unpaid across *{pending_count} invoice{s}*.\n\n"
 
         msg += "What would you like to do?\n\n"
         msg += (
@@ -533,6 +575,61 @@ class WhatsAppHandler:
             "🆘 Type *support* to reach our team\n\n"
             "Type *help* for full guide."
         )
+        self.client.send_text(sender, msg)
+
+    def _send_quick_status(self, sender: str, issuer_id: int) -> None:
+        """Send a quick invoice status summary — available to all users for free."""
+        from sqlalchemy import func as sqlfunc
+
+        from app.models.models import Invoice
+
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        if not user:
+            return
+
+        pending_total = float(
+            self.db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
+            .filter(
+                Invoice.issuer_id == issuer_id,
+                Invoice.invoice_type == "revenue",
+                Invoice.status.in_(["pending", "awaiting_confirmation"]),
+            )
+            .scalar()
+        )
+        pending_count = (
+            self.db.query(sqlfunc.count(Invoice.id))
+            .filter(
+                Invoice.issuer_id == issuer_id,
+                Invoice.invoice_type == "revenue",
+                Invoice.status.in_(["pending", "awaiting_confirmation"]),
+            )
+            .scalar()
+        ) or 0
+        paid_count = (
+            self.db.query(sqlfunc.count(Invoice.id))
+            .filter(
+                Invoice.issuer_id == issuer_id,
+                Invoice.invoice_type == "revenue",
+                Invoice.status == "paid",
+            )
+            .scalar()
+        ) or 0
+        balance = getattr(user, "invoice_balance", 0)
+
+        msg = "📊 *Your Quick Status*\n\n"
+        if pending_count > 0:
+            s = "s" if pending_count != 1 else ""
+            msg += f"⏳ Pending: {pending_count} invoice{s} — ₦{pending_total:,.0f}\n"
+        else:
+            msg += "✅ No pending invoices\n"
+        msg += f"✅ Paid: {paid_count} invoices\n"
+        msg += f"📦 Invoice balance: {balance} remaining\n"
+
+        if balance <= 2 and balance > 0:
+            msg += "\n⚠️ Running low! Buy more at suoops.com/dashboard/billing/purchase"
+        elif balance == 0:
+            msg += "\n🚫 No invoices left! Buy a pack to continue invoicing."
+
         self.client.send_text(sender, msg)
 
     def _save_feedback(self, sender: str, text: str) -> bool:

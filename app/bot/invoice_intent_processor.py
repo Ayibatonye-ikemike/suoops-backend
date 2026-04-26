@@ -510,6 +510,13 @@ class InvoiceIntentProcessor:
 
         self.client.send_text(sender, business_message)
         
+        # "Create another?" prompt
+        self.client.send_text(
+            sender,
+            "💡 Want to create another invoice? Just type your next one!\n"
+            "e.g. `Invoice Ade 08012345678, 10000 design work`"
+        )
+
         # Send invoice PDF as document (better UX than URL link)
         if invoice.pdf_url and invoice.pdf_url.startswith("http"):
             self.client.send_document(
@@ -814,6 +821,28 @@ class InvoiceIntentProcessor:
         invoice.whatsapp_delivery_pending = False
         self.db.commit()
         
+        # Check for OTHER unpaid invoices from any business
+        other_pending = (
+            self.db.query(models.Invoice)
+            .filter(
+                models.Invoice.customer_id.in_(customer_ids),
+                models.Invoice.id != invoice.id,
+                models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
+                models.Invoice.invoice_type == "revenue",
+            )
+            .all()
+        )
+        if other_pending:
+            total = sum(float(inv.amount) for inv in other_pending)
+            count = len(other_pending)
+            s = "s" if count != 1 else ""
+            self.client.send_text(
+                customer_phone,
+                f"📌 By the way, you also have *{count} other invoice{s}* "
+                f"pending — totalling *₦{total:,.0f}*.\n\n"
+                f"Reply *paid* when you've made payment."
+            )
+
         return True
 
     def handle_customer_paid(self, customer_phone: str) -> bool:
