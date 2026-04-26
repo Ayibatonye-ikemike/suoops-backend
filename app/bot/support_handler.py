@@ -130,12 +130,12 @@ _FAQ_ENTRIES: list[dict[str, Any]] = [
         ],
         "answer": (
             "💰 *SuoOps Plans*\n\n"
-            "🆓 *Free* — 5 free invoices to try it out\n"
-            "   Buy packs: ₦1,250 for 50 invoices anytime\n\n"
+            "🆓 *Free* — 2 free invoices to try it out\n"
+            "   Buy packs: ₦625 for 25 or ₦1,250 for 50 invoices\n\n"
             "👑 *Pro* — ₦3,250/month\n"
             "   50 invoices/month included\n"
             "   + Analytics, inventory, tax reports, expense tracking & more\n\n"
-            "Manage your plan at suoops.com/dashboard/settings"
+            "Manage your plan at suoops.com/dashboard/settings/subscription"
         ),
     },
     # ── Expenses ──

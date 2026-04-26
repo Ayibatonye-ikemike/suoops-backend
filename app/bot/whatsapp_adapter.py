@@ -281,12 +281,25 @@ class WhatsAppHandler:
                     return
         # ── End product browsing flow ──────────────────────────────
 
-        # ── Analytics / Insights command ──────────────────────────
+        # ── Analytics / Insights command (Pro only) ──────────────
         analytics_keywords = {"report", "analytics", "insights", "summary", "dashboard", "stats", "my stats", "my report"}
         if text_lower in analytics_keywords:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
-                self._send_analytics(sender, issuer_id)
+                user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+                if user and user.effective_plan.value == "pro":
+                    self._send_analytics(sender, issuer_id)
+                else:
+                    self.client.send_text(
+                        sender,
+                        "🔒 *Analytics & Reports require a Pro plan.*\n\n"
+                        "Upgrade to Pro (₦3,250/mo) to unlock:\n"
+                        "✅ Business analytics & insights\n"
+                        "✅ Cash-first dashboard\n"
+                        "✅ Customer value tracking\n"
+                        "✅ Daily WhatsApp summary\n\n"
+                        "Upgrade: suoops.com/dashboard/settings/subscription"
+                    )
             else:
                 self.client.send_text(
                     sender,
@@ -765,13 +778,13 @@ class WhatsAppHandler:
         import datetime as dt
 
         try:
-            # Check plan — tax reports require STARTER+
+            # Check plan — tax reports require Pro
             user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-            if not user or user.effective_plan.value == "free":
+            if not user or user.effective_plan.value != "pro":
                 self.client.send_text(
                     sender,
-                    "🔒 *Tax Reports require a Starter or Pro plan.*\n\n"
-                    "Upgrade at suoops.com/dashboard/subscription\n"
+                    "🔒 *Tax Reports require a Pro plan.*\n\n"
+                    "Upgrade to Pro (₦3,250/mo) at suoops.com/dashboard/settings/subscription\n"
                     "to unlock tax reports, analytics & more!"
                 )
                 return

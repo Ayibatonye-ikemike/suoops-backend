@@ -264,7 +264,9 @@ class InvoiceIntentProcessor:
             self.client.send_text(
                 sender,
                 "🚫 No invoices remaining!\n\n"
-                "Purchase a pack: ₦2,500 for 100 invoices\n"
+                "Buy a pack:\n"
+                "• 25 invoices — ₦625\n"
+                "• 50 invoices — ₦1,250\n\n"
                 "Visit: suoops.com/dashboard/billing/purchase",
             )
             return
@@ -294,7 +296,9 @@ class InvoiceIntentProcessor:
                 self.client.send_text(
                     sender,
                     "🚫 No invoices remaining!\n\n"
-                    "Purchase a pack: ₦2,500 for 100 invoices\n"
+                    "Buy a pack:\n"
+                    "• 25 invoices — ₦625\n"
+                    "• 50 invoices — ₦1,250\n\n"
                     "Visit: suoops.com/dashboard/billing/purchase",
                 )
             # Missing amount
