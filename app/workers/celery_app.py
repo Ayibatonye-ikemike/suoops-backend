@@ -101,6 +101,10 @@ def _create_celery() -> Celery:
                 "task": "maintenance.delete_inactive_accounts",
                 "schedule": crontab(minute=0, hour=4, day_of_week=2),  # Tue 04:00 UTC (1 day after warning scan)
             },
+            "weekly-winback-churned-businesses": {
+                "task": "maintenance.winback_churned_businesses",
+                "schedule": crontab(minute=0, hour=10, day_of_week=3),  # Wed 10:00 UTC = 11:00 WAT
+            },
             "biweekly-aggregate-unpaid-alerts": {
                 "task": "growth.send_aggregate_unpaid_alerts",
                 "schedule": crontab(minute=0, hour=8, day_of_week="1,4"),  # Mon+Thu 08:00 UTC = 09:00 WAT

@@ -308,3 +308,223 @@ def delete_inactive_accounts() -> dict[str, Any]:
     except Exception as exc:
         logger.error("Inactive account deletion task failed: %s", exc)
         raise
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# CHURNED BUSINESS RE-ENGAGEMENT
+# ═══════════════════════════════════════════════════════════════════════
+
+# Real businesses who created invoices but went inactive 30+ days ago.
+# Different from zero-invoice cleanup — these users had real activity.
+
+CHURN_INACTIVE_DAYS = 30
+CHURN_MIN_INVOICES = 3  # Must have created at least 3 invoices (real usage)
+CHURN_EMAIL_TYPES = {
+    30: "churn_winback_30d",
+    60: "churn_winback_60d",
+    90: "churn_winback_90d",
+}
+
+
+@celery_app.task(
+    name="maintenance.winback_churned_businesses",
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=300,
+    time_limit=360,
+)
+def winback_churned_businesses() -> dict[str, Any]:
+    """Re-engage real businesses that stopped using SuoOps.
+
+    Targets users who:
+    - Created 3+ invoices (real usage, not just testing)
+    - Last login was 30+ days ago
+    - NOT already deleted or warned for zero-invoice cleanup
+
+    Sends tiered messages:
+    - 30 days: "We miss you" + their stats
+    - 60 days: "Your customers might have unpaid invoices"
+    - 90 days: Final "come back or your data stays safe"
+
+    Runs weekly on Wednesdays.
+    """
+    from sqlalchemy import func
+
+    from app.models.models import Invoice, User, UserEmailLog
+    from app.utils.smtp import send_smtp_email as _send_smtp_email
+
+    stats = {"sent_30d": 0, "sent_60d": 0, "sent_90d": 0, "skipped": 0, "failed": 0}
+
+    try:
+        with session_scope() as db:
+            now = dt.datetime.now(dt.timezone.utc)
+
+            # Find users with 3+ invoices who are inactive
+            invoice_counts = (
+                db.query(
+                    Invoice.issuer_id,
+                    func.count(Invoice.id).label("cnt"),
+                    func.sum(Invoice.amount).label("total_revenue"),
+                    func.count(Invoice.id).filter(Invoice.status == "paid").label("paid_cnt"),
+                    func.count(Invoice.id).filter(Invoice.status == "pending").label("pending_cnt"),
+                )
+                .filter(Invoice.invoice_type == "revenue")
+                .group_by(Invoice.issuer_id)
+                .having(func.count(Invoice.id) >= CHURN_MIN_INVOICES)
+                .subquery()
+            )
+
+            churned_users = (
+                db.query(User, invoice_counts)
+                .join(invoice_counts, User.id == invoice_counts.c.issuer_id)
+                .filter(
+                    # Inactive for 30+ days
+                    (
+                        (User.last_login.isnot(None)) & (User.last_login < now - dt.timedelta(days=CHURN_INACTIVE_DAYS))
+                    ) | (
+                        (User.last_login.is_(None)) & (User.created_at < now - dt.timedelta(days=CHURN_INACTIVE_DAYS))
+                    ),
+                )
+                .all()
+            )
+
+            if not churned_users:
+                logger.info("No churned businesses found for winback")
+                return {"success": True, **stats}
+
+            logger.info("Found %d churned businesses for winback", len(churned_users))
+
+            for row in churned_users:
+                user = row[0]
+                total_invoices = row.cnt
+                total_revenue = float(row.total_revenue or 0)
+                paid_count = row.paid_cnt
+                pending_count = row.pending_cnt
+
+                last_active = user.last_login or user.created_at
+                if last_active.tzinfo is None:
+                    last_active = last_active.replace(tzinfo=dt.timezone.utc)
+                days_inactive = (now - last_active).days
+
+                # Determine which tier to send
+                if days_inactive >= 90:
+                    tier = 90
+                elif days_inactive >= 60:
+                    tier = 60
+                else:
+                    tier = 30
+
+                email_type = CHURN_EMAIL_TYPES[tier]
+
+                # Skip if already sent this tier
+                already_sent = (
+                    db.query(UserEmailLog.id)
+                    .filter(
+                        UserEmailLog.user_id == user.id,
+                        UserEmailLog.email_type == email_type,
+                    )
+                    .first()
+                )
+                if already_sent:
+                    stats["skipped"] += 1
+                    continue
+
+                name = (user.name or "").split()[0] or "there"
+                biz = user.business_name or "your business"
+                revenue_str = f"₦{total_revenue:,.0f}" if total_revenue else "₦0"
+
+                # ── Build message per tier ──
+                if tier == 30:
+                    subject = f"We miss {biz} on SuoOps"
+                    plain = (
+                        f"Hi {name},\n\n"
+                        f"It's been {days_inactive} days since you last used SuoOps. "
+                        f"Here's what you've built so far:\n\n"
+                        f"• {total_invoices} invoices created\n"
+                        f"• {revenue_str} total revenue tracked\n"
+                        f"• {paid_count} paid, {pending_count} still pending\n\n"
+                        f"Your customers might be waiting to pay those pending invoices. "
+                        f"Log in and send a reminder:\n"
+                        f"https://suoops.com/login\n\n"
+                        f"— The SuoOps Team"
+                    )
+                elif tier == 60:
+                    subject = f"{name}, you have {pending_count} unpaid invoices on SuoOps"
+                    plain = (
+                        f"Hi {name},\n\n"
+                        f"It's been {days_inactive} days since you logged into SuoOps.\n\n"
+                        f"You have {pending_count} pending invoices worth tracking. "
+                        f"Your customers might have forgotten — a quick reminder from "
+                        f"SuoOps could help you collect.\n\n"
+                        f"Log in to review: https://suoops.com/login\n\n"
+                        f"If you've moved on, no worries — your data is safe with us.\n\n"
+                        f"— The SuoOps Team"
+                    )
+                else:  # 90 days
+                    subject = f"Your SuoOps data is still safe, {name}"
+                    plain = (
+                        f"Hi {name},\n\n"
+                        f"It's been {days_inactive} days since your last visit. "
+                        f"Your invoices, customers, and {revenue_str} in revenue records "
+                        f"are still safely stored.\n\n"
+                        f"If you'd like to pick up where you left off: "
+                        f"https://suoops.com/login\n\n"
+                        f"We're not going anywhere — your account stays active.\n\n"
+                        f"— The SuoOps Team"
+                    )
+
+                # Try email first
+                sent = False
+                if user.email:
+                    sent = _send_smtp_email(user.email, subject, None, plain)
+
+                # Also send WhatsApp if they have a verified phone
+                if user.phone and user.phone_verified:
+                    try:
+                        from app.core.whatsapp import get_whatsapp_client
+                        client = get_whatsapp_client()
+                        wa_msg = (
+                            f"Hi {name} 👋\n\n"
+                            f"It's been {days_inactive} days since you used SuoOps.\n\n"
+                        )
+                        if tier == 30:
+                            wa_msg += (
+                                f"You have {pending_count} pending invoices ({revenue_str} tracked). "
+                                f"Your customers might be ready to pay — send a quick reminder?\n\n"
+                                f"Tap to log in: https://suoops.com/login"
+                            )
+                        elif tier == 60:
+                            wa_msg += (
+                                f"You still have {pending_count} unpaid invoices. "
+                                f"A quick reminder could help you collect.\n\n"
+                                f"Log in: https://suoops.com/login"
+                            )
+                        else:
+                            wa_msg += (
+                                f"Your {total_invoices} invoices and {revenue_str} in records "
+                                f"are still safe. Pick up where you left off anytime.\n\n"
+                                f"https://suoops.com/login"
+                            )
+                        client.send_text(user.phone, wa_msg)
+                        sent = True
+                    except Exception as e:
+                        logger.warning("WhatsApp winback failed for user %s: %s", user.id, e)
+
+                if sent:
+                    db.add(UserEmailLog(user_id=user.id, email_type=email_type))
+                    db.commit()
+                    stats[f"sent_{tier}d"] += 1
+                    logger.info(
+                        "Sent %s winback to user %s (%s) — %d invoices, %s revenue",
+                        email_type, user.id, biz, total_invoices, revenue_str,
+                    )
+                else:
+                    stats["failed"] += 1
+
+        logger.info("Churned business winback: %s", stats)
+        return {"success": True, **stats}
+
+    except Exception as exc:
+        logger.error("Churned business winback task failed: %s", exc)
+        raise
