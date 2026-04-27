@@ -23,6 +23,7 @@ class SignupStart(BaseModel):
     name: str
     business_name: str | None = None
     referral_code: str | None = Field(None, min_length=6, max_length=20, description="Referral code from another user")
+    signup_source: str | None = Field(None, max_length=50, description="Attribution source: google_ads, instagram, whatsapp_ad, social_media, referral, google_oauth, organic")
 
 
 class SignupVerify(BaseModel):

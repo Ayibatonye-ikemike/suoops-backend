@@ -126,11 +126,21 @@ class AuthService:
         # NOTE: use bool(...) because `and` returns the last operand (could be a string).
         is_phone_signup = bool((not stored_data.get("email")) and stored_data.get("phone"))
         
+        # Determine signup source: explicit from payload, or infer from context
+        raw_source = stored_data.get("signup_source")
+        if not raw_source and stored_data.get("referral_code"):
+            raw_source = "referral"
+        if not raw_source and stored_data.get("email") and not stored_data.get("phone"):
+            # Email-only signups from Google OAuth have 'oauth_google_' prefix handled
+            # in separate flow; this catches plain email signups
+            raw_source = "organic"
+
         user_data = {
             "name": stored_data.get("name", identifier),
             "business_name": stored_data.get("business_name"),
             # Only mark phone_verified if user actually signed up with phone
             "phone_verified": is_phone_signup,
+            "signup_source": raw_source,
         }
         
         email_value = stored_data.get("email")

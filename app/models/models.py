@@ -337,6 +337,12 @@ class User(Base):
         String(3), default="NGN", server_default="NGN"
     )
 
+    # Attribution: where the user came from (google_ads, instagram, whatsapp_ad,
+    # social_media, referral, google_oauth, organic, etc.)
+    signup_source: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, index=True
+    )
+
     @property
     def effective_plan(self) -> "SubscriptionPlan":
         """Return the plan used for feature gating.

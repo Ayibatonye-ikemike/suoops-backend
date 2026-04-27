@@ -174,6 +174,7 @@ class OAuthService:
                 email=email,
                 name=name or email.split("@")[0],
                 business_name=name or email.split("@")[0],
+                signup_source="google_oauth",
             )
             self.db.add(user)
             logger.info(f"New user created via {oauth_provider}: {email} (phone={synthetic_phone})")

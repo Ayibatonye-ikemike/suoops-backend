@@ -1117,6 +1117,7 @@ class ZeroInvoiceUser(BaseModel):
     has_logo: bool
     days_since_signup: int
     login_count_bucket: str  # "never", "once", "2-5", "6+"
+    signup_source: str | None
 
 
 class ZeroInvoiceDiagnostic(BaseModel):
@@ -1147,6 +1148,10 @@ class ZeroInvoiceDiagnostic(BaseModel):
 
     # Weekly signup → activation trend (last 8 weeks)
     weekly_signup_vs_activation: list[dict]
+
+    # Signup source attribution
+    source_breakdown: list[ZeroInvoiceCohort]  # per signup_source
+    source_activation_rates: list[dict]  # source + signups + activated + rate
 
     # Sample users for manual outreach
     recent_zero_invoice_users: list[ZeroInvoiceUser]
@@ -1287,9 +1292,50 @@ def get_zero_invoice_diagnostic(
             has_logo=bool(u.logo_url),
             days_since_signup=(now - (u.created_at.replace(tzinfo=dt.timezone.utc) if u.created_at.tzinfo is None else u.created_at)).days,
             login_count_bucket=classify_login(u),
+            signup_source=getattr(u, "signup_source", None),
         )
         for u in sample_users
     ]
+
+    # ── Signup source breakdown ──
+    source_counts: dict[str, int] = {}
+    for u in zero_users:
+        src = getattr(u, "signup_source", None) or "unknown"
+        source_counts[src] = source_counts.get(src, 0) + 1
+
+    source_breakdown = sorted(
+        [cohort(src, cnt) for src, cnt in source_counts.items()],
+        key=lambda c: c.count,
+        reverse=True,
+    )
+
+    # ── Source activation rates (all users, not just zero-invoice) ──
+    # Compare signup_source across ALL users to see which channels convert
+    all_sources = db.query(
+        models.User.signup_source,
+        func.count(models.User.id).label("total"),
+    ).group_by(models.User.signup_source).all()
+
+    activated_by_source = db.query(
+        models.User.signup_source,
+        func.count(func.distinct(Invoice.issuer_id)).label("activated"),
+    ).join(
+        Invoice, Invoice.issuer_id == models.User.id
+    ).group_by(models.User.signup_source).all()
+
+    activated_map = {row.signup_source: row.activated for row in activated_by_source}
+    source_activation_rates = []
+    for row in all_sources:
+        src = row.signup_source or "unknown"
+        total = row.total
+        activated = activated_map.get(row.signup_source, 0)
+        source_activation_rates.append({
+            "source": src,
+            "signups": total,
+            "activated": activated,
+            "activation_rate": round(activated / total * 100, 1) if total > 0 else 0,
+        })
+    source_activation_rates.sort(key=lambda x: x["signups"], reverse=True)
 
     return ZeroInvoiceDiagnostic(
         total_zero_invoice=total_zero,
@@ -1309,6 +1355,8 @@ def get_zero_invoice_diagnostic(
         signed_up_15_30_days=cohort("15–30 days ago", age_buckets["15_30"]),
         signed_up_over_30_days=cohort("30+ days ago", age_buckets["30+"]),
         weekly_signup_vs_activation=weekly_trend,
+        source_breakdown=source_breakdown,
+        source_activation_rates=source_activation_rates,
         recent_zero_invoice_users=recent_users,
     )
 
