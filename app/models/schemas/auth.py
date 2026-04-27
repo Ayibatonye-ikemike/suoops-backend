@@ -17,8 +17,8 @@ class OTPEmailRequest(BaseModel):
 
 
 class SignupStart(BaseModel):
-    """Start signup with phone OR email."""
-    phone: str | None = None
+    """Start signup with WhatsApp phone number."""
+    phone: str
     email: str | None = None
     name: str
     business_name: str | None = None
@@ -27,8 +27,8 @@ class SignupStart(BaseModel):
 
 
 class SignupVerify(BaseModel):
-    """Verify signup OTP with phone OR email."""
-    phone: str | None = None
+    """Verify signup OTP sent to WhatsApp."""
+    phone: str
     email: str | None = None
     otp: str = Field(..., min_length=6, max_length=6)
 

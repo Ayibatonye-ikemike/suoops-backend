@@ -38,82 +38,44 @@ class AuthService:
     # ----------------------------- Signup -----------------------------
 
     def start_signup(self, payload: schemas.SignupStart) -> None:
-        """Start signup with phone OR email.
+        """Start signup with WhatsApp phone number.
 
-        Phone-first: if phone is provided, use it as the primary identifier
-        so OTP is sent via WhatsApp. Email is stored but not used as identifier.
+        Phone is required — OTP is always sent via WhatsApp.
+        Email is stored as optional profile data but never used for OTP.
         """
         
-        # Validate that either phone or email is provided
-        if not payload.phone and not payload.email:
-            raise ValueError("Either phone or email is required")
-        
-        # Phone-first: prioritize phone if provided
-        if payload.phone:
-            identifier = self._normalize_phone(payload.phone)
-            # Check if phone already registered
-            existing = (
-                self.db.query(models.User)
-                .filter(models.User.phone == identifier)
-                .one_or_none()
-            )
-            if existing:
-                raise ValueError("An account with this identifier already exists")
-        else:
-            identifier = payload.email.lower().strip()
-            # Check if email already registered
-            existing = (
-                self.db.query(models.User)
-                .filter(models.User.email == identifier)
-                .one_or_none()
-            )
-            if existing:
-                raise ValueError("An account with this identifier already exists")
+        identifier = self._normalize_phone(payload.phone)
+        # Check if phone already registered
+        existing = (
+            self.db.query(models.User)
+            .filter(models.User.phone == identifier)
+            .one_or_none()
+        )
+        if existing:
+            raise ValueError("An account with this identifier already exists")
         
         data = payload.model_dump()
         logger.info(f"start_signup: payload data keys={list(data.keys())}, referral_code={data.get('referral_code')}")
-        if payload.phone:
-            data["phone"] = identifier
-            # Store email too if provided (but phone is the OTP identifier)
-            if payload.email:
-                data["email"] = payload.email.lower().strip()
-        else:
-            data["email"] = identifier
+        data["phone"] = identifier
+        # Store email too if provided (but phone is the OTP identifier)
+        if payload.email:
+            data["email"] = payload.email.lower().strip()
             
         self.otp.request_signup(identifier, data)
 
     def complete_signup(self, payload: schemas.SignupVerify) -> TokenBundle:
-        """Complete signup with phone OR email OTP verification."""
+        """Complete signup with WhatsApp OTP verification."""
         
-        # Determine identifier (email or phone)
-        if payload.email:
-            identifier = payload.email.lower().strip()
-            lookup_field = "email"
-        elif payload.phone:
-            identifier = self._normalize_phone(payload.phone)
-            lookup_field = "phone"
-        else:
-            raise ValueError("Either phone or email is required")
+        identifier = self._normalize_phone(payload.phone)
         
         stored_data = self.otp.complete_signup(identifier, payload.otp)
 
         # Guard against race-condition: if user already created after OTP issuance
-        if lookup_field == "email":
-            enc_identifier = encrypt_value(identifier)
-            existing = (
-                self.db.query(models.User)
-                .filter(
-                    (models.User.email == identifier) |
-                    (models.User.email_enc == enc_identifier)
-                )
-                .one_or_none()
-            )
-        else:
-            existing = (
-                self.db.query(models.User)
-                .filter(models.User.phone == identifier)
-                .one_or_none()
-            )
+        existing = (
+            self.db.query(models.User)
+            .filter(models.User.phone == identifier)
+            .one_or_none()
+        )
             
         if existing:
             if not existing.phone_verified:
@@ -121,40 +83,30 @@ class AuthService:
                 self.db.commit()
             return self._issue_tokens(existing)
 
-        # Create new user with email or phone
-        # Determine if this is a phone signup or email signup
-        # NOTE: use bool(...) because `and` returns the last operand (could be a string).
-        is_phone_signup = bool((not stored_data.get("email")) and stored_data.get("phone"))
+        # Create new user — signup is always phone-based (WhatsApp)
         
         # Determine signup source: explicit from payload, or infer from context
         raw_source = stored_data.get("signup_source")
         if not raw_source and stored_data.get("referral_code"):
             raw_source = "referral"
-        if not raw_source and stored_data.get("email") and not stored_data.get("phone"):
-            # Email-only signups from Google OAuth have 'oauth_google_' prefix handled
-            # in separate flow; this catches plain email signups
+        if not raw_source:
             raw_source = "organic"
 
         user_data = {
             "name": stored_data.get("name", identifier),
             "business_name": stored_data.get("business_name"),
-            # Only mark phone_verified if user actually signed up with phone
-            "phone_verified": is_phone_signup,
+            "phone": stored_data.get("phone") or identifier,
+            "phone_verified": True,
             "signup_source": raw_source,
         }
         
+        # Store email if provided (optional profile data)
         email_value = stored_data.get("email")
         if email_value:
-            # Dual-write: keep plaintext in `email`, encrypted in `email_enc` if key active.
             plaintext_email = email_value.lower().strip()
             encrypted_email = encrypt_value(plaintext_email)
             user_data["email"] = plaintext_email
             user_data["email_enc"] = encrypted_email
-            # Phone is nullable — only set if an actual phone number was provided
-            user_data["phone"] = stored_data.get("phone") or None
-        else:
-            # Phone signup - use the actual phone number
-            user_data["phone"] = stored_data.get("phone") or identifier
             
         user = models.User(**user_data)
         user.last_login = datetime.now(timezone.utc)

@@ -27,17 +27,16 @@ REGISTER_RATE_LIMIT = "5/minute" if settings.ENV.lower() == "prod" else "50/minu
 @router.post("/signup/request", response_model=schemas.MessageOut)
 @limiter.limit(RATE_LIMITS["signup_request"])
 def request_signup(request: Request, payload: schemas.SignupStart, svc: AuthServiceDep):
-    """Request signup OTP via phone OR email."""
+    """Request signup OTP via WhatsApp.
+
+    Phone is required — OTP is always sent to WhatsApp.
+    Email can be provided as optional profile data.
+    """
     try:
         svc.start_signup(payload)
         metrics.otp_signup_requested()
-        
-        # Determine delivery method for response message
-        if payload.email:
-            return schemas.MessageOut(detail="OTP sent to email")
-        else:
-            return schemas.MessageOut(detail="OTP sent to WhatsApp")
-            
+        return schemas.MessageOut(detail="OTP sent to WhatsApp")
+
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
