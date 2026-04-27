@@ -1093,6 +1093,227 @@ def get_growth_metrics(
 
 
 # =============================================================================
+# ZERO-INVOICE DIAGNOSTIC — Why are users not creating invoices?
+# =============================================================================
+
+
+class ZeroInvoiceCohort(BaseModel):
+    """A group of zero-invoice users sharing a trait."""
+    label: str
+    count: int
+    pct: float  # % of total zero-invoice users
+
+
+class ZeroInvoiceUser(BaseModel):
+    id: int
+    name: str | None
+    phone: str | None
+    email: str | None
+    phone_verified: bool
+    created_at: str
+    last_login: str | None
+    has_business_name: bool
+    has_bank_details: bool
+    has_logo: bool
+    days_since_signup: int
+    login_count_bucket: str  # "never", "once", "2-5", "6+"
+
+
+class ZeroInvoiceDiagnostic(BaseModel):
+    total_zero_invoice: int
+    total_signups: int
+    drop_off_rate: float  # % of signups that are zero-invoice
+
+    # Engagement buckets
+    never_logged_back: ZeroInvoiceCohort  # last_login is None or == created_at
+    logged_in_once: ZeroInvoiceCohort  # came back once but didn't create
+    logged_in_multiple: ZeroInvoiceCohort  # came back 2+ times
+
+    # Channel
+    whatsapp_verified: ZeroInvoiceCohort
+    email_only: ZeroInvoiceCohort
+
+    # Profile completeness
+    has_business_name: ZeroInvoiceCohort
+    has_bank_details: ZeroInvoiceCohort
+
+    # Signup age
+    signed_up_today: ZeroInvoiceCohort  # < 24h — still in grace period
+    signed_up_1_3_days: ZeroInvoiceCohort
+    signed_up_4_7_days: ZeroInvoiceCohort
+    signed_up_8_14_days: ZeroInvoiceCohort
+    signed_up_15_30_days: ZeroInvoiceCohort
+    signed_up_over_30_days: ZeroInvoiceCohort
+
+    # Weekly signup → activation trend (last 8 weeks)
+    weekly_signup_vs_activation: list[dict]
+
+    # Sample users for manual outreach
+    recent_zero_invoice_users: list[ZeroInvoiceUser]
+
+
+@router.get("/metrics/zero-invoice-diagnostic", response_model=ZeroInvoiceDiagnostic)
+def get_zero_invoice_diagnostic(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    sample_limit: int = Query(default=20, le=50),
+) -> Any:
+    """Diagnose why users sign up but never create an invoice."""
+    from app.models.models import Invoice
+
+    log_audit_event("admin.metrics.zero_invoice_diagnostic", user_id=admin_user.id)
+
+    now = dt.datetime.now(dt.timezone.utc)
+
+    # ── Get all zero-invoice user IDs ──
+    users_with_invoices = db.query(Invoice.issuer_id).distinct().subquery()
+    zero_q = db.query(models.User).filter(
+        ~models.User.id.in_(db.query(users_with_invoices))
+    )
+    zero_users = zero_q.all()
+    total_zero = len(zero_users)
+    total_signups = db.query(models.User).count()
+    drop_off = (total_zero / total_signups * 100) if total_signups > 0 else 0
+
+    def cohort(label: str, count: int) -> ZeroInvoiceCohort:
+        return ZeroInvoiceCohort(
+            label=label,
+            count=count,
+            pct=round(count / total_zero * 100, 1) if total_zero > 0 else 0,
+        )
+
+    # ── Engagement buckets ──
+    never_logged = 0
+    logged_once = 0
+    logged_multi = 0
+    for u in zero_users:
+        if u.last_login is None:
+            never_logged += 1
+        else:
+            # Compare last_login to created_at — if within 5 min, treat as "signup session only"
+            created = u.created_at.replace(tzinfo=dt.timezone.utc) if u.created_at.tzinfo is None else u.created_at
+            last = u.last_login.replace(tzinfo=dt.timezone.utc) if u.last_login.tzinfo is None else u.last_login
+            diff_minutes = (last - created).total_seconds() / 60
+            if diff_minutes < 5:
+                never_logged += 1
+            elif diff_minutes < 1440:  # < 24h = came back once
+                logged_once += 1
+            else:
+                logged_multi += 1
+
+    # ── Channel ──
+    wa_verified = sum(1 for u in zero_users if u.phone_verified and u.phone)
+    email_only_count = total_zero - wa_verified
+
+    # ── Profile completeness ──
+    has_biz = sum(1 for u in zero_users if u.business_name)
+    has_bank = sum(1 for u in zero_users if u.bank_name and u.account_number)
+
+    # ── Signup age buckets ──
+    age_buckets = {"today": 0, "1_3": 0, "4_7": 0, "8_14": 0, "15_30": 0, "30+": 0}
+    for u in zero_users:
+        created = u.created_at.replace(tzinfo=dt.timezone.utc) if u.created_at.tzinfo is None else u.created_at
+        days = (now - created).days
+        if days < 1:
+            age_buckets["today"] += 1
+        elif days <= 3:
+            age_buckets["1_3"] += 1
+        elif days <= 7:
+            age_buckets["4_7"] += 1
+        elif days <= 14:
+            age_buckets["8_14"] += 1
+        elif days <= 30:
+            age_buckets["15_30"] += 1
+        else:
+            age_buckets["30+"] += 1
+
+    # ── Weekly signup vs activation trend (last 8 weeks) ──
+    weekly_trend = []
+    for w in range(7, -1, -1):
+        week_start = now - dt.timedelta(weeks=w + 1)
+        week_end = now - dt.timedelta(weeks=w)
+        week_label = week_start.strftime("%b %d")
+
+        signups_in_week = db.query(models.User).filter(
+            models.User.created_at >= week_start,
+            models.User.created_at < week_end,
+        ).count()
+
+        activated_in_week = db.query(
+            func.count(func.distinct(Invoice.issuer_id))
+        ).join(
+            models.User, models.User.id == Invoice.issuer_id
+        ).filter(
+            models.User.created_at >= week_start,
+            models.User.created_at < week_end,
+        ).scalar() or 0
+
+        weekly_trend.append({
+            "week": week_label,
+            "signups": signups_in_week,
+            "activated": activated_in_week,
+            "activation_rate": round(
+                activated_in_week / signups_in_week * 100, 1
+            ) if signups_in_week > 0 else 0,
+        })
+
+    # ── Sample users for outreach ──
+    sample_users = zero_q.order_by(models.User.created_at.desc()).limit(sample_limit).all()
+
+    def classify_login(u: models.User) -> str:
+        if u.last_login is None:
+            return "never"
+        created = u.created_at.replace(tzinfo=dt.timezone.utc) if u.created_at.tzinfo is None else u.created_at
+        last = u.last_login.replace(tzinfo=dt.timezone.utc) if u.last_login.tzinfo is None else u.last_login
+        diff_minutes = (last - created).total_seconds() / 60
+        if diff_minutes < 5:
+            return "never"
+        elif diff_minutes < 1440:
+            return "once"
+        else:
+            return "2+"
+
+    recent_users = [
+        ZeroInvoiceUser(
+            id=u.id,
+            name=u.name,
+            phone=u.phone,
+            email=u.email,
+            phone_verified=u.phone_verified,
+            created_at=u.created_at.isoformat() if u.created_at else "",
+            last_login=u.last_login.isoformat() if u.last_login else None,
+            has_business_name=bool(u.business_name),
+            has_bank_details=bool(u.bank_name and u.account_number),
+            has_logo=bool(u.logo_url),
+            days_since_signup=(now - (u.created_at.replace(tzinfo=dt.timezone.utc) if u.created_at.tzinfo is None else u.created_at)).days,
+            login_count_bucket=classify_login(u),
+        )
+        for u in sample_users
+    ]
+
+    return ZeroInvoiceDiagnostic(
+        total_zero_invoice=total_zero,
+        total_signups=total_signups,
+        drop_off_rate=round(drop_off, 1),
+        never_logged_back=cohort("Never logged back in", never_logged),
+        logged_in_once=cohort("Logged in once, didn't create", logged_once),
+        logged_in_multiple=cohort("Logged in 2+ times, still didn't create", logged_multi),
+        whatsapp_verified=cohort("WhatsApp verified", wa_verified),
+        email_only=cohort("Email only", email_only_count),
+        has_business_name=cohort("Set a business name", has_biz),
+        has_bank_details=cohort("Added bank details", has_bank),
+        signed_up_today=cohort("< 24 hours ago", age_buckets["today"]),
+        signed_up_1_3_days=cohort("1–3 days ago", age_buckets["1_3"]),
+        signed_up_4_7_days=cohort("4–7 days ago", age_buckets["4_7"]),
+        signed_up_8_14_days=cohort("8–14 days ago", age_buckets["8_14"]),
+        signed_up_15_30_days=cohort("15–30 days ago", age_buckets["15_30"]),
+        signed_up_over_30_days=cohort("30+ days ago", age_buckets["30+"]),
+        weekly_signup_vs_activation=weekly_trend,
+        recent_zero_invoice_users=recent_users,
+    )
+
+
+# =============================================================================
 # BUSINESS INTELLIGENCE — Per-business health for admin
 # =============================================================================
 
