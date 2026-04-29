@@ -41,6 +41,8 @@ def save_phone_number(
         raise HTTPException(status_code=404, detail="User not found")
 
     normalized_phone = _normalize_phone(payload.phone)
+    if not normalized_phone or not normalized_phone.strip():
+        raise HTTPException(status_code=400, detail="Phone number is required")
 
     # Check if phone is already used by another user
     existing = db.query(models.User).filter(
@@ -109,13 +111,22 @@ def remove_phone_number(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Phone numbers cannot be removed — only replaced.
+
+    A phone is required on every account so we can deliver invoices via WhatsApp
+    and prevent the same number from being recycled to create a second account.
+    To change phones, POST /me/phone with the new number; the old one is replaced
+    atomically.
+    """
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.phone:
         raise HTTPException(status_code=404, detail="No phone number configured")
-    user.phone = None
-    user.phone_verified = False
-    user.phone_otp = None
-    db.commit()
-    return schemas.MessageOut(detail="Phone number removed")
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Phone numbers can't be removed — only replaced. "
+            "Save a new phone number to change it."
+        ),
+    )
