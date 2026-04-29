@@ -138,7 +138,8 @@ class OAuthService:
 
     def _get_or_create_user(self, email: str, name: str, oauth_provider: str) -> User:
         """
-        Get existing user or create new one from OAuth data.
+        Get existing user by OAuth email. New account creation via OAuth is disabled
+        — users must register with WhatsApp phone number first.
         
         Args:
             email: User email from OAuth provider
@@ -146,51 +147,28 @@ class OAuthService:
             oauth_provider: Provider name (e.g., "google")
             
         Returns:
-            User instance (existing or newly created)
+            User instance (existing only)
+            
+        Raises:
+            OAuthUserInfoError: If no account exists for the email
         """
         # Check if user exists
         user = self.db.query(User).filter(User.email == email).first()
-        is_new_user = False
 
         if user:
             # Update last_login timestamp
             user.last_login = datetime.now(timezone.utc)
             logger.info(f"Existing user logged in via {oauth_provider}: {email}")
-        else:
-            is_new_user = True
-            # Fallback phone requirement: model requires 'phone' (unique, non-null)
-            synthetic_phone = f"oauth_{oauth_provider}_{email.split('@')[0]}"
-            # Ensure length constraint (32) and uniqueness attempt
-            if len(synthetic_phone) > 30:
-                synthetic_phone = synthetic_phone[:30]
-            attempt = 0
-            base_phone = synthetic_phone
-            while self.db.query(User).filter(User.phone == synthetic_phone).first():
-                attempt += 1
-                synthetic_phone = f"{base_phone[:28]}{attempt:02d}"  # keep within 32 chars
+            self.db.commit()
+            self.db.refresh(user)
+            return user
 
-            user = User(
-                phone=synthetic_phone,
-                email=email,
-                name=name or email.split("@")[0],
-                business_name=name or email.split("@")[0],
-                signup_source="google_oauth",
-            )
-            self.db.add(user)
-            logger.info(f"New user created via {oauth_provider}: {email} (phone={synthetic_phone})")
-
-        self.db.commit()
-        self.db.refresh(user)
-        
-        # Sync new user to Brevo (real-time)
-        if is_new_user:
-            try:
-                from app.services.brevo_service import sync_user_to_brevo_sync
-                sync_user_to_brevo_sync(user)
-            except Exception as e:
-                logger.warning(f"Failed to sync OAuth user to Brevo: {e}")
-        
-        return user
+        # No account — block registration via OAuth
+        logger.info(f"OAuth login rejected — no account for {email} via {oauth_provider}")
+        raise OAuthUserInfoError(
+            "No account found for this email. Please register with your WhatsApp number first, "
+            "then add your email in Settings to enable Google sign-in."
+        )
 
     async def authenticate_with_code(
         self, provider_name: str, code: str
