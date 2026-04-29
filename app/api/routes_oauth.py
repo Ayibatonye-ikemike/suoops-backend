@@ -344,10 +344,10 @@ async def oauth_callback(
     except OAuthProviderError as e:
         logger.error("OAuth authentication failed | provider=%s error=%s", provider, e)
         _get_redirect_uri(state, consume=True)  # Consume state to prevent replay
-        # Return JSON error for fetch requests to avoid CORS issues
+        # Pass through the specific error message (e.g. "No account found...")
         raise HTTPException(
             status_code=400,
-            detail="Authentication failed. The login code may have expired. Please try again."
+            detail=str(e),
         )
     except Exception:
         logger.exception("OAuth callback unexpected error | provider=%s", provider)
