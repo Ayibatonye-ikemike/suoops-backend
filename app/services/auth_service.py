@@ -98,6 +98,9 @@ class AuthService:
             "phone": stored_data.get("phone") or identifier,
             "phone_verified": True,
             "signup_source": raw_source,
+            "bank_name": payload.bank_name,
+            "account_number": payload.account_number,
+            "account_name": payload.account_name,
         }
         
         # Store email if provided (optional profile data)

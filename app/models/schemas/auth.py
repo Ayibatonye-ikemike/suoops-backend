@@ -27,10 +27,12 @@ class SignupStart(BaseModel):
 
 
 class SignupVerify(BaseModel):
-    """Verify signup OTP sent to WhatsApp."""
+    """Verify signup OTP and provide bank details to complete registration."""
     phone: str
-    email: str | None = None
     otp: str = Field(..., min_length=6, max_length=6)
+    bank_name: str = Field(..., min_length=2, max_length=100)
+    account_number: str = Field(..., min_length=10, max_length=10)
+    account_name: str = Field(..., min_length=2, max_length=255)
 
 
 class LoginVerify(BaseModel):
