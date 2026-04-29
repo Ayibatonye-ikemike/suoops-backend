@@ -2502,6 +2502,93 @@ def purge_low_quality_accounts(
     }
 
 
+@router.post("/purge-no-bank-accounts")
+def purge_no_bank_accounts(
+    dry_run: bool = True,
+    admin_user=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Purge accounts without bank details and fewer than 5 invoices.
+
+    Protects:
+    - PRO subscribers
+    - Users who purchased invoice packs (any successful payment)
+
+    Parameters:
+    - dry_run: If True (default), only count. Set to False to actually purge.
+    """
+    from sqlalchemy import func as sqlfunc
+
+    from app.models.models import Invoice, SubscriptionPlan, User
+    from app.models.payment_models import PaymentStatus, PaymentTransaction
+
+    log_audit_event("admin.purge_no_bank", user_id=admin_user.id, dry_run=dry_run)
+
+    invoice_counts = (
+        db.query(Invoice.issuer_id, sqlfunc.count(Invoice.id).label("cnt"))
+        .group_by(Invoice.issuer_id)
+        .subquery()
+    )
+
+    paying_user_ids = (
+        db.query(PaymentTransaction.user_id)
+        .filter(PaymentTransaction.status == PaymentStatus.SUCCESS)
+        .distinct()
+        .subquery()
+    )
+
+    candidates = (
+        db.query(User)
+        .outerjoin(invoice_counts, User.id == invoice_counts.c.issuer_id)
+        .filter(
+            User.plan != SubscriptionPlan.PRO,
+            ~User.id.in_(db.query(paying_user_ids)),
+            (User.bank_name.is_(None)) | (User.bank_name == ""),
+            (User.account_number.is_(None)) | (User.account_number == ""),
+            (invoice_counts.c.cnt.is_(None)) | (invoice_counts.c.cnt < 5),
+        )
+        .all()
+    )
+
+    if dry_run:
+        return {
+            "dry_run": True,
+            "would_delete": len(candidates),
+            "message": f"Would delete {len(candidates)} accounts (no bank details + <5 invoices). Set dry_run=false to execute.",
+        }
+
+    if not candidates:
+        return {"deleted": 0, "message": "No accounts without bank details found"}
+
+    from app.services.account_deletion_service import AccountDeletionService
+    service = AccountDeletionService(db)
+    deleted = 0
+    failed = 0
+    deleted_ids = []
+
+    for user in candidates:
+        try:
+            uid = user.id
+            service.delete_account(user_id=uid, deleted_by_user_id=None)
+            deleted += 1
+            deleted_ids.append(uid)
+        except Exception as e:
+            failed += 1
+            logger.warning("Failed to purge no-bank user %s: %s", user.id, e)
+
+    logger.info(
+        "Admin %s purged %d no-bank accounts (failed=%d)",
+        admin_user.id, deleted, failed,
+    )
+
+    return {
+        "deleted": deleted,
+        "failed": failed,
+        "deleted_user_ids": deleted_ids[:50],
+        "message": f"Deleted {deleted} accounts (no bank details + <5 invoices)",
+    }
+
+
 @router.post("/sync-brevo-contacts")
 def sync_brevo_contacts(
     admin_user=Depends(get_current_admin),
