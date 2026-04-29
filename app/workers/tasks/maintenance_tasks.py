@@ -668,17 +668,42 @@ def nudge_zero_invoice_users() -> dict[str, Any]:
                     )
 
                 try:
+                    from app.core.config import settings as _settings
                     from app.core.whatsapp import get_whatsapp_client
                     client = get_whatsapp_client()
-                    client.send_text(user.phone, msg)
 
-                    db.add(UserEmailLog(user_id=user.id, email_type=email_type))
-                    db.commit()
-                    stats[f"sent_{tier}d"] += 1
-                    logger.info(
-                        "Sent %s nudge to user %s (%s)",
-                        email_type, user.id, user.name,
-                    )
+                    sent = False
+                    # Try free-form text first (works inside 24h window)
+                    try:
+                        if client.send_text(user.phone, msg):
+                            sent = True
+                    except Exception:
+                        pass
+
+                    # Fall back to approved template (works outside 24h window)
+                    if not sent:
+                        tpl = _settings.WHATSAPP_TEMPLATE_WIN_BACK
+                        if tpl:
+                            lang = _settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                            components = [
+                                {
+                                    "type": "body",
+                                    "parameters": [{"type": "text", "text": name}],
+                                }
+                            ]
+                            if client.send_template(user.phone, tpl, lang, components):
+                                sent = True
+
+                    if sent:
+                        db.add(UserEmailLog(user_id=user.id, email_type=email_type))
+                        db.commit()
+                        stats[f"sent_{tier}d"] += 1
+                        logger.info(
+                            "Sent %s nudge to user %s (%s)",
+                            email_type, user.id, user.name,
+                        )
+                    else:
+                        stats["failed"] += 1
                 except Exception as e:
                     logger.warning("Activation nudge failed for user %s: %s", user.id, e)
                     stats["failed"] += 1
