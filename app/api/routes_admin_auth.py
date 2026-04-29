@@ -7,7 +7,9 @@ from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
@@ -20,6 +22,28 @@ from app.models.admin_models import AdminUser
 
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 logger = logging.getLogger(__name__)
+
+ADMIN_COOKIE_NAME = "suoops.admin"
+
+
+def _admin_cookie_settings() -> dict[str, object]:
+    secure = settings.ENV.lower() in {"prod", "production"}
+    samesite = "strict" if secure else "lax"
+    return {
+        "httponly": True,
+        "secure": secure,
+        "samesite": samesite,
+        "max_age": 60 * 60 * 2,  # 2 hours
+        "path": "/",
+    }
+
+
+def _set_admin_cookie(response: Response, token: str) -> None:
+    response.set_cookie(ADMIN_COOKIE_NAME, token, **_admin_cookie_settings())
+
+
+def _clear_admin_cookie(response: Response) -> None:
+    response.delete_cookie(ADMIN_COOKIE_NAME, path="/")
 
 # Default admin email — password MUST come from env var, never hardcoded
 DEFAULT_ADMIN_EMAIL = "support@suoops.com"
@@ -90,19 +114,33 @@ class SuccessMessageOut(BaseModel):
 # Authentication Dependencies
 # ============================================================================
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_admin(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: Session = Depends(get_db),
 ) -> AdminUser:
-    """Dependency to get current admin from token.
+    """Dependency to get current admin from Bearer header or httpOnly cookie.
     
     Admin tokens have 'admin:' prefix in the subject.
     """
+    # Try Bearer header first, then fall back to httpOnly cookie
+    raw_token = None
+    if credentials and credentials.credentials:
+        raw_token = credentials.credentials
+    else:
+        raw_token = request.cookies.get(ADMIN_COOKIE_NAME)
+
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
     try:
-        payload = decode_token(credentials.credentials, TokenType.ACCESS)
+        payload = decode_token(raw_token, TokenType.ACCESS)
         subject = payload.get("sub", "")
         
         # Admin tokens have 'admin:' prefix
@@ -295,8 +333,8 @@ def admin_login(request: Request, payload: AdminLoginRequest, db: Session = Depe
         subject=f"admin:{admin.id}",
         expires_minutes=60 * 2,  # 2 hours
     )
-    
-    return AdminLoginResponse(
+
+    response_data = AdminLoginResponse(
         access_token=token,
         user={
             "id": admin.id,
@@ -312,6 +350,10 @@ def admin_login(request: Request, payload: AdminLoginRequest, db: Session = Depe
             },
         },
     )
+
+    response = JSONResponse(content=jsonable_encoder(response_data))
+    _set_admin_cookie(response, token)
+    return response
 
 
 @router.post("/invite", response_model=AdminInviteResponse)
@@ -455,8 +497,8 @@ def accept_invite(request: Request, payload: AcceptInviteRequest, db: Session = 
         subject=f"admin:{admin.id}",
         expires_minutes=60 * 2,  # 2 hours
     )
-    
-    return AdminLoginResponse(
+
+    response_data = AdminLoginResponse(
         access_token=token,
         user={
             "id": admin.id,
@@ -472,6 +514,18 @@ def accept_invite(request: Request, payload: AcceptInviteRequest, db: Session = 
             },
         },
     )
+
+    response = JSONResponse(content=jsonable_encoder(response_data))
+    _set_admin_cookie(response, token)
+    return response
+
+
+@router.post("/logout")
+def admin_logout():
+    """Clear admin authentication cookie."""
+    response = JSONResponse(content={"success": True, "message": "Logged out"})
+    _clear_admin_cookie(response)
+    return response
 
 
 @router.get("/me", response_model=AdminUserOut)
