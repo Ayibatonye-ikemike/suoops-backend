@@ -528,12 +528,27 @@ def admin_logout():
     return response
 
 
-@router.get("/me", response_model=AdminUserOut)
+@router.get("/me")
 def get_current_admin_user(
     current_admin: AdminUser = Depends(get_current_admin),
 ):
-    """Get current admin user info. Requires admin authentication."""
-    return current_admin
+    """Get current admin user info and issue a fresh access token.
+
+    On page refresh the frontend loses the in-memory JWT but the httpOnly
+    cookie still authenticates. This endpoint returns a fresh token so the
+    frontend can restore its in-memory state.
+    """
+    fresh_token = create_access_token(
+        subject=f"admin:{current_admin.id}",
+        expires_minutes=60 * 2,
+    )
+
+    data = jsonable_encoder(AdminUserOut.model_validate(current_admin))
+    data["access_token"] = fresh_token
+
+    response = JSONResponse(content=data)
+    _set_admin_cookie(response, fresh_token)
+    return response
 
 
 @router.get("/admins", response_model=list[AdminUserOut])
