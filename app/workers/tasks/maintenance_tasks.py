@@ -528,3 +528,164 @@ def winback_churned_businesses() -> dict[str, Any]:
     except Exception as exc:
         logger.error("Churned business winback task failed: %s", exc)
         raise
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ZERO-INVOICE ACTIVATION NUDGE
+# ═══════════════════════════════════════════════════════════════════════
+
+# Users who signed up but never created an invoice.  Tiered nudges at
+# 1 day (quick reminder), 3 days (value pitch), and 7 days (urgency).
+# Only targets WhatsApp-verified users so we can reach them directly.
+
+ACTIVATION_NUDGE_TIERS = {
+    1: "activation_nudge_1d",
+    3: "activation_nudge_3d",
+    7: "activation_nudge_7d",
+}
+
+
+@celery_app.task(
+    name="maintenance.nudge_zero_invoice_users",
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=300,
+    time_limit=360,
+)
+def nudge_zero_invoice_users() -> dict[str, Any]:
+    """Send activation nudges to users who signed up but never created an invoice.
+
+    Targets WhatsApp-verified users at 3 tiers:
+    - 1 day:  Quick "need help?" reminder
+    - 3 days: Value pitch — what they're missing
+    - 7 days: Urgency — free invoices waiting
+
+    Skips users who already received a nudge for the given tier.
+    Runs daily at 10:00 WAT (09:00 UTC).
+    """
+    from sqlalchemy import func
+
+    from app.models.models import Invoice, User, UserEmailLog
+
+    stats = {"sent_1d": 0, "sent_3d": 0, "sent_7d": 0, "skipped": 0, "failed": 0}
+
+    try:
+        with session_scope() as db:
+            now = dt.datetime.now(dt.timezone.utc)
+
+            # All user IDs who have created at least one invoice
+            users_with_invoices = db.query(func.distinct(Invoice.issuer_id)).subquery()
+
+            # Zero-invoice, WhatsApp-verified users signed up 1-14 days ago
+            candidates = (
+                db.query(User)
+                .filter(
+                    User.phone.isnot(None),
+                    User.phone_verified.is_(True),
+                    ~User.id.in_(db.query(users_with_invoices)),
+                    User.created_at >= now - dt.timedelta(days=14),
+                    User.created_at < now - dt.timedelta(hours=20),  # At least ~1 day old
+                )
+                .all()
+            )
+
+            if not candidates:
+                logger.info("No zero-invoice users to nudge")
+                return {"success": True, **stats}
+
+            logger.info("Found %d zero-invoice users for activation nudge", len(candidates))
+
+            for user in candidates:
+                created = user.created_at
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=dt.timezone.utc)
+                days_since = (now - created).days
+
+                # Pick the right tier
+                if days_since >= 7:
+                    tier = 7
+                elif days_since >= 3:
+                    tier = 3
+                else:
+                    tier = 1
+
+                email_type = ACTIVATION_NUDGE_TIERS[tier]
+
+                # Skip if already sent this tier
+                already_sent = (
+                    db.query(UserEmailLog.id)
+                    .filter(
+                        UserEmailLog.user_id == user.id,
+                        UserEmailLog.email_type == email_type,
+                    )
+                    .first()
+                )
+                if already_sent:
+                    stats["skipped"] += 1
+                    continue
+
+                name = (user.name or "").split()[0] or "there"
+
+                # Build WhatsApp message per tier
+                if tier == 1:
+                    msg = (
+                        f"Hi {name} 👋\n\n"
+                        f"Welcome to SuoOps! You signed up yesterday but haven't "
+                        f"created your first invoice yet.\n\n"
+                        f"It takes less than 30 seconds — just type what you sold "
+                        f"and we'll generate a professional PDF invoice.\n\n"
+                        f"💡 *Try it now:* Send a message like:\n"
+                        f"_\"Invoice Chidi 08012345678, 5000 hair, 3000 nails\"_\n\n"
+                        f"That's it! We'll create and send the invoice for you.\n\n"
+                        f"Need help? Just reply *help* 🙂"
+                    )
+                elif tier == 3:
+                    msg = (
+                        f"Hi {name} 👋\n\n"
+                        f"You signed up for SuoOps {days_since} days ago — "
+                        f"here's what you're missing:\n\n"
+                        f"✅ Professional PDF invoices your customers will trust\n"
+                        f"✅ Automatic payment tracking — know who paid and who didn't\n"
+                        f"✅ Business reports — see your revenue at a glance\n"
+                        f"✅ Inventory management — track your stock\n\n"
+                        f"🎁 You have *2 free invoices* waiting. "
+                        f"Create your first one now — just send us what you sold!\n\n"
+                        f"Example: _\"Invoice Amaka 08098765432, 10000 shoes\"_"
+                    )
+                else:  # 7 days
+                    msg = (
+                        f"Hi {name},\n\n"
+                        f"It's been a week since you joined SuoOps and your "
+                        f"*2 free invoices* are still unused! 🎁\n\n"
+                        f"Other business owners are already:\n"
+                        f"📊 Tracking ₦41M+ in revenue\n"
+                        f"📱 Creating invoices straight from WhatsApp\n"
+                        f"💰 Getting paid faster with payment reminders\n\n"
+                        f"Don't miss out — create your first invoice in seconds.\n\n"
+                        f"Just send: _\"Invoice [customer name] [phone], [amount] [item]\"_\n\n"
+                        f"Or visit: https://suoops.com/login"
+                    )
+
+                try:
+                    from app.core.whatsapp import get_whatsapp_client
+                    client = get_whatsapp_client()
+                    client.send_text(user.phone, msg)
+
+                    db.add(UserEmailLog(user_id=user.id, email_type=email_type))
+                    db.commit()
+                    stats[f"sent_{tier}d"] += 1
+                    logger.info(
+                        "Sent %s nudge to user %s (%s)",
+                        email_type, user.id, user.name,
+                    )
+                except Exception as e:
+                    logger.warning("Activation nudge failed for user %s: %s", user.id, e)
+                    stats["failed"] += 1
+
+        logger.info("Zero-invoice activation nudge: %s", stats)
+        return {"success": True, **stats}
+
+    except Exception as exc:
+        logger.error("Zero-invoice activation nudge task failed: %s", exc)
+        raise

@@ -2308,6 +2308,7 @@ ALLOWED_TASKS = {
     "referral_asks": "customer_engagement.send_post_payment_referrals",
     "warn_inactive": "maintenance.warn_inactive_accounts",
     "delete_inactive": "maintenance.delete_inactive_accounts",
+    "activation_nudges": "maintenance.nudge_zero_invoice_users",
 }
 
 
