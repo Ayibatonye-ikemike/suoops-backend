@@ -160,34 +160,10 @@ class WhatsAppHandler:
                 # Fall through to normal processing
             else:
                 invoice_data = handle_onboarding_reply(
-                    onboarding, self.client, sender, text,
+                    onboarding, self.client, sender, text, db=self.db,
                 )
                 if invoice_data:
-                    # Onboarding complete — create the actual invoice
-                    issuer_id = self.invoice_processor._resolve_issuer_id(sender)
-                    if issuer_id:
-                        invoice_service = build_invoice_service(self.db, user_id=issuer_id)
-                        if self.invoice_processor._enforce_quota(invoice_service, issuer_id, sender):
-                            await self.invoice_processor._create_invoice(
-                                invoice_service, issuer_id, sender, invoice_data, {},
-                            )
-                            # ── Onboarding finish nudge: surface the referral
-                            #    code while the user is still in the bot, right
-                            #    after their first invoice. Wrapped so any
-                            #    failure here can't break the invoice flow.
-                            try:
-                                self.client.send_text(
-                                    sender,
-                                    "✅ Nice work — your first invoice is on its way!\n\n"
-                                    "🎁 One more thing: invite a friend and earn "
-                                    "*₦488* every time they upgrade to Pro 👇",
-                                )
-                                self._send_referral_card(sender, issuer_id)
-                            except Exception:
-                                logger.exception(
-                                    "Failed to send post-onboarding referral nudge to %s",
-                                    sender,
-                                )
+                    await self._finalize_onboarded_invoice(sender, invoice_data)
                 return
 
         # Check if customer is confirming payment
@@ -248,7 +224,11 @@ class WhatsAppHandler:
             if issuer_id is not None:
                 # Start guided slot-fill — friendlier than a format dump.
                 from app.bot.onboarding_flow import start_guided_invoice
-                start_guided_invoice(self.client, sender, issuer_id)
+                user_currency = get_user_currency(self.db, issuer_id)
+                start_guided_invoice(
+                    self.client, sender, issuer_id,
+                    db=self.db, currency=user_currency,
+                )
             else:
                 # Not a registered business — gentle nudge to sign up.
                 self.client.send_text(
@@ -506,7 +486,10 @@ class WhatsAppHandler:
                 # Drop into a guided slot-fill instead of dumping the
                 # rigid format guide.
                 from app.bot.onboarding_flow import start_guided_invoice
-                start_guided_invoice(self.client, sender, issuer_id)
+                start_guided_invoice(
+                    self.client, sender, issuer_id,
+                    db=self.db, currency=caller_currency,
+                )
                 return
         
         # Try expense processor first (checks if expense-related)
@@ -644,6 +627,38 @@ class WhatsAppHandler:
         lines.append("❓ Anything else → reply *help*")
 
         self.client.send_text(sender, "\n".join(lines))
+
+    async def _finalize_onboarded_invoice(
+        self, sender: str, invoice_data: dict[str, Any],
+    ) -> None:
+        """Shared completion path used by both the text reply and the
+        interactive ✅ Send button at the review step.
+        """
+        issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+        if not issuer_id:
+            return
+        invoice_service = build_invoice_service(self.db, user_id=issuer_id)
+        if not self.invoice_processor._enforce_quota(invoice_service, issuer_id, sender):
+            return
+        await self.invoice_processor._create_invoice(
+            invoice_service, issuer_id, sender, invoice_data, {},
+        )
+        # Onboarding finish nudge: surface the referral code right
+        # after the user's first guided invoice. Wrapped so any
+        # failure here cannot break the invoice flow.
+        try:
+            self.client.send_text(
+                sender,
+                "✅ Nice work — your invoice is on its way!\n\n"
+                "🎁 One more thing: invite a friend and earn "
+                "*₦488* every time they upgrade to Pro 👇",
+            )
+            self._send_referral_card(sender, issuer_id)
+        except Exception:
+            logger.exception(
+                "Failed to send post-onboarding referral nudge to %s",
+                sender,
+            )
 
     def _send_quick_status(self, sender: str, issuer_id: int) -> None:
         """Send a quick invoice status summary — available to all users for free."""
@@ -1301,6 +1316,24 @@ class WhatsAppHandler:
             "[INTERACTIVE] From %s: button_id=%s, list_reply_id=%s",
             sender, button_id, list_reply_id,
         )
+
+        # ── Guided invoice review buttons ──────────────────────────
+        if button_id in ("onb_send", "onb_edit", "onb_cancel"):
+            from app.bot.onboarding_flow import (
+                get_onboarding_session,
+                handle_onboarding_reply,
+            )
+            session = get_onboarding_session(sender)
+            if session:
+                invoice_data = handle_onboarding_reply(
+                    session, self.client, sender, button_id, db=self.db,
+                )
+                if invoice_data:
+                    await self._finalize_onboarded_invoice(sender, invoice_data)
+                return
+            # No active session — silently ignore stale button press.
+            return
+        # ── End onboarding review buttons ──────────────────────────
         
         # ── Product flow: cart action buttons ──────────────────────
         if button_id == "cart_add_more":

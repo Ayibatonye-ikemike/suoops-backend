@@ -30,11 +30,12 @@ class OnboardingSession:
     """Tracks a user's progress through the guided first-invoice flow."""
 
     user_id: int
-    step: str = "customer_name"  # customer_name → amount → phone → done
+    step: str = "customer_name"  # customer_name → amount → phone → review → done
     customer_name: str = ""
     amount: float = 0
     description: str = ""
     customer_phone: str = ""
+    currency: str = "NGN"
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -123,6 +124,100 @@ def start_onboarding(phone: str, user_id: int) -> OnboardingSession:
     return session
 
 
+def _money_examples(currency: str) -> list[str]:
+    """Return example amount/item strings tailored to the user's currency."""
+    if (currency or "NGN").upper() == "USD":
+        return ["50 wig", "150 website design", "500"]
+    return ["5000 wig", "15000 website design", "50000"]
+
+
+def _money_min(currency: str) -> tuple[float, str]:
+    """(min amount, label) for currency-aware low-amount validation."""
+    if (currency or "NGN").upper() == "USD":
+        return 1.0, "$1"
+    return 100.0, "₦100"
+
+
+def _money_label(amount: float, currency: str) -> str:
+    """Render an amount for prompts. Uses fmt_money when available."""
+    try:
+        from app.utils.currency_fmt import fmt_money
+        return fmt_money(float(amount), (currency or "NGN").upper(), convert=False)
+    except Exception:
+        if (currency or "NGN").upper() == "USD":
+            return f"${amount:,.2f}"
+        return f"₦{amount:,.0f}"
+
+
+def _lookup_customer_phone(db, user_id: int, name: str) -> str | None:
+    """Return phone for an existing customer of this issuer matching `name`.
+
+    Best-effort: silently returns None on any failure (missing db, ORM
+    error, etc.) so the guided flow keeps working in tests.
+    """
+    if db is None or not name or not user_id:
+        return None
+    try:
+        from sqlalchemy import func as sqlfunc
+
+        from app.models import models
+
+        # Match invoices issued by this user where the customer name is
+        # a case-insensitive exact match. We pick the most recently
+        # invoiced one to favour the freshest contact info.
+        row = (
+            db.query(models.Customer)
+            .join(models.Invoice, models.Invoice.customer_id == models.Customer.id)
+            .filter(
+                models.Invoice.issuer_id == user_id,
+                sqlfunc.lower(models.Customer.name) == name.strip().lower(),
+                models.Customer.phone.isnot(None),
+            )
+            .order_by(models.Invoice.created_at.desc())
+            .first()
+        )
+        if row and row.phone:
+            return row.phone
+    except Exception:
+        logger.exception("customer-autocomplete lookup failed")
+    return None
+
+
+def _send_review(client, phone: str, session: OnboardingSession) -> None:
+    """Confirm-before-send review with interactive buttons (text fallback)."""
+    money = _money_label(session.amount, session.currency)
+    desc = session.description or "Service"
+    phone_line = f"\n📱 {session.customer_phone}" if session.customer_phone else "\n📱 _no phone_"
+    body = (
+        "📝 *Review your invoice*\n\n"
+        f"👤 {session.customer_name}\n"
+        f"💰 {money} — {desc}"
+        f"{phone_line}\n\n"
+        "Send it now?"
+    )
+    sent = False
+    try:
+        send_buttons = getattr(client, "send_interactive_buttons", None)
+        if callable(send_buttons):
+            sent = bool(send_buttons(
+                phone,
+                body,
+                [
+                    {"id": "onb_send", "title": "✅ Send"},
+                    {"id": "onb_edit", "title": "✏️ Edit"},
+                    {"id": "onb_cancel", "title": "❌ Cancel"},
+                ],
+            ))
+    except Exception:
+        logger.exception("failed to send review buttons")
+        sent = False
+    if not sent:
+        client.send_text(
+            phone,
+            body + "\n\nReply *send*, *edit*, or *cancel*.",
+        )
+
+
 def start_guided_invoice(
     client,
     phone: str,
@@ -132,6 +227,8 @@ def start_guided_invoice(
     customer_phone: str | None = None,
     amount: float | None = None,
     description: str | None = None,
+    db: Any = None,
+    currency: str = "NGN",
 ) -> OnboardingSession:
     """Start a slot-filling invoice session, skipping pre-filled steps.
 
@@ -141,6 +238,7 @@ def start_guided_invoice(
     natural, friendly tone.
     """
     session = OnboardingSession(user_id=user_id)
+    session.currency = (currency or "NGN").upper()
     if customer_name and customer_name.lower() not in {"customer", ""}:
         session.customer_name = customer_name
     if customer_phone:
@@ -150,7 +248,15 @@ def start_guided_invoice(
     if description:
         session.description = description
 
+    # Auto-complete phone from history if we already have a name.
+    if session.customer_name and not session.customer_phone:
+        existing = _lookup_customer_phone(db, user_id, session.customer_name)
+        if existing:
+            session.customer_phone = existing
+
     _save_session(phone, session)
+
+    examples = _money_examples(session.currency)
 
     # Decide first prompt based on what's still missing.
     if not session.customer_name:
@@ -169,25 +275,27 @@ def start_guided_invoice(
             f"👍 Got it — invoice for *{session.customer_name}*.\n\n"
             "💰 *How much, and what is it for?*\n\n"
             "_Examples:_\n"
-            "• `5000 wig`\n"
-            "• `15000 website design`\n"
-            "• `50000`\n\n"
+            f"• `{examples[0]}`\n"
+            f"• `{examples[1]}`\n"
+            f"• `{examples[2]}`\n\n"
             "_Type *cancel* to stop._",
         )
     elif not session.customer_phone:
         session.step = "phone"
+        money = _money_label(session.amount, session.currency)
         desc = f" for *{session.description}*" if session.description else ""
         client.send_text(
             phone,
-            f"✅ *{session.customer_name}* — ₦{session.amount:,.0f}{desc}.\n\n"
+            f"✅ *{session.customer_name}* — {money}{desc}.\n\n"
             "📱 *What's their phone number?*\n\n"
             "_So they get the invoice on WhatsApp._\n"
             "_Type *skip* to send without one._",
         )
     else:
-        # All slots filled — nothing to ask, return session as-is so the
-        # caller can finish creating the invoice.
-        session.step = "done"
+        # All slots already filled — jump straight to review.
+        session.step = "review"
+        _save_session(phone, session)
+        _send_review(client, phone, session)
     return session
 
 
@@ -221,17 +329,21 @@ def handle_onboarding_reply(
     client,
     phone: str,
     text: str,
+    db: Any = None,
 ) -> dict[str, Any] | None:
     """Process user reply in the onboarding flow.
 
-    Returns invoice data dict when all steps are complete, None otherwise.
+    Returns invoice data dict when all steps are complete (and the
+    user has confirmed at the review step). Returns None otherwise.
     The caller is responsible for actually creating the invoice.
     """
     text = text.strip()
     text_lower = text.lower()
 
     # Allow user to skip/cancel at any point
-    if text_lower in {"skip", "cancel", "stop", "no", "later", "not now"}:
+    if text_lower in {"cancel", "stop"} or (
+        session.step != "phone" and text_lower in {"skip", "no", "later", "not now"}
+    ):
         clear_onboarding(phone)
         client.send_text(
             phone,
@@ -244,11 +356,13 @@ def handle_onboarding_reply(
     session.touch()
 
     if session.step == "customer_name":
-        result = _handle_customer_name(session, client, phone, text)
+        result = _handle_customer_name(session, client, phone, text, db=db)
     elif session.step == "amount":
         result = _handle_amount(session, client, phone, text)
     elif session.step == "phone":
         result = _handle_phone(session, client, phone, text)
+    elif session.step == "review":
+        result = _handle_review(session, client, phone, text)
     else:
         return None
 
@@ -266,8 +380,9 @@ def _handle_customer_name(
     client,
     phone: str,
     text: str,
+    db: Any = None,
 ) -> dict[str, Any] | None:
-    """Step 1: Capture customer name."""
+    """Step 1: Capture customer name (with phone auto-complete from history)."""
     # Basic validation — name should be at least 2 chars
     name = text.strip()
     if len(name) < 2:
@@ -291,14 +406,26 @@ def _handle_customer_name(
     session.customer_name = name
     session.step = "amount"
 
+    # Customer auto-complete: if we already invoiced this customer,
+    # remember their phone so we can skip the phone step.
+    if not session.customer_phone:
+        existing = _lookup_customer_phone(db, session.user_id, name)
+        if existing:
+            session.customer_phone = existing
+
+    examples = _money_examples(session.currency)
+    autoph = (
+        f"\n_(I'll send it to {session.customer_phone} — saved from before.)_"
+        if session.customer_phone else ""
+    )
     client.send_text(
         phone,
-        f"✅ Customer: *{name}*\n\n"
+        f"✅ Customer: *{name}*{autoph}\n\n"
         "💰 *How much and what is it for?*\n\n"
         "_Type the amount and item, e.g:_\n"
-        "• `5000 wig`\n"
-        "• `15000 website design`\n"
-        "• `50000`"
+        f"• `{examples[0]}`\n"
+        f"• `{examples[1]}`\n"
+        f"• `{examples[2]}`"
     )
     return None
 
@@ -321,11 +448,12 @@ def _handle_amount(
     )
 
     if not amount_match:
+        examples = _money_examples(session.currency)
         client.send_text(
             phone,
             "I couldn't find an amount in that.\n\n"
             "💰 *Please type the amount and what it's for:*\n"
-            "_e.g. `5000 wig` or `15000 website design`_"
+            f"_e.g. `{examples[0]}` or `{examples[1]}`_"
         )
         return None
 
@@ -333,31 +461,43 @@ def _handle_amount(
     try:
         amount = float(amount_str)
     except ValueError:
+        examples = _money_examples(session.currency)
         client.send_text(
             phone,
             "That doesn't look like a valid amount.\n\n"
-            "💰 *Try again:* _e.g. `5000 wig` or `15000`_"
+            f"💰 *Try again:* _e.g. `{examples[0]}` or `{examples[2]}`_"
         )
         return None
 
-    if amount < 100:
+    min_amt, min_label = _money_min(session.currency)
+    if amount < min_amt:
+        examples = _money_examples(session.currency)
         client.send_text(
             phone,
-            "⚠️ Amount seems too low. Minimum is ₦100.\n\n"
-            "💰 *Try again:* _e.g. `5000 wig`_"
+            f"⚠️ Amount seems too low. Minimum is {min_label}.\n\n"
+            f"💰 *Try again:* _e.g. `{examples[0]}`_"
         )
         return None
 
     description = (amount_match.group(2) or "").strip()
     session.amount = amount
     session.description = description or "Service"
+
+    # If we already auto-completed the phone in the name step, jump
+    # straight to the review screen — no need to ask again.
+    if session.customer_phone:
+        session.step = "review"
+        _send_review(client, phone, session)
+        return None
+
     session.step = "phone"
 
     desc_text = f" for *{session.description}*" if description else ""
+    money = _money_label(amount, session.currency)
 
     client.send_text(
         phone,
-        f"✅ Amount: *₦{amount:,.0f}*{desc_text}\n\n"
+        f"✅ Amount: *{money}*{desc_text}\n\n"
         "📱 *What's your customer's phone number?*\n\n"
         "_Type their number so they get the invoice on WhatsApp._\n"
         "_Or type *skip* to create without a phone number._"
@@ -393,24 +533,73 @@ def _handle_phone(
 
     session.customer_phone = customer_phone
 
-    # Build invoice data in the format _create_invoice expects
-    lines = [
-        {
-            "description": session.description,
-            "quantity": 1,
-            "unit_price": session.amount,
-        }
-    ]
+    # Move to review step instead of completing immediately. The user
+    # gets a one-tap chance to confirm or fix the details before we
+    # actually create + send the invoice.
+    session.step = "review"
+    _send_review(client, phone, session)
+    return None
 
-    invoice_data: dict[str, Any] = {
-        "customer_name": session.customer_name,
-        "customer_phone": customer_phone,
-        "amount": session.amount,
-        "lines": lines,
-        "currency": "NGN",
+
+def _handle_review(
+    session: OnboardingSession,
+    client,
+    phone: str,
+    text: str,
+) -> dict[str, Any] | None:
+    """Step 4: Confirm-before-send. Returns invoice data on confirmation."""
+    text_lower = text.strip().lower()
+    confirm_words = {
+        "send", "yes", "y", "ok", "okay", "confirm", "go", "go ahead",
+        "✅", "send it", "onb_send",
     }
+    edit_words = {"edit", "change", "fix", "modify", "✏️", "onb_edit"}
+    cancel_words = {"cancel", "no", "stop", "abort", "❌", "onb_cancel"}
 
-    # Clean up the session
-    clear_onboarding(phone)
+    if text_lower in cancel_words:
+        clear_onboarding(phone)
+        client.send_text(phone, "❌ Invoice cancelled. Type *invoice* to start again.")
+        return None
 
-    return invoice_data
+    if text_lower in edit_words:
+        # Restart at the customer-name step but keep what we know so the
+        # user can quickly correct one field; cleanest UX is to walk
+        # through again from the top.
+        session.customer_name = ""
+        session.amount = 0
+        session.description = ""
+        session.customer_phone = ""
+        session.step = "customer_name"
+        client.send_text(
+            phone,
+            "✏️ No problem — let's redo it.\n\n"
+            "👤 *Who are you billing?*\n"
+            "_Type the customer's name (or *cancel* to stop)._",
+        )
+        return None
+
+    if text_lower in confirm_words:
+        # Build invoice data in the format _create_invoice expects.
+        lines = [
+            {
+                "description": session.description or "Service",
+                "quantity": 1,
+                "unit_price": session.amount,
+            }
+        ]
+        invoice_data: dict[str, Any] = {
+            "customer_name": session.customer_name,
+            "customer_phone": session.customer_phone,
+            "amount": session.amount,
+            "lines": lines,
+            "currency": (session.currency or "NGN").upper(),
+        }
+        clear_onboarding(phone)
+        return invoice_data
+
+    # Anything else — re-show the review with a gentle nudge.
+    client.send_text(
+        phone,
+        "👆 Tap *✅ Send*, *✏️ Edit*, or *❌ Cancel* (or reply *send* / *edit* / *cancel*).",
+    )
+    return None
