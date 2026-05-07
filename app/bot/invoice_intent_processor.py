@@ -152,15 +152,13 @@ class InvoiceIntentProcessor:
         if not amount or amount <= 0:
             self.client.send_text(
                 sender,
-                "❌ I couldn't find an amount in your message.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━\n"
-                "✅ *CORRECT FORMAT:*\n"
-                "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "👋 Let's create your invoice!\n\n"
+                "Just send me a message in this format:\n\n"
                 "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
-                "📋 *EXAMPLES:*\n"
+                "📋 *Examples:*\n"
                 "• `Invoice Joy 08012345678, 12000 wig`\n"
                 "• `Invoice Ada 50 braids, 20 gel`\n\n"
-                "💡 *TIP:* Type *usd* or *naira* to switch your invoice currency",
+                "💡 Type *usd* or *naira* to switch your invoice currency.",
             )
             return
 

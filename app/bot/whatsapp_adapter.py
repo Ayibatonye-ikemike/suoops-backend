@@ -222,6 +222,35 @@ class WhatsAppHandler:
         is_greeting = text_lower in greeting_keywords
         is_optin = text_lower in optin_keywords
 
+        # ── "I want to create an invoice" intent (no actual data yet) ──
+        # Catch loose phrases users send when they click a "Create on
+        # WhatsApp" link or just open the chat — we want to welcome them
+        # with the format guide instead of failing the NLP parser and
+        # showing a red "couldn't find amount" error.
+        intent_phrases = (
+            "create an invoice", "create invoice", "make an invoice",
+            "make invoice", "send an invoice", "send invoice",
+            "new invoice", "i want to invoice", "want to create",
+            "want to make an invoice", "how do i create",
+            "how to create an invoice", "how to invoice",
+            "want to send an invoice", "i want to create",
+        )
+        # Only treat as "intent" if there's no digit/amount in the message
+        has_digit = any(ch.isdigit() for ch in text)
+        if not has_digit and any(p in text_lower for p in intent_phrases):
+            self.client.send_text(
+                sender,
+                "👋 Let's create your invoice!\n\n"
+                "Just send me a message in this format:\n\n"
+                "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                "📋 *Examples:*\n"
+                "• `Invoice Joy 08012345678, 12000 wig`\n"
+                "• `Invoice Ada 50 braids, 20 gel`\n\n"
+                "💡 You can also send a *voice note* — I'll transcribe it.",
+            )
+            return
+        # ── End intent-phrase shortcut ─────────────────────────────
+
         # ── Conversational responses ─────────────────────────────
         if self._handle_conversational(sender, text_lower):
             return
