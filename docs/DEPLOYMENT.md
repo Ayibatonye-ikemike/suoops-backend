@@ -1,16 +1,16 @@
 # SuoPay Deployment Guide
 
-This guide will help you deploy your SuoPay application to production using Heroku (backend) and Vercel (frontend). The backend now sends signup/login OTP codes over WhatsApp, so make sure the WhatsApp Cloud API configuration is complete before going live.
+This guide will help you deploy your SuoPay application to production using Render (backend) and Vercel (frontend). The backend now sends signup/login OTP codes over WhatsApp, so make sure the WhatsApp Cloud API configuration is complete before going live.
 
 ## Prerequisites
 
 Before deploying, make sure you have:
 
-1. **Heroku CLI** installed: https://devcenter.heroku.com/articles/heroku-cli
+1. **Render Dashboard** installed: https://render.com/docs
 2. **Vercel CLI** installed: `npm i -g vercel`
 3. **Git** repository set up
 4. Domain `suoops.com` configured
-5. `.python-version` present in the repo root (currently `3.12`) so Heroku picks the latest secure Python patch automatically.
+5. `.python-version` present in the repo root (currently `3.12`) so Render picks the latest secure Python patch automatically.
 
 ## Quick Deployment
 
@@ -24,46 +24,46 @@ This script will guide you through deploying both the backend and frontend.
 
 ## Manual Deployment
 
-### Backend to Heroku
+### Backend to Render
 
-1. **Login to Heroku:**
+1. **Login to Render:**
    ```bash
-   heroku auth:login
+   Render auth:login
    ```
 
-2. **Create a new Heroku app:**
+2. **Create a new Render app:**
    ```bash
-   heroku create suoops-backend --region us
+   Render create suoops-backend --region us
    ```
 
 3. **Add required addons:**
    ```bash
-   heroku addons:create heroku-postgresql:mini -a suoops-backend
-   heroku addons:create heroku-redis:mini -a suoops-backend
+   Render addons:create Render Postgres (managed) -a suoops-backend
+   Render addons:create Render Key Value / Redis (managed) -a suoops-backend
    ```
 
 4. **Set environment variables:**
    ```bash
-   heroku config:set ENV=prod -a suoops-backend
-   heroku config:set APP_NAME=SuoPay -a suoops-backend
-   heroku config:set WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id -a suoops-backend
-   heroku config:set WHATSAPP_API_KEY=your_whatsapp_token -a suoops-backend
-   heroku config:set PAYSTACK_SECRET=your_paystack_secret -a suoops-backend
-   heroku config:set S3_ACCESS_KEY=your_s3_access_key -a suoops-backend
-   heroku config:set S3_SECRET_KEY=your_s3_secret_key -a suoops-backend
-   heroku config:set S3_BUCKET=suoops-storage -a suoops-backend
+   render env set ENV=prod -a suoops-backend
+   render env set APP_NAME=SuoPay -a suoops-backend
+   render env set WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id -a suoops-backend
+   render env set WHATSAPP_API_KEY=your_whatsapp_token -a suoops-backend
+   render env set PAYSTACK_SECRET=your_paystack_secret -a suoops-backend
+   render env set S3_ACCESS_KEY=your_s3_access_key -a suoops-backend
+   render env set S3_SECRET_KEY=your_s3_secret_key -a suoops-backend
+   render env set S3_BUCKET=suoops-storage -a suoops-backend
    ```
 
 5. **Deploy:**
    ```bash
-   git push heroku main
+   git push origin main  # Render auto-deploys from GitHub
    ```
 
-   > Heroku now reads the Python version from `.python-version`. Keep that file at the repo root and avoid reintroducing `runtime.txt` or additional lockfiles (for example `poetry.lock`) so the buildpack only sees `requirements.txt`.
+   > Render now reads the Python version from `.python-version`. Keep that file at the repo root and avoid reintroducing `runtime.txt` or additional lockfiles (for example `poetry.lock`) so the buildpack only sees `requirements.txt`.
 
 6. **Run database migrations:**
    ```bash
-   heroku run alembic upgrade head -a suoops-backend
+   Render run alembic upgrade head -a suoops-backend
    ```
 
    The latest migration removes password fields from the `users` table and enables WhatsApp OTP login, so this step is required after every deploy that changes the data model.
@@ -86,7 +86,7 @@ This script will guide you through deploying both the backend and frontend.
    ```
 
 4. **Set environment variables in Vercel dashboard:**
-   - `NEXT_PUBLIC_API_BASE_URL`: Your Heroku backend URL
+   - `NEXT_PUBLIC_API_BASE_URL`: Your Render backend URL
 
 ## Domain Configuration
 
@@ -98,9 +98,9 @@ This script will guide you through deploying both the backend and frontend.
    - Add custom domain: `suoops.com` and `www.suoops.com`
    - Follow Vercel's DNS configuration instructions
 
-2. **For the backend (Heroku):**
+2. **For the backend (Render):**
    - Add a subdomain like `api.suoops.com`
-   - In Heroku dashboard, go to Settings > Domains
+   - In Render dashboard, go to Settings > Domains
    - Add custom domain: `api.suoops.com`
    - Configure DNS records as instructed
 
@@ -112,7 +112,7 @@ Add these records to your Namecheap DNS:
 Type    Host    Value                           TTL
 CNAME   www     cname.vercel-dns.com           300
 CNAME   @       cname.vercel-dns.com           300
-CNAME   api     your-app.herokuapp.com         300
+CNAME   api     your-app.Renderapp.com         300
 ```
 
 ## Post-Deployment Configuration
@@ -124,14 +124,14 @@ CNAME   api     your-app.herokuapp.com         300
 
 ## Environment Variables Reference
 
-### Backend (Heroku)
+### Backend (Render)
 - `ENV`: `prod`
-- `DATABASE_URL`: Automatically set by Heroku PostgreSQL addon
-- `REDIS_URL`: Automatically set by Heroku Redis addon
+- `DATABASE_URL`: Automatically set by Render PostgreSQL addon
+- `REDIS_URL`: Automatically set by Render Redis addon
 - `WHATSAPP_API_KEY`: Your WhatsApp Business API token
 - `WHATSAPP_PHONE_NUMBER_ID`: The phone number ID from your WhatsApp Cloud API app
 - `PAYSTACK_SECRET`: Your Paystack secret key
-- `JWT_SECRET`: Automatically generated by Heroku
+- `JWT_SECRET`: Automatically generated by Render
 - `S3_ACCESS_KEY`: AWS S3 access key
 - `S3_SECRET_KEY`: AWS S3 secret key
 - `S3_BUCKET`: Your S3 bucket name
@@ -151,14 +151,14 @@ CNAME   api     your-app.herokuapp.com         300
 
 ### Logs
 
-- **Heroku logs**: `heroku logs --tail -a suoops-backend`
+- **Render logs**: `# Stream logs from Render Dashboard`
 - **Vercel logs**: Check Vercel dashboard or use `vercel logs`
 
 ## Scaling
 
-### Heroku
-- Upgrade dyno types in Heroku dashboard
-- Scale worker processes: `heroku ps:scale worker=2 -a suoops-backend`
+### Render
+- Upgrade dyno types in Render dashboard
+- Scale worker processes: `Render ps:scale worker=2 -a suoops-backend`
 
 ### Vercel
 - Vercel automatically scales based on usage
@@ -191,5 +191,5 @@ Consider using services like:
 ## WhatsApp OTP Checklist
 
 - Verify the WhatsApp Cloud API app has a live (non-sandbox) phone number and template approval for transactional OTP messages.
-- Ensure `WHATSAPP_API_KEY` and `WHATSAPP_PHONE_NUMBER_ID` are configured in Heroku.
-- If OTP delivery fails, check Heroku logs for `[WHATSAPP]` messages and confirm Redis connectivity (fallback to in-memory storage is only suitable for development).
+- Ensure `WHATSAPP_API_KEY` and `WHATSAPP_PHONE_NUMBER_ID` are configured in Render.
+- If OTP delivery fails, check Render logs for `[WHATSAPP]` messages and confirm Redis connectivity (fallback to in-memory storage is only suitable for development).

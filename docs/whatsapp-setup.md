@@ -6,7 +6,7 @@ This guide will help you configure the WhatsApp webhook for SuoPay to receive an
 ## Prerequisites
 - WhatsApp Business Account
 - Meta Business Manager access
-- Phone Number ID and Business Account ID configured in Heroku
+- Phone Number ID and Business Account ID configured in Render
 
 ## Webhook Configuration
 
@@ -72,11 +72,11 @@ The bot will:
 
 ### 5. Environment Variables
 
-Ensure these are set in Heroku:
+Ensure these are set in Render:
 
 ```bash
 # Check current values
-heroku config --app suoops-backend
+render env ls --service suoops-backend
 
 # Required variables
 WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
@@ -130,11 +130,11 @@ async def verify_whatsapp_webhook(
 ### Webhook not receiving messages
 - Verify the webhook URL is correct in Meta Business Manager
 - Check that the webhook is subscribed to `messages` events
-- Check Heroku logs: `heroku logs --tail --app suoops-backend`
+- Check Render logs: `Render logs --tail --app suoops-backend`
 
 ### Messages not being processed
-- Check Celery worker is running: `heroku ps --app suoops-backend`
-- Verify Redis is connected: `heroku redis:info --app suoops-backend`
+- Check Celery worker is running: `# Check service status in Render Dashboard`
+- Verify Redis is connected: `Render redis:info --app suoops-backend`
 - Check worker logs for errors
 
 ### Cannot verify webhook

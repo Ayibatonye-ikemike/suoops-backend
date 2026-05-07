@@ -238,23 +238,23 @@ alembic upgrade head
 psql -d suopay_local -c "\d+ user"
 ```
 
-### 2. Run Migration (HEROKU)
+### 2. Run Migration (RENDER)
 ```bash
-# Push code to Heroku
-git push heroku main
+# Push code to Render
+git push origin main  # Render auto-deploys from GitHub
 
 # Run migration in production
-heroku run alembic upgrade head -a suoops-backend
+Render run alembic upgrade head -a suoops-backend
 
 # Verify migration
-heroku pg:psql -a suoops-backend
+Render pg:psql -a suoops-backend
 \d+ user
 ```
 
 ### 3. Verify Production
 ```bash
 # Check logs
-heroku logs --tail -a suoops-backend
+# Stream logs from Render Dashboard
 
 # Test with existing user
 curl -X POST https://api.suoops.com/invoices \
@@ -444,7 +444,7 @@ HAVING COUNT(i.id) >= (
 **1. Database Rollback:**
 ```bash
 # Downgrade migration
-heroku run alembic downgrade -1 -a suoops-backend
+Render run alembic downgrade -1 -a suoops-backend
 
 # Or manual SQL
 ALTER TABLE "user" DROP COLUMN plan;
@@ -457,7 +457,7 @@ DROP TYPE subscriptionplan;
 ```bash
 # Revert to previous commit
 git revert 9d189670
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 **3. Emergency Fix:**
@@ -481,8 +481,8 @@ git push heroku main
 
 1. ✅ Code committed (commit 9d189670)
 2. ⏳ Run migration locally to test
-3. ⏳ Deploy to Heroku staging (if exists)
-4. ⏳ Deploy to Heroku production
+3. ⏳ Deploy to Render staging (if exists)
+4. ⏳ Deploy to Render production
 5. ⏳ Monitor logs for quota checks
 6. ⏳ Track first conversions from FREE to STARTER
 7. ⏳ Build usage dashboard in frontend

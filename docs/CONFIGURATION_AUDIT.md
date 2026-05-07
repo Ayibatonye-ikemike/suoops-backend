@@ -24,7 +24,7 @@ Completed a comprehensive audit and update of all configuration files, removing 
   - `https://suoops-frontend-ikemike.vercel.app`
 - ⚠️ `WHATSAPP_VERIFY_TOKEN`: Still `suoops_verify_2025` (intentionally kept - changing would break existing webhooks)
 
-#### `app.json` (Heroku Manifest)
+#### `app.json` (Render Manifest)
 - ✅ `name`: `suoops-backend`
 - ✅ `repository`: `https://github.com/your-username/suoops.com`
 - ✅ `env.S3_BUCKET.value`: `suoops-storage`
@@ -71,7 +71,7 @@ Completed a comprehensive audit and update of all configuration files, removing 
   - API: `https://api.suoops.com`
 
 #### `DEPLOYMENT.md`
-- ✅ All Heroku references: `suoops-backend`
+- ✅ All Render references: `suoops-backend`
 - ✅ All S3 bucket references: `suoops-storage`
 - ✅ Domain references: `suoops.com`
 
@@ -85,11 +85,11 @@ Completed a comprehensive audit and update of all configuration files, removing 
 
 ### 5. Infrastructure (Already Completed)
 
-#### Heroku
+#### Render
 - ✅ App name: `suoops-backend`
 - ✅ Domain: `api.suoops.com`
 - ✅ DNS verified and SSL active
-- ✅ Git remote: `https://git.heroku.com/suoops-backend.git`
+- ✅ Git remote: `https://git.Render.com/suoops-backend.git`
 
 #### Vercel
 - ✅ Project name: `suoops-frontend`
@@ -125,8 +125,8 @@ The following still reference "SuoPay" as the **brand name** (not domain):
 
 ### Check Backend Configuration:
 ```bash
-# Check Heroku config
-heroku config -a suoops-backend | grep -E "FRONTEND_URL|S3_BUCKET"
+# Check Render config
+Render config -a suoops-backend | grep -E "FRONTEND_URL|S3_BUCKET"
 
 # Expected output:
 # FRONTEND_URL:  https://suoops.com
@@ -148,7 +148,7 @@ cat frontend/.vercel/project.json | jq .projectName
 ```bash
 # Backend API
 dig api.suoops.com +short
-# Should return Heroku IPs
+# Should return Render IPs
 
 # Frontend
 dig suoops.com +short  
@@ -170,11 +170,11 @@ curl -I https://suoops.com
 
 ## Environment Variables to Update in Production
 
-### Heroku (suoops-backend)
+### Render (suoops-backend)
 ```bash
 # If not already set:
-heroku config:set FRONTEND_URL=https://suoops.com -a suoops-backend
-heroku config:set S3_BUCKET=suoops-s3-bucket -a suoops-backend
+render env set FRONTEND_URL=https://suoops.com -a suoops-backend
+render env set S3_BUCKET=suoops-s3-bucket -a suoops-backend
 ```
 
 ### Vercel (suoops-frontend)
@@ -190,8 +190,8 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
 
 | Item | Before | After | Status |
 |------|--------|-------|--------|
-| Heroku App | `suopay-backend` | `suoops-backend` | ✅ |
-| Heroku Domain | `api.suopay.io` | `api.suoops.com` | ✅ |
+| Render App | `suopay-backend` | `suoops-backend` | ✅ |
+| Render Domain | `api.suopay.io` | `api.suoops.com` | ✅ |
 | Vercel Project | `suopay-frontend` | `suoops-frontend` | ✅ |
 | Vercel Domain | `suopay.io` | `suoops.com` | ✅ |
 | S3 Bucket | `suopay-storage` | `suoops-storage` | ✅ |
@@ -208,7 +208,7 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
    git add -A
    git commit -m "chore: Complete migration from suopay to suoops across all configs"
    git push origin main
-   git push heroku main
+   git push origin main  # Render auto-deploys from GitHub
    ```
 
 2. **Update Vercel**:

@@ -42,7 +42,7 @@
   - Data Protection Officer: support@suoops.com
   - Cross-border data transfer compliance (AWS eu-north-1, GDPR)
   - 7-year audit trail for tax compliance
-  - PostgreSQL database (Heroku managed encryption)
+  - PostgreSQL database (Render managed encryption)
   - AWS S3 file storage (SSE-S3)
   - Bcrypt password hashing (adaptive cost)
 - ✅ **In Transit:** TLS 1.3
@@ -89,7 +89,7 @@
   - CSRF protection (token validation)
   - Rate limiting (100 requests/minute per user)
 - ✅ **Infrastructure Security:**
-  - Heroku (ISO 27001, SOC 2, PCI DSS Level 1)
+  - Render (ISO 27001, SOC 2, PCI DSS Level 1)
   - AWS S3 (ISO 27001, SOC 2/3, GDPR)
   - Vercel (SOC 2 Type II)
 
@@ -105,7 +105,7 @@
 ### Certification Status
 - ⚠️ **Company Status:** NOT CERTIFIED (Infrastructure providers ARE certified)
 - ✅ **Infrastructure Providers:**
-  - Heroku: ISO 27001:2013 certified
+  - Render: ISO 27001:2013 certified
   - AWS: ISO 27001:2013 certified
   - Vercel: SOC 2 Type II compliant
 
@@ -137,7 +137,7 @@ We implement ISO 27001 controls:
 | ISO 27001 Cert | ❌ NOT CERTIFIED | LOW | Q4 2026 | ₦7.5M |
 
 **UPDATE (November 7, 2025):**
-- ✅ Backend OAuth deployed: Heroku v110
+- ✅ Backend OAuth deployed: Render v110
 - ✅ Frontend OAuth deployed: Vercel production
 - ✅ Google OAuth credentials configured
 - ⏳ Pending: Update Google OAuth redirect URIs
@@ -155,15 +155,15 @@ We implement ISO 27001 controls:
 5. Add redirect URI: `https://api.suoops.com/auth/oauth/google/callback`
 6. Copy Client ID and Client Secret
 
-### Step 2: Configure Heroku Environment Variables
+### Step 2: Configure Render Environment Variables
 ```bash
-heroku config:set GOOGLE_CLIENT_ID="xxx.apps.googleusercontent.com" --app suoops-backend
-heroku config:set GOOGLE_CLIENT_SECRET="GOCSPX-xxx" --app suoops-backend
-heroku config:set OAUTH_STATE_SECRET="$(openssl rand -hex 32)" --app suoops-backend
+render env set GOOGLE_CLIENT_ID="xxx.apps.googleusercontent.com" --app suoops-backend
+render env set GOOGLE_CLIENT_SECRET="GOCSPX-xxx" --app suoops-backend
+render env set OAUTH_STATE_SECRET="$(openssl rand -hex 32)" --app suoops-backend
 ```
 
 ### Step 3: Install authlib Dependency
-Add to Heroku buildpack or requirements.txt:
+Add to Render buildpack or requirements.txt:
 ```bash
 # Add to requirements.txt or ensure pyproject.toml is used
 authlib==1.3.0
@@ -171,7 +171,7 @@ authlib==1.3.0
 
 ### Step 4: Deploy to Production
 ```bash
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 ### Step 5: Test OAuth Flow
@@ -226,7 +226,7 @@ open https://api.suoops.com/auth/oauth/google/login
 
 ### Section E: ISO 27001
 - **Company Certified:** NO (Infrastructure providers ARE certified)
-- **Infrastructure Providers:** Heroku (ISO 27001:2013), AWS (ISO 27001:2013), Vercel (SOC 2 Type II)
+- **Infrastructure Providers:** Render (ISO 27001:2013), AWS (ISO 27001:2013), Vercel (SOC 2 Type II)
 - **ISO Controls Implemented:** A.9, A.10, A.12, A.13, A.14, A.17 (see SECURITY-COMPLIANCE.md)
 - **Certification Timeline:** Q4 2026 (12-18 months)
 - **Current Alignment:** HIGH (built on certified infrastructure)

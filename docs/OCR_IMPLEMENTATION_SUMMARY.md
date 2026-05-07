@@ -197,10 +197,10 @@ OCR_RESIZE_MAX_HEIGHT=2048
 OCR_MODEL=gpt-4o
 ```
 
-### Heroku Setup
+### Render Setup
 
 ```bash
-heroku config:set OPENAI_API_KEY=sk-proj-xxx
+render env set OPENAI_API_KEY=sk-proj-xxx
 ```
 
 ---
@@ -324,9 +324,9 @@ curl -X POST http://localhost:8000/ocr/create-invoice \
 - [x] Rate limiting configured
 
 ### Deployment Steps
-1. [ ] Set OPENAI_API_KEY in Heroku
+1. [ ] Set OPENAI_API_KEY in Render
 2. [ ] Commit and push to GitHub
-3. [ ] Deploy to Heroku
+3. [ ] Deploy to Render
 4. [ ] Test `/ocr/parse` endpoint
 5. [ ] Test `/ocr/create-invoice` endpoint
 6. [ ] Monitor logs for errors
@@ -442,7 +442,7 @@ curl -X POST http://localhost:8000/ocr/create-invoice \
 1. ✅ Complete code implementation
 2. ✅ Write comprehensive tests
 3. ✅ Create documentation
-4. ⏳ Set OPENAI_API_KEY in Heroku
+4. ⏳ Set OPENAI_API_KEY in Render
 5. ⏳ Commit and push to production
 
 ### Short Term (Week 1)
@@ -476,4 +476,4 @@ curl -X POST http://localhost:8000/ocr/create-invoice \
 
 **Status:** ✅ **READY FOR PRODUCTION DEPLOYMENT**
 
-**Next Action:** Deploy to Heroku with OPENAI_API_KEY configured! 🚀
+**Next Action:** Deploy to Render with OPENAI_API_KEY configured! 🚀

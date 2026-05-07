@@ -1,7 +1,7 @@
 # 🎉 QR Verification Deployment Summary
 
 **Date:** October 30, 2025  
-**Deployment:** Heroku v95  
+**Deployment:** Render v95  
 **Status:** ✅ PRODUCTION READY
 
 ---
@@ -21,7 +21,7 @@
 
 **Configuration:**
 ```bash
-heroku config:set BACKEND_URL=https://api.suoops.com
+render env set BACKEND_URL=https://api.suoops.com
 ```
 
 ---
@@ -39,13 +39,13 @@ heroku config:set BACKEND_URL=https://api.suoops.com
 
 ### Health Check
 ```bash
-curl https://suoops-backend-e4a267e41e92.herokuapp.com/healthz
+curl https://api.suoops.com/healthz
 # Response: {"status":"ok"} ✅
 ```
 
 ### QR Verification Endpoint
 ```bash
-curl https://suoops-backend-e4a267e41e92.herokuapp.com/invoices/TEST-123/verify
+curl https://api.suoops.com/invoices/TEST-123/verify
 # Response: {"detail":"Invoice not found"} (404) ✅
 # (Correct behavior for non-existent invoice)
 ```
@@ -54,7 +54,7 @@ curl https://suoops-backend-e4a267e41e92.herokuapp.com/invoices/TEST-123/verify
 ```
 ✅ Local: 30f82971
 ✅ GitHub: 30f82971  
-✅ Heroku: 30f82971
+✅ Render: 30f82971
 ```
 
 All branches synchronized!
@@ -107,14 +107,14 @@ Scan QR → Opens verification URL → See invoice details
 
 ### All Tests Passing ✅
 
-Using direct Heroku URL (bypasses ControlD DNS):
+Using direct Render URL (bypasses ControlD DNS):
 
 ```bash
 ✅ Health Check: {"status":"ok"}
 ✅ QR Verification: Working (404 for fake invoice is correct)
 ✅ WhatsApp Webhook: Challenge token returned
 ✅ Metrics Endpoint: Prometheus data streaming
-✅ Heroku Dynos: web.1 and worker.1 both running
+✅ Render Dynos: web.1 and worker.1 both running
 ```
 
 ### Configuration Verified ✅
@@ -140,7 +140,7 @@ Using direct Heroku URL (bypasses ControlD DNS):
 
 ### URLs
 - **API:** https://api.suoops.com
-- **Alternative:** https://suoops-backend-e4a267e41e92.herokuapp.com
+- **Alternative:** https://api.suoops.com
 - **Frontend:** https://suoops.com
 - **Verification:** https://api.suoops.com/invoices/{ID}/verify
 
@@ -243,10 +243,10 @@ Customer scans same QR later → Sees status changed to "PAID" ✅
 ### Testing
 - **Health:** `curl https://api.suoops.com/healthz`
 - **Verify:** `curl https://api.suoops.com/invoices/{ID}/verify`
-- **Logs:** `heroku logs --tail`
+- **Logs:** `Render logs --tail`
 
 ### Monitoring
-- **Heroku:** `heroku ps`
+- **Render:** `Render ps`
 - **Metrics:** `curl https://api.suoops.com/metrics`
 
 ---

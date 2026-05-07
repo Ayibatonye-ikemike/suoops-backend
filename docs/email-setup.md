@@ -33,12 +33,12 @@ SMTP_PASSWORD=abcdefghijklmnop  # App password from step 2
 FROM_EMAIL=noreply@suoops.com  # Optional: Custom sender name
 ```
 
-### Step 4: Configure Heroku
+### Step 4: Configure Render
 
 Run this command (replace with your actual values):
 
 ```bash
-heroku config:set \
+render env set \
   SMTP_HOST=smtp.gmail.com \
   SMTP_PORT=587 \
   SMTP_USER=your-email@gmail.com \
@@ -120,7 +120,7 @@ curl -X POST https://api.suoops.com/invoices \
 
 Check your email logs:
 ```bash
-heroku logs --tail --app suoops-backend | grep -i email
+Render logs --tail --app suoops-backend | grep -i email
 ```
 
 ---
@@ -165,7 +165,7 @@ heroku logs --tail --app suoops-backend | grep -i email
 **Solution:**
 - Check spam folder
 - Verify FROM_EMAIL is a valid address
-- Check Heroku logs for errors
+- Check Render logs for errors
 
 ### Issue: "535 Authentication failed"
 **Solution:**
@@ -199,7 +199,7 @@ heroku logs --tail --app suoops-backend | grep -i email
 1. ✅ Choose email provider (Gmail recommended for Nigeria)
 2. ✅ Get SMTP credentials
 3. ✅ Add to `.env` file locally
-4. ✅ Configure Heroku with credentials
+4. ✅ Configure Render with credentials
 5. ✅ Test invoice email delivery
 6. ✅ Monitor email logs
 

@@ -38,7 +38,7 @@ else:
             engine = create_engine(
                 raw_url,
                 future=True,
-                pool_size=5,  # Base pool size (Heroku Standard-0: 20 connections max, shared with workers)
+                pool_size=5,  # Base pool size (kept low to share Postgres connection budget with workers)
                 max_overflow=10,  # Allow up to 15 total connections (5 + 10)
                 pool_recycle=3600,  # Recycle connections after 1 hour
                 pool_pre_ping=True,  # Verify connection health before use

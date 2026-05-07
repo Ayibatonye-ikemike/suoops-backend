@@ -11,7 +11,7 @@ Automatic email delivery for invoices created via Dashboard or WhatsApp with Bre
 - **SMTP Port:** 587 (TLS)
 - **From Email:** info@suoops.com (verified sender)
 
-**Heroku Config (v86):**
+**Render Config (v86):**
 ```bash
 SMTP_HOST=smtp-relay.brevo.com
 SMTP_PORT=587
@@ -166,7 +166,7 @@ Send to SuoOps bot: `Invoice Test test@example.com 10000 for testing`
 
 **3. Check Logs:**
 ```bash
-heroku logs --tail | grep email
+Render logs --tail | grep email
 ```
 
 ## 📊 Email Delivery Monitoring
@@ -179,7 +179,7 @@ heroku logs --tail | grep email
 ### Application Logs
 ```bash
 # View email sending logs
-heroku logs --tail | grep "Invoice email"
+Render logs --tail | grep "Invoice email"
 
 # Success example:
 INFO: Invoice email sent to jane@example.com for invoice INV-123-456
@@ -204,7 +204,7 @@ WARNING: Failed to send invoice email to invalid@email
 
 **3. Check Email Format**
 - Email must be valid format: `user@domain.com`
-- Check logs for extraction: `heroku logs --tail | grep email`
+- Check logs for extraction: `Render logs --tail | grep email`
 
 **4. Check Brevo Quota**
 - Free tier: 300 emails/day
@@ -225,20 +225,20 @@ python3 test_email_extraction.py
 
 **3. View Extracted Entities**
 ```bash
-heroku logs --tail | grep "entities"
+Render logs --tail | grep "entities"
 ```
 
 ### SMTP Connection Issues
 
 **1. Verify Credentials**
 ```bash
-heroku config:get SMTP_USER
-heroku config:get SMTP_HOST
+render env get SMTP_USER
+render env get SMTP_HOST
 ```
 
 **2. Test SMTP Connection**
 ```bash
-heroku run python test_email.py
+render exec python test_email.py
 ```
 
 **3. Check Brevo Status**
@@ -290,7 +290,7 @@ heroku run python test_email.py
 ## ✅ Production Checklist
 
 - [x] Brevo account created
-- [x] SMTP credentials configured (Heroku v86)
+- [x] SMTP credentials configured (Render v86)
 - [x] `info@suoops.com` verified in Brevo
 - [x] Email extraction implemented (NLP)
 - [x] Email sending integrated (Intent Processor)

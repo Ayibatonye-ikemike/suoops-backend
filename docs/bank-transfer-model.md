@@ -276,9 +276,9 @@ Status: PAID ✓
 # Locally first
 alembic upgrade head
 
-# Then on Heroku
-git push heroku main
-heroku run alembic upgrade head -a suoops-backend
+# Then on Render
+git push origin main  # Render auto-deploys from GitHub
+Render run alembic upgrade head -a suoops-backend
 ```
 
 ### 2. Update Existing Users
@@ -328,7 +328,7 @@ alembic downgrade -1
 git revert 3d10749e
 
 # Deploy
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 This will restore:

@@ -11,7 +11,7 @@ import certifi
 from app.core.config import settings
 
 _BASE_DIR = Path(__file__).resolve().parents[1]
-_DEFAULT_HEROKU_CA = _BASE_DIR / "certs" / "heroku-redis-ca.pem"
+_DEFAULT_REDIS_CA = _BASE_DIR / "certs" / "redis-ca.pem"
 _ALLOWED_CERT_REQS = {"none", "optional", "required"}
 
 
@@ -27,18 +27,18 @@ def _add_query_param(url: str, key: str, value: str | None) -> str:
 
 
 def get_ca_cert_path() -> str:
-    """Return CA bundle path, defaulting to bundled Heroku cert."""
+    """Return CA bundle path, defaulting to the bundled managed-Redis cert."""
     if settings.REDIS_SSL_CA_CERTS:
         return settings.REDIS_SSL_CA_CERTS
-    if _DEFAULT_HEROKU_CA.exists():
-        return str(_DEFAULT_HEROKU_CA)
+    if _DEFAULT_REDIS_CA.exists():
+        return str(_DEFAULT_REDIS_CA)
     return certifi.where()
 
 
 def normalize_cert_reqs(value: str | None = None) -> str:
     """Normalize ssl_cert_reqs string while preserving host requirements.
 
-    Heroku Redis instances commonly require ``ssl_cert_reqs=none`` to finish the
+    Some managed Redis instances require ``ssl_cert_reqs=none`` to finish the
     TLS handshake. Enforce stronger verification by setting
     ``REDIS_SSL_CERT_REQS`` explicitly in the environment.
     """
@@ -76,7 +76,7 @@ def prepare_redis_url(url: str | None, add_ssl_params: bool = True) -> str | Non
 
 
 def get_ssl_context() -> ssl.SSLContext | None:
-    """Return a properly configured SSL context for Heroku Redis."""
+    """Return a properly configured SSL context for managed Redis (rediss://)."""
     url = settings.REDIS_URL
     if not url or not url.startswith("rediss://"):
         return None
@@ -97,15 +97,15 @@ def get_ssl_context() -> ssl.SSLContext | None:
 def get_ssl_options() -> dict[str, Any] | None:
     """Return ssl options dict for redis/Celery when using TLS.
     
-    For Heroku Redis with Python 3.12+, we need ssl_cert_reqs=CERT_NONE
-    due to self-signed certificates.
+    For managed Redis (rediss://) with Python 3.12+, we need
+    ssl_cert_reqs=CERT_NONE when the provider uses self-signed certs.
     """
     url = settings.REDIS_URL
     if not url or not url.startswith("rediss://"):
         return None
     
     # Create a minimal SSL context that doesn't verify certificates
-    # This is required for Heroku Redis which uses self-signed certs
+    # This is required for managed Redis providers that use self-signed certs
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE

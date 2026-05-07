@@ -63,7 +63,7 @@
    ```
 
 4. **Database backups & recovery**
-   - Set up automatic PostgreSQL backups on Heroku
+   - Set up automatic PostgreSQL backups on Render
    - Document recovery procedures
    - Test restore process
 

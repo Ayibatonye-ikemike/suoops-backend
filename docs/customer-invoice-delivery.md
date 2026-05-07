@@ -285,7 +285,7 @@ Customer receives:
 ### **For WhatsApp Delivery**:
 1. Set up Meta WhatsApp Business API
 2. Configure webhook URL in Meta dashboard
-3. Set environment variables on Heroku:
+3. Set environment variables on Render:
    ```bash
    WHATSAPP_API_KEY=your_key
    WHATSAPP_PHONE_NUMBER_ID=your_id

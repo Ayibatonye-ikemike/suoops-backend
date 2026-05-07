@@ -414,7 +414,7 @@ You: [Hand over food] ✅
    - We only see what you choose to send
 
 5. **Your OpenAI API Key**
-   - Stored securely on Heroku (encrypted)
+   - Stored securely on Render (encrypted)
    - Only used for your account
    - Never shared or logged
 

@@ -6,7 +6,7 @@ Termii is a Nigerian communication platform that provides SMS and WhatsApp messa
 ## Prerequisites
 1. Termii account (sign up at https://termii.com)
 2. Business verification documents
-3. Heroku CLI access to set environment variables
+3. Render Dashboard access to set environment variables
 
 ## Step 1: Create Termii Account
 1. Go to https://termii.com
@@ -18,7 +18,7 @@ Termii is a Nigerian communication platform that provides SMS and WhatsApp messa
 1. Log in to your Termii dashboard
 2. Navigate to **Settings** → **API Keys**
 3. Copy your **Live API Key** (starts with `TL...`)
-4. Keep this key secure - you'll add it to Heroku
+4. Keep this key secure - you'll add it to Render
 
 ## Step 3: Request Sender ID for SMS
 
@@ -72,27 +72,27 @@ A Device ID allows you to send WhatsApp messages through Termii's WhatsApp API.
 ### Note:
 **For now, we recommend using Meta's WhatsApp Business API** (already configured in SuoOps) instead of Termii's WhatsApp, as it's more reliable and feature-rich. Use Termii only for SMS.
 
-## Step 5: Configure Heroku Environment Variables
+## Step 5: Configure Render Environment Variables
 
-Once you have your API key and Sender ID approved, add them to Heroku:
+Once you have your API key and Sender ID approved, add them to Render:
 
 ```bash
 # Required: Termii API Key
-heroku config:set TERMII_API_KEY=TLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx --app suoops-backend
+render env set TERMII_API_KEY=TLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx --app suoops-backend
 
 # Required: Your approved Sender ID (or use default during testing)
-heroku config:set TERMII_SENDER_ID=SuoOps --app suoops-backend
+render env set TERMII_SENDER_ID=SuoOps --app suoops-backend
 
 # Optional: Device ID for WhatsApp via Termii (use TID for testing)
-heroku config:set TERMII_DEVICE_ID=TID --app suoops-backend
+render env set TERMII_DEVICE_ID=TID --app suoops-backend
 
 # Confirm SMS provider is set to Termii
-heroku config:set SMS_PROVIDER=termii --app suoops-backend
+render env set SMS_PROVIDER=termii --app suoops-backend
 ```
 
 Verify the configuration:
 ```bash
-heroku config --app suoops-backend | grep TERMII
+render env ls --service suoops-backend | grep TERMII
 ```
 
 ## Step 6: Test SMS Notifications
@@ -106,7 +106,7 @@ heroku config --app suoops-backend | grep TERMII
 1. Create an invoice with a customer phone number
 2. Check logs to confirm SMS was sent:
    ```bash
-   heroku logs --tail --app suoops-backend | grep "SMS"
+   Render logs --tail --app suoops-backend | grep "SMS"
    ```
 3. Customer should receive:
    - SMS with invoice details and payment link
@@ -157,7 +157,7 @@ heroku config --app suoops-backend | grep TERMII
 ### SuoOps Configuration Help:
 Check our logs for detailed error messages:
 ```bash
-heroku logs --tail --app suoops-backend
+Render logs --tail --app suoops-backend
 ```
 
 ## Best Practices

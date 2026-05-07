@@ -277,8 +277,8 @@ sudo networksetup -setdnsservers Wi-Fi 1.1.1.1 1.0.0.1
 ### Alternative: Bypass ControlD for Testing
 ```bash
 # Option 1: Pause ControlD (via app)
-# Option 2: Use direct Heroku URL
-curl https://suoops-backend-e4a267e41e92.herokuapp.com/healthz
+# Option 2: Use direct Render URL
+curl https://api.suoops.com/healthz
 
 # Option 3: Use mobile hotspot (bypasses local DNS)
 ```

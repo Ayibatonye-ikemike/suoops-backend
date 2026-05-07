@@ -66,7 +66,7 @@ Multiple layers of security controls protect systems and data.
 **Process:**
 ```bash
 # Create staff account (requires Super Admin)
-heroku run python -c "
+render exec python -c "
 from app.db.session import SessionLocal
 from app.models.models import User, SubscriptionPlan
 from passlib.context import CryptContext
@@ -132,7 +132,7 @@ print(f'Created staff account: {user.id}')
 2. Access revoked within 24 hours:
    ```bash
    # Disable staff account
-   heroku run python -c "
+   render exec python -c "
    from app.db.session import SessionLocal
    from app.models.models import User
    db = SessionLocal()
@@ -243,7 +243,7 @@ async def create_user(current_user_id: CurrentUserDep):
 - Read replicas for analytics (future)
 
 **Database-Level:**
-- Heroku Postgres with SSL required
+- Render Postgres with SSL required
 - Role: Application user (limited permissions)
 - No direct console access in production
 - Backup access: Separate read-only role
@@ -262,7 +262,7 @@ async def create_user(current_user_id: CurrentUserDep):
 - Paystack (payment processing)
 - Brevo (email delivery)
 - AWS S3 (file storage)
-- Heroku (infrastructure)
+- Render (infrastructure)
 - Sentry (error tracking)
 
 **Access Control:**
@@ -273,8 +273,8 @@ async def create_user(current_user_id: CurrentUserDep):
 
 **API Key Storage:**
 ```bash
-# All keys stored in Heroku config vars
-heroku config --app suoops-backend
+# All keys stored in Render config vars
+render env ls --service suoops-backend
 
 # Never in code or .env files
 # Rotated quarterly or immediately if compromised
@@ -315,7 +315,7 @@ heroku config --app suoops-backend
 # Requires Security Lead approval
 # Logged and reviewed within 24 hours
 
-heroku run bash --app suoops-backend
+Render run bash --app suoops-backend
 # Document reason and actions taken
 ```
 
@@ -337,7 +337,7 @@ heroku run bash --app suoops-backend
 **Command:**
 ```bash
 # Production database console (use with extreme caution)
-heroku pg:psql --app suoops-backend
+Render pg:psql --app suoops-backend
 
 # All queries logged to audit trail
 # Prefer read-only queries
@@ -428,7 +428,7 @@ heroku pg:psql --app suoops-backend
 
 ## 11. Physical Access (for Office/Data Center)
 
-**Note**: SuoOps is cloud-based (Heroku), physical access to servers is managed by Heroku's security policies.
+**Note**: SuoOps is cloud-based (Render), physical access to servers is managed by Render's security policies.
 
 **Office Access:**
 - Badge-controlled entry

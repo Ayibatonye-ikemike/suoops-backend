@@ -109,16 +109,16 @@ Customer receives payment link 💳
 ### 1. Get OpenAI API Key
 Visit: https://platform.openai.com/api-keys
 
-### 2. Add to Heroku
+### 2. Add to Render
 ```bash
-heroku config:set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+render env set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
 ```
 
 ### 3. Deploy
 ```bash
 git add .
 git commit -m "feat: Add WhatsApp voice note support (OOP/DRY/SRP compliant)"
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 ## Testing

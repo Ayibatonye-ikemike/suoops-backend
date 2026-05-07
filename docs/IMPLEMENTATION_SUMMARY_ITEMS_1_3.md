@@ -13,12 +13,12 @@
 - ✅ Verified `.env` is in `.gitignore` and not tracked by git
 - ✅ Created comprehensive environment templates for dev/prod
 - ✅ Documented secret rotation schedule (JWT: 3 months, AWS: 6 months)
-- ✅ Added Heroku config vars setup instructions
+- ✅ Added Render config vars setup instructions
 - ✅ Included troubleshooting guide for common issues
 - ✅ Created quarterly security audit checklist
 
 **Security Best Practices:**
-- Keep production secrets in Heroku Config Vars only
+- Keep production secrets in Render Environment Variables only
 - Use test API keys in development (Paystack `sk_test_`)
 - Rotate secrets quarterly
 - Strong JWT secrets (min 32 characters, random)
@@ -146,7 +146,7 @@ Client → API Server (FastAPI) → PostgreSQL
 | Throughput | 18/min | 200/min | **11x higher** |
 | 95th Percentile | 4.8s | 680ms | **7x faster** |
 
-**Heroku Deployment:**
+**Render Deployment:**
 
 ```procfile
 # Procfile
@@ -156,13 +156,13 @@ worker: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
 
 ```bash
 # Scale worker dynos
-heroku ps:scale worker=1 --app suoops-backend
+Render ps:scale worker=1 --app suoops-backend
 
 # Check logs
-heroku logs --tail --dyno=worker --app suoops-backend
+Render logs --tail --dyno=worker --app suoops-backend
 
 # Monitor tasks
-heroku run celery -A app.workers.celery_app inspect active --app suoops-backend
+Render run celery -A app.workers.celery_app inspect active --app suoops-backend
 ```
 
 **Frontend Handling:**
@@ -242,14 +242,14 @@ const pollInterval = setInterval(async () => {
 git add .
 git commit -m "feat: add environment security, mobile responsiveness, async PDF generation"
 
-# 2. Deploy to Heroku
-git push heroku main
+# 2. Deploy to Render
+git push origin main  # Render auto-deploys from GitHub
 
 # 3. Scale worker dyno
-heroku ps:scale worker=1 --app suoops-backend
+Render ps:scale worker=1 --app suoops-backend
 
 # 4. Verify Redis connection
-heroku config:get REDIS_URL --app suoops-backend
+render env get REDIS_URL --service suoops-backend
 
 # 5. Test async PDF generation
 curl -X POST https://api.suoops.com/invoices/ \
@@ -257,7 +257,7 @@ curl -X POST https://api.suoops.com/invoices/ \
   -d '{"customer_name":"Test","amount":1000}'
 
 # 6. Monitor worker logs
-heroku logs --tail --dyno=worker --app suoops-backend
+Render logs --tail --dyno=worker --app suoops-backend
 ```
 
 ---

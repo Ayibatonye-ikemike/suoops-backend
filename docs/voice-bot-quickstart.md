@@ -35,11 +35,11 @@ pip install httpx
 ### 3. Deploy
 
 ```bash
-# Add to Heroku config
-heroku config:set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+# Add to Render config
+render env set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
 
 # Deploy
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 ## Usage
@@ -163,7 +163,7 @@ pytest tests/test_voice_bot.py::TestNLPServiceSpeech -v
 ## Troubleshooting
 
 ### "OPENAI_API_KEY not configured"
-- Add API key to `.env` and Heroku config
+- Add API key to `.env` and Render config
 
 ### "Voice message too short or unclear"
 - User needs to speak more clearly
@@ -232,8 +232,8 @@ All files remain under 400 LOC limit:
 
 ## Deployment Checklist
 
-- [ ] Add `OPENAI_API_KEY` to Heroku config
-- [ ] Deploy to Heroku
+- [ ] Add `OPENAI_API_KEY` to Render config
+- [ ] Deploy to Render
 - [ ] Test with real voice note in WhatsApp
 - [ ] Monitor logs for errors
 - [ ] Update user documentation

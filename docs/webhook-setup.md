@@ -39,7 +39,7 @@ https://api.suoops.com/webhooks/paystack
 
 4. **No Extra Secret Needed**
    - Signature verification uses the same `PAYSTACK_SECRET` you already configured for initializing payments.
-   - No additional Heroku config vars are required.
+   - No additional Render config vars are required.
 
 ### Testing the Webhook
 
@@ -51,7 +51,7 @@ Once configured, you can test it from the Paystack dashboard:
 
 Check your application logs:
 ```bash
-heroku logs --tail --app suoops-backend
+Render logs --tail --app suoops-backend
 ```
 
 ### Webhook Verification
@@ -67,13 +67,13 @@ The webhook endpoint automatically verifies requests using the `x-paystack-signa
 ### Troubleshooting
 
 **If webhook fails:**
-1. Check Heroku logs: `heroku logs --tail --app suoops-backend`
-2. Verify webhook secret is set: `heroku config:get PAYSTACK_WEBHOOK_SECRET --app suoops-backend`
+1. Check Render logs: `Render logs --tail --app suoops-backend`
+2. Verify webhook secret is set: `render env get PAYSTACK_WEBHOOK_SECRET --service suoops-backend`
 3. Test endpoint manually: `curl -X POST https://api.suoops.com/webhooks/paystack`
 4. Check Paystack webhook logs in dashboard
 
 **Common Issues:**
-- ❌ SSL certificate not ready → Use Heroku URL temporarily
+- ❌ SSL certificate not ready → Use Render URL temporarily
 - ❌ Wrong webhook secret → Update with correct secret
 - ❌ Endpoint returns 401/403 → Check signature verification
 

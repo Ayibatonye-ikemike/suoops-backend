@@ -5,7 +5,7 @@
 ### Test 1: Webhook Verification (Meta's GET Request)
 
 ```bash
-curl -X GET "https://suoops-backend.herokuapp.com/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suoops_verify_2025&hub.challenge=test_123"
+curl -X GET "https://api.suoops.com/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=suoops_verify_2025&hub.challenge=test_123"
 ```
 
 **Expected Response:**
@@ -15,7 +15,7 @@ test_123
 
 ✅ **If you see `test_123`**: Webhook verification is working! Meta can connect.
 
-❌ **If you see error**: Check webhook endpoint is deployed on Heroku v51.
+❌ **If you see error**: Check webhook endpoint is deployed on Render v51.
 
 ---
 
@@ -28,7 +28,7 @@ test_123
 **Run this command:**
 
 ```bash
-curl -X POST "https://suoops-backend.herokuapp.com/webhooks/whatsapp" \
+curl -X POST "https://api.suoops.com/webhooks/whatsapp" \
   -H "Content-Type: application/json" \
   -d '{
     "object": "whatsapp_business_account",
@@ -75,7 +75,7 @@ curl -X POST "https://suoops-backend.herokuapp.com/webhooks/whatsapp" \
 **View logs to see if Celery processed the message:**
 
 ```bash
-heroku logs --tail --num 100 | grep -E "whatsapp|invoice|celery"
+Render logs --tail --num 100 | grep -E "whatsapp|invoice|celery"
 ```
 
 **What to look for:**
@@ -110,7 +110,7 @@ Unable to resolve issuer for WhatsApp sender: +2348012345678
 **OR create test user directly:**
 
 ```bash
-heroku run python -c "
+render exec python -c "
 from app.db.session import SessionLocal
 from app.models.models import User
 from app.core.security import get_password_hash
@@ -149,7 +149,7 @@ Invoice Jane Doe +2348087654321 50000 for logo design
 **Check Celery worker is running:**
 
 ```bash
-heroku ps
+Render ps
 ```
 
 **Expected output:**
@@ -161,7 +161,7 @@ worker.1: up 2025/10/23 10:30:00 +0000 (~ 2h ago)
 **If worker is down, restart it:**
 
 ```bash
-heroku ps:restart worker
+Render ps:restart worker
 ```
 
 ---
@@ -235,7 +235,7 @@ Once tests pass:
    - Should receive invoice + PDF + payment link
 
 4. **Monitor & Improve**
-   - Watch Heroku logs: `heroku logs --tail`
+   - Watch Render logs: `Render logs --tail`
    - Track invoice creation
    - Monitor delivery success rate
 
@@ -245,7 +245,7 @@ Once tests pass:
 
 If tests fail or you're stuck:
 
-1. **Check logs:** `heroku logs --tail --num 200`
+1. **Check logs:** `Render logs --tail --num 200`
 2. **Verify database:** User has phone field set
 3. **Confirm Celery:** Worker dyno is running
 4. **Test locally:** Run tests with `pytest tests/test_whatsapp_flow.py`

@@ -11,7 +11,7 @@ This document summarizes the testing performed on SuoPay's production deployment
 
 ### Backend
 - **URL**: https://api.suoops.com
-- **Platform**: Heroku
+- **Platform**: Render
 - **Status**: ✅ Live and operational
 - **Database**: PostgreSQL (essential-0)
 - **Cache**: Redis (mini)
@@ -123,7 +123,7 @@ curl -X POST https://api.suoops.com/invoices \
 
 **Configuration**:
 - Webhook URL: https://api.suoops.com/webhooks/paystack
-- Secret: Configured in Heroku (PAYSTACK_SECRET)
+- Secret: Configured in Render (PAYSTACK_SECRET)
 - Verification: HMAC-SHA512
 
 ---
@@ -180,19 +180,19 @@ curl -X POST https://api.suoops.com/webhooks/whatsapp \
 ## 🐛 Issues Fixed During Testing
 
 ### 1. Redis SSL Certificate Verification
-**Issue**: Rate limiter failing to connect to Heroku Redis with SSL error
+**Issue**: Rate limiter failing to connect to Render Redis with SSL error
 ```
 redis.exceptions.ConnectionError: Error 1 connecting to ec2-18-215-221-46.compute-1.amazonaws.com:10070. 
 [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain
 ```
 
-**Fix**: Updated `app/api/rate_limit.py` to disable SSL certificate verification for Heroku Redis
+**Fix**: Updated `app/api/rate_limit.py` to disable SSL certificate verification for Render Redis
 ```python
 if redis_url and redis_url.startswith("rediss://"):
     storage_uri = f"{redis_url}?ssl_cert_reqs=none"
 ```
 
-**Commit**: `58b944b1` - "Fix Redis SSL certificate verification for Heroku"
+**Commit**: `58b944b1` - "Fix Redis SSL certificate verification for Render"
 
 ### 2. Frontend API Configuration
 **Issue**: Frontend not configured to use production API
@@ -209,7 +209,7 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
 
 ## 📋 Configuration Checklist
 
-### Heroku Environment Variables
+### Render Environment Variables
 - ✅ DATABASE_URL (PostgreSQL)
 - ✅ REDIS_URL (Redis)
 - ✅ PAYSTACK_SECRET
@@ -224,7 +224,7 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
 
 ### DNS Configuration
 - ✅ suoops.com → Vercel (76.76.21.21)
-- ✅ api.suoops.com → Heroku
+- ✅ api.suoops.com → Render
 - ✅ SSL certificates active (expires Jan 17, 2026)
 - ✅ Nameservers: ns1.vercel-dns.com, ns2.vercel-dns.com
 
@@ -254,7 +254,7 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
 
 ### Medium Priority
 4. **Celery Worker Verification**
-   - Verify worker dyno is running on Heroku
+   - Verify worker dyno is running on Render
    - Test async message processing
    - Monitor worker logs for errors
 
@@ -285,22 +285,22 @@ vercel env add NEXT_PUBLIC_API_BASE_URL production
 
 ### View Backend Logs
 ```bash
-heroku logs --tail --app suoops-backend
+Render logs --tail --app suoops-backend
 ```
 
 ### View Redis Status
 ```bash
-heroku redis:info --app suoops-backend
+Render redis:info --app suoops-backend
 ```
 
 ### View Database Status
 ```bash
-heroku pg:info --app suoops-backend
+Render pg:info --app suoops-backend
 ```
 
 ### View Worker Status
 ```bash
-heroku ps --app suoops-backend
+# Check service status in Render Dashboard
 ```
 
 ---

@@ -22,7 +22,7 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 ## ✅ Completed Tasks
 
 ### 1. Infrastructure Deployment
-- ✅ Backend deployed to Heroku at `https://api.suoops.com`
+- ✅ Backend deployed to Render at `https://api.suoops.com`
 - ✅ Frontend deployed to Vercel at `https://suoops.com`
 - ✅ PostgreSQL database (essential-0 plan)
 - ✅ Redis cache (mini plan) with SSL configured
@@ -78,7 +78,7 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 ## 🐛 Issues Fixed
 
 ### Redis SSL Certificate Issues (2 fixes)
-**Problem**: Both rate limiter and Celery couldn't connect to Heroku Redis due to SSL certificate verification failures.
+**Problem**: Both rate limiter and Celery couldn't connect to Render Redis due to SSL certificate verification failures.
 
 **Solution**:
 1. **Rate Limiter** (`app/api/rate_limit.py`):
@@ -104,7 +104,7 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 ### Celery Worker Not Running
 **Problem**: Worker dyno was not scaled up
 
-**Solution**: `heroku ps:scale worker=1 --app suoops-backend`
+**Solution**: `Render ps:scale worker=1 --app suoops-backend`
 
 ---
 
@@ -147,10 +147,10 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 - **Build**: Vercel
 
 ### Infrastructure
-- **Backend Hosting**: Heroku (web + worker dynos)
+- **Backend Hosting**: Render (web + worker dynos)
 - **Frontend Hosting**: Vercel
-- **Database**: Heroku Postgres (essential-0)
-- **Cache**: Heroku Redis (mini)
+- **Database**: Render Postgres (essential-0)
+- **Cache**: Render Redis (mini)
 - **DNS**: Vercel DNS
 - **SSL**: Let's Encrypt (auto-managed)
 
@@ -158,7 +158,7 @@ Successfully deployed **SuoPay** - a full-stack invoice and payment management s
 
 ## 🔐 Environment Configuration
 
-### Heroku (Backend)
+### Render (Backend)
 ```bash
 ✅ DATABASE_URL          # PostgreSQL connection
 ✅ REDIS_URL             # Redis connection with SSL
@@ -305,25 +305,25 @@ https://api.suoops.com/webhooks/paystack
 
 ## 🚀 Deployment Commands Reference
 
-### Backend (Heroku)
+### Backend (Render)
 ```bash
 # Deploy
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 
 # View logs
-heroku logs --tail --app suoops-backend
+Render logs --tail --app suoops-backend
 
 # Check dyno status
-heroku ps --app suoops-backend
+# Check service status in Render Dashboard
 
 # Scale worker
-heroku ps:scale worker=1 --app suoops-backend
+Render ps:scale worker=1 --app suoops-backend
 
 # Run migrations
-heroku run alembic upgrade head --app suoops-backend
+Render run alembic upgrade head --app suoops-backend
 
 # Access console
-heroku run bash --app suoops-backend
+Render run bash --app suoops-backend
 ```
 
 ### Frontend (Vercel)
@@ -371,7 +371,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiaWF0IjoxNzYxMTI5MjMyLCJleHA
 
 - **Frontend**: https://suoops.com
 - **API**: https://api.suoops.com
-- **Heroku Dashboard**: https://dashboard.heroku.com/apps/suoops-backend
+- **Render Dashboard**: https://dashboard.render.com
 - **Vercel Dashboard**: https://vercel.com/ikemike/suoops-frontend
 - **Meta Business Manager**: https://developers.facebook.com/
 
@@ -392,7 +392,7 @@ All core systems are operational:
 
 ---
 
-**Questions or Issues?** Check the documentation in the `/docs` folder or review the Heroku logs.
+**Questions or Issues?** Check the documentation in the `/docs` folder or review the Render logs.
 
 **Ready to scale?** All infrastructure is in place and tested. Just add more dynos as needed.
 

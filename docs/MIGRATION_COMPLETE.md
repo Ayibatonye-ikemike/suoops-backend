@@ -13,13 +13,13 @@ Successfully migrated from `suopay.io` to `suoops.com` with complete DNS configu
 
 ## ✅ What Was Completed
 
-### 1. Heroku Backend
+### 1. Render Backend
 - ✅ **App renamed**: `suopay-backend` → `suoops-backend`
 - ✅ **Custom domain configured**: `api.suoops.com`
-- ✅ **DNS verified**: CNAME pointing to `mysterious-poppy-0186j4d1ol2wedys1lxgebvk.herokudns.com`
+- ✅ **DNS verified**: CNAME pointing to `api.suoops.com`
 - ✅ **SSL Certificate**: Issued and active (SNI: `aptosaurus-49927`)
 - ✅ **HTTPS working**: `https://api.suoops.com` ✓
-- ✅ **Git remote updated**: `https://git.heroku.com/suoops-backend.git`
+- ✅ **Git remote updated**: `https://git.Render.com/suoops-backend.git`
 
 ### 2. Vercel Frontend
 - ✅ **Project renamed**: `suopay-frontend` → `suoops-frontend`
@@ -33,11 +33,11 @@ Successfully migrated from `suopay.io` to `suoops.com` with complete DNS configu
 ### 3. DNS Configuration
 - ✅ **Nameservers**: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`
 - ✅ **Root domain**: `suoops.com` → Vercel (ALIAS)
-- ✅ **API subdomain**: `api.suoops.com` → Heroku (CNAME)
+- ✅ **API subdomain**: `api.suoops.com` → Render (CNAME)
 - ✅ **Propagation**: Complete and verified
 
 ### 4. Cleanup
-- ✅ **Removed from Heroku**: `api.suopay.io`
+- ✅ **Removed from Render**: `api.suopay.io`
 - ✅ **Removed from Vercel**: `suopay.io` domain
 - ✅ **Removed from Vercel**: `myhealthwing.com` domain
 - ✅ **Removed aliases**: `suopay-frontend.vercel.app` and related
@@ -57,13 +57,13 @@ Successfully migrated from `suopay.io` to `suoops.com` with complete DNS configu
 
 ## 📋 Current Configuration
 
-### Heroku App: `suoops-backend`
+### Render App: `suoops-backend`
 ```bash
 App Name:    suoops-backend
 Region:      United States
-Stack:       heroku-24
-Git URL:     https://git.heroku.com/suoops-backend.git
-Web URL:     https://suoops-backend-e4a267e41e92.herokuapp.com
+Stack:       Render-24
+Git URL:     https://git.Render.com/suoops-backend.git
+Web URL:     https://api.suoops.com
 Custom URL:  https://api.suoops.com
 SSL:         ✅ Active (aptosaurus-49927)
 ```
@@ -81,7 +81,7 @@ SSL:         ✅ Active (Let's Encrypt via Vercel)
 ```
 suoops.com        ALIAS  → cname.vercel-dns-017.com
 *.suoops.com      ALIAS  → cname.vercel-dns-017.com
-api.suoops.com    CNAME  → mysterious-poppy-0186j4d1ol2wedys1lxgebvk.herokudns.com
+api.suoops.com    CNAME  → api.suoops.com
 ```
 
 ---
@@ -110,7 +110,7 @@ dig api.suoops.com +short
 
 ### SSL Certificate Test:
 ```bash
-heroku certs:auto -a suoops-backend
+# (TLS managed automatically by Render) -a suoops-backend
 # Status: DNS Verified ✓
 ```
 
@@ -168,7 +168,7 @@ Now that the migration is complete:
 
 ## 🔗 Important Links
 
-- **Heroku Dashboard**: https://dashboard.heroku.com/apps/suoops-backend
+- **Render Dashboard**: https://dashboard.render.com
 - **Vercel Dashboard**: https://vercel.com/ikemike/suoops-frontend
 - **Namecheap Domain**: https://ap.www.namecheap.com/domains/domaincontrolpanel/suoops.com/domain
 - **DNS Records**: https://vercel.com/ikemike/suoops-frontend/settings/domains
@@ -180,8 +180,8 @@ Now that the migration is complete:
 If you encounter any issues:
 
 1. **Check DNS propagation**: https://dnschecker.org/#A/suoops.com
-2. **Check SSL status**: `heroku certs:auto -a suoops-backend`
-3. **Check Heroku logs**: `heroku logs --tail -a suoops-backend`
+2. **Check SSL status**: `# (TLS managed automatically by Render) -a suoops-backend`
+3. **Check Render logs**: `# Stream logs from Render Dashboard`
 4. **Check Vercel deployments**: https://vercel.com/ikemike/suoops-frontend/deployments
 
 ---

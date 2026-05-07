@@ -15,7 +15,7 @@
 | Domain Verification | ✅ Verified | suoops.com |
 | DKIM Records | ✅ Active | 3 CNAME records in Vercel DNS |
 | SMTP Credentials | ✅ Created | *(stored in Render env vars)* |
-| Heroku Config | ✅ Set (v75) | SES_SMTP_HOST, SES_SMTP_USER, SES_SMTP_PASSWORD, FROM_EMAIL |
+| Render Config | ✅ Set (v75) | SES_SMTP_HOST, SES_SMTP_USER, SES_SMTP_PASSWORD, FROM_EMAIL |
 | Region | ✅ eu-north-1 | Europe (Stockholm) |
 | Sender Address | ✅ noreply@suoops.com | |
 | Current Mode | ⏳ Sandbox | Production access requested |
@@ -125,7 +125,7 @@ All records in Vercel DNS:
 ```
 @ ALIAS cname.vercel-dns-017.com (website)
 @ ALIAS f4d979145d44049e.vercel-dns-017.com (website)
-api CNAME mysterious-poppy-0186j4d1ol2wedys1lxgebvk.herokudns.com (API)
+api CNAME api.suoops.com (API)
 ```
 
 ### Email Records (MX + SPF):
@@ -148,7 +148,7 @@ l3qsfprio2mv2lscyud54z6guar3x3wm._domainkey CNAME l3qsfprio2mv2lscyud54z6guar3x3
 
 ### Amazon SES:
 - **First 62,000 emails/month**: FREE (from EC2)
-- **From Heroku**: $0.10 per 1,000 emails
+- **From Render**: $0.10 per 1,000 emails
 - **Expected**: $1.50/month (500 emails/day)
 
 ### Namecheap Private Email:
@@ -226,7 +226,7 @@ l3qsfprio2mv2lscyud54z6guar3x3wm._domainkey CNAME l3qsfprio2mv2lscyud54z6guar3x3
 
 ### Emails Not Sending:
 1. Check SES account is out of sandbox mode
-2. Verify SMTP credentials in Heroku
+2. Verify SMTP credentials in Render
 3. Check FROM_EMAIL matches verified domain
 4. Review SES sending statistics
 
@@ -246,13 +246,13 @@ l3qsfprio2mv2lscyud54z6guar3x3wm._domainkey CNAME l3qsfprio2mv2lscyud54z6guar3x3
 ## ✅ Setup Checklist
 
 - [x] S3 bucket created and configured
-- [x] S3 credentials set in Heroku
+- [x] S3 credentials set in Render
 - [x] S3 CORS configured
 - [x] S3 upload tested successfully
 - [x] SES domain verified
 - [x] DKIM records added to DNS
 - [x] SMTP credentials created
-- [x] SES credentials set in Heroku
+- [x] SES credentials set in Render
 - [x] Production access requested
 - [x] MX records added for incoming email
 - [x] SPF record added

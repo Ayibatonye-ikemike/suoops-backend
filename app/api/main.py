@@ -182,7 +182,7 @@ def create_app() -> FastAPI:
     
     # CSRF Protection - Only enabled in production for security
     app.add_middleware(CSRFMiddleware, enabled=is_production)
-    # Note: HTTPSRedirectMiddleware removed - Render/Heroku handle HTTPS at load balancer level
+    # Note: HTTPSRedirectMiddleware removed — Render handles HTTPS at the load balancer level
     # The middleware causes redirect loops because the app sees HTTP internally
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestSizeLimitMiddleware)

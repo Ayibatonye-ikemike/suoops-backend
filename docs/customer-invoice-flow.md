@@ -183,7 +183,7 @@ WHERE invoice_id = 'INV-1761135842-ABC123';
 
 ## Environment Configuration
 
-### Production Setup (Heroku)
+### Production Setup (Render)
 ```bash
 # Backend: api.suoops.com
 ENV=prod
@@ -272,7 +272,7 @@ POST https://api.suoops.com/webhooks/paystack
 - 📧 **Receipt delivery:** < 5 seconds after payment
 
 ### Technical Performance
-- 🟢 **API uptime:** 99.9% (Heroku)
+- 🟢 **API uptime:** 99.9% (Render)
 - 🟢 **Database:** PostgreSQL with connection pooling
 - 🟢 **Storage:** S3 with presigned URLs
 - 🟢 **Queue:** Redis + Celery for background tasks
@@ -320,5 +320,5 @@ Total time: minutes instead of days, minimal back-and-forth
 ---
 
 **Built with:** FastAPI, Next.js, PostgreSQL, Redis, Celery, WhatsApp Cloud API (Paystack powers SuoPay subscription billing)
-**Deployed on:** Heroku (Backend) + Vercel (Frontend)  
+**Deployed on:** Render (Backend) + Vercel (Frontend)  
 **Domain:** https://suoops.com + https://api.suoops.com

@@ -14,18 +14,18 @@ SuoOps uses environment-specific configuration to separate development, staging,
   # Edit .env with your local values
   ```
 
-### Production (Heroku)
-- **File**: None (use Heroku Config Vars)
+### Production (Render)
+- **File**: None (use Render Environment Variables)
 - **Reference**: `.env.production.example`
 - **Setup**:
   ```bash
-  heroku config:set KEY=value --app suoops-backend
+  render env set KEY=value --app suoops-backend
   ```
 
 ## Security Best Practices
 
 ### ✅ DO:
-1. **Keep secrets in Heroku Config Vars** (not files)
+1. **Keep secrets in Render Environment Variables** (not files)
 2. **Use test API keys in development** (Paystack test keys)
 3. **Rotate secrets quarterly** (JWT_SECRET, API keys)
 4. **Use strong JWT secrets** (min 32 characters, random)
@@ -71,20 +71,20 @@ SuoOps uses environment-specific configuration to separate development, staging,
 
 ### Staging Environment (Optional)
 
-For a staging environment on Heroku:
+For a staging environment on Render:
 
 ```bash
 # Create staging app
-heroku create suoops-staging --region us
+Render create suoops-staging --region us
 
 # Add Postgres and Redis
-heroku addons:create heroku-postgresql:mini --app suoops-staging
-heroku addons:create heroku-redis:mini --app suoops-staging
+Render addons:create Render Postgres (managed) --app suoops-staging
+Render addons:create Render Key Value / Redis (managed) --app suoops-staging
 
 # Set environment variables
-heroku config:set ENVIRONMENT=staging --app suoops-staging
-heroku config:set FRONTEND_URL=https://staging.suoops.com --app suoops-staging
-heroku config:set JWT_SECRET=$(openssl rand -hex 32) --app suoops-staging
+render env set ENVIRONMENT=staging --app suoops-staging
+render env set FRONTEND_URL=https://staging.suoops.com --app suoops-staging
+render env set JWT_SECRET=$(openssl rand -hex 32) --app suoops-staging
 # ... set other vars from .env.production.example
 
 # Deploy
@@ -95,19 +95,19 @@ git push staging main
 
 ```bash
 # Set all production secrets (from 1Password or secure vault)
-heroku config:set JWT_SECRET=$(openssl rand -hex 32) --app suoops-backend
-heroku config:set PAYSTACK_SECRET=sk_live_xxxxx --app suoops-backend
-heroku config:set BREVO_API_KEY=xkeysib-xxxxx --app suoops-backend
-heroku config:set AWS_ACCESS_KEY_ID=xxxxx --app suoops-backend
-heroku config:set AWS_SECRET_ACCESS_KEY=xxxxx --app suoops-backend
-heroku config:set TWILIO_ACCOUNT_SID=ACxxxxx --app suoops-backend
-heroku config:set TWILIO_AUTH_TOKEN=xxxxx --app suoops-backend
-heroku config:set FRONTEND_URL=https://suoops.com --app suoops-backend
-heroku config:set ENVIRONMENT=production --app suoops-backend
-heroku config:set SENTRY_DSN=https://xxxxx@sentry.io/xxxxx --app suoops-backend
+render env set JWT_SECRET=$(openssl rand -hex 32) --app suoops-backend
+render env set PAYSTACK_SECRET=sk_live_xxxxx --app suoops-backend
+render env set BREVO_API_KEY=xkeysib-xxxxx --app suoops-backend
+render env set AWS_ACCESS_KEY_ID=xxxxx --app suoops-backend
+render env set AWS_SECRET_ACCESS_KEY=xxxxx --app suoops-backend
+render env set TWILIO_ACCOUNT_SID=ACxxxxx --app suoops-backend
+render env set TWILIO_AUTH_TOKEN=xxxxx --app suoops-backend
+render env set FRONTEND_URL=https://suoops.com --app suoops-backend
+render env set ENVIRONMENT=production --app suoops-backend
+render env set SENTRY_DSN=https://xxxxx@sentry.io/xxxxx --app suoops-backend
 
 # Verify all variables are set
-heroku config --app suoops-backend
+render env ls --service suoops-backend
 ```
 
 ## Accessing Secrets
@@ -131,14 +131,14 @@ source .env
 echo $PAYSTACK_SECRET
 
 # Production
-heroku config:get PAYSTACK_SECRET --app suoops-backend
+render env get PAYSTACK_SECRET --service suoops-backend
 ```
 
 ## Secret Rotation Schedule
 
 | Secret | Rotation Frequency | How to Rotate |
 |--------|-------------------|---------------|
-| JWT_SECRET | Every 3 months | `heroku config:set JWT_SECRET=$(openssl rand -hex 32)` <br>⚠️ Logs out all users |
+| JWT_SECRET | Every 3 months | `render env set JWT_SECRET=$(openssl rand -hex 32)` <br>⚠️ Logs out all users |
 | PAYSTACK_SECRET | Annually or if compromised | Generate new key in Paystack dashboard |
 | BREVO_API_KEY | Annually or if compromised | Generate new key in Brevo dashboard |
 | AWS_ACCESS_KEY | Every 6 months | Create new key in AWS IAM, update app, delete old |
@@ -196,13 +196,13 @@ heroku config:get PAYSTACK_SECRET --app suoops-backend
 ### "Environment variable not set" error
 ```bash
 # Check if variable exists
-heroku config:get VARIABLE_NAME --app suoops-backend
+render env get VARIABLE_NAME --service suoops-backend
 
 # If missing, set it
-heroku config:set VARIABLE_NAME=value --app suoops-backend
+render env set VARIABLE_NAME=value --app suoops-backend
 
 # Restart app
-heroku restart --app suoops-backend
+Render restart --app suoops-backend
 ```
 
 ### Local development not working
@@ -223,8 +223,8 @@ python -c "from app.db.session import engine; print('Connected:', engine)"
 ### Production secrets exposed
 1. **Immediately rotate all secrets:**
    ```bash
-   heroku config:set JWT_SECRET=$(openssl rand -hex 32) --app suoops-backend
-   heroku config:set PAYSTACK_SECRET=<new-key> --app suoops-backend
+   render env set JWT_SECRET=$(openssl rand -hex 32) --app suoops-backend
+   render env set PAYSTACK_SECRET=<new-key> --app suoops-backend
    # Rotate all other secrets
    ```
 
@@ -251,7 +251,7 @@ Run this quarterly:
 
 - [ ] .env is in .gitignore
 - [ ] No .env in git history
-- [ ] Production uses Heroku Config Vars only
+- [ ] Production uses Render Environment Variables only
 - [ ] Test keys used in development
 - [ ] Secrets rotated in last 3 months
 - [ ] No secrets in code or comments

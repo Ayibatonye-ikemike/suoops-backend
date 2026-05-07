@@ -317,7 +317,7 @@ Tell them: "I need to add DNS records for Amazon SES email authentication"
 2. ⏰ Wait 15 minutes - 48 hours for DNS propagation
 3. 🔍 Check verification status in AWS SES Console
 4. ✅ Once verified, create SMTP credentials
-5. 🚀 Configure Heroku with SES credentials
+5. 🚀 Configure Render with SES credentials
 6. 📧 Test email sending!
 
 ---

@@ -11,7 +11,7 @@
 - `scripts/test_backup.sh` (300 lines)
 
 **Features:**
-- 8 comprehensive tests (Heroku CLI, authentication, backup creation, download, verification)
+- 8 comprehensive tests (Render Dashboard, authentication, backup creation, download, verification)
 - Automated integrity checks with pg_restore validation
 - Detailed test reports with pass/fail/warning counts
 - Color-coded output for easy reading
@@ -248,9 +248,9 @@ git commit -m "feat: add payment history, backup testing, and subscription metri
 Fixes: #payment-tracking #monitoring #backup-testing"
 ```
 
-### 3. Deploy to Heroku:
+### 3. Deploy to Render:
 ```bash
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 ### 4. Verify Deployment:

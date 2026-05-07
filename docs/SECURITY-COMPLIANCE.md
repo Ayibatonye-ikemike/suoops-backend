@@ -40,10 +40,10 @@ SuoOps implements enterprise-grade security measures aligned with Nigerian Data 
 ### ✅ Encryption Implementation
 
 **Data at Rest:**
-- **Database:** PostgreSQL with AES-256 encryption (Heroku managed)
+- **Database:** PostgreSQL with AES-256 encryption (Render managed)
 - **File Storage:** AWS S3 with AES-256 server-side encryption (SSE-S3)
 - **Password Storage:** Bcrypt hashing (adaptive cost factor)
-- **Secrets Management:** Environment variables stored in Heroku Config Vars (encrypted at rest)
+- **Secrets Management:** Environment variables stored in Render Environment Variables (encrypted at rest)
 
 **Data in Transit:**
 - **TLS Version:** TLS 1.3 enforced
@@ -122,7 +122,7 @@ Region: eu-north-1 (GDPR compliant)
 **Deployment Status:**
 - ✅ Code complete and registered in `main.py`
 - ⏳ Google OAuth app credentials (pending configuration)
-- ⏳ Heroku environment variables (pending: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OAUTH_STATE_SECRET)
+- ⏳ Render environment variables (pending: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OAUTH_STATE_SECRET)
 - ⏳ Production testing
 - 🎯 Production Timeline: Immediate (Q1 2026)
 
@@ -153,7 +153,7 @@ Region: eu-north-1 (GDPR compliant)
    - Rate limiting (100 requests/minute per user)
 
 3. **Infrastructure Security:**
-   - Heroku Platform Security (ISO 27001, SOC 2, PCI DSS Level 1)
+   - Render Platform Security (ISO 27001, SOC 2, PCI DSS Level 1)
    - AWS S3 security (GDPR, ISO 27001, SOC 2/3)
    - Vercel Edge Network security (SOC 2 Type II)
 
@@ -171,7 +171,7 @@ Region: eu-north-1 (GDPR compliant)
 **Status:** NOT CERTIFIED (Infrastructure providers are certified)
 
 **Current Status:**
-- **Heroku:** ISO 27001:2013 certified
+- **Render:** ISO 27001:2013 certified
 - **AWS:** ISO 27001:2013 certified
 - **Vercel:** SOC 2 Type II compliant
 - **SuoOps (Company):** Not independently certified
@@ -195,8 +195,8 @@ We implement ISO 27001 controls through:
 ## 6. SECURITY ARCHITECTURE
 
 ### Network Security
-- **Firewall:** Managed by Heroku/AWS (stateful inspection)
-- **DDoS Protection:** Cloudflare-level protection via Heroku routing
+- **Firewall:** Managed by Render/AWS (stateful inspection)
+- **DDoS Protection:** Cloudflare-level protection via Render routing
 - **Rate Limiting:** SlowAPI middleware (configurable per endpoint)
 - **IP Whitelisting:** Available for webhook endpoints
 
@@ -265,7 +265,7 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 ## 8. INCIDENT RESPONSE
 
 ### Breach Notification Protocol
-- **Detection:** Real-time monitoring via Heroku logs
+- **Detection:** Real-time monitoring via Render logs
 - **Assessment:** Security team review within 2 hours
 - **Notification:** Users notified within 72 hours (NDPA requirement)
 - **Reporting:** NITDA notification within 72 hours
@@ -290,7 +290,7 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 - **Uptime:** 99.9% SLA (43.2 min/month max downtime)
 - **Performance:** API response time < 500ms
 - **Alerts:** Email + WhatsApp for critical events
-- **Dashboard:** Heroku metrics + custom monitoring
+- **Dashboard:** Render metrics + custom monitoring
 
 ---
 
@@ -299,9 +299,9 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 ### Vetted Providers
 | Service | Provider | Certification | Purpose |
 |---------|----------|---------------|---------|
-| Database | Heroku Postgres | ISO 27001, SOC 2 | Primary database |
+| Database | Render Postgres | ISO 27001, SOC 2 | Primary database |
 | Storage | AWS S3 | ISO 27001, GDPR | Document storage |
-| Hosting | Heroku | ISO 27001, PCI DSS | Application hosting |
+| Hosting | Render | ISO 27001, PCI DSS | Application hosting |
 | CDN | Vercel | SOC 2 Type II | Frontend hosting |
 | Email | Amazon SES | ISO 27001 | Transactional emails |
 | Payments | Paystack | PCI DSS Level 1 | Payment processing |
@@ -325,7 +325,7 @@ SuoOps implements robust security measures including:
 - ⏳ VAPT scheduled for Q1 2026
 - ⏳ ISO 27001 alignment (providers certified)
 
-Our infrastructure is built on ISO 27001 and SOC 2 certified platforms (Heroku, AWS, Vercel), providing enterprise-grade security suitable for handling sensitive financial and tax data.
+Our infrastructure is built on ISO 27001 and SOC 2 certified platforms (Render, AWS, Vercel), providing enterprise-grade security suitable for handling sensitive financial and tax data.
 
 **Prepared by:** SuoOps Technical Team  
 **Contact:** support@suoops.com | +234 816 208 8344

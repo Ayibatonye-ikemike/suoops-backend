@@ -4,8 +4,8 @@
 
 ### 1. API Key Configuration
 - ✅ OpenAI API key added to local `.env`
-- ✅ OpenAI API key added to Heroku config vars
-- ✅ Heroku app restarted automatically (v31)
+- ✅ OpenAI API key added to Render config vars
+- ✅ Render app restarted automatically (v31)
 
 ### 2. Code Committed
 - ✅ 12 files changed
@@ -14,7 +14,7 @@
 - ✅ Comprehensive commit message added
 
 ### 3. Deployment Started
-- ✅ Pushed to Heroku main branch
+- ✅ Pushed to Render main branch
 - ⏳ Building... (in progress)
 
 ---
@@ -63,12 +63,12 @@ curl https://api.suoops.com/healthz
 
 ### 2. Verify OpenAI Key is Set
 ```bash
-heroku config:get OPENAI_API_KEY
+render env get OPENAI_API_KEY
 ```
 
 ### 3. Check Logs
 ```bash
-heroku logs --tail
+Render logs --tail
 ```
 
 ### 4. Test Voice Note (Manual)
@@ -108,7 +108,7 @@ heroku logs --tail
 
 ✅ **API Key Secured:**
 - Not committed to git (in `.gitignore`)
-- Stored in Heroku config vars (encrypted)
+- Stored in Render config vars (encrypted)
 - Local `.env` file should not be shared
 
 ⚠️ **Important:**
@@ -123,7 +123,7 @@ heroku logs --tail
 After deployment completes, verify:
 
 - [ ] Health endpoint responds
-- [ ] Heroku app running (v32 or higher)
+- [ ] Render app running (v32 or higher)
 - [ ] No errors in logs
 - [ ] Can send text message (existing feature still works)
 - [ ] Can send voice note (new feature works)
@@ -136,21 +136,21 @@ After deployment completes, verify:
 
 ### If deployment fails:
 ```bash
-heroku logs --tail
-heroku ps
-heroku releases
+Render logs --tail
+Render ps
+Render releases
 ```
 
 ### If voice notes don't work:
-1. Check OpenAI key is set: `heroku config:get OPENAI_API_KEY`
-2. Check logs for errors: `heroku logs --tail | grep SPEECH`
+1. Check OpenAI key is set: `render env get OPENAI_API_KEY`
+2. Check logs for errors: `Render logs --tail | grep SPEECH`
 3. Verify WhatsApp webhook receives audio messages
 4. Test with curl if needed
 
 ### Common Issues:
 
 **"OPENAI_API_KEY not configured"**
-- Run: `heroku config:set OPENAI_API_KEY=sk-svcacct-...`
+- Run: `render env set OPENAI_API_KEY=sk-svcacct-...`
 
 **"Failed to download media"**
 - Check WhatsApp access token is valid

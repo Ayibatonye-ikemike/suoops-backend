@@ -215,7 +215,7 @@ Consider upgrading when:
 ### Phase 1: Test New Provider (Week 1)
 ```bash
 # Add new provider credentials
-heroku config:set \
+render env set \
   SES_ACCESS_KEY=your_key \
   SES_SECRET_KEY=your_secret \
   SES_REGION=eu-west-1 \
@@ -307,9 +307,9 @@ SES_SMTP_PASSWORD: str = Field(default="", env="SES_SMTP_PASSWORD")
 EMAIL_PROVIDER: str = Field(default="gmail", env="EMAIL_PROVIDER")
 ```
 
-### Step 5: Configure Heroku
+### Step 5: Configure Render
 ```bash
-heroku config:set \
+render env set \
   EMAIL_PROVIDER=ses \
   SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com \
   SES_SMTP_PORT=587 \
@@ -456,7 +456,7 @@ A: Not initially. Consider when sending 100k+/month for better reputation contro
 
 1. **Monitor current usage:**
    ```bash
-   heroku logs --tail --app suoops-backend | grep -i "email sent"
+   Render logs --tail --app suoops-backend | grep -i "email sent"
    ```
 
 2. **Track daily email count:**

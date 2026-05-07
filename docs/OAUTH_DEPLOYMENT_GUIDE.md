@@ -21,29 +21,29 @@ You should have the Google Cloud Console open. Complete these steps:
 
 ---
 
-## Step 2: Configure Heroku Environment Variables
+## Step 2: Configure Render Environment Variables
 
 Once you have your **Client ID** and **Client Secret**, run these commands:
 
 ```bash
 # Set Google OAuth Client ID (replace with your actual value)
-heroku config:set GOOGLE_CLIENT_ID="YOUR_CLIENT_ID.apps.googleusercontent.com" --app suoops-backend
+render env set GOOGLE_CLIENT_ID="YOUR_CLIENT_ID.apps.googleusercontent.com" --app suoops-backend
 
 # Set Google OAuth Client Secret (replace with your actual value)
-heroku config:set GOOGLE_CLIENT_SECRET="GOCSPX-YOUR_SECRET" --app suoops-backend
+render env set GOOGLE_CLIENT_SECRET="GOCSPX-YOUR_SECRET" --app suoops-backend
 
 # Generate and set OAuth state secret
-heroku config:set OAUTH_STATE_SECRET="$(openssl rand -hex 32)" --app suoops-backend
+render env set OAUTH_STATE_SECRET="$(openssl rand -hex 32)" --app suoops-backend
 ```
 
 **Verify configuration:**
 ```bash
-heroku config --app suoops-backend | grep -E '(GOOGLE_|OAUTH_)'
+render env ls --service suoops-backend | grep -E '(GOOGLE_|OAUTH_)'
 ```
 
 ---
 
-## Step 3: Deploy to Heroku
+## Step 3: Deploy to Render
 
 ```bash
 # Commit OAuth changes
@@ -53,8 +53,8 @@ git commit -m "feat: Deploy OAuth 2.0 with authlib dependency"
 # Push to GitHub
 git push origin main
 
-# Deploy to Heroku
-git push heroku main
+# Deploy to Render
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 ---
@@ -110,7 +110,7 @@ open https://api.suoops.com/auth/oauth/google/login
 
 ### "Provider not enabled" error
 - **Cause:** Environment variables not set
-- **Fix:** Check Heroku config vars are set correctly
+- **Fix:** Check Render config vars are set correctly
 
 ### "Invalid redirect URI" error
 - **Cause:** Callback URL mismatch
@@ -118,7 +118,7 @@ open https://api.suoops.com/auth/oauth/google/login
 
 ### "Failed to exchange code for token" error
 - **Cause:** Invalid Client Secret or ID
-- **Fix:** Verify credentials in Heroku config match Google Console
+- **Fix:** Verify credentials in Render config match Google Console
 
 ---
 
@@ -149,4 +149,4 @@ open https://api.suoops.com/auth/oauth/google/login
 
 **Ready to proceed?**
 
-Once you have your Google OAuth credentials (Client ID and Client Secret), paste them here and I'll configure Heroku for you!
+Once you have your Google OAuth credentials (Client ID and Client Secret), paste them here and I'll configure Render for you!

@@ -170,25 +170,25 @@ Value: v=DMARC1; p=none; rua=mailto:your-email@suoops.com
 
 ---
 
-## Step 4: Configure Heroku
+## Step 4: Configure Render
 
 Update all environment variables:
 
 ```bash
 # S3 Configuration
-heroku config:set S3_BUCKET=suoops-s3-bucket -a suoops-backend
-heroku config:set S3_REGION=eu-north-1 -a suoops-backend
-heroku config:set S3_ACCESS_KEY=YOUR_NEW_ACCESS_KEY -a suoops-backend
-heroku config:set S3_SECRET_KEY=YOUR_NEW_SECRET_KEY -a suoops-backend
+render env set S3_BUCKET=suoops-s3-bucket -a suoops-backend
+render env set S3_REGION=eu-north-1 -a suoops-backend
+render env set S3_ACCESS_KEY=YOUR_NEW_ACCESS_KEY -a suoops-backend
+render env set S3_SECRET_KEY=YOUR_NEW_SECRET_KEY -a suoops-backend
 
 # SES SMTP Configuration
-heroku config:set EMAIL_PROVIDER=ses -a suoops-backend
-heroku config:set SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com -a suoops-backend
-heroku config:set SES_SMTP_PORT=587 -a suoops-backend
-heroku config:set SES_SMTP_USER=YOUR_SMTP_USERNAME -a suoops-backend
-heroku config:set SES_SMTP_PASSWORD=YOUR_SMTP_PASSWORD -a suoops-backend
-heroku config:set SES_REGION=eu-north-1 -a suoops-backend
-heroku config:set FROM_EMAIL=noreply@suoops.com -a suoops-backend
+render env set EMAIL_PROVIDER=ses -a suoops-backend
+render env set SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com -a suoops-backend
+render env set SES_SMTP_PORT=587 -a suoops-backend
+render env set SES_SMTP_USER=YOUR_SMTP_USERNAME -a suoops-backend
+render env set SES_SMTP_PASSWORD=YOUR_SMTP_PASSWORD -a suoops-backend
+render env set SES_REGION=eu-north-1 -a suoops-backend
+render env set FROM_EMAIL=noreply@suoops.com -a suoops-backend
 ```
 
 ---
@@ -233,10 +233,10 @@ except ClientError as e:
     print(f"Error: {e.response['Error']['Message']}")
 ```
 
-Or test via Heroku:
+Or test via Render:
 
 ```bash
-heroku run python -c "
+render exec python -c "
 from app.services.notification_service import NotificationService
 from app.core.config import settings
 
@@ -276,7 +276,7 @@ print('Email test would go here')
 - **Estimated**: ~$0.50/month for 1,000 invoices
 
 ### SES:
-- First 62,000 emails/month: **FREE** (when sending from EC2/Lambda/Heroku)
+- First 62,000 emails/month: **FREE** (when sending from EC2/Lambda/Render)
 - After that: $0.10 per 1,000 emails
 - **Estimated**: $0.00/month for typical usage
 
@@ -319,12 +319,12 @@ dig suoops.com TXT
 
 1. ✅ Create S3 bucket: `suoops-s3-bucket`
 2. ✅ Create IAM user for S3
-3. ✅ Update Heroku S3 config
+3. ✅ Update Render S3 config
 4. ✅ Create SES identity for `suoops.com`
 5. ✅ Add DNS records to Namecheap
 6. ⏳ Wait for domain verification (5-10 minutes)
 7. ✅ Create SES SMTP credentials
-8. ✅ Update Heroku SES config
+8. ✅ Update Render SES config
 9. ✅ Request production access (if needed)
 10. ✅ Test email sending
 
@@ -338,8 +338,8 @@ aws s3 mb s3://suoops-s3-bucket --region eu-north-1
 
 # 2. Create SES SMTP user (via Console - easier)
 
-# 3. Update Heroku
-heroku config:set S3_BUCKET=suoops-s3-bucket \
+# 3. Update Render
+render env set S3_BUCKET=suoops-s3-bucket \
   S3_REGION=eu-north-1 \
   S3_ACCESS_KEY=AKIA... \
   S3_SECRET_KEY=... \
@@ -351,7 +351,7 @@ heroku config:set S3_BUCKET=suoops-s3-bucket \
   -a suoops-backend
 
 # 4. Test
-heroku logs --tail -a suoops-backend
+# Stream logs from Render Dashboard
 ```
 
 ---
@@ -359,4 +359,4 @@ heroku logs --tail -a suoops-backend
 **📞 Need Help?**
 - AWS S3 Docs: https://docs.aws.amazon.com/s3/
 - AWS SES Docs: https://docs.aws.amazon.com/ses/
-- Heroku Config: https://devcenter.heroku.com/articles/config-vars
+- Render Config: https://render.com/docs

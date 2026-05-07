@@ -182,16 +182,16 @@ dig mail.suoops.com MX
 
 ---
 
-## Step 4: Configure Heroku with SES Credentials
+## Step 4: Configure Render with SES Credentials
 
 ```bash
 # Set email provider to SES
-heroku config:set \
+render env set \
   EMAIL_PROVIDER=ses \
   --app suoops-backend
 
 # Set SES SMTP credentials
-heroku config:set \
+render env set \
   SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com \
   SES_SMTP_PORT=587 \
   SES_SMTP_USER=AKIAIOSFODNN7EXAMPLE \
@@ -200,14 +200,14 @@ heroku config:set \
   --app suoops-backend
 
 # Optional: Update FROM_EMAIL to use your domain
-heroku config:set \
+render env set \
   FROM_EMAIL=invoices@suoops.com \
   --app suoops-backend
 ```
 
 **Check configuration:**
 ```bash
-heroku config --app suoops-backend | grep -E "EMAIL|SES|SMTP"
+render env ls --service suoops-backend | grep -E "EMAIL|SES|SMTP"
 ```
 
 ---
@@ -227,7 +227,7 @@ While waiting for production access, you can test with verified email addresses:
 
 2. **Test sending:**
 ```bash
-curl -X POST https://suoops-backend.herokuapp.com/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -245,7 +245,7 @@ curl -X POST https://suoops-backend.herokuapp.com/invoices \
 Once production access is approved, test with any email:
 
 ```bash
-curl -X POST https://suoops-backend.herokuapp.com/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -260,13 +260,13 @@ curl -X POST https://suoops-backend.herokuapp.com/invoices \
 
 ## Step 6: Monitor Email Sending
 
-### Check Heroku Logs
+### Check Render Logs
 ```bash
 # Watch email sending in real-time
-heroku logs --tail --app suoops-backend | grep -i "email\|ses"
+Render logs --tail --app suoops-backend | grep -i "email\|ses"
 
 # Check for errors
-heroku logs --tail --app suoops-backend | grep -i "error.*email"
+Render logs --tail --app suoops-backend | grep -i "error.*email"
 ```
 
 ### Check SES Console
@@ -385,10 +385,10 @@ except EmailNotValidError as e:
 **Solution:**
 - Check SMTP credentials are correct
 - Verify region matches (eu-north-1)
-- Check Heroku config vars are set
+- Check Render config vars are set
 ```bash
-heroku config:get SES_SMTP_USER --app suoops-backend
-heroku config:get SES_SMTP_PASSWORD --app suoops-backend
+render env get SES_SMTP_USER --service suoops-backend
+render env get SES_SMTP_PASSWORD --service suoops-backend
 ```
 
 ---
@@ -399,17 +399,17 @@ Your code now supports both providers. Switch easily:
 
 ### Use Gmail (default, 500/day)
 ```bash
-heroku config:set EMAIL_PROVIDER=gmail --app suoops-backend
+render env set EMAIL_PROVIDER=gmail --app suoops-backend
 ```
 
 ### Use Amazon SES (unlimited)
 ```bash
-heroku config:set EMAIL_PROVIDER=ses --app suoops-backend
+render env set EMAIL_PROVIDER=ses --app suoops-backend
 ```
 
 ### Check current provider
 ```bash
-heroku config:get EMAIL_PROVIDER --app suoops-backend
+render env get EMAIL_PROVIDER --service suoops-backend
 ```
 
 ---
@@ -421,7 +421,7 @@ Before going live with SES:
 - [ ] Production access approved
 - [ ] Domain verified (DKIM records added)
 - [ ] SMTP credentials created and saved
-- [ ] Heroku configured with SES credentials
+- [ ] Render configured with SES credentials
 - [ ] FROM_EMAIL set to your domain (@suoops.com)
 - [ ] Test emails sent successfully
 - [ ] Emails not going to spam
@@ -516,7 +516,7 @@ A: We include unsubscribe option in all emails
 - [ ] Request production access
 - [ ] Verify domain (add DNS records)
 - [ ] Create SMTP credentials
-- [ ] Configure Heroku
+- [ ] Configure Render
 
 ### Week 2: Testing
 - [ ] Test in sandbox with verified emails

@@ -41,17 +41,17 @@ This guide walks through setting up Google OAuth 2.0 for Single Sign-On (SSO) in
 7. Click "Create"
 8. **Copy the Client ID and Client Secret** (you'll need these for environment variables)
 
-### 4. Configure Heroku Environment Variables
+### 4. Configure Render Environment Variables
 ```bash
 # Set Google OAuth credentials
-heroku config:set GOOGLE_CLIENT_ID="xxx.apps.googleusercontent.com" --app suoops-backend
-heroku config:set GOOGLE_CLIENT_SECRET="GOCSPX-xxx" --app suoops-backend
+render env set GOOGLE_CLIENT_ID="xxx.apps.googleusercontent.com" --app suoops-backend
+render env set GOOGLE_CLIENT_SECRET="GOCSPX-xxx" --app suoops-backend
 
 # Generate and set secure OAuth state secret
-heroku config:set OAUTH_STATE_SECRET="$(openssl rand -hex 32)" --app suoops-backend
+render env set OAUTH_STATE_SECRET="$(openssl rand -hex 32)" --app suoops-backend
 
 # Verify configuration
-heroku config --app suoops-backend | grep -E '(GOOGLE_|OAUTH_)'
+render env ls --service suoops-backend | grep -E '(GOOGLE_|OAUTH_)'
 ```
 
 ### 5. Test OAuth Flow
@@ -157,7 +157,7 @@ Authorization: Bearer {access_token}
 - [x] OAuth routes registered in `app/api/main.py`
 - [ ] authlib dependency installed (run in production: `pip install authlib`)
 - [ ] Google OAuth app created with production callback URL
-- [ ] Environment variables configured in Heroku
+- [ ] Environment variables configured in Render
 - [ ] Local testing completed
 - [ ] Production testing completed
 - [ ] Frontend OAuth integration completed
@@ -212,7 +212,7 @@ redirect_uri = await oauth_states.getdel(state)
 
 ### "Provider not found" Error
 - **Cause**: Google credentials not configured
-- **Solution**: Check `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Heroku config
+- **Solution**: Check `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Render config
 
 ### "Failed to exchange code for token" Error
 - **Cause**: Invalid authorization code or callback URL mismatch

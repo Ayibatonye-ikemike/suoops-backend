@@ -54,7 +54,7 @@ Successfully rebranded the entire application from **SuoPay** to **SuoOps** acro
 
 ## 🚀 Deployment
 
-### Heroku (Backend)
+### Render (Backend)
 - **App**: suoops-backend
 - **Version**: v79
 - **Status**: ✅ Deployed Successfully
@@ -108,7 +108,7 @@ Successfully rebranded the entire application from **SuoPay** to **SuoOps** acro
 
 ### Backend
 - [x] APP_NAME environment variable
-- [x] Heroku config (v79)
+- [x] Render config (v79)
 - [x] Email notification footer
 - [x] OTP SMS/WhatsApp message header
 
@@ -127,7 +127,7 @@ Successfully rebranded the entire application from **SuoPay** to **SuoOps** acro
 |------|--------|------|---------|
 | Update .env and code | ✅ Complete | 17:30 | - |
 | Commit changes | ✅ Complete | 17:35 | commit 5603a6e2 |
-| Heroku deployment | ✅ Complete | 17:36 | v79 |
+| Render deployment | ✅ Complete | 17:36 | v79 |
 | Frontend build | ✅ Complete | 17:38 | - |
 | Vercel deployment | ✅ In Progress | 17:40 | - |
 
@@ -174,7 +174,7 @@ Successfully rebranded the entire application from **SuoPay** to **SuoOps** acro
 - **Frontend**: https://suoops.com
 - **API**: https://api.suoops.com
 - **API Health**: https://api.suoops.com/healthz
-- **Heroku Dashboard**: https://dashboard.heroku.com/apps/suoops-backend
+- **Render Dashboard**: https://dashboard.render.com
 - **Vercel Dashboard**: https://vercel.com/ikemike/suoops-frontend
 
 ---

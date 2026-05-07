@@ -335,7 +335,7 @@ npm run build
 ### Backend Deployment
 ```bash
 # Analytics routes auto-registered in main.py
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 ## Monitoring

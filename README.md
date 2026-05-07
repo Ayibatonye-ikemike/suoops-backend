@@ -15,7 +15,7 @@ cp .env.example .env
 poetry run uvicorn app.api.main:app --reload
 ```
 
-> Deployments use `requirements.txt` + `.python-version`. The repository intentionally omits `poetry.lock` to keep Heroku from detecting multiple package managers—generate it locally if you need a lockfile, but leave it untracked.
+> Deployments use `requirements.txt` + `.python-version`. The repository intentionally omits `poetry.lock` so the build environment doesn't detect multiple package managers—generate it locally if you need a lockfile, but leave it untracked.
 
 ### Frontend
 ```bash

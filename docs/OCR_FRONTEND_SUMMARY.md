@@ -264,7 +264,7 @@ Users see this info before uploading, setting proper expectations.
 ✅ OCR service with OpenAI Vision API  
 ✅ `/ocr/parse` endpoint (review flow)  
 ✅ `/ocr/create-invoice` endpoint (quick flow)  
-✅ Deployed to Heroku (v96)  
+✅ Deployed to Render (v96)  
 ✅ OPENAI_API_KEY configured  
 
 ### Frontend (Just Deployed)

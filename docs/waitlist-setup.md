@@ -606,7 +606,7 @@ When ready to go live, notify all waitlist users:
 # scripts/notify_waitlist.py
 """
 Notify all waitlist users that SuoOps is live.
-Usage: heroku run python scripts/notify_waitlist.py
+Usage: render exec python scripts/notify_waitlist.py
 """
 import asyncio
 from app.db.session import SessionLocal

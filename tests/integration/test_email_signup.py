@@ -4,7 +4,7 @@ import requests
 import os
 import pytest
 
-API_URL = "https://suoops-backend-e4a267e41e92.herokuapp.com"
+API_URL = os.getenv("API_URL", "https://api.suoops.com")
 
 @pytest.mark.integration
 def test_email_signup_flow():

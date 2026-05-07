@@ -158,8 +158,8 @@ PlanSelectionModal opens (currentPlan = "FREE")
 ## 📊 **DEPLOYMENT STATUS**
 
 ### **Backend**
-- ✅ Deployed to Heroku (v63)
-- ✅ URL: `https://suoops-backend.herokuapp.com`
+- ✅ Deployed to Render (v63)
+- ✅ URL: `https://api.suoops.com`
 - ✅ CORS configured for new Vercel domain
 - ✅ Paystack secret configured in env vars
 
@@ -168,7 +168,7 @@ PlanSelectionModal opens (currentPlan = "FREE")
 - ✅ URL: `https://suoops-frontend.vercel.app`
 - ✅ Build: Compiled successfully in 5.8s
 - ✅ All routes generated correctly
-- ✅ API client pointing to Heroku backend
+- ✅ API client pointing to Render backend
 
 ---
 
@@ -351,10 +351,10 @@ For subscription issues:
 **Logs to Check:**
 ```bash
 # Backend logs
-heroku logs --tail --app suoops-backend | grep "subscription"
+Render logs --tail --app suoops-backend | grep "subscription"
 
 # Check user plan
-heroku run python -c "from app.db.session import SessionLocal; from app.models.models import User; db = SessionLocal(); user = db.query(User).filter(User.id == 1).first(); print(f'Plan: {user.plan.value}, Usage: {user.invoices_this_month}')"
+render exec python -c "from app.db.session import SessionLocal; from app.models.models import User; db = SessionLocal(); user = db.query(User).filter(User.id == 1).first(); print(f'Plan: {user.plan.value}, Usage: {user.invoices_this_month}')"
 ```
 
 ---

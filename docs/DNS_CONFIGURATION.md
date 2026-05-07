@@ -2,11 +2,11 @@
 
 ## ✅ Completed Updates
 
-### Heroku Backend
+### Render Backend
 - **App renamed**: `suopay-backend` → `suoops-backend`
-- **New URL**: `https://suoops-backend-e4a267e41e92.herokuapp.com`
+- **New URL**: `https://api.suoops.com`
 - **Custom domain**: `api.suoops.com`
-- **DNS Target**: `mysterious-poppy-0186j4d1ol2wedys1lxgebvk.herokudns.com`
+- **DNS Target**: `api.suoops.com`
 
 ### Vercel Frontend
 - **Project renamed**: `suopay-frontend` → `suoops-frontend`
@@ -64,7 +64,7 @@ TTL: Automatic
 ```
 Type: CNAME
 Host: api
-Value: mysterious-poppy-0186j4d1ol2wedys1lxgebvk.herokudns.com
+Value: api.suoops.com
 TTL: Automatic
 ```
 
@@ -89,7 +89,7 @@ https://dnschecker.org/#A/suoops.com
 
 ### Check Backend API DNS:
 ```bash
-# Should show herokudns.com CNAME
+# Should show Renderdns.com CNAME
 dig api.suoops.com
 
 # Or use online tool
@@ -110,47 +110,47 @@ curl -I https://api.suoops.com/health
 ## 📊 Current Status
 
 ### ✅ Completed:
-- [x] Heroku app renamed to `suoops-backend`
+- [x] Render app renamed to `suoops-backend`
 - [x] Vercel project renamed to `suoops-frontend`
-- [x] Custom domain added to Heroku: `api.suoops.com`
+- [x] Custom domain added to Render: `api.suoops.com`
 - [x] Custom domain added to Vercel: `suoops.com`
-- [x] Removed old `api.suopay.io` from Heroku
+- [x] Removed old `api.suopay.io` from Render
 - [x] Removed old `suopay.io` from Vercel
 - [x] Cleaned up old Vercel deployment aliases
 
 ### ⚠️ Pending (Requires Your Action):
 - [ ] **Configure DNS in Namecheap** (see instructions above)
 - [ ] Wait for DNS propagation (5-30 minutes)
-- [ ] Verify SSL certificates are issued (Heroku ACM will auto-retry)
+- [ ] Verify SSL certificates are issued (Render ACM will auto-retry)
 - [ ] Test both `https://suoops.com` and `https://api.suoops.com`
 
 ---
 
 ## 🚨 Current Issues
 
-### Heroku SSL Certificate Failing
+### Render SSL Certificate Failing
 ```
 api.suoops.com - Status: Failing
 Reason: CDN not returning HTTP challenge
 ```
 
-**Why?** Heroku can't verify the domain because DNS is not pointing to Heroku yet.
+**Why?** Render can't verify the domain because DNS is not pointing to Render yet.
 
-**Solution:** Once you configure DNS in Namecheap (see above), Heroku will automatically retry verification every few minutes and issue the SSL certificate.
+**Solution:** Once you configure DNS in Namecheap (see above), Render will automatically retry verification every few minutes and issue the SSL certificate.
 
 ---
 
 ## 📝 What Changed
 
 ### Before:
-- Heroku app: `suopay-backend`
-- Heroku domain: `api.suopay.io`
+- Render app: `suopay-backend`
+- Render domain: `api.suopay.io`
 - Vercel project: `suopay-frontend`
 - Vercel domain: `suopay.io`
 
 ### After:
-- Heroku app: `suoops-backend`
-- Heroku domain: `api.suoops.com`
+- Render app: `suoops-backend`
+- Render domain: `api.suoops.com`
 - Vercel project: `suoops-frontend`
 - Vercel domain: `suoops.com`
 
@@ -161,10 +161,10 @@ Reason: CDN not returning HTTP challenge
 ### If SSL still failing after 1 hour:
 ```bash
 # Force refresh ACM status
-heroku certs:auto:refresh -a suoops-backend
+# (TLS managed automatically by Render) -a suoops-backend
 
 # Check status
-heroku certs:auto -a suoops-backend
+# (TLS managed automatically by Render) -a suoops-backend
 ```
 
 ### If Vercel domain not working:
@@ -175,8 +175,8 @@ heroku certs:auto -a suoops-backend
 
 ### If API calls failing:
 1. Verify DNS is pointing correctly: `dig api.suoops.com`
-2. Check Heroku app is running: `heroku ps -a suoops-backend`
-3. Check logs: `heroku logs --tail -a suoops-backend`
+2. Check Render app is running: `# Check service status in Render Dashboard`
+3. Check logs: `# Stream logs from Render Dashboard`
 
 ---
 
@@ -184,7 +184,7 @@ heroku certs:auto -a suoops-backend
 
 1. **Go to Namecheap now** and configure DNS (Option 1 is easiest)
 2. **Wait 10-15 minutes** for DNS propagation
-3. **Check Heroku dashboard** - SSL should change from "Failing" to "OK"
+3. **Check Render dashboard** - SSL should change from "Failing" to "OK"
 4. **Test your site**: Visit `https://suoops.com` and `https://api.suoops.com/health`
 5. **Update documentation** once everything is working
 

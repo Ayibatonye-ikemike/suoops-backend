@@ -213,7 +213,7 @@ Want me to implement the phone number lookup now? I can:
 1. ✅ Update `_resolve_issuer_id()` to use phone lookup
 2. ✅ Add friendly message for unregistered users
 3. ✅ Update frontend to show WhatsApp connection status
-4. ✅ Deploy to Heroku
+4. ✅ Deploy to Render
 
 Just say "implement phone lookup" and I'll do it! 🎯
 
@@ -226,7 +226,7 @@ To get the platform WhatsApp number working, you need:
 1. **Meta Business Account** (free)
 2. **WhatsApp Business App** (approved by Meta)
 3. **Phone Number** (can use your existing number)
-4. **Webhook URL**: `https://suoops-backend.herokuapp.com/webhooks/whatsapp`
+4. **Webhook URL**: `https://api.suoops.com/webhooks/whatsapp`
 
 **Time to setup**: 1-2 hours  
 **Cost**: Free (up to 1,000 conversations/month)

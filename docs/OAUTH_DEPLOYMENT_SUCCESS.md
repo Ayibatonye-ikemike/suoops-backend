@@ -1,7 +1,7 @@
 # ✅ OAuth 2.0 SSO Deployment - SUCCESSFUL
 
 **Deployed:** November 6, 2025  
-**Heroku Release:** v110  
+**Render Release:** v110  
 **Status:** PRODUCTION READY ✅
 
 ---
@@ -16,9 +16,9 @@
 - JWT token generation (24hr access + 14-day refresh)
 
 ### Production URLs
-- **OAuth Providers:** https://suoops-backend-e4a267e41e92.herokuapp.com/auth/oauth/providers
-- **OAuth Login:** https://suoops-backend-e4a267e41e92.herokuapp.com/auth/oauth/google/login
-- **API Docs (with OAuth):** https://suoops-backend-e4a267e41e92.herokuapp.com/docs
+- **OAuth Providers:** https://api.suoops.com/auth/oauth/providers
+- **OAuth Login:** https://api.suoops.com/auth/oauth/google/login
+- **API Docs (with OAuth):** https://api.suoops.com/docs
 
 ### Custom Domain URLs (when ControlID allows)
 - **OAuth Providers:** https://api.suoops.com/auth/oauth/providers
@@ -30,19 +30,19 @@
 ## 🔐 Credentials Configured
 
 ### Google OAuth App
-- **Client ID:** `*****.apps.googleusercontent.com` (stored securely in Heroku)
-- **Client Secret:** `GOCSPX-*****` (stored securely in Heroku)
+- **Client ID:** `*****.apps.googleusercontent.com` (stored securely in Render)
+- **Client Secret:** `GOCSPX-*****` (stored securely in Render)
 - **OAuth State Secret:** Generated cryptographically secure random key (32 bytes)
 - **Authorized Redirect URI:** `https://api.suoops.com/auth/oauth/google/callback`
 
-### Heroku Config Vars Set
+### Render Environment Variables Set
 ```bash
 GOOGLE_CLIENT_ID=*****.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-*****
 OAUTH_STATE_SECRET=<cryptographically-secure-random-key>
 ```
 
-**Note:** Actual credentials stored securely in Heroku Config Vars (encrypted at rest)
+**Note:** Actual credentials stored securely in Render Environment Variables (encrypted at rest)
 
 ---
 
@@ -50,7 +50,7 @@ OAUTH_STATE_SECRET=<cryptographically-secure-random-key>
 
 ### Test 1: OAuth Providers Endpoint
 ```bash
-curl https://suoops-backend-e4a267e41e92.herokuapp.com/auth/oauth/providers
+curl https://api.suoops.com/auth/oauth/providers
 ```
 
 **Response:**
@@ -71,7 +71,7 @@ curl https://suoops-backend-e4a267e41e92.herokuapp.com/auth/oauth/providers
 
 ### Test 2: OAuth Login Redirect
 ```bash
-curl -I "https://suoops-backend-e4a267e41e92.herokuapp.com/auth/oauth/google/login?redirect_uri=https://app.suoops.com/dashboard"
+curl -I "https://api.suoops.com/auth/oauth/google/login?redirect_uri=https://app.suoops.com/dashboard"
 ```
 
 **Response:**
@@ -83,7 +83,7 @@ Location: https://accounts.google.com/o/oauth2/v2/auth?...
 
 ### Test 3: Health Check
 ```bash
-curl https://suoops-backend-e4a267e41e92.herokuapp.com/healthz
+curl https://api.suoops.com/healthz
 ```
 
 **Response:**
@@ -144,7 +144,7 @@ curl https://suoops-backend-e4a267e41e92.herokuapp.com/healthz
 |------------|--------|
 | SSO Compatibility | ✅ YES |
 | Provider | Google OAuth 2.0 (OpenID Connect) |
-| Implementation | Production-ready, deployed to Heroku v110 |
+| Implementation | Production-ready, deployed to Render v110 |
 | Documentation | docs/oauth-setup-guide.md |
 
 ---
@@ -261,7 +261,7 @@ Hours: Mon-Fri 9AM-6PM WAT
 Emergency: 24/7 for P1 incidents
 
 **OAuth-Specific Issues:**  
-- Check Heroku logs: `heroku logs --tail --app suoops-backend`
+- Check Render logs: `Render logs --tail --app suoops-backend`
 - Verify Google OAuth credentials in Google Cloud Console
 - Confirm redirect URI matches: `https://api.suoops.com/auth/oauth/google/callback`
 
@@ -294,7 +294,7 @@ Emergency: 24/7 for P1 incidents
 ### NDPA Compliance
 - ✅ User consent via Google OAuth
 - ✅ Data minimization (only email, name, profile)
-- ✅ Secure token storage (Heroku config vars encrypted)
+- ✅ Secure token storage (Render config vars encrypted)
 - ✅ HTTPS-only communication (TLS 1.3)
 
 ### Encryption Standards
@@ -342,7 +342,7 @@ Emergency: 24/7 for P1 incidents
 - ✅ Production tested
 - ✅ NRS requirement met
 
-**Heroku Release:** v110  
+**Render Release:** v110  
 **Deployment Date:** November 6, 2025  
 **Status:** PRODUCTION READY ✅
 

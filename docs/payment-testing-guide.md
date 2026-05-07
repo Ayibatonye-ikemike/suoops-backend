@@ -152,7 +152,7 @@ echo "Invoice ID: $INVOICE_ID"
 
 ```bash
 # Get your Paystack secret
-SECRET=$(heroku config:get PAYSTACK_SECRET --app suoops-backend)
+SECRET=$(render env get PAYSTACK_SECRET --service suoops-backend)
 
 # Create payment link
 curl -X POST https://api.paystack.co/transaction/initialize \
@@ -246,7 +246,7 @@ Expiry: 12/30
 
 ### Check Transaction Status
 ```bash
-SECRET=$(heroku config:get PAYSTACK_SECRET --app suoops-backend)
+SECRET=$(render env get PAYSTACK_SECRET --service suoops-backend)
 curl -X GET "https://api.paystack.co/transaction/verify/INV-xxx" \
   -H "Authorization: Bearer $SECRET"
 ```

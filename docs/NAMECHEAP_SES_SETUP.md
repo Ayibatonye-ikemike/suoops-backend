@@ -323,10 +323,10 @@ Once your domain is verified (all statuses green):
 5. SAVE the SMTP username and password (shown only once!)
 ```
 
-### **2. Configure Heroku**
+### **2. Configure Render**
 
 ```bash
-heroku config:set \
+render env set \
   EMAIL_PROVIDER=ses \
   SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com \
   SES_SMTP_PORT=587 \
@@ -339,7 +339,7 @@ heroku config:set \
 ### **3. Test Email Sending**
 
 ```bash
-curl -X POST https://suoops-backend.herokuapp.com/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -381,7 +381,7 @@ I'll help you fix it!
 4. Wait 15 mins - 48 hours for DNS propagation
 5. Check AWS SES Console for "Verified" status
 6. Create SMTP credentials
-7. Configure Heroku
+7. Configure Render
 8. Start sending unlimited emails! 🚀
 
 **Estimated time:** 

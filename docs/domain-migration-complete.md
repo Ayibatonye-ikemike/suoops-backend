@@ -1,22 +1,22 @@
 # Custom Domain Migration - Completed ✅
 
 **Migration Date:** October 22, 2025  
-**Status:** Successfully migrated from Heroku domain to custom domain
+**Status:** Successfully migrated from Render domain to custom domain
 
 ---
 
 ## Summary
 
-The Suopay API has been successfully migrated from the Heroku-provided domain to a custom domain with SSL certificate.
+The Suopay API has been successfully migrated from the Render-provided domain to a custom domain with SSL certificate.
 
 ### URLs Changed
 
 | Service | Old URL | New URL | Status |
 |---------|---------|---------|--------|
-| **API Base** | `https://suoops-backend.herokuapp.com` | `https://api.suoops.com` | ✅ Active |
-| **Health Check** | `https://suoops-backend.herokuapp.com/healthz` | `https://api.suoops.com/healthz` | ✅ Active |
-| **Webhooks (Paystack)** | `https://suoops-backend.herokuapp.com/webhooks/paystack` | `https://api.suoops.com/webhooks/paystack` | ✅ Active |
-| **Webhooks (WhatsApp)** | `https://suoops-backend.herokuapp.com/webhooks/whatsapp` | `https://api.suoops.com/webhooks/whatsapp` | ✅ Active |
+| **API Base** | `https://api.suoops.com` | `https://api.suoops.com` | ✅ Active |
+| **Health Check** | `https://api.suoops.com/healthz` | `https://api.suoops.com/healthz` | ✅ Active |
+| **Webhooks (Paystack)** | `https://api.suoops.com/webhooks/paystack` | `https://api.suoops.com/webhooks/paystack` | ✅ Active |
+| **Webhooks (WhatsApp)** | `https://api.suoops.com/webhooks/whatsapp` | `https://api.suoops.com/webhooks/whatsapp` | ✅ Active |
 
 ---
 
@@ -30,13 +30,13 @@ The Suopay API has been successfully migrated from the Heroku-provided domain to
 
 **DNS Records:**
 ```
-api.suoops.com.  60  IN  CNAME  integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
+api.suoops.com.  60  IN  CNAME  api.suoops.com.
 ```
 
 **Resolution:**
 ```bash
 $ dig api.suoops.com +short
-integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
+api.suoops.com.
 35.71.179.82
 99.83.220.108
 75.2.60.68
@@ -45,7 +45,7 @@ integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
 
 ### SSL Certificate
 
-**Provider:** Let's Encrypt (via Heroku ACM)  
+**Provider:** Let's Encrypt (via Render ACM)  
 **Issuer:** R12/Let's Encrypt  
 **Valid From:** October 19, 2025  
 **Expires:** January 17, 2026  
@@ -53,7 +53,7 @@ integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
 **Status:** ✅ Verified by root authority
 
 ```bash
-$ heroku certs:auto -a suoops-backend
+$ # (TLS managed automatically by Render) -a suoops-backend
 === Automatic Certificate Management is enabled on suoops-backend
 
 Certificate details:
@@ -111,14 +111,14 @@ Server:         8.8.8.8
 Address:        8.8.8.8#53
 
 Non-authoritative answer:
-api.suoops.com   canonical name = integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com.
-Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+api.suoops.com   canonical name = api.suoops.com.
+Name:   api.suoops.com
 Address: 13.248.244.96
-Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+Name:   api.suoops.com
 Address: 75.2.60.68
-Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+Name:   api.suoops.com
 Address: 35.71.179.82
-Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+Name:   api.suoops.com
 Address: 99.83.220.108
 ```
 
@@ -190,15 +190,15 @@ $ curl -X POST https://api.suoops.com/invoices \
   - Update webhook URL to: `https://api.suoops.com/webhooks/whatsapp`
 
 - [ ] Monitor SSL certificate renewal
-  - Heroku will auto-renew on Dec 17, 2025
-  - Check status: `heroku certs:auto -a suoops-backend`
+  - Render will auto-renew on Dec 17, 2025
+  - Check status: `# (TLS managed automatically by Render) -a suoops-backend`
 
 - [ ] Update any external integrations
   - Check if any third-party services reference the old URL
   - Update API documentation in external platforms
 
 ### Optional
-- [ ] Set up domain redirect (Heroku → Custom)
+- [ ] Set up domain redirect (Render → Custom)
   - Currently both URLs work
   - Could redirect old URL to new for SEO/consistency
 
@@ -216,24 +216,24 @@ $ curl -X POST https://api.suoops.com/invoices \
    ```bash
    dig api.suoops.com @8.8.8.8
    ```
-   Should return Heroku IPs (35.71.179.82, etc.)
+   Should return Render IPs (35.71.179.82, etc.)
 
 2. **Check SSL Certificate**
    ```bash
-   heroku certs:auto -a suoops-backend
+   # (TLS managed automatically by Render) -a suoops-backend
    ```
    Should show valid certificate
 
-3. **Check Heroku Domain**
+3. **Check Render Domain**
    ```bash
-   heroku domains -a suoops-backend
+   Render domains -a suoops-backend
    ```
    Should list `api.suoops.com` with CNAME target
 
-4. **Fallback to Heroku URL**
-   If custom domain fails, the old Heroku URL still works:
+4. **Fallback to Render URL**
+   If custom domain fails, the old Render URL still works:
    ```
-   https://suoops-backend.herokuapp.com
+   https://api.suoops.com
    ```
 
 ### DNS Cache Issues
@@ -256,23 +256,23 @@ ipconfig /flushdns
 
 ## Contact & Support
 
-**Deployment Platform:** Heroku  
+**Deployment Platform:** Render  
 **DNS Provider:** Vercel  
-**SSL Provider:** Let's Encrypt (via Heroku ACM)  
+**SSL Provider:** Let's Encrypt (via Render ACM)  
 
 **Commands for Monitoring:**
 ```bash
 # Check app status
-heroku ps -a suoops-backend
+# Check service status in Render Dashboard
 
 # Check SSL certificate
-heroku certs:auto -a suoops-backend
+# (TLS managed automatically by Render) -a suoops-backend
 
 # Check DNS configuration
-heroku domains -a suoops-backend
+Render domains -a suoops-backend
 
 # View logs
-heroku logs --tail -a suoops-backend
+# Stream logs from Render Dashboard
 ```
 
 ---

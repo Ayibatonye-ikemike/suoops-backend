@@ -455,7 +455,7 @@ Manual work: Yes (verify + mark as paid)
    - Check payment status in Paystack
 
 3. **Check Webhook Logs:**
-   - Heroku logs: `heroku logs --tail | grep webhook`
+   - Render logs: `Render logs --tail | grep webhook`
    - Look for webhook received and processed
 
 **Solution:**

@@ -79,7 +79,7 @@ This Incident Response Plan (IRP) defines procedures for identifying, responding
 
 **Detection Sources:**
 - Sentry error alerts
-- Heroku metrics dashboard
+- Render metrics dashboard
 - Customer support tickets
 - Monitoring alerts (uptime, performance)
 - Security scanning tools
@@ -110,8 +110,8 @@ Initial Impact: [Description]
 2. Revoke compromised credentials immediately:
    ```bash
    # Rotate all API keys
-   heroku config:set JWT_SECRET=<new_secret> --app suoops-backend
-   heroku config:set BREVO_API_KEY=<new_key> --app suoops-backend
+   render env set JWT_SECRET=<new_secret> --app suoops-backend
+   render env set BREVO_API_KEY=<new_key> --app suoops-backend
    ```
 3. Enable additional logging
 4. Capture evidence (logs, screenshots)
@@ -120,12 +120,12 @@ Initial Impact: [Description]
 **For Service Outages:**
 1. Scale up resources if capacity issue:
    ```bash
-   heroku ps:scale web=3 --app suoops-backend
+   Render ps:scale web=3 --app suoops-backend
    ```
 2. Enable maintenance mode if needed
 3. Rollback recent deployments:
    ```bash
-   heroku rollback --app suoops-backend
+   Render rollback --app suoops-backend
    ```
 4. Switch to backup services if available
 
@@ -139,12 +139,12 @@ Initial Impact: [Description]
 **Root Cause Analysis:**
 1. Review application logs:
    ```bash
-   heroku logs --tail --app suoops-backend | grep ERROR
+   Render logs --tail --app suoops-backend | grep ERROR
    ```
 
 2. Check database performance:
    ```bash
-   heroku pg:diagnose --app suoops-backend
+   Render pg:diagnose --app suoops-backend
    ```
 
 3. Review Sentry error grouping
@@ -179,7 +179,7 @@ Initial Impact: [Description]
 **Data Recovery (if needed):**
 1. Restore from backup if data lost:
    ```bash
-   heroku pg:backups:restore --app suoops-backend
+   # (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
    ```
 2. Verify data integrity
 3. Reconcile any missing transactions
@@ -275,13 +275,13 @@ Initial Impact: [Description]
 2. **Mitigation**:
    ```bash
    # Enable aggressive rate limiting
-   heroku config:set RATE_LIMIT_MULTIPLIER=0.1 --app suoops-backend
+   render env set RATE_LIMIT_MULTIPLIER=0.1 --app suoops-backend
    
    # Scale up if resources available
-   heroku ps:scale web=5 --app suoops-backend
+   Render ps:scale web=5 --app suoops-backend
    ```
 3. **Block malicious IPs** via Cloudflare (if implemented)
-4. **Contact Heroku support** for DDoS protection
+4. **Contact Render support** for DDoS protection
 5. **Monitor** attack patterns
 6. **Document** attack vectors for future prevention
 
@@ -291,15 +291,15 @@ Initial Impact: [Description]
 1. **Rotate immediately**:
    ```bash
    # All critical secrets
-   heroku config:set JWT_SECRET=$(openssl rand -hex 32) --app suoops-backend
-   heroku config:set BREVO_API_KEY=<new_key> --app suoops-backend
-   heroku config:set PAYSTACK_SECRET=<new_key> --app suoops-backend
+   render env set JWT_SECRET=$(openssl rand -hex 32) --app suoops-backend
+   render env set BREVO_API_KEY=<new_key> --app suoops-backend
+   render env set PAYSTACK_SECRET=<new_key> --app suoops-backend
    ```
 
 2. **Invalidate all user sessions**:
    ```bash
    # Force re-authentication
-   heroku run python -c "from app.db.redis_client import get_redis_client; get_redis_client().flushdb()" --app suoops-backend
+   render exec python -c "from app.db.redis_client import get_redis_client; get_redis_client().flushdb()" --app suoops-backend
    ```
 
 3. **Review access logs** for unauthorized activity
@@ -378,9 +378,9 @@ The SuoOps Team
 
 ### Monitoring and Alerting
 - **Sentry**: Error tracking and alerting
-- **Heroku Metrics**: Application performance
+- **Render Metrics**: Application performance
 - **Uptime Monitors**: External service availability
-- **Logs**: `heroku logs --tail --app suoops-backend`
+- **Logs**: `Render logs --tail --app suoops-backend`
 
 ### Communication Channels
 - **Slack**: #incidents channel for coordination
@@ -442,33 +442,33 @@ The SuoOps Team
 
 ```bash
 # Check application status
-heroku ps --app suoops-backend
+# Check service status in Render Dashboard
 
 # View recent errors
-heroku logs --tail --app suoops-backend | grep ERROR
+Render logs --tail --app suoops-backend | grep ERROR
 
 # Rollback deployment
-heroku rollback --app suoops-backend
+Render rollback --app suoops-backend
 
 # Scale resources
-heroku ps:scale web=3 --app suoops-backend
+Render ps:scale web=3 --app suoops-backend
 
 # Restart application
-heroku restart --app suoops-backend
+Render restart --app suoops-backend
 
 # Database backup
-heroku pg:backups:capture --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
 
 # Restore database
-heroku pg:backups:restore --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
 
 # Rotate secrets
-heroku config:set JWT_SECRET=$(openssl rand -hex 32) --app suoops-backend
+render env set JWT_SECRET=$(openssl rand -hex 32) --app suoops-backend
 ```
 
 ### Appendix B: External Contacts
 
-- **Heroku Support**: support@heroku.com, +1 (415) 636-1399
+- **Render Support**: support@Render.com, +1 (415) 636-1399
 - **AWS Support**: Through AWS Console
 - **Paystack Support**: support@paystack.com
 - **Brevo Support**: support@brevo.com

@@ -55,10 +55,10 @@ Expected behavior:
 Check logs to see message processing:
 ```bash
 # Web dyno logs
-heroku logs --tail --app suoops-backend --dyno web
+# Web logs: Render Dashboard → suoops-backend → Logs
 
 # Worker dyno logs  
-heroku logs --tail --app suoops-backend --dyno worker
+# Worker logs: Render Dashboard → suoops-worker → Logs
 ```
 
 ## ✅ Current Status
@@ -95,13 +95,13 @@ The NLP service will extract:
 3. Ensure subscribed to `messages` event
 
 ### Messages not processing
-1. Check worker is running: `heroku ps --app suoops-backend`
-2. View worker logs: `heroku logs --tail --app suoops-backend --dyno worker`
+1. Check worker is running: `# Check service status in Render Dashboard`
+2. View worker logs: `# Worker logs: Render Dashboard → suoops-worker → Logs`
 3. Verify Redis connection
 
 ### Need to restart worker
 ```bash
-heroku ps:restart worker --app suoops-backend
+# Restart worker via Render Dashboard
 ```
 
 ## Environment Variables (Already Set)

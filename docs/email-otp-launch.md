@@ -104,7 +104,7 @@ POST /auth/signup/verify
 
 ### Test Email
 ```bash
-curl -X POST https://suoops-backend-e4a267e41e92.herokuapp.com/auth/signup/request \
+curl -X POST https://api.suoops.com/auth/signup/request \
   -H "Content-Type: application/json" \
   -d '{"email":"info@suoops.com","name":"Test User"}'
 
@@ -210,4 +210,4 @@ const response = await fetch('/auth/signup/request', {
 ⏳ WhatsApp will work when Meta approves  
 🔄 Seamless migration path planned  
 
-**Test it:** `curl -X POST https://suoops-backend-e4a267e41e92.herokuapp.com/auth/signup/request -H "Content-Type: application/json" -d '{"email":"test@example.com","name":"Test"}'`
+**Test it:** `curl -X POST https://api.suoops.com/auth/signup/request -H "Content-Type: application/json" -d '{"email":"test@example.com","name":"Test"}'`

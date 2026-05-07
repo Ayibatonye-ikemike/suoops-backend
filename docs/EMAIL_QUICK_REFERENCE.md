@@ -23,18 +23,18 @@ Upgrade when:
 
 ### Check Current Provider
 ```bash
-heroku config:get EMAIL_PROVIDER --app suoops-backend
+render env get EMAIL_PROVIDER --service suoops-backend
 # Output: gmail
 ```
 
 ### Use Gmail (Current - 500/day)
 ```bash
-heroku config:set EMAIL_PROVIDER=gmail --app suoops-backend
+render env set EMAIL_PROVIDER=gmail --app suoops-backend
 ```
 
 ### Use Amazon SES (After setup - Unlimited)
 ```bash
-heroku config:set EMAIL_PROVIDER=ses --app suoops-backend
+render env set EMAIL_PROVIDER=ses --app suoops-backend
 ```
 
 **That's it!** No code changes needed. Just change one environment variable.
@@ -88,27 +88,27 @@ Value: ijkl9012.dkim.amazonses.com
 3. Name: `suopay-smtp-user`
 4. **Save the username and password immediately!** (shown only once)
 
-### Step 4: Configure Heroku (Final Step)
+### Step 4: Configure Render (Final Step)
 ⏱️ Takes **2 minutes**
 
 ```bash
 # Set SES credentials
-heroku config:set \
+render env set \
   SES_SMTP_USER=AKIAIOSFODNN7EXAMPLE \
   SES_SMTP_PASSWORD=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY \
   --app suoops-backend
 
 # Switch to SES
-heroku config:set EMAIL_PROVIDER=ses --app suoops-backend
+render env set EMAIL_PROVIDER=ses --app suoops-backend
 
 # Optional: Use your domain for FROM address
-heroku config:set FROM_EMAIL=invoices@suoops.com --app suoops-backend
+render env set FROM_EMAIL=invoices@suoops.com --app suoops-backend
 ```
 
 ### Step 5: Test It! 
 ```bash
 # Create invoice with email
-curl -X POST https://suoops-backend.herokuapp.com/invoices \
+curl -X POST https://api.suoops.com/invoices \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
@@ -119,7 +119,7 @@ curl -X POST https://suoops-backend.herokuapp.com/invoices \
   }'
 
 # Check logs
-heroku logs --tail --app suoops-backend | grep -i "email\|ses"
+Render logs --tail --app suoops-backend | grep -i "email\|ses"
 ```
 
 **Expected log output:**
@@ -164,13 +164,13 @@ Sent invoice email to test@example.com for invoice INV-...
 ### Check Email Usage
 ```bash
 # See all email logs
-heroku logs --tail --app suoops-backend | grep -i "email"
+Render logs --tail --app suoops-backend | grep -i "email"
 
 # Count emails sent today (approximate)
-heroku logs --app suoops-backend | grep "Sent invoice email" | wc -l
+Render logs --app suoops-backend | grep "Sent invoice email" | wc -l
 
 # Check which provider is active
-heroku config:get EMAIL_PROVIDER --app suoops-backend
+render env get EMAIL_PROVIDER --service suoops-backend
 ```
 
 ### Monitor SES (After switching)
@@ -189,10 +189,10 @@ aws sesv2 get-account --region eu-north-1
 ### Gmail Not Sending
 ```bash
 # Check credentials configured
-heroku config --app suoops-backend | grep SMTP
+render env ls --service suoops-backend | grep SMTP
 
 # Check logs for errors
-heroku logs --tail --app suoops-backend | grep -i "smtp\|email.*error"
+Render logs --tail --app suoops-backend | grep -i "smtp\|email.*error"
 
 # Verify App Password is correct
 # Go to: https://myaccount.google.com/apppasswords
@@ -201,7 +201,7 @@ heroku logs --tail --app suoops-backend | grep -i "smtp\|email.*error"
 ### SES Not Sending (After switching)
 ```bash
 # Check SES credentials
-heroku config --app suoops-backend | grep SES
+render env ls --service suoops-backend | grep SES
 
 # Check production access approved
 aws sesv2 get-account --region eu-north-1 | grep ProductionAccessEnabled
@@ -229,7 +229,7 @@ aws sesv2 get-email-identity --email-identity suoops.com --region eu-north-1
 
 ### Week 2: Setup
 - **Day 4:** Create SMTP credentials
-- **Day 4:** Configure Heroku with SES credentials
+- **Day 4:** Configure Render with SES credentials
 - **Day 5:** Test sending in sandbox mode (to verified emails)
 - **Day 5-7:** Wait for domain verification (DNS propagation)
 
@@ -245,7 +245,7 @@ aws sesv2 get-email-identity --email-identity suoops.com --region eu-north-1
 
 ---
 
-## Key Heroku Config Variables
+## Key Render Config Variables
 
 ```bash
 # Current Gmail Setup (v49)
@@ -279,22 +279,22 @@ SES_REGION=eu-north-1
 
 ```bash
 # Check current provider
-heroku config:get EMAIL_PROVIDER --app suoops-backend
+render env get EMAIL_PROVIDER --service suoops-backend
 
 # Switch to Gmail
-heroku config:set EMAIL_PROVIDER=gmail --app suoops-backend
+render env set EMAIL_PROVIDER=gmail --app suoops-backend
 
 # Switch to SES (after setup)
-heroku config:set EMAIL_PROVIDER=ses --app suoops-backend
+render env set EMAIL_PROVIDER=ses --app suoops-backend
 
 # View email logs
-heroku logs --tail --app suoops-backend | grep -i "email"
+Render logs --tail --app suoops-backend | grep -i "email"
 
 # Test email sending
 ./test-production.sh
 
 # Check all email-related config
-heroku config --app suoops-backend | grep -E "EMAIL|SMTP|SES|FROM"
+render env ls --service suoops-backend | grep -E "EMAIL|SMTP|SES|FROM"
 ```
 
 ---
@@ -330,11 +330,11 @@ Are you sending >400 emails/day?
 1. Request SES production access (takes 2-3 days)
 2. Add DNS records
 3. Get SMTP credentials
-4. Configure Heroku with SES credentials
-5. Switch: `heroku config:set EMAIL_PROVIDER=ses`
+4. Configure Render with SES credentials
+5. Switch: `render env set EMAIL_PROVIDER=ses`
 
 **Questions?** Check the full guide: `docs/amazon-ses-setup.md`
 
 Last updated: October 22, 2025  
-Heroku: v49  
+Render: v49  
 Provider: Gmail (500/day)

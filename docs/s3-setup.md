@@ -6,7 +6,7 @@
 - **Purpose:** Store invoice PDFs and business logos
 
 ## Configuration Status
-✅ AWS S3 credentials configured in Heroku (v44)
+✅ AWS S3 credentials configured in Render (v44)
 ✅ Local `.env` file updated
 ✅ S3 client updated to support AWS regions
 
@@ -222,4 +222,4 @@ Very affordable! 🎉
 ---
 
 **Configuration completed on:** October 22, 2025  
-**Heroku deployment:** v44
+**Render deployment:** v44

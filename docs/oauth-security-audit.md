@@ -38,7 +38,7 @@ logger.error(
 ```
 
 **Risk:** 
-- OAuth client secrets exposed in Heroku logs
+- OAuth client secrets exposed in Render logs
 - Authorization codes exposed (single-use but still sensitive)
 - Potential secret leakage in log aggregation systems
 - Violates Google's credential security guidelines
@@ -255,7 +255,7 @@ async def revoke_oauth_token(user_id: int, provider: str, db: Session):
 ### ✅ Credential Storage
 - Client ID/secret stored in environment variables
 - Not hardcoded in source code
-- Loaded from Heroku config (encrypted at rest)
+- Loaded from Render config (encrypted at rest)
 
 ---
 
@@ -290,7 +290,7 @@ async def revoke_oauth_token(user_id: int, provider: str, db: Session):
 
 2. **Rotate OAuth credentials**
    - Generate new Google OAuth client
-   - Update Heroku environment variables
+   - Update Render environment variables
    - Test login flow
    - Delete old OAuth client from Google Console
 
@@ -472,7 +472,7 @@ def decrypt_token(encrypted: str) -> str:
 - [ ] Deploy code changes to staging
 - [ ] Test OAuth flow on staging
 - [ ] Generate new OAuth client credentials
-- [ ] Update Heroku config vars
+- [ ] Update Render config vars
 - [ ] Deploy to production
 - [ ] Verify production OAuth flow
 
@@ -491,7 +491,7 @@ def decrypt_token(encrypted: str) -> str:
 
 ### Secret Management
 
-**Current:** Environment variables on Heroku  
+**Current:** Environment variables on Render  
 **Recommended:** Google Cloud Secret Manager
 
 **Benefits:**

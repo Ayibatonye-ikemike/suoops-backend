@@ -52,7 +52,7 @@ SuoOps now supports **asynchronous PDF generation** using Celery background task
 
 ### 1. Prerequisites
 
-Ensure Redis is running (already configured in Heroku):
+Ensure Redis is running (already configured in Render):
 
 ```bash
 # Local development (macOS)
@@ -71,7 +71,7 @@ Add to `.env` (already configured in production):
 # Redis connection
 REDIS_URL=redis://localhost:6379/0
 
-# For Heroku Redis (with SSL)
+# For Render Redis (with SSL)
 REDIS_URL=rediss://:password@host:port
 REDIS_SSL_CERT_REQS=none  # or 'required' for strict SSL
 REDIS_SSL_CA_CERTS=/path/to/ca-bundle.pem
@@ -89,7 +89,7 @@ uvicorn app.api.main:app --reload
 celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
 ```
 
-#### Production (Heroku)
+#### Production (Render)
 
 Add to `Procfile`:
 
@@ -102,13 +102,13 @@ Deploy worker dyno:
 
 ```bash
 # Scale worker dynos
-heroku ps:scale worker=1 --app suoops-backend
+Render ps:scale worker=1 --app suoops-backend
 
 # Check worker logs
-heroku logs --tail --dyno=worker --app suoops-backend
+Render logs --tail --dyno=worker --app suoops-backend
 
 # Monitor Celery tasks
-heroku run celery -A app.workers.celery_app inspect active --app suoops-backend
+Render run celery -A app.workers.celery_app inspect active --app suoops-backend
 ```
 
 ### 4. Optional: Celery Beat (Scheduled Tasks)
@@ -120,7 +120,7 @@ beat: celery -A app.workers.celery_app beat --loglevel=info
 ```
 
 ```bash
-heroku ps:scale beat=1 --app suoops-backend
+Render ps:scale beat=1 --app suoops-backend
 ```
 
 ## API Usage
@@ -270,8 +270,8 @@ Tasks exceeding soft limit can clean up gracefully. Hard limit prevents runaway 
 # Local
 celery -A app.workers.celery_app inspect active
 
-# Heroku
-heroku run celery -A app.workers.celery_app inspect active --app suoops-backend
+# Render
+Render run celery -A app.workers.celery_app inspect active --app suoops-backend
 ```
 
 ### Check Queue Stats
@@ -284,7 +284,7 @@ celery -A app.workers.celery_app inspect stats
 
 ```bash
 # View task failures
-heroku logs --tail --dyno=worker --app suoops-backend | grep ERROR
+Render logs --tail --dyno=worker --app suoops-backend | grep ERROR
 ```
 
 ### Prometheus Metrics
@@ -306,7 +306,7 @@ We track the following metrics:
 
 ```bash
 # Check worker logs
-heroku logs --tail --dyno=worker --app suoops-backend
+Render logs --tail --dyno=worker --app suoops-backend
 
 # Check failed tasks
 celery -A app.workers.celery_app inspect failed
@@ -324,7 +324,7 @@ celery -A app.workers.celery_app result <task-id>
 **Fix**:
 ```bash
 # Retry failed task manually
-heroku run python -c "from app.workers.tasks import generate_invoice_pdf_async; generate_invoice_pdf_async.delay(invoice_id=123)" --app suoops-backend
+render exec python -c "from app.workers.tasks import generate_invoice_pdf_async; generate_invoice_pdf_async.delay(invoice_id=123)" --app suoops-backend
 ```
 
 ### Worker Not Processing Tasks
@@ -335,13 +335,13 @@ heroku run python -c "from app.workers.tasks import generate_invoice_pdf_async; 
 
 ```bash
 # Verify worker is running
-heroku ps --app suoops-backend
+# Check service status in Render Dashboard
 
 # Check Redis connection
-heroku run python -c "import redis; r=redis.from_url('$REDIS_URL'); print(r.ping())" --app suoops-backend
+render exec python -c "import redis; r=redis.from_url('$REDIS_URL'); print(r.ping())" --app suoops-backend
 
 # Restart worker
-heroku ps:restart worker --app suoops-backend
+# Restart worker via Render Dashboard
 ```
 
 ### High Memory Usage
@@ -358,7 +358,7 @@ heroku ps:restart worker --app suoops-backend
 
 2. **Upgrade dyno**:
    ```bash
-   heroku ps:type worker=standard-2x --app suoops-backend
+   Render ps:type worker=standard-2x --app suoops-backend
    ```
 
 3. **Enable garbage collection**:
@@ -381,7 +381,7 @@ heroku ps:restart worker --app suoops-backend
 
 ## Cost Analysis
 
-### Heroku Dyno Costs
+### Render Dyno Costs
 
 | Configuration | Monthly Cost | Throughput |
 |---------------|--------------|------------|

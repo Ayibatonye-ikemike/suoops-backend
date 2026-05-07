@@ -330,10 +330,10 @@ OCR_RESIZE_MAX_HEIGHT=2048    # Max image height (default: 2048px)
 OCR_MODEL=gpt-4o              # Model to use (default: gpt-4o)
 ```
 
-### Heroku Configuration
+### Render Configuration
 
 ```bash
-heroku config:set OPENAI_API_KEY=sk-proj-xxx
+render env set OPENAI_API_KEY=sk-proj-xxx
 ```
 
 ---
@@ -549,7 +549,7 @@ Parse image and create invoice in one step.
 **Quick Start:**
 ```bash
 # 1. Set API key
-heroku config:set OPENAI_API_KEY=sk-xxx
+render env set OPENAI_API_KEY=sk-xxx
 
 # 2. Upload receipt
 curl -F "file=@receipt.jpg" https://api.suoops.com/ocr/parse

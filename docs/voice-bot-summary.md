@@ -170,8 +170,8 @@ pytest tests/test_voice_bot.py -v
 # Local (.env)
 OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
 
-# Heroku
-heroku config:set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+# Render
+render env set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
 ```
 
 ### 3. Install Dependencies
@@ -184,7 +184,7 @@ poetry install
 ```bash
 git add .
 git commit -m "feat: Add WhatsApp voice note support for invoice creation"
-git push heroku main
+git push origin main  # Render auto-deploys from GitHub
 ```
 
 ### 5. Test
@@ -284,8 +284,8 @@ Send a voice note to your WhatsApp Business number:
 ## 🚦 Next Steps
 
 1. **Get OpenAI API key** from https://platform.openai.com/api-keys
-2. **Add to Heroku**: `heroku config:set OPENAI_API_KEY=sk-proj-...`
-3. **Deploy**: `git push heroku main`
+2. **Add to Render**: `render env set OPENAI_API_KEY=sk-proj-...`
+3. **Deploy**: `git push origin main  # Render auto-deploys from GitHub`
 4. **Test with real voice note** in WhatsApp
 5. **Monitor logs** for any issues
 6. **Update user docs** with voice instructions

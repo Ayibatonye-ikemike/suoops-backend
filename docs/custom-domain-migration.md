@@ -7,15 +7,15 @@
 
 ## 🎯 Summary
 
-The SuoPay API has been successfully migrated from the Heroku default domain to a custom domain with SSL certificate.
+The SuoPay API has been successfully migrated from the Render default domain to a custom domain with SSL certificate.
 
 ### URLs
 
 | Type | Old URL | New URL | Status |
 |------|---------|---------|--------|
-| **API Base** | `https://suoops-backend.herokuapp.com` | `https://api.suoops.com` | ✅ Active |
+| **API Base** | `https://api.suoops.com` | `https://api.suoops.com` | ✅ Active |
 | **Health Check** | `/health` | `/healthz` | ✅ Active |
-| **SSL Certificate** | Let's Encrypt (Heroku managed) | Let's Encrypt (Heroku managed) | ✅ Valid until Jan 17, 2026 |
+| **SSL Certificate** | Let's Encrypt (Render managed) | Let's Encrypt (Render managed) | ✅ Valid until Jan 17, 2026 |
 
 ---
 
@@ -29,7 +29,7 @@ The SuoPay API has been successfully migrated from the Heroku default domain to 
 ### DNS Records
 ```
 Type    Name    Value                                           TTL
-CNAME   api     integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com    60
+CNAME   api     api.suoops.com    60
 ALIAS   *       cname.vercel-dns-017.com                        60
 ALIAS   @       f4d979145d44049e.vercel-dns-017.com            60
 ```
@@ -41,14 +41,14 @@ Server:         8.8.8.8
 Address:        8.8.8.8#53
 
 Non-authoritative answer:
-api.suoops.com   canonical name = integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
-Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+api.suoops.com   canonical name = api.suoops.com
+Name:   api.suoops.com
 Address: 35.71.179.82
-Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+Name:   api.suoops.com
 Address: 99.83.220.108
-Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+Name:   api.suoops.com
 Address: 75.2.60.68
-Name:   integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+Name:   api.suoops.com
 Address: 13.248.244.96
 ```
 
@@ -68,7 +68,7 @@ Status:         ✅ Verified by root authority
 
 ### Verification
 ```bash
-$ heroku certs:auto -a suoops-backend
+$ # (TLS managed automatically by Render) -a suoops-backend
 === Automatic Certificate Management is enabled on suoops-backend
 Certificate details:
 Common Name(s): api.suoops.com
@@ -81,7 +81,7 @@ SSL certificate is verified by a root authority.
 ## 📝 Changes Made
 
 ### 1. DNS Configuration (Vercel Dashboard)
-- ✅ Added CNAME record: `api` → `integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com`
+- ✅ Added CNAME record: `api` → `api.suoops.com`
 - ✅ TTL set to 60 seconds for quick updates
 
 ### 2. Documentation Updates
@@ -113,7 +113,7 @@ All documentation files updated to use new domain:
 ### 3. Git Commits
 ```bash
 # Commit: abcaf623
-chore: Migrate all documentation from Heroku URL to custom domain
+chore: Migrate all documentation from Render URL to custom domain
 - 5 files changed
 - 212 insertions, 11 deletions
 ```
@@ -126,7 +126,7 @@ chore: Migrate all documentation from Heroku URL to custom domain
 ```bash
 # Test with Google DNS to bypass cache
 $ nslookup api.suoops.com 8.8.8.8
-✅ Resolves to: integrative-perch-ft4hedhc20lv0v5qv77f4a15.herokudns.com
+✅ Resolves to: api.suoops.com
 ✅ IP addresses: 35.71.179.82, 99.83.220.108, 75.2.60.68, 13.248.244.96
 ```
 
@@ -156,14 +156,14 @@ $ grep "NEXT_PUBLIC_API" frontend/vercel.json
 
 ## 🚀 Deployment Status
 
-### Heroku Releases
+### Render Deploys
 - **v32:** Initial voice bot deployment (failed due to missing httpx)
 - **v33:** Fixed httpx dependency (successful)
 - **v34:** Documentation migration to custom domain (successful) ✅
 
 ### Current Status
 ```bash
-$ heroku releases -a suoops-backend | head -5
+$ # Deploys list: Render Dashboard → suoops-backend → Events | head -5
 === suoops-backend Releases - Current: v34
 v34  Deploy abcaf623  Oct 22, 2025
 v33  Deploy d02f03c1  Oct 22, 2025
@@ -183,7 +183,7 @@ $ time curl -s https://api.suoops.com/healthz
 ```
 
 ### Uptime Monitoring
-- **Heroku App:** suoops-backend
+- **Render App:** suoops-backend
 - **Region:** US East (iad1)
 - **Dyno Type:** web (1x), worker (1x)
 - **SSL:** Automatic renewal enabled
@@ -192,16 +192,16 @@ $ time curl -s https://api.suoops.com/healthz
 
 ## 🔄 Rollback Plan
 
-If issues occur, you can temporarily revert to the Heroku domain:
+If issues occur, you can temporarily revert to the Render domain:
 
 ### 1. Update Frontend Environment Variable
 ```bash
 # In Vercel dashboard
-NEXT_PUBLIC_API_BASE_URL=https://suoops-backend.herokuapp.com
+NEXT_PUBLIC_API_BASE_URL=https://api.suoops.com
 ```
 
 ### 2. Update Webhook URLs
-- Paystack: Change webhook URL back to Heroku domain
+- Paystack: Change webhook URL back to Render domain
 - WhatsApp: Update callback URL in Meta Business Manager
 
 ### 3. DNS Record (Optional)
@@ -213,7 +213,7 @@ NEXT_PUBLIC_API_BASE_URL=https://suoops-backend.herokuapp.com
 
 ### 1. Paystack Webhook ⚠️
 **Action Required:** Update webhook URL in Paystack dashboard
-- **Old:** `https://suoops-backend.herokuapp.com/webhooks/paystack`
+- **Old:** `https://api.suoops.com/webhooks/paystack`
 - **New:** `https://api.suoops.com/webhooks/paystack`
 
 **Steps:**
@@ -224,7 +224,7 @@ NEXT_PUBLIC_API_BASE_URL=https://suoops-backend.herokuapp.com
 
 ### 2. WhatsApp Cloud API ⚠️
 **Action Required:** Update callback URL in Meta Business Manager
-- **Old:** `https://suoops-backend.herokuapp.com/webhooks/whatsapp`
+- **Old:** `https://api.suoops.com/webhooks/whatsapp`
 - **New:** `https://api.suoops.com/webhooks/whatsapp`
 
 **Steps:**
@@ -286,19 +286,19 @@ curl --resolve api.suoops.com:443:35.71.179.82 https://api.suoops.com/healthz
 ### SSL Certificate Issues
 ```bash
 # Check certificate status
-heroku certs:auto -a suoops-backend
+# (TLS managed automatically by Render) -a suoops-backend
 
 # Force certificate refresh (if needed)
-heroku certs:auto:refresh -a suoops-backend
+# (TLS managed automatically by Render) -a suoops-backend
 ```
 
 ### API Connection Issues
 ```bash
 # 1. Check app status
-heroku ps -a suoops-backend
+# Check service status in Render Dashboard
 
 # 2. View logs
-heroku logs --tail -a suoops-backend
+# Stream logs from Render Dashboard
 
 # 3. Test health endpoint
 curl -v https://api.suoops.com/healthz
@@ -319,7 +319,7 @@ curl -v https://api.suoops.com/healthz
 ## ✨ Benefits of Custom Domain
 
 1. **Professional Branding**
-   - `api.suoops.com` vs `suoops-backend.herokuapp.com`
+   - `api.suoops.com` vs `api.suoops.com`
    - Easier to remember and share
 
 2. **Portability**
@@ -328,7 +328,7 @@ curl -v https://api.suoops.com/healthz
 
 3. **SSL Certificate**
    - Automatic Let's Encrypt certificate
-   - Auto-renewal handled by Heroku
+   - Auto-renewal handled by Render
 
 4. **Consistency**
    - Frontend: `suoops.com`

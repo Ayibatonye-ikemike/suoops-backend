@@ -63,10 +63,10 @@ dig <token>._domainkey.suoops.com CNAME
 
 ---
 
-### ☐ Step 5: Configure Heroku (2 minutes)
+### ☐ Step 5: Configure Render (2 minutes)
 
 ```bash
-heroku config:set \
+render env set \
   SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com \
   SES_SMTP_PORT=587 \
   SES_SMTP_USER=<your-smtp-username> \
@@ -156,11 +156,11 @@ Until you request production access:
 
 ## 🔍 Verify Configuration
 
-### Check Heroku Config:
+### Check Render Config:
 ```bash
-heroku config:get SES_SMTP_HOST -a suoops-backend
-heroku config:get SES_SMTP_USER -a suoops-backend
-heroku config:get FROM_EMAIL -a suoops-backend
+render env get SES_SMTP_HOST --service suoops-backend
+render env get SES_SMTP_USER --service suoops-backend
+render env get FROM_EMAIL --service suoops-backend
 ```
 
 ### Check Domain Status:
@@ -184,7 +184,7 @@ openssl s_client -connect email-smtp.eu-north-1.amazonaws.com:587 -starttls smtp
 | 500 emails/day (15,000/mo) | $1.50 |
 | 1,000 emails/day (30,000/mo) | $3.00 |
 
-**Rate**: $0.10 per 1,000 emails (sent from Heroku)
+**Rate**: $0.10 per 1,000 emails (sent from Render)
 
 ---
 

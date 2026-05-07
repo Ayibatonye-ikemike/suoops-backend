@@ -20,7 +20,7 @@ The following have been updated automatically:
 
 1. **Backend Code** (`app/core/config.py`): ✅
 2. **Backend Code** (`app/api/routes_webhooks.py`): ✅
-3. **Heroku Config**: ✅ `heroku config:set WHATSAPP_VERIFY_TOKEN=suoops_verify_2025`
+3. **Render Config**: ✅ `render env set WHATSAPP_VERIFY_TOKEN=suoops_verify_2025`
 4. **All Documentation**: ✅
 5. **Test Files**: ✅
 6. **Scripts**: ✅
@@ -71,9 +71,9 @@ curl -X GET "https://api.suoops.com/webhooks/whatsapp?hub.mode=subscribe&hub.ver
 ### Test 2: Send a WhatsApp Message
 
 1. Send a message to your WhatsApp Business number
-2. Check Heroku logs:
+2. Check Render logs:
    ```bash
-   heroku logs --tail -a suoops-backend
+   # Stream logs from Render Dashboard
    ```
 3. You should see the message being processed
 
@@ -98,9 +98,9 @@ cd /Users/ayibatonyeikemike/mywork/suopay.io
    suoops_verify_2025
    ```
 
-2. **Check Heroku config**:
+2. **Check Render config**:
    ```bash
-   heroku config:get WHATSAPP_VERIFY_TOKEN -a suoops-backend
+   render env get WHATSAPP_VERIFY_TOKEN --service suoops-backend
    ```
    Should return: `suoops_verify_2025`
 
@@ -110,15 +110,15 @@ cd /Users/ayibatonyeikemike/mywork/suopay.io
    ```
    Should return HTTP status code (even 405 is fine, means it's accessible)
 
-4. **Restart the Heroku app**:
+4. **Restart the Render app**:
    ```bash
-   heroku restart -a suoops-backend
+   Render restart -a suoops-backend
    ```
    Then try verifying again in Meta Console
 
-5. **Check Heroku logs** during verification:
+5. **Check Render logs** during verification:
    ```bash
-   heroku logs --tail -a suoops-backend
+   # Stream logs from Render Dashboard
    ```
    You should see the verification request
 
@@ -128,9 +128,9 @@ cd /Users/ayibatonyeikemike/mywork/suopay.io
    - Go to **Webhooks** → **Webhook Fields**
    - Ensure `messages` is subscribed ✅
 
-2. **Check Heroku logs**:
+2. **Check Render logs**:
    ```bash
-   heroku logs --tail -a suoops-backend | grep whatsapp
+   # Stream logs from Render Dashboard | grep whatsapp
    ```
 
 3. **Verify the phone number** is registered in Meta Console
@@ -141,7 +141,7 @@ cd /Users/ayibatonyeikemike/mywork/suopay.io
 
 - [x] Update backend code (`app/core/config.py`)
 - [x] Update backend code (`app/api/routes_webhooks.py`)
-- [x] Update Heroku config variable
+- [x] Update Render config variable
 - [x] Update all documentation
 - [x] Update test files
 - [ ] **Update Meta Developer Console webhook** ⚠️ **DO THIS NOW**
@@ -154,9 +154,9 @@ cd /Users/ayibatonyeikemike/mywork/suopay.io
 ## 🔗 Quick Links
 
 - **Meta Developer Console**: https://developers.facebook.com/apps
-- **Heroku Dashboard**: https://dashboard.heroku.com/apps/suoops-backend
+- **Render Dashboard**: https://dashboard.render.com
 - **API Webhook URL**: https://api.suoops.com/webhooks/whatsapp
-- **Heroku Logs**: `heroku logs --tail -a suoops-backend`
+- **Render Logs**: `# Stream logs from Render Dashboard`
 
 ---
 

@@ -144,7 +144,8 @@ class BaseAppSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_required_fields(self) -> BaseAppSettings:
-        # Convert Heroku's postgres:// URL to postgresql://
+        # Convert legacy postgres:// URLs to postgresql:// (some managed
+        # Postgres providers still emit the old scheme)
         if self.DATABASE_URL and self.DATABASE_URL.startswith("postgres://"):
             self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
         

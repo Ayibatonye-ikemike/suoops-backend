@@ -47,22 +47,22 @@ Your current Brevo account might already have SMS enabled. Try using your existi
 
 **Note**: Some countries require sender name approval. Nigeria typically allows alphanumeric sender names without pre-approval.
 
-## Step 4: Set Heroku Environment Variables
+## Step 4: Set Render Environment Variables
 
 ```bash
 # Required: Brevo API Key for SMS
-heroku config:set BREVO_API_KEY=xkeysib-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx --app suoops-backend
+render env set BREVO_API_KEY=xkeysib-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx --app suoops-backend
 
 # Optional: Custom sender name (default is "SuoOps")
-heroku config:set BREVO_SENDER_NAME=SuoOps --app suoops-backend
+render env set BREVO_SENDER_NAME=SuoOps --app suoops-backend
 
 # Set SMS provider to Brevo
-heroku config:set SMS_PROVIDER=brevo --app suoops-backend
+render env set SMS_PROVIDER=brevo --app suoops-backend
 ```
 
 Verify configuration:
 ```bash
-heroku config --app suoops-backend | grep BREVO
+render env ls --service suoops-backend | grep BREVO
 ```
 
 ## Step 5: Test SMS
@@ -76,7 +76,7 @@ heroku config --app suoops-backend | grep BREVO
 1. Create an invoice with a customer phone number (with country code: +234...)
 2. Check logs:
    ```bash
-   heroku logs --tail --app suoops-backend | grep "SMS"
+   Render logs --tail --app suoops-backend | grep "SMS"
    ```
 3. Customer should receive SMS with invoice details
 
@@ -128,7 +128,7 @@ All from the **same Brevo account**! 🎉
 1. **Check API key**: Ensure `BREVO_API_KEY` is set
 2. **Check credits**: Top up if balance is low
 3. **Check phone format**: Must include country code with + (e.g., +2348012345678)
-4. **Check logs**: `heroku logs --tail --app suoops-backend | grep SMS`
+4. **Check logs**: `Render logs --tail --app suoops-backend | grep SMS`
 
 ### SMS character limit exceeded?
 - **160 characters = 1 SMS credit**
@@ -149,7 +149,7 @@ All from the **same Brevo account**! 🎉
 
 ### SuoOps Logs:
 ```bash
-heroku logs --tail --app suoops-backend
+Render logs --tail --app suoops-backend
 ```
 
 ## Cost Estimates (Brevo)
@@ -166,7 +166,7 @@ heroku logs --tail --app suoops-backend
 
 1. ✅ Get Brevo SMS API key
 2. ✅ Buy SMS credits (start with 500)
-3. ✅ Set `BREVO_API_KEY` on Heroku
+3. ✅ Set `BREVO_API_KEY` on Render
 4. ✅ Test with a customer invoice
 5. ✅ Monitor usage in Brevo dashboard
 

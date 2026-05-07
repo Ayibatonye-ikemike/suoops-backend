@@ -182,9 +182,9 @@ BACKEND_URL=https://api.suoops.com  # Production
 BACKEND_URL=http://localhost:8000   # Development
 ```
 
-Update in Heroku:
+Update in Render:
 ```bash
-heroku config:set BACKEND_URL=https://api.suoops.com
+render env set BACKEND_URL=https://api.suoops.com
 ```
 
 ## Testing

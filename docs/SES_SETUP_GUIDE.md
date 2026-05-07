@@ -196,12 +196,12 @@ Production mode removes these limits:
 
 ---
 
-## Step 6: Configure Heroku Environment Variables
+## Step 6: Configure Render Environment Variables
 
 Once domain is verified and SMTP credentials are created:
 
 ```bash
-heroku config:set \
+render env set \
   SES_SMTP_HOST=email-smtp.eu-north-1.amazonaws.com \
   SES_SMTP_PORT=587 \
   SES_SMTP_USER=<your-smtp-username> \
@@ -301,9 +301,9 @@ SES automatically publishes metrics to CloudWatch:
 
 ### Free Tier
 - **First 62,000 emails/month**: FREE (when sent from EC2)
-- **From other services (Heroku)**: $0.10 per 1,000 emails
+- **From other services (Render)**: $0.10 per 1,000 emails
 
-### Expected Costs (from Heroku)
+### Expected Costs (from Render)
 - **100 emails/day** = 3,000/month = **$0.30/month**
 - **500 emails/day** = 15,000/month = **$1.50/month**
 - **1,000 emails/day** = 30,000/month = **$3.00/month**
@@ -383,7 +383,7 @@ Value: v=spf1 include:amazonses.com ~all
 2. ✅ Add DNS records to Vercel
 3. ✅ Wait for verification (5-10 min)
 4. ✅ Create SMTP credentials
-5. ✅ Configure Heroku environment
+5. ✅ Configure Render environment
 6. ✅ Test email sending
 7. ⏳ Request production access (optional, takes 24h)
 8. ✅ Monitor email metrics

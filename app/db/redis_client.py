@@ -28,7 +28,7 @@ def get_redis_pool() -> ConnectionPool:
     
     # Parse connection parameters
     pool_kwargs = {
-        "max_connections": 5,  # Reduced to stay under Heroku's 20 connection limit (shared with Celery workers)
+        "max_connections": 5,  # Conservative cap shared with Celery workers under managed-Redis connection limits
         "socket_timeout": 5,
         "socket_connect_timeout": 5,
         "retry_on_timeout": True,

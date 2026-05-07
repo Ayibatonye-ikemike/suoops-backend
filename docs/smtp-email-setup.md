@@ -48,7 +48,7 @@
 
 ### Configuration
 
-#### Environment Variables for Heroku
+#### Environment Variables for Render
 
 ```bash
 # SendGrid SMTP Configuration
@@ -61,10 +61,10 @@ FROM_EMAIL=invoices@suoops.com
 
 **Note:** For SendGrid, the `SMTP_USER` is literally the string `"apikey"`, and `SMTP_PASSWORD` is your API key.
 
-#### Add to Heroku
+#### Add to Render
 
 ```bash
-heroku config:set \
+render env set \
   SMTP_HOST=smtp.sendgrid.net \
   SMTP_PORT=587 \
   SMTP_USER=apikey \
@@ -173,11 +173,11 @@ curl -X POST https://api.suoops.com/invoices \
   }'
 ```
 
-### 2. Check Heroku Logs
+### 2. Check Render Logs
 
 ```bash
 # Monitor logs for email sending
-heroku logs --tail --app suoops-backend | grep -i "email\|smtp"
+Render logs --tail --app suoops-backend | grep -i "email\|smtp"
 ```
 
 ### 3. Expected Log Output
@@ -229,7 +229,7 @@ Powered by SuoPay
 ### Issue: "SMTP not configured" warning
 **Solution:** 
 - Verify all 4 env vars are set: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`
-- Check Heroku config: `heroku config --app suoops-backend | grep SMTP`
+- Check Render config: `render env ls --service suoops-backend | grep SMTP`
 
 ### Issue: "Authentication failed"
 **Solution:**
@@ -247,7 +247,7 @@ Powered by SuoPay
 **Solution:**
 - Check `SMTP_PORT` is 587 (not 465 or 25)
 - Verify `SMTP_HOST` is correct
-- Check if Heroku allows SMTP connections (it does by default)
+- Check if Render allows SMTP connections (it does by default)
 
 ### Issue: Email sent but customer didn't receive
 **Solution:**
@@ -321,7 +321,7 @@ Powered by SuoPay
 1. ✅ Create SendGrid account
 2. ✅ Generate API key
 3. ✅ Verify sender identity
-4. ✅ Add environment variables to Heroku
+4. ✅ Add environment variables to Render
 5. ✅ Test invoice creation with email
 6. ✅ Monitor SendGrid dashboard for delivery
 

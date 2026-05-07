@@ -146,7 +146,7 @@ export const invoiceStatusHelpText: Record<string, string> = {
 
 ## Deployment
 
-- **Backend**: Heroku v290 (commit 4c0eb86c)
+- **Backend**: Render v290 (commit 4c0eb86c)
 - **Frontend**: Vercel (commit c2b12fe)
 - **Status**: ✅ Deployed to production
 

@@ -1,41 +1,41 @@
 # SuoOps Backup and Recovery Procedures
 
 ## Overview
-SuoOps uses Heroku Postgres with automated daily backups. This document outlines backup procedures, disaster recovery process, and testing schedules.
+SuoOps uses Render Postgres with automated daily backups. This document outlines backup procedures, disaster recovery process, and testing schedules.
 
 ## Current Backup Configuration
 
-### Automated Backups (Heroku)
+### Automated Backups (Render)
 - **Frequency**: Daily automatic backups
 - **Retention**: 7 days (Standard/Premium plans)
 - **Backup Time**: Approximately 02:00 UTC
-- **Storage**: Encrypted AWS S3 (managed by Heroku)
+- **Storage**: Encrypted AWS S3 (managed by Render)
 
 ### Backup Commands
 
 **Create manual backup:**
 ```bash
-heroku pg:backups:capture --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
 ```
 
 **List all backups:**
 ```bash
-heroku pg:backups --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
 ```
 
 **Download backup:**
 ```bash
-heroku pg:backups:download --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
 # Creates latest.dump file
 ```
 
 **Restore from backup:**
 ```bash
 # Restore from latest backup
-heroku pg:backups:restore --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
 
 # Restore from specific backup
-heroku pg:backups:restore b001 --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) b001 --app suoops-backend
 ```
 
 ## Disaster Recovery Procedures
@@ -46,22 +46,22 @@ heroku pg:backups:restore b001 --app suoops-backend
 **Response Steps:**
 1. Immediately create manual backup of current state:
    ```bash
-   heroku pg:backups:capture --app suoops-backend
+   # (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
    ```
 
 2. Assess corruption extent by checking recent database logs:
    ```bash
-   heroku logs --tail --ps postgres --app suoops-backend
+   Render logs --tail --ps postgres --app suoops-backend
    ```
 
 3. If corruption is recent (< 24 hours), restore from previous day:
    ```bash
-   heroku pg:backups:restore b001 --app suoops-backend --confirm suoops-backend
+   # (use Render Postgres dashboard or pg_dump for backups) b001 --app suoops-backend --confirm suoops-backend
    ```
 
 4. Verify restoration:
    ```bash
-   heroku run python -c "from app.db.session import engine; print('Tables:', engine.table_names())" --app suoops-backend
+   render exec python -c "from app.db.session import engine; print('Tables:', engine.table_names())" --app suoops-backend
    ```
 
 5. Test critical flows (login, invoice creation, payment)
@@ -75,7 +75,7 @@ heroku pg:backups:restore b001 --app suoops-backend
 1. Identify deletion timestamp from logs
 2. Export affected tables from latest backup:
    ```bash
-   heroku pg:backups:download --app suoops-backend
+   # (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
    pg_restore -d postgres://localhost/suoops_recovery -t invoices latest.dump
    ```
 
@@ -89,38 +89,38 @@ heroku pg:backups:restore b001 --app suoops-backend
 **Detection**: 100% error rate, application unreachable
 
 **Response Steps:**
-1. Check Heroku status: https://status.heroku.com
+1. Check Render status: https://status.Render.com
 2. Review recent deployments:
    ```bash
-   heroku releases --app suoops-backend
+   Render releases --app suoops-backend
    ```
 
 3. Rollback if caused by bad deploy:
    ```bash
-   heroku rollback --app suoops-backend
+   Render rollback --app suoops-backend
    ```
 
 4. If database issue, restore from last known good backup
 5. Scale up dynos if resource exhaustion:
    ```bash
-   heroku ps:scale web=2 --app suoops-backend
+   Render ps:scale web=2 --app suoops-backend
    ```
 
 **Expected Recovery Time**: 15-30 minutes
 
 ## Point-in-Time Recovery (PITR)
 
-Heroku Postgres supports PITR for Standard and Premium plans.
+Render Postgres supports PITR for Standard and Premium plans.
 
 **Enable PITR:**
 ```bash
-heroku pg:backups:schedule DATABASE_URL --at '02:00 UTC' --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) DATABASE_URL --at '02:00 UTC' --app suoops-backend
 ```
 
 **Restore to specific time:**
 ```bash
 # Restore to 6 hours ago
-heroku pg:backups:restore --app suoops-backend --to-timestamp '6 hours ago'
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend --to-timestamp '6 hours ago'
 ```
 
 ## Backup Testing Schedule
@@ -153,7 +153,7 @@ heroku pg:backups:restore --app suoops-backend --to-timestamp '6 hours ago'
 **Check backup integrity:**
 ```bash
 # Verify backup exists and is recent
-heroku pg:backups:info --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
 
 # Expected output shows backup < 24 hours old
 ```
@@ -161,7 +161,7 @@ heroku pg:backups:info --app suoops-backend
 **Monitor backup status:**
 ```bash
 # Set up daily backup monitoring
-heroku pg:backups:schedules --app suoops-backend
+# (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
 ```
 
 ## Recovery Time Objectives (RTO) and Recovery Point Objectives (RPO)
@@ -171,14 +171,14 @@ heroku pg:backups:schedules --app suoops-backend
 | Database corruption | 60 minutes | 24 hours |
 | Accidental deletion | 2 hours | 24 hours |
 | Complete failure | 30 minutes | 24 hours |
-| Heroku outage | 4 hours | 24 hours |
+| Render outage | 4 hours | 24 hours |
 
 ## Escalation Contacts
 
 **Technical Issues:**
 - Primary: Technical Lead
 - Secondary: DevOps Engineer
-- Heroku Support: https://help.heroku.com
+- Render Support: https://help.Render.com
 
 **Business Impact:**
 - Notify: Product Owner
@@ -197,8 +197,8 @@ After any recovery event:
 
 | Backup Type | Retention Period | Storage Location |
 |-------------|-----------------|------------------|
-| Daily automatic | 7 days | Heroku (AWS S3) |
-| Manual snapshots | 30 days | Heroku (AWS S3) |
+| Daily automatic | 7 days | Render (AWS S3) |
+| Manual snapshots | 30 days | Render (AWS S3) |
 | Monthly archives | 1 year | External S3 bucket |
 | Critical milestones | Indefinite | Secure archive |
 
@@ -206,9 +206,9 @@ After any recovery event:
 
 ### External Backup Strategy (Future Enhancement)
 1. Set up weekly exports to external S3 bucket
-2. Automate with Heroku Scheduler:
+2. Automate with Render Scheduler:
    ```bash
-   heroku pg:backups:download --app suoops-backend
+   # (use Render Postgres dashboard or pg_dump for backups) --app suoops-backend
    aws s3 cp latest.dump s3://suoops-backups/$(date +%Y%m%d).dump
    ```
 
@@ -224,10 +224,10 @@ Monthly export of critical data:
 
 ## Emergency Contact Information
 
-**Heroku Support:**
-- Email: support@heroku.com
+**Render Support:**
+- Email: support@Render.com
 - Phone: +1 (415) 636-1399
-- Status: https://status.heroku.com
+- Status: https://status.Render.com
 
 **AWS Support (S3 backups):**
 - Console: https://console.aws.amazon.com

@@ -1,4 +1,4 @@
-"""Test SMTP configuration on Heroku."""
+"""Test SMTP configuration in production."""
 import asyncio
 from app.core.config import settings
 from app.services.notification.service import NotificationService
