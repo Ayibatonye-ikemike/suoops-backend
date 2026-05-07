@@ -577,7 +577,13 @@ class WhatsAppHandler:
             )
     
     def _send_business_greeting(self, sender: str, issuer_id: int) -> None:
-        """Send a warm, contextual greeting to a returning business user."""
+        """Send a warm, contextual greeting to a returning business user.
+
+        Kept intentionally short — the previous version was a wall of
+        text. We surface the one number that matters (unpaid total) and
+        the two highest-leverage actions; everything else is one tap
+        away via *help*.
+        """
         import datetime as _dt
 
         from sqlalchemy import func as sqlfunc
@@ -585,8 +591,8 @@ class WhatsAppHandler:
         user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
         name = getattr(user, "business_name", None) or getattr(user, "full_name", None) or ""
 
-        # Time-of-day greeting
-        hour = _dt.datetime.now(_dt.timezone.utc).hour + 1  # WAT = UTC+1
+        # Time-of-day greeting (WAT = UTC+1)
+        hour = (_dt.datetime.now(_dt.timezone.utc).hour + 1) % 24
         if hour < 12:
             time_greeting = "Good morning"
         elif hour < 17:
@@ -594,12 +600,16 @@ class WhatsAppHandler:
         else:
             time_greeting = "Good evening"
 
-        if name:
-            msg = f"👋 {time_greeting}, {name.split()[0]}! Welcome back.\n\n"
+        first_name = name.split()[0].title() if name else None
+        if first_name:
+            lines = [f"👋 {time_greeting}, {first_name}!"]
         else:
-            msg = f"👋 {time_greeting}! Welcome back.\n\n"
+            lines = [f"👋 {time_greeting}!"]
 
-        # Contextual business snapshot
+        # Contextual business snapshot — single most-useful number.
+        # NOTE: avoid wrapping the currency string in `*…*` because iOS
+        # WhatsApp can mis-render bold around the ₦ symbol + comma as
+        # strikethrough. Plain text reads fine on every client.
         from app.models.models import Invoice
         pending_total = (
             self.db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
@@ -621,33 +631,19 @@ class WhatsAppHandler:
         ) or 0
 
         if pending_count > 0 and float(pending_total) > 0:
+            currency = get_user_currency(self.db, issuer_id)
+            money = fmt_money(float(pending_total), currency, convert=False)
             s = "s" if pending_count != 1 else ""
-            msg += f"💰 You have *₦{float(pending_total):,.0f}* unpaid across *{pending_count} invoice{s}*.\n\n"
+            lines.append("")
+            lines.append(f"💰 {money} unpaid across {pending_count} invoice{s}.")
 
-        msg += "What would you like to do?\n\n"
-        msg += (
-            "📝 *Create invoice:*\n"
-            "`Invoice Joy 08012345678, 5000 wig`\n\n"
-            "💸 *Track expense:*\n"
-            "`Expense: 5,000 transport`\n\n"
-        )
-        if user and user.effective_plan.value == "pro":
-            msg += (
-                "📦 *From inventory:*\n"
-                "Type *products* to browse your stock\n\n"
-            )
-        msg += (
-            "📊 *Business report:*\n"
-            "Type *report* for your analytics\n"
-            "Type *tax report* for tax summary + PDF\n\n"
-            "💱 *Currency:*\n"
-            "Type *usd* or *naira* to switch display currency\n\n"
-            "🚀 Type *setup* to check your account status\n"
-            "❓ Ask me anything — e.g. \"how to get paid\"\n"
-            "🆘 Type *support* to reach our team\n\n"
-            "Type *help* for full guide."
-        )
-        self.client.send_text(sender, msg)
+        lines.append("")
+        lines.append("Quick actions:")
+        lines.append("📝 New invoice → reply *invoice*")
+        lines.append("📊 See your numbers → reply *report*")
+        lines.append("❓ Anything else → reply *help*")
+
+        self.client.send_text(sender, "\n".join(lines))
 
     def _send_quick_status(self, sender: str, issuer_id: int) -> None:
         """Send a quick invoice status summary — available to all users for free."""
