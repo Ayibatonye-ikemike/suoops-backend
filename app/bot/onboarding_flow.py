@@ -36,6 +36,11 @@ class OnboardingSession:
     description: str = ""
     customer_phone: str = ""
     currency: str = "NGN"
+    # Multi-line items captured at the amount step (e.g. "5000 shoe, 4000 belt").
+    # When non-empty, this is the source of truth for the invoice contents;
+    # ``amount``/``description`` mirror the totals/first item for backwards
+    # compatibility with the review prompt.
+    lines: list = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -186,15 +191,33 @@ def _lookup_customer_phone(db, user_id: int, name: str) -> str | None:
 def _send_review(client, phone: str, session: OnboardingSession) -> None:
     """Confirm-before-send review with interactive buttons (text fallback)."""
     money = _money_label(session.amount, session.currency)
-    desc = session.description or "Service"
     phone_line = f"\n📱 {session.customer_phone}" if session.customer_phone else "\n📱 _no phone_"
-    body = (
-        "📝 *Review your invoice*\n\n"
-        f"👤 {session.customer_name}\n"
-        f"💰 {money} — {desc}"
-        f"{phone_line}\n\n"
-        "Send it now?"
-    )
+
+    # Multi-item invoices get a per-line breakdown so the user can verify
+    # the parser correctly split "5000 shoe, 4000 belt" into two items.
+    if session.lines and len(session.lines) > 1:
+        items_block = "\n".join(
+            f"• {_money_label(float(li.get('unit_price') or 0), session.currency)}"
+            f" — {(li.get('description') or 'Item').strip()}"
+            for li in session.lines
+        )
+        body = (
+            "📝 *Review your invoice*\n\n"
+            f"👤 {session.customer_name}\n"
+            f"{items_block}\n"
+            f"💰 *Total: {money}*"
+            f"{phone_line}\n\n"
+            "Send it now?"
+        )
+    else:
+        desc = session.description or "Service"
+        body = (
+            "📝 *Review your invoice*\n\n"
+            f"👤 {session.customer_name}\n"
+            f"💰 {money} — {desc}"
+            f"{phone_line}\n\n"
+            "Send it now?"
+        )
     sent = False
     try:
         send_buttons = getattr(client, "send_interactive_buttons", None)
@@ -436,11 +459,83 @@ def _handle_amount(
     phone: str,
     text: str,
 ) -> dict[str, Any] | None:
-    """Step 2: Capture amount and optional description."""
-    import re
+    """Step 2: Capture amount and optional description.
 
-    # Try to extract amount from text like "5000 wig" or "15,000 website design" or just "5000"
+    Supports both single-item ("5000 wig") and multi-item input
+    ("5000 shoe, 4000 belt, 6000 cap"). Multi-item parsing is
+    delegated to the NLP service so we share one parser everywhere.
+    """
+    import re
+    from decimal import Decimal
+
     text = text.strip()
+
+    # Multi-item detection: try the NLP line-item parser first when
+    # the input looks like it might contain more than one amount.
+    # We only use its output if it returns 2+ lines — otherwise we
+    # fall back to the simpler single-item regex below to preserve
+    # existing behaviour (and friendlier validation messages).
+    multi_lines: list[dict[str, Any]] = []
+    is_usd = (session.currency or "NGN").upper() == "USD"
+    try:
+        from app.bot.nlp_service import NLPService
+
+        nlp = NLPService()
+        candidate = nlp._extract_line_items(
+            text, phone_variants=set(), is_usd=is_usd,
+        )
+        # Drop quantity-only items (no unit price) — those need
+        # inventory lookup that the guided flow doesn't support yet.
+        candidate = [c for c in candidate if c.get("unit_price") is not None]
+        if len(candidate) >= 2:
+            multi_lines = candidate
+    except Exception:
+        logger.exception("multi-item parse failed; falling back to single-item")
+
+    if multi_lines:
+        total = sum(
+            Decimal(str(li["unit_price"])) * int(li.get("quantity") or 1)
+            for li in multi_lines
+        )
+        min_amt, min_label = _money_min(session.currency)
+        if float(total) < min_amt:
+            examples = _money_examples(session.currency)
+            client.send_text(
+                phone,
+                f"⚠️ Total seems too low. Minimum is {min_label}.\n\n"
+                f"💰 *Try again:* _e.g. `{examples[0]}`_"
+            )
+            return None
+        session.amount = float(total)
+        session.lines = [
+            {
+                "description": str(li.get("description") or "Item"),
+                "quantity": int(li.get("quantity") or 1),
+                "unit_price": float(li["unit_price"]),
+            }
+            for li in multi_lines
+        ]
+        session.description = ", ".join(
+            li["description"] for li in session.lines
+        )
+
+        if session.customer_phone:
+            session.step = "review"
+            _send_review(client, phone, session)
+            return None
+
+        session.step = "phone"
+        client.send_text(
+            phone,
+            f"✅ {len(session.lines)} items totalling "
+            f"*{_money_label(session.amount, session.currency)}*\n\n"
+            "📱 *What's your customer's phone number?*\n\n"
+            "_Type their number so they get the invoice on WhatsApp._\n"
+            "_Or type *skip* to create without a phone number._"
+        )
+        return None
+
+    # Single-item path (original behaviour)
     amount_match = re.match(
         r"^[\₦N]?\s*([\d,]+(?:\.\d{1,2})?)\s*(.*)?$",
         text,
@@ -482,6 +577,7 @@ def _handle_amount(
     description = (amount_match.group(2) or "").strip()
     session.amount = amount
     session.description = description or "Service"
+    session.lines = []  # single-item path — clear any prior multi-line state
 
     # If we already auto-completed the phone in the name step, jump
     # straight to the review screen — no need to ask again.
@@ -569,6 +665,7 @@ def _handle_review(
         session.amount = 0
         session.description = ""
         session.customer_phone = ""
+        session.lines = []
         session.step = "customer_name"
         client.send_text(
             phone,
@@ -580,13 +677,23 @@ def _handle_review(
 
     if text_lower in confirm_words:
         # Build invoice data in the format _create_invoice expects.
-        lines = [
-            {
-                "description": session.description or "Service",
-                "quantity": 1,
-                "unit_price": session.amount,
-            }
-        ]
+        if session.lines:
+            lines = [
+                {
+                    "description": li.get("description") or "Service",
+                    "quantity": int(li.get("quantity") or 1),
+                    "unit_price": li.get("unit_price"),
+                }
+                for li in session.lines
+            ]
+        else:
+            lines = [
+                {
+                    "description": session.description or "Service",
+                    "quantity": 1,
+                    "unit_price": session.amount,
+                }
+            ]
         invoice_data: dict[str, Any] = {
             "customer_name": session.customer_name,
             "customer_phone": session.customer_phone,

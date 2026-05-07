@@ -481,13 +481,26 @@ class InvoiceIntentProcessor:
         no_contact_info: bool = False
     ) -> None:
         customer_name = getattr(invoice.customer, "name", "N/A") if invoice.customer else "N/A"
-        
-        # Show appropriate status label
-        status_display = (
-            "Awaiting Payment Confirmation"
-            if invoice.status == "awaiting_confirmation"
-            else invoice.status.replace("_", " ").title()
-        )
+
+        # Unified status label: ``pending`` and ``awaiting_confirmation``
+        # both mean "not paid yet" from the business user's perspective.
+        # Showing two different labels for what is functionally the same
+        # state confuses users (see whatsapp transcript review 2026-05).
+        if invoice.status == "paid":
+            status_display = "Paid"
+        elif invoice.status in ("pending", "awaiting_confirmation"):
+            status_display = "Awaiting Payment"
+        else:
+            status_display = invoice.status.replace("_", " ").title()
+
+        # Short, human-friendly invoice reference for chat display.
+        # The full ID (``INV-<32 hex>``) stays in the dashboard URL and
+        # the PDF caption so deep links remain stable.
+        full_id = invoice.invoice_id or ""
+        if full_id.startswith("INV-") or full_id.startswith("EXP-"):
+            short_id = f"{full_id[:4]}{full_id[4:10]}"
+        else:
+            short_id = full_id[:10] or full_id
         
         # Get remaining invoice balance
         remaining_balance = None
@@ -507,7 +520,7 @@ class InvoiceIntentProcessor:
         inv_currency = getattr(invoice, "currency", "NGN") or "NGN"
 
         business_message = (
-            f"✅ Invoice {invoice.invoice_id} created!\n\n"
+            f"✅ Invoice *{short_id}* created!\n\n"
             f"💰 Amount: {fmt_money_full(invoice.amount, inv_currency, convert=False)}\n"
             f"👤 Customer: {customer_name}\n"
             f"{due_display}"
@@ -557,14 +570,14 @@ class InvoiceIntentProcessor:
                 f"💳 Buy more: ₦{pack_price:,} for {pack_size} → suoops.com/dashboard/billing/purchase"
             )
 
-        self.client.send_text(sender, business_message)
-        
-        # "Create another?" prompt
-        self.client.send_text(
-            sender,
-            "💡 Want to create another invoice? Just type your next one!\n"
-            "e.g. `Invoice Ade 08012345678, 10000 design work`"
+        # Inline the "create another?" hint to avoid splitting the
+        # post-creation feedback across multiple chat bubbles.
+        business_message += (
+            "\n\n💡 _Want to create another? Just type your next one — e.g._\n"
+            "`Invoice Ade 08012345678, 10000 design work`"
         )
+
+        self.client.send_text(sender, business_message)
 
         # Send invoice PDF as document (better UX than URL link)
         if invoice.pdf_url and invoice.pdf_url.startswith("http"):
@@ -572,7 +585,7 @@ class InvoiceIntentProcessor:
                 sender,
                 invoice.pdf_url,
                 f"Invoice_{invoice.invoice_id}.pdf",
-                f"📄 Invoice {invoice.invoice_id} - {fmt_money_full(invoice.amount, inv_currency, convert=False)}",
+                f"📄 Invoice {short_id} — {fmt_money_full(invoice.amount, inv_currency, convert=False)}",
             )
 
     def _notify_customer(self, invoice, data: dict[str, Any], issuer_id: int) -> bool:

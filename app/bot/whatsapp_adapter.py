@@ -795,19 +795,25 @@ class WhatsAppHandler:
         # Onboarding finish nudge: surface the referral code right
         # after the user's first guided invoice. Wrapped so any
         # failure here cannot break the invoice flow.
-        try:
-            self.client.send_text(
-                sender,
-                "✅ Nice work — your invoice is on its way!\n\n"
-                "🎁 One more thing: invite a friend and earn "
-                "*₦488* every time they upgrade to Pro 👇",
-            )
-            self._send_referral_card(sender, issuer_id)
-        except Exception:
-            logger.exception(
-                "Failed to send post-onboarding referral nudge to %s",
-                sender,
-            )
+        #
+        # Throttled to once per 24h per sender so power users who
+        # create many invoices back-to-back don't see the same
+        # promo block after every send (see WhatsApp UX review
+        # 2026-05).
+        if self._should_send_post_invoice_nudge(sender):
+            try:
+                self.client.send_text(
+                    sender,
+                    "✅ Nice work — your invoice is on its way!\n\n"
+                    "🎁 One more thing: invite a friend and earn "
+                    "*₦488* every time they upgrade to Pro 👇",
+                )
+                self._send_referral_card(sender, issuer_id)
+            except Exception:
+                logger.exception(
+                    "Failed to send post-onboarding referral nudge to %s",
+                    sender,
+                )
 
     def _send_quick_status(self, sender: str, issuer_id: int) -> None:
         """Send a quick invoice status summary — available to all users for free."""
@@ -1586,6 +1592,29 @@ class WhatsAppHandler:
                 "All amounts will show in ₦.\n\n"
                 "Type *usd* to switch to dollars."
             )
+
+    def _should_send_post_invoice_nudge(self, sender: str) -> bool:
+        """Return True at most once per 24h per sender.
+
+        Used to gate the proactive post-invoice referral nudge so users
+        creating multiple invoices in a row don't see the same promo
+        block repeatedly. Falls open (returns True) if Redis is
+        unavailable so behaviour matches the legacy unthrottled path
+        for local dev.
+        """
+        try:
+            from app.db.redis_client import get_redis_client
+
+            r = get_redis_client()
+            if r is None:
+                return True
+            key = f"bot:post_invoice_nudge:{sender}"
+            # SET ... NX EX 86400 — first writer wins for 24h.
+            ok = r.set(key, "1", nx=True, ex=86400)
+            return bool(ok)
+        except Exception:
+            logger.exception("post-invoice nudge throttle check failed for %s", sender)
+            return True
 
     def _send_referral_card(self, sender: str, issuer_id: int) -> None:
         """Send the user's referral code, share link, and live stats.
