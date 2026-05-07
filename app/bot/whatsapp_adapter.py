@@ -354,6 +354,25 @@ class WhatsAppHandler:
             return
         # ── End currency toggle ───────────────────────────────────
 
+        # ── Referral code lookup ──────────────────────────────────
+        referral_keywords = {
+            "referral", "referrals", "refer", "refer friend", "refer a friend",
+            "my code", "my referral", "my referral code", "referral code",
+            "share code", "invite", "invite friend", "earn", "rewards",
+        }
+        if text_lower in referral_keywords:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._send_referral_card(sender, issuer_id)
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+            return
+        # ── End referral lookup ───────────────────────────────────
+
         # Handle explicit help command - give concise guide
         if is_help:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
@@ -1088,6 +1107,48 @@ class WhatsAppHandler:
                 "Type *usd* to switch to dollars."
             )
 
+    def _send_referral_card(self, sender: str, issuer_id: int) -> None:
+        """Send the user's referral code, share link, and live stats.
+
+        Triggered by keywords like ``referral``/``my code``/``invite`` and
+        proactively right after signup so users don't need to hunt for the
+        code in the dashboard.
+        """
+        try:
+            from app.services.referral_service import ReferralService
+            from app.services.referral_share import (
+                build_referral_whatsapp_message,
+            )
+
+            user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+            if not user:
+                return
+
+            service = ReferralService(self.db)
+            code_obj = service.get_or_create_referral_code(issuer_id)
+            stats = service.get_referral_stats(issuer_id)
+
+            msg = build_referral_whatsapp_message(user.name or "", code_obj.code)
+
+            paid = stats.get("paid_signups", 0)
+            total = stats.get("total_referrals", 0)
+            if total or paid:
+                msg += (
+                    f"\n\n📊 *Your stats so far:*\n"
+                    f"• Total signups: *{total}*\n"
+                    f"• Paid (Pro) signups: *{paid}*\n"
+                    f"• Earned: *₦{paid * 488:,}*"
+                )
+
+            self.client.send_text(sender, msg)
+        except Exception:
+            logger.exception("Failed to send referral card to %s", sender)
+            self.client.send_text(
+                sender,
+                "⚠️ Couldn't load your referral code right now. "
+                "View it anytime at suoops.com/dashboard/referrals"
+            )
+
     def _send_help_guide(self, sender: str, issuer_id: int) -> None:
         """Send comprehensive help guide to a business user."""
         help_message = (
@@ -1155,6 +1216,11 @@ class WhatsAppHandler:
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Type *usd* — show amounts in US Dollars\n"
             "Type *naira* — switch back to Naira (₦)\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "🎁 *EARN WITH REFERRALS*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Type *referral* — get your code & invite link.\n"
+            "Earn *₦488* every time a friend upgrades to Pro 💸\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "💡 *TIPS*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"

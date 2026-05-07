@@ -94,6 +94,34 @@
     </p>
   </td></tr>
 
+  {% if referral_code %}
+  <!-- Referral block — surface the code on day zero so users don't have to hunt for it -->
+  <tr><td style="padding:24px 40px 0;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:20px;">
+      <tr><td>
+        <p style="color:#166534;font-size:14px;font-weight:700;margin:0 0 6px;">🎁 Earn ₦488 per friend you refer</p>
+        <p style="color:#166534;font-size:13px;line-height:1.6;margin:0 0 14px;">
+          Share SuoOps with other business owners. When a friend you invite upgrades to <strong>Pro</strong>,
+          you earn <strong>₦488</strong> — paid out monthly in cash.
+        </p>
+        <p style="color:#1e293b;font-size:13px;margin:0 0 4px;">
+          <strong>Your referral code:</strong>
+          <code style="background:#ffffff;border:1px solid #bbf7d0;border-radius:4px;padding:2px 8px;font-size:13px;letter-spacing:1px;">{{ referral_code }}</code>
+        </p>
+        <p style="color:#1e293b;font-size:13px;margin:8px 0 14px;word-break:break-all;">
+          <strong>Your invite link:</strong><br>
+          <a href="{{ referral_link }}" style="color:#16a34a;text-decoration:none;">{{ referral_link }}</a>
+        </p>
+        <a href="{{ dashboard_url }}/referrals"
+           style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;
+                  padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;">
+          Track Earnings →
+        </a>
+      </td></tr>
+    </table>
+  </td></tr>
+  {% endif %}
+
   <!-- Footer -->
   <tr><td style="padding:28px 40px;text-align:center;border-top:1px solid #e2e8f0;margin-top:24px;">
     <p style="color:#94a3b8;font-size:12px;margin:0;">

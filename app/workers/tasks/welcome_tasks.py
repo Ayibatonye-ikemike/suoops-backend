@@ -66,6 +66,21 @@ def send_instant_welcome(user_id: int) -> dict:
 
         name = user.name.split()[0] if user.name else "there"
 
+        # ── Get or create the user's referral code so we can include it in
+        #    both the welcome email and a follow-up WhatsApp message. We do
+        #    this BEFORE sending so users have their share link from day zero.
+        referral_code: str | None = None
+        referral_link: str | None = None
+        try:
+            from app.services.referral_service import ReferralService
+            from app.services.referral_share import build_referral_link
+
+            code_obj = ReferralService(db).get_or_create_referral_code(user_id)
+            referral_code = code_obj.code
+            referral_link = build_referral_link(referral_code)
+        except Exception as e:
+            logger.warning("Could not provision referral code for user %s: %s", user_id, e)
+
         # ── De-dup: don't re-send if task retries after success ──────
         already = (
             db.query(UserEmailLog.id)
@@ -87,6 +102,8 @@ def send_instant_welcome(user_id: int) -> dict:
                     name=name,
                     dashboard_url="https://suoops.com/dashboard",
                     whatsapp_number="+234 818 376 3636",
+                    referral_code=referral_code,
+                    referral_link=referral_link,
                 )
                 plain = (
                     f"Hi {name}! 🎉\n\n"
@@ -96,6 +113,15 @@ def send_instant_welcome(user_id: int) -> dict:
                     "💬 Or just message us on WhatsApp: +234 818 376 3636\n\n"
                     "Your first 5 invoices are free. Go ahead and send one now:\n"
                     "https://suoops.com/dashboard/invoices/new\n\n"
+                )
+                if referral_code and referral_link:
+                    plain += (
+                        "🎁 Earn ₦488 per friend you refer\n"
+                        f"Your referral code: {referral_code}\n"
+                        f"Your invite link: {referral_link}\n"
+                        "Track earnings: https://suoops.com/dashboard/referrals\n\n"
+                    )
+                plain += (
                     "We're here if you need anything.\n\n"
                     "— The SuoOps Team"
                 )
@@ -145,6 +171,25 @@ def send_instant_welcome(user_id: int) -> dict:
                 logger.info("Started onboarding flow for user %s", user_id)
             except Exception as e:
                 logger.warning("Onboarding prompt failed for user %s: %s", user_id, e)
+
+        # ── 4. Referral nudge (so the code is one tap away from day zero) ──
+        if user.phone and result.get("whatsapp_sent") and referral_code:
+            try:
+                import time
+                time.sleep(4)  # Let onboarding prompt land first
+                from app.core.whatsapp import get_whatsapp_client
+                from app.services.referral_share import (
+                    build_referral_whatsapp_message,
+                )
+
+                client = get_whatsapp_client()
+                client.send_text(
+                    user.phone,
+                    build_referral_whatsapp_message(user.name or name, referral_code),
+                )
+                logger.info("Sent referral card to user %s", user_id)
+            except Exception as e:
+                logger.warning("Referral nudge failed for user %s: %s", user_id, e)
 
         # ── Record so Daily activation skips duplicate welcome ───────
         if result["email_sent"] or result["whatsapp_sent"]:
