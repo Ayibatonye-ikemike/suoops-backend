@@ -174,6 +174,32 @@ def send_instant_welcome(user_id: int) -> dict:
                 from app.core.whatsapp import get_whatsapp_client
 
                 client = get_whatsapp_client()
+
+                # ── Demo invoice preview: show the customer experience
+                #    BEFORE we ask them to create one. Massive aha-moment
+                #    — they see exactly what their first customer will
+                #    receive. Plain text, no DB writes, no quota cost.
+                try:
+                    demo_msg = (
+                        "👀 *Here's what your customer will see:*\n"
+                        "─────────────────\n"
+                        f"Hi! *{user.business_name or user.name or 'Your business'}* sent you "
+                        "an invoice via SuoOps:\n\n"
+                        "📄 INV-DEMO-001\n"
+                        "💰 ₦5,000 — Sample item\n"
+                        "📅 Due in 7 days\n\n"
+                        "💳 *Pay now:* suoops.com/pay/demo\n"
+                        "🏦 Or transfer to: GTBank ****1234\n\n"
+                        "Reply *paid* once you've sent it.\n"
+                        "─────────────────\n"
+                        "_That's the experience your customers get. "
+                        "Now let's make a real one_ 👇"
+                    )
+                    client.send_text(user.phone, demo_msg)
+                    time.sleep(2)
+                except Exception as e:
+                    logger.warning("Demo invoice preview failed for user %s: %s", user_id, e)
+
                 start_onboarding(user.phone, user.id)
                 send_onboarding_prompt(client, user.phone, name)
                 logger.info("Started onboarding flow for user %s", user_id)

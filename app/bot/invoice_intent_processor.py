@@ -117,16 +117,43 @@ class InvoiceIntentProcessor:
         if quota_check.get("can_create"):
             return True
 
-        # No balance remaining
-        limit_message = (
-            "🚫 No Invoices Remaining!\n\n"
-            f"Plan: {quota_check.get('plan', '').upper()}\n"
-            f"Balance: {balance} invoices\n\n"
-            f"💳 Purchase a pack: ₦{quota_check.get('pack_price', 2500):,} "
-            f"for {quota_check.get('pack_size', 100)} invoices\n\n"
-            "Visit suoops.com/dashboard/billing/purchase to buy more."
+        # No balance remaining — give the user a one-tap upgrade path with
+        # interactive buttons (falls back to plain text if the client
+        # doesn't render them).
+        plan = (quota_check.get("plan", "") or "").upper()
+        pack_price = quota_check.get("pack_price", 2500)
+        pack_size = quota_check.get("pack_size", 100)
+        body = (
+            "🚫 *You're out of invoices.*\n\n"
+            f"Plan: *{plan or 'FREE'}*\n"
+            f"Balance: *{balance}* remaining\n\n"
+            f"💳 Top up *{pack_size}* invoices for *₦{pack_price:,}* — "
+            "or upgrade to *Pro* for unlimited.\n\n"
+            "What would you like to do?"
         )
-        self.client.send_text(sender, limit_message)
+        sent_buttons = False
+        try:
+            send_buttons = getattr(self.client, "send_interactive_buttons", None)
+            if callable(send_buttons):
+                sent_buttons = bool(send_buttons(
+                    sender,
+                    body,
+                    [
+                        {"id": "quota_topup", "title": "💳 Top up"},
+                        {"id": "quota_upgrade", "title": "🚀 Go Pro"},
+                        {"id": "quota_later", "title": "⏰ Later"},
+                    ],
+                ))
+        except Exception:
+            logger.exception("failed to send quota upgrade buttons")
+            sent_buttons = False
+        if not sent_buttons:
+            self.client.send_text(
+                sender,
+                body
+                + "\n\n• *Top up:* suoops.com/dashboard/billing/purchase\n"
+                "• *Upgrade:* suoops.com/dashboard/settings/subscription",
+            )
         return False
 
     async def _create_invoice(

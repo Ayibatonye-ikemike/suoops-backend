@@ -133,14 +133,81 @@ class WhatsAppHandler:
             logger.exception("Error handling WhatsApp message: %s", exc)
             # Try to notify user of error - but don't fail if this also errors
             try:
+                ticket_ref = self._auto_create_support_ticket(sender, exc)
                 if sender:
-                    self.client.send_text(
-                        sender,
-                        "⚠️ Something went wrong. Please try again in a moment.\n\n"
-                        "If this keeps happening, contact support@suoops.com",
-                    )
+                    if ticket_ref:
+                        self.client.send_text(
+                            sender,
+                            f"⚠️ Something went wrong on our side.\n\n"
+                            f"🆘 We've logged it as ticket *{ticket_ref}* — "
+                            "our team will look into it. "
+                            "Try again in a moment, or email support@suoops.com.",
+                        )
+                    else:
+                        self.client.send_text(
+                            sender,
+                            "⚠️ Something went wrong. Please try again in a moment.\n\n"
+                            "If this keeps happening, contact support@suoops.com",
+                        )
             except Exception:
                 logger.exception("Failed to send error message to user")
+
+    def _auto_create_support_ticket(
+        self, sender: str | None, exc: BaseException,
+    ) -> str | None:
+        """Open a support ticket for a bot-side failure so the team can
+        triage. Returns a short reference like 'BOT-123', or None on
+        failure (so the caller falls back to the generic message).
+        Best-effort: never raises.
+        """
+        if not sender:
+            return None
+        try:
+            from app.models.support_models import (
+                SupportTicket,
+                TicketCategory,
+                TicketPriority,
+            )
+
+            user = None
+            try:
+                issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+                if issuer_id:
+                    user = (
+                        self.db.query(models.User)
+                        .filter(models.User.id == issuer_id)
+                        .first()
+                    )
+            except Exception:
+                user = None
+
+            email = (getattr(user, "email", None) or "").strip() or "noreply@suoops.com"
+            name = (
+                getattr(user, "business_name", None)
+                or getattr(user, "name", None)
+                or sender
+            )
+            ticket = SupportTicket(
+                name=name,
+                email=email,
+                subject="WhatsApp bot error (auto-logged)",
+                message=(
+                    f"WhatsApp sender: {sender}\n"
+                    f"Exception: {type(exc).__name__}: {exc}\n"
+                ),
+                category=TicketCategory.TECHNICAL,
+                priority=TicketPriority.HIGH,
+            )
+            self.db.add(ticket)
+            self.db.commit()
+            return f"BOT-{ticket.id}"
+        except Exception:
+            logger.exception("auto-ticket creation failed")
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+            return None
 
     async def _handle_text_message(self, sender: str, message: dict[str, Any]) -> None:
         """Handle text messages with comprehensive error handling."""
@@ -1658,6 +1725,23 @@ class WhatsAppHandler:
             # No active session — silently ignore stale button press.
             return
         # ── End onboarding review buttons ──────────────────────────
+
+        # ── Quota cap upgrade buttons ──────────────────────────────
+        if button_id in ("quota_topup", "quota_upgrade", "quota_later"):
+            if button_id == "quota_topup":
+                self.client.send_text(
+                    sender,
+                    "💳 Top up here: suoops.com/dashboard/billing/purchase",
+                )
+            elif button_id == "quota_upgrade":
+                self.client.send_text(
+                    sender,
+                    "🚀 Upgrade to Pro: suoops.com/dashboard/settings/subscription",
+                )
+            else:
+                self.client.send_text(sender, "👍 No problem — I'll be here.")
+            return
+        # ── End quota buttons ──────────────────────────────────────
         
         # ── Product flow: cart action buttons ──────────────────────
         if button_id == "cart_add_more":
