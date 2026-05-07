@@ -203,7 +203,7 @@ class TestWhatsAppThreeWayFlow:
 
         assert invoice is not None
         assert invoice.customer is not None
-        assert invoice.customer.name == "Jane"
+        assert invoice.customer.name == "Jane Doe"
         assert invoice.customer.phone == "+2348087654321"
         assert invoice.amount == Decimal("50000")
 

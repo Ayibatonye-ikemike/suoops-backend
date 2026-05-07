@@ -317,7 +317,7 @@ class WhatsAppHandler:
         # ── End product browsing flow ──────────────────────────────
 
         # ── Quick Status Check (all users, free) ─────────────────
-        status_keywords = {"status", "pending", "my invoices", "my invoice", "balance", "how many invoices", "invoice balance"}
+        status_keywords = {"status", "my invoices", "my invoice", "balance", "how many invoices", "invoice balance"}
         if text_lower in status_keywords:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
@@ -330,6 +330,63 @@ class WhatsAppHandler:
                 )
             return
         # ── End status check ──────────────────────────────────────
+
+        # ── "Who owes me money?" — numbered list with quick actions ──
+        owed_keywords = {
+            "owed", "pending", "unpaid", "outstanding",
+            "who owes me", "who owes me money", "owes me",
+        }
+        if text_lower in owed_keywords:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._send_owed_list(sender, issuer_id)
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+            return
+        # ── End owed list ──────────────────────────────────────────
+
+        # ── Owed-list reply: "1", "1 paid", "1 remind", "1 cancel" ──
+        # Only treats short numeric leads as a row selection if there's
+        # an active owed-list session for this sender.
+        if self._maybe_handle_owed_list_reply(sender, text_lower):
+            return
+
+        # ── Account / status command — Tier 4 trust signals ─────────
+        account_keywords = {"account", "me", "whoami", "my account", "profile", "my profile"}
+        if text_lower in account_keywords:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._send_account_status(sender, issuer_id)
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+            return
+        # ── End account status ─────────────────────────────────────
+
+        # ── Undo last invoice (5-minute window) ────────────────────
+        undo_keywords = {
+            "undo", "undo last", "undo invoice", "cancel last",
+            "cancel last invoice", "delete last", "delete last invoice",
+        }
+        if text_lower in undo_keywords:
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                self._handle_undo_last_invoice(sender, issuer_id)
+            else:
+                self.client.send_text(
+                    sender,
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
+                )
+            return
+        # ── End undo ───────────────────────────────────────────────
 
         # ── Analytics / Insights command (Pro only) ──────────────
         analytics_keywords = {"report", "analytics", "insights", "summary", "dashboard", "stats", "my stats", "my report"}
@@ -714,6 +771,273 @@ class WhatsAppHandler:
             msg += "\n🚫 No invoices left! Buy a pack to continue invoicing."
 
         self.client.send_text(sender, msg)
+
+    # ── "Who owes me money?" ────────────────────────────────────
+    def _send_owed_list(self, sender: str, issuer_id: int) -> None:
+        """Send a numbered list of unpaid invoices and remember the
+        ordering in Redis so the user can reply '1 paid' / '1 remind'.
+        """
+        import datetime as _dt
+
+        from sqlalchemy.orm import joinedload
+
+        from app.bot.owed_list_session import save_owed_list, clear_owed_list
+        from app.models.models import Invoice
+
+        invoices = (
+            self.db.query(Invoice)
+            .options(joinedload(Invoice.customer))
+            .filter(
+                Invoice.issuer_id == issuer_id,
+                Invoice.invoice_type == "revenue",
+                Invoice.status.in_(["pending", "awaiting_confirmation"]),
+            )
+            .order_by(Invoice.created_at.desc())
+            .limit(10)
+            .all()
+        )
+
+        if not invoices:
+            clear_owed_list(sender)
+            self.client.send_text(
+                sender,
+                "✅ Nothing pending — every invoice has been paid. Nice work! 🎉",
+            )
+            return
+
+        currency = get_user_currency(self.db, issuer_id)
+        now = _dt.datetime.now(_dt.timezone.utc)
+        lines: list[str] = ["💰 *Who owes you*\n"]
+        for idx, inv in enumerate(invoices, start=1):
+            cname = (inv.customer.name if inv.customer else None) or "Customer"
+            money = fmt_money(float(inv.amount), inv.currency or currency, convert=False)
+            created_at = inv.created_at
+            if created_at and created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=_dt.timezone.utc)
+            days = (now - created_at).days if created_at else 0
+            age = ""
+            if inv.due_date:
+                due = inv.due_date if inv.due_date.tzinfo else inv.due_date.replace(tzinfo=_dt.timezone.utc)
+                overdue_days = (now - due).days
+                if overdue_days > 0:
+                    age = f" ⚠️ {overdue_days}d overdue"
+            elif days > 0:
+                age = f" ({days}d)"
+            lines.append(f"{idx}. {cname} — {money}{age}")
+
+        lines.append("")
+        lines.append("Reply with a number to act:")
+        lines.append("• `1 paid` — mark #1 as paid")
+        lines.append("• `1 remind` — nudge the customer")
+        lines.append("• `1 cancel` — void the invoice")
+
+        save_owed_list(sender, [inv.invoice_id for inv in invoices])
+        self.client.send_text(sender, "\n".join(lines))
+
+    def _maybe_handle_owed_list_reply(self, sender: str, text_lower: str) -> bool:
+        """Parse '1', '1 paid', '1 remind', '1 cancel' against an active
+        owed-list session. Returns True if the message was handled.
+        """
+        import re as _re
+
+        from app.bot.owed_list_session import get_owed_list
+
+        m = _re.match(r"^\s*(\d{1,2})(?:\s+(paid|remind|cancel|void))?\s*$", text_lower)
+        if not m:
+            return False
+        invoice_ids = get_owed_list(sender)
+        if not invoice_ids:
+            return False
+        idx = int(m.group(1)) - 1
+        action = (m.group(2) or "paid").lower()
+        if idx < 0 or idx >= len(invoice_ids):
+            self.client.send_text(
+                sender,
+                f"That number isn't on the list. Reply *owed* to refresh the list.",
+            )
+            return True
+        invoice_id = invoice_ids[idx]
+        issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+        if issuer_id is None:
+            return True
+
+        if action in {"paid"}:
+            self._owed_action_mark_paid(sender, issuer_id, invoice_id)
+        elif action == "remind":
+            self._owed_action_remind(sender, issuer_id, invoice_id)
+        elif action in {"cancel", "void"}:
+            self._owed_action_cancel(sender, issuer_id, invoice_id)
+        return True
+
+    def _owed_action_mark_paid(self, sender: str, issuer_id: int, invoice_id: str) -> None:
+        try:
+            invoice_service = build_invoice_service(self.db, user_id=issuer_id)
+            invoice_service.update_status(
+                issuer_id, invoice_id, "paid", updated_by_user_id=issuer_id,
+            )
+            self.client.send_text(
+                sender,
+                f"✅ Marked *{invoice_id}* as paid. Receipt is on its way to the customer.",
+            )
+        except Exception as exc:
+            logger.exception("owed-list mark-paid failed for %s", invoice_id)
+            self.client.send_text(
+                sender,
+                f"⚠️ Couldn't mark that invoice as paid: {exc}",
+            )
+
+    def _owed_action_cancel(self, sender: str, issuer_id: int, invoice_id: str) -> None:
+        try:
+            invoice_service = build_invoice_service(self.db, user_id=issuer_id)
+            invoice_service.update_status(
+                issuer_id, invoice_id, "cancelled", updated_by_user_id=issuer_id,
+            )
+            self.client.send_text(
+                sender,
+                f"❌ Invoice *{invoice_id}* cancelled.",
+            )
+        except Exception as exc:
+            logger.exception("owed-list cancel failed for %s", invoice_id)
+            self.client.send_text(
+                sender,
+                f"⚠️ Couldn't cancel that invoice: {exc}",
+            )
+
+    def _owed_action_remind(self, sender: str, issuer_id: int, invoice_id: str) -> None:
+        from sqlalchemy.orm import joinedload
+
+        from app.models.models import Invoice
+
+        invoice = (
+            self.db.query(Invoice)
+            .options(joinedload(Invoice.customer), joinedload(Invoice.issuer))
+            .filter(
+                Invoice.issuer_id == issuer_id,
+                Invoice.invoice_id == invoice_id,
+            )
+            .first()
+        )
+        if not invoice or not invoice.customer:
+            self.client.send_text(sender, "⚠️ Couldn't find that invoice.")
+            return
+        if not invoice.customer.phone:
+            self.client.send_text(
+                sender,
+                f"⚠️ {invoice.customer.name or 'That customer'} has no phone on file. "
+                "Add it at suoops.com/dashboard/customers and try again.",
+            )
+            return
+        try:
+            from app.workers.tasks.messaging_tasks import (
+                _send_customer_whatsapp_reminder,
+            )
+
+            tier = "customer_overdue_1d"
+            business_name = invoice.issuer.business_name or invoice.issuer.name
+            ok = _send_customer_whatsapp_reminder(
+                invoice, invoice.customer, invoice.issuer, tier, business_name,
+            )
+        except Exception:
+            logger.exception("owed-list remind failed for %s", invoice_id)
+            ok = False
+        if ok:
+            cname = invoice.customer.name or "your customer"
+            self.client.send_text(
+                sender,
+                f"📨 Reminder sent to *{cname}* for invoice *{invoice_id}*.",
+            )
+        else:
+            self.client.send_text(
+                sender,
+                "⚠️ Couldn't send the reminder right now. The customer may need "
+                "to message you first to open the WhatsApp window.",
+            )
+
+    # ── Account / "me" status ──────────────────────────────────
+    def _send_account_status(self, sender: str, issuer_id: int) -> None:
+        """One-screen account snapshot: verified, bank, currency, plan, quota."""
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        if not user:
+            return
+        biz = user.business_name or user.name or "Your business"
+        verified = "✅ Verified" if getattr(user, "phone_verified", False) else "⚠️ Phone unverified"
+        bank_name = user.bank_name or user.payout_bank_name or None
+        acct = user.account_number or user.payout_account_number or None
+        if bank_name and acct:
+            masked = f"****{acct[-4:]}" if len(acct) >= 4 else acct
+            bank_line = f"🏦 {bank_name} {masked}"
+        else:
+            bank_line = "🏦 No bank set — add one at suoops.com/dashboard/settings"
+        currency = (getattr(user, "preferred_currency", "NGN") or "NGN").upper()
+        plan = user.effective_plan.value.upper()
+        balance = getattr(user, "invoice_balance", 0)
+
+        lines = [
+            f"📋 *{biz}*",
+            "",
+            verified,
+            bank_line,
+            f"🌍 Currency: *{currency}*",
+            f"💼 Plan: *{plan}*",
+            f"📦 Invoice balance: *{balance}* remaining",
+        ]
+        if balance <= 2:
+            lines.append("")
+            lines.append("⚠️ Running low — top up at suoops.com/dashboard/billing/purchase")
+        if plan != "PRO":
+            lines.append("")
+            lines.append("🚀 Type *upgrade* to unlock Pro (analytics, inventory, daily summary)")
+        self.client.send_text(sender, "\n".join(lines))
+
+    # ── Undo last invoice (5-minute window) ────────────────────
+    def _handle_undo_last_invoice(self, sender: str, issuer_id: int) -> None:
+        import datetime as _dt
+
+        from sqlalchemy.orm import joinedload
+
+        from app.models.models import Invoice
+
+        cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=5)
+        invoice = (
+            self.db.query(Invoice)
+            .options(joinedload(Invoice.customer))
+            .filter(
+                Invoice.issuer_id == issuer_id,
+                Invoice.invoice_type == "revenue",
+                Invoice.status.in_(["pending", "awaiting_confirmation"]),
+                Invoice.created_at >= cutoff,
+            )
+            .order_by(Invoice.created_at.desc())
+            .first()
+        )
+        if not invoice:
+            self.client.send_text(
+                sender,
+                "Nothing to undo — the *undo* shortcut only works within 5 minutes "
+                "of creating an invoice.\n\nTo cancel an older one, type *owed* "
+                "and reply with `<n> cancel`.",
+            )
+            return
+        try:
+            invoice_service = build_invoice_service(self.db, user_id=issuer_id)
+            invoice_service.update_status(
+                issuer_id, invoice.invoice_id, "cancelled",
+                updated_by_user_id=issuer_id,
+            )
+        except Exception as exc:
+            logger.exception("undo-last failed")
+            self.client.send_text(sender, f"⚠️ Couldn't undo that invoice: {exc}")
+            return
+        cname = (invoice.customer.name if invoice.customer else None) or "your customer"
+        money = fmt_money(
+            float(invoice.amount),
+            invoice.currency or get_user_currency(self.db, issuer_id),
+            convert=False,
+        )
+        self.client.send_text(
+            sender,
+            f"↩️ Undone — invoice *{invoice.invoice_id}* ({cname}, {money}) is cancelled.",
+        )
 
     def _save_feedback(self, sender: str, text: str) -> bool:
         """Save a feedback reply as a testimonial and thank the user.

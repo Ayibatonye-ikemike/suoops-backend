@@ -507,7 +507,7 @@ class NLPService:
         currency = "USD" if is_usd else "NGN"
         
         return {
-            "customer_name": name.capitalize(),
+            "customer_name": name.title(),
             "amount": total_amount,
             "currency": currency,
             "due_date": due,
