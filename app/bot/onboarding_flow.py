@@ -64,6 +64,74 @@ def start_onboarding(phone: str, user_id: int) -> OnboardingSession:
     return session
 
 
+def start_guided_invoice(
+    client,
+    phone: str,
+    user_id: int,
+    *,
+    customer_name: str | None = None,
+    customer_phone: str | None = None,
+    amount: float | None = None,
+    description: str | None = None,
+) -> OnboardingSession:
+    """Start a slot-filling invoice session, skipping pre-filled steps.
+
+    Used when we detected invoice intent but the user's message was
+    missing data (e.g. "bill Joy" without an amount). We pre-fill what
+    we already know and ask only for the next missing slot, in a
+    natural, friendly tone.
+    """
+    session = OnboardingSession(user_id=user_id)
+    if customer_name and customer_name.lower() not in {"customer", ""}:
+        session.customer_name = customer_name
+    if customer_phone:
+        session.customer_phone = customer_phone
+    if amount and amount > 0:
+        session.amount = float(amount)
+    if description:
+        session.description = description
+
+    _sessions[phone] = session
+
+    # Decide first prompt based on what's still missing.
+    if not session.customer_name:
+        session.step = "customer_name"
+        client.send_text(
+            phone,
+            "👋 Sure — let's get that invoice out!\n\n"
+            "👤 *Who are you billing?*\n\n"
+            "_Just type their name (e.g. Joy, Mrs Bello, ABC Ltd)_\n\n"
+            "_Type *cancel* to stop._",
+        )
+    elif not session.amount:
+        session.step = "amount"
+        client.send_text(
+            phone,
+            f"👍 Got it — invoice for *{session.customer_name}*.\n\n"
+            "💰 *How much, and what is it for?*\n\n"
+            "_Examples:_\n"
+            "• `5000 wig`\n"
+            "• `15000 website design`\n"
+            "• `50000`\n\n"
+            "_Type *cancel* to stop._",
+        )
+    elif not session.customer_phone:
+        session.step = "phone"
+        desc = f" for *{session.description}*" if session.description else ""
+        client.send_text(
+            phone,
+            f"✅ *{session.customer_name}* — ₦{session.amount:,.0f}{desc}.\n\n"
+            "📱 *What's their phone number?*\n\n"
+            "_So they get the invoice on WhatsApp._\n"
+            "_Type *skip* to send without one._",
+        )
+    else:
+        # All slots filled — nothing to ask, return session as-is so the
+        # caller can finish creating the invoice.
+        session.step = "done"
+    return session
+
+
 def clear_onboarding(phone: str) -> None:
     """Remove onboarding session."""
     _sessions.pop(phone, None)

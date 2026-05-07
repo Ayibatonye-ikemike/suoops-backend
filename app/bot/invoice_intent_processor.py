@@ -91,6 +91,16 @@ class InvoiceIntentProcessor:
 
         await self._create_invoice(invoice_service, issuer_id, sender, data, payload)
 
+    @staticmethod
+    def _best_description(data: dict[str, Any]) -> str | None:
+        """Pick the best item description from parsed data, if any."""
+        lines = data.get("lines") or []
+        for line in lines:
+            desc = (line.get("description") or "").strip()
+            if desc and desc.lower() not in {"item", "service", "customer", ""}:
+                return desc
+        return None
+
     def _enforce_quota(self, invoice_service, issuer_id: int, sender: str) -> bool:
         """Check invoice balance before creating invoice. Returns (can_create, balance)."""
         try:
@@ -150,16 +160,30 @@ class InvoiceIntentProcessor:
         # ── Guard: reject zero / trivially-small amounts early ──
         amount = data.get("amount", 0)
         if not amount or amount <= 0:
-            self.client.send_text(
-                sender,
-                "👋 Let's create your invoice!\n\n"
-                "Just send me a message in this format:\n\n"
-                "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
-                "📋 *Examples:*\n"
-                "• `Invoice Joy 08012345678, 12000 wig`\n"
-                "• `Invoice Ada 50 braids, 20 gel`\n\n"
-                "💡 Type *usd* or *naira* to switch your invoice currency.",
-            )
+            # Try to start a guided slot-fill flow with whatever we
+            # already extracted (name, phone). That's friendlier than
+            # dumping a rigid format guide and forcing the user to start
+            # over.
+            try:
+                from app.bot.onboarding_flow import start_guided_invoice
+
+                start_guided_invoice(
+                    self.client,
+                    sender,
+                    issuer_id,
+                    customer_name=data.get("customer_name") or None,
+                    customer_phone=data.get("customer_phone") or None,
+                    description=self._best_description(data),
+                )
+            except Exception:
+                logger.exception("Failed to start guided invoice flow for %s", sender)
+                self.client.send_text(
+                    sender,
+                    "👋 Let's create your invoice!\n\n"
+                    "Just tell me:\n"
+                    "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
+                    "📋 *Example:* `Invoice Joy 08012345678, 12000 wig`",
+                )
             return
 
         # Currency-aware minimum: $1 for USD, ₦100 for NGN

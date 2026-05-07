@@ -224,30 +224,39 @@ class WhatsAppHandler:
 
         # ── "I want to create an invoice" intent (no actual data yet) ──
         # Catch loose phrases users send when they click a "Create on
-        # WhatsApp" link or just open the chat — we want to welcome them
-        # with the format guide instead of failing the NLP parser and
-        # showing a red "couldn't find amount" error.
+        # WhatsApp" link or just open the chat. Instead of failing the
+        # NLP and showing a red "couldn't find amount" error, we kick
+        # off a guided slot-fill flow with whatever we can extract.
         intent_phrases = (
+            # invoice synonyms
             "create an invoice", "create invoice", "make an invoice",
             "make invoice", "send an invoice", "send invoice",
-            "new invoice", "i want to invoice", "want to create",
-            "want to make an invoice", "how do i create",
-            "how to create an invoice", "how to invoice",
-            "want to send an invoice", "i want to create",
+            "new invoice", "i want to invoice", "want to invoice",
+            "want to create an invoice", "want to make an invoice",
+            "how do i create", "how to create an invoice", "how to invoice",
+            "i want to create", "raise an invoice", "raise invoice",
+            "issue an invoice", "issue invoice", "generate invoice",
+            # bill / charge synonyms
+            "bill someone", "i want to bill", "want to bill", "bill a customer",
+            "charge someone", "i want to charge", "want to charge",
+            "send a bill", "send bill",
         )
         # Only treat as "intent" if there's no digit/amount in the message
         has_digit = any(ch.isdigit() for ch in text)
         if not has_digit and any(p in text_lower for p in intent_phrases):
-            self.client.send_text(
-                sender,
-                "👋 Let's create your invoice!\n\n"
-                "Just send me a message in this format:\n\n"
-                "`Invoice [Name] [Phone], [Amount] [Item]`\n\n"
-                "📋 *Examples:*\n"
-                "• `Invoice Joy 08012345678, 12000 wig`\n"
-                "• `Invoice Ada 50 braids, 20 gel`\n\n"
-                "💡 You can also send a *voice note* — I'll transcribe it.",
-            )
+            issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+            if issuer_id is not None:
+                # Start guided slot-fill — friendlier than a format dump.
+                from app.bot.onboarding_flow import start_guided_invoice
+                start_guided_invoice(self.client, sender, issuer_id)
+            else:
+                # Not a registered business — gentle nudge to sign up.
+                self.client.send_text(
+                    sender,
+                    "👋 Hey! I'd love to help you invoice on WhatsApp.\n\n"
+                    "First, register free at *suoops.com* — takes 30 seconds. "
+                    "Then come back and I'll walk you through your first invoice.",
+                )
             return
         # ── End intent-phrase shortcut ─────────────────────────────
 
@@ -489,17 +498,15 @@ class WhatsAppHandler:
         
         # Check if user is trying to create an invoice but format is wrong
         # NLP will return "unknown" intent if the keyword is missing or format is too off
-        if parse.intent == "unknown" and "invoice" in text_lower:
+        if parse.intent == "unknown" and any(
+            kw in text_lower for kw in ("invoice", "bill", "charge")
+        ):
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
-                # This is a registered business trying to create an invoice
-                self.client.send_text(
-                    sender,
-                    "🤔 I couldn't understand the format.\n\n"
-                    "✅ *Try:*\n"
-                    "`Invoice Joy 08012345678, 5000 wig`\n\n"
-                    "Type *help* for more examples."
-                )
+                # Drop into a guided slot-fill instead of dumping the
+                # rigid format guide.
+                from app.bot.onboarding_flow import start_guided_invoice
+                start_guided_invoice(self.client, sender, issuer_id)
                 return
         
         # Try expense processor first (checks if expense-related)
