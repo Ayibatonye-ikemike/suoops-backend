@@ -10,8 +10,11 @@ client = TestClient(app)
 def _signup_and_get_token():
     # Minimal auth flow (phone only)
     phone = "+2349990001112"
-    r = client.post("/auth/signup/request", json={"phone": phone, "name": "InvUser"})
-    assert r.status_code == 200
+    r = client.post(
+        "/auth/signup/request",
+        json={"phone": phone, "name": "InvUser", "business_name": "Test Biz"},
+    )
+    assert r.status_code == 200, r.text
     # Extract OTP from in-memory store
     from app.services.otp_service import OTPService
     svc = OTPService()
@@ -19,21 +22,21 @@ def _signup_and_get_token():
     assert raw is not None
     import json
     code = json.loads(raw)["code"]
-    v = client.post("/auth/signup/verify", json={"phone": phone, "otp": code})
+    v = client.post(
+        "/auth/signup/verify",
+        json={
+            "phone": phone,
+            "otp": code,
+            "bank_name": "SuoOps Bank",
+            "account_number": "0001234567",
+            "account_name": "Test Biz",
+        },
+    )
     assert v.status_code == 200, v.text
     token = v.json()["access_token"]
 
-    # Ensure bank details exist so revenue invoices pass validation
-    headers = _auth_headers(token)
-    bank_payload = {
-        "business_name": "Test Biz",
-        "bank_name": "SuoOps Bank",
-        "account_number": "0001234567",
-        "account_name": "Test Biz",
-    }
-    bd = client.patch("/users/me/bank-details", json=bank_payload, headers=headers)
-    assert bd.status_code == 200, bd.text
-
+    # Bank details are now captured during signup verification, so no
+    # follow-up PATCH is needed.
     return token
 
 
