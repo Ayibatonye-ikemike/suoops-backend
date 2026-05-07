@@ -13,14 +13,16 @@ and CartSession. Sessions expire after 30 minutes of inactivity.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _ONBOARDING_TTL = 1800  # 30 minutes
+_REDIS_KEY_PREFIX = "bot:onboarding:"
 
 
 @dataclass
@@ -44,12 +46,69 @@ class OnboardingSession:
         self.updated_at = time.time()
 
 
-# In-memory store: phone → OnboardingSession
+# In-memory fallback (used only if Redis is unavailable). Onboarding
+# state MUST be visible across gunicorn workers, so the canonical store
+# is Redis; this dict is a best-effort fallback for local dev.
 _sessions: dict[str, OnboardingSession] = {}
 
 
+def _redis_key(phone: str) -> str:
+    return f"{_REDIS_KEY_PREFIX}{phone}"
+
+
+def _redis():
+    """Return a Redis client, or None if unavailable."""
+    try:
+        from app.db.redis_client import get_redis_client
+
+        return get_redis_client()
+    except Exception:
+        return None
+
+
+def _save_session(phone: str, session: OnboardingSession) -> None:
+    """Persist session to Redis (with TTL); also keep in-memory copy."""
+    _sessions[phone] = session
+    r = _redis()
+    if r is None:
+        return
+    try:
+        r.setex(_redis_key(phone), _ONBOARDING_TTL, json.dumps(asdict(session)))
+    except Exception:
+        logger.exception("Failed to persist onboarding session for %s", phone)
+
+
 def get_onboarding_session(phone: str) -> OnboardingSession | None:
-    """Get active onboarding session, or None if expired/missing."""
+    """Get active onboarding session, or None if expired/missing.
+
+    Reads from Redis first so all gunicorn workers share state. Falls
+    back to the in-process dict for local dev when Redis isn't running.
+    """
+    r = _redis()
+    if r is not None:
+        try:
+            raw = r.get(_redis_key(phone))
+            if raw:
+                data = json.loads(raw)
+                session = OnboardingSession(**data)
+                if session.is_expired:
+                    try:
+                        r.delete(_redis_key(phone))
+                    except Exception:
+                        pass
+                    _sessions.pop(phone, None)
+                    return None
+                _sessions[phone] = session
+                return session
+            # Redis is the source of truth — if it has no key, the
+            # session is gone, even if a stale in-memory copy exists
+            # on this worker.
+            _sessions.pop(phone, None)
+            return None
+        except Exception:
+            logger.exception("Failed to load onboarding session for %s", phone)
+
+    # Redis unavailable — fall back to local dict
     session = _sessions.get(phone)
     if session and session.is_expired:
         del _sessions[phone]
@@ -60,7 +119,7 @@ def get_onboarding_session(phone: str) -> OnboardingSession | None:
 def start_onboarding(phone: str, user_id: int) -> OnboardingSession:
     """Start a new onboarding session for a user."""
     session = OnboardingSession(user_id=user_id)
-    _sessions[phone] = session
+    _save_session(phone, session)
     return session
 
 
@@ -91,7 +150,7 @@ def start_guided_invoice(
     if description:
         session.description = description
 
-    _sessions[phone] = session
+    _save_session(phone, session)
 
     # Decide first prompt based on what's still missing.
     if not session.customer_name:
@@ -133,8 +192,14 @@ def start_guided_invoice(
 
 
 def clear_onboarding(phone: str) -> None:
-    """Remove onboarding session."""
+    """Remove onboarding session from Redis and the in-memory cache."""
     _sessions.pop(phone, None)
+    r = _redis()
+    if r is not None:
+        try:
+            r.delete(_redis_key(phone))
+        except Exception:
+            logger.exception("Failed to clear onboarding session for %s", phone)
 
 
 def send_onboarding_prompt(client, phone: str, name: str) -> None:
@@ -179,13 +244,21 @@ def handle_onboarding_reply(
     session.touch()
 
     if session.step == "customer_name":
-        return _handle_customer_name(session, client, phone, text)
+        result = _handle_customer_name(session, client, phone, text)
     elif session.step == "amount":
-        return _handle_amount(session, client, phone, text)
+        result = _handle_amount(session, client, phone, text)
     elif session.step == "phone":
-        return _handle_phone(session, client, phone, text)
+        result = _handle_phone(session, client, phone, text)
+    else:
+        return None
 
-    return None
+    # Persist any step/slot mutations made by the handler so the next
+    # message (which may be served by a different gunicorn worker)
+    # picks up the latest state. The completion path clears the
+    # session itself, so only re-save while still mid-flow.
+    if result is None:
+        _save_session(phone, session)
+    return result
 
 
 def _handle_customer_name(
