@@ -28,6 +28,42 @@ class WhatsAppClient:
         self.base_url = f"https://graph.facebook.com/v21.0/{self.phone_number_id}/messages"
         self.media_url = "https://graph.facebook.com/v21.0"
 
+    def mark_read(self, message_id: str, *, typing: bool = False) -> bool:
+        """Mark an inbound WhatsApp message as read, optionally with the
+        "typing…" indicator. The typing bubble auto-clears within ~25 s
+        or when the next outbound message is sent — perfect for slow ops
+        like PDF generation, OCR, NLP. Best-effort: never raises.
+        """
+        if not message_id:
+            return False
+        if self._is_test_mode():
+            logger.debug("[WHATSAPP][TEST] mark_read msg=%s typing=%s", message_id, typing)
+            return True
+        if not self.phone_number_id or not self.api_key:
+            return False
+        try:
+            payload: dict[str, Any] = {
+                "messaging_product": "whatsapp",
+                "status": "read",
+                "message_id": message_id,
+            }
+            if typing:
+                payload["typing_indicator"] = {"type": "text"}
+            response = requests.post(
+                self.base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=5,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[WHATSAPP] mark_read failed for %s: %s", message_id, exc)
+            return False
+
     def send_text(self, to: str, body: str) -> bool:
         """Send a plain text message. Returns True on success, False on failure."""
         if self._is_test_mode():
@@ -36,7 +72,6 @@ class WhatsAppClient:
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP] Not configured, would send to %s: %s", to, body)
             return False
-
         try:
             payload = {
                 "messaging_product": "whatsapp",

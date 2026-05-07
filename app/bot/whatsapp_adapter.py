@@ -105,6 +105,16 @@ class WhatsAppHandler:
 
             msg_type = message.get("type", "text")
 
+            # Show "typing…" + read-receipt for slower message types so
+            # the user knows we're working on it. Best-effort.
+            wa_msg_id = message.get("message_id")
+            if wa_msg_id:
+                try:
+                    show_typing = msg_type in ("audio", "image")
+                    self.client.mark_read(wa_msg_id, typing=show_typing)
+                except Exception:
+                    logger.debug("mark_read failed", exc_info=True)
+
             if msg_type == "text":
                 await self._handle_text_message(sender, message)
                 return
@@ -239,6 +249,21 @@ class WhatsAppHandler:
             if self.invoice_processor.handle_customer_paid(sender):
                 logger.info("Handled payment confirmation from customer %s", sender)
                 return
+
+        # ── Inline edit by reply ─────────────────────────────────
+        # If the user is *replying* to one of our messages (context_id
+        # set) and the text looks like an amount tweak ("make it 5000",
+        # "actually 8,000"), patch their most recent pending invoice.
+        if message.get("context_id"):
+            try:
+                from app.bot.inline_edit import try_handle_inline_edit
+                issuer_id = self.invoice_processor._resolve_issuer_id(sender)
+                if try_handle_inline_edit(
+                    self.db, self.client, sender, text, issuer_id=issuer_id,
+                ):
+                    return
+            except Exception:
+                logger.exception("inline edit handler failed")
 
         # ── Feedback collection ──────────────────────────────────
         # If user has a pending feedback request and sends a substantial

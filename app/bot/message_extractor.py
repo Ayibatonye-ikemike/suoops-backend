@@ -56,6 +56,17 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any] | None:
 
         extracted: dict[str, Any] = {"from": normalized_sender, "type": msg_type}
 
+        # WhatsApp message id (needed for read receipts / typing indicator
+        # and for resolving inline replies via context.id).
+        if message.get("id"):
+            extracted["message_id"] = message["id"]
+
+        # If this message is a reply to a previous one, capture the id of
+        # the message being replied to so we can resolve inline edits.
+        ctx = message.get("context") or {}
+        if ctx.get("id"):
+            extracted["context_id"] = ctx["id"]
+
         if msg_type == "text":
             extracted["text"] = message.get("text", {}).get("body", "")
         elif msg_type == "image":
