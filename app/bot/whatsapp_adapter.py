@@ -171,6 +171,23 @@ class WhatsAppHandler:
                             await self.invoice_processor._create_invoice(
                                 invoice_service, issuer_id, sender, invoice_data, {},
                             )
+                            # ── Onboarding finish nudge: surface the referral
+                            #    code while the user is still in the bot, right
+                            #    after their first invoice. Wrapped so any
+                            #    failure here can't break the invoice flow.
+                            try:
+                                self.client.send_text(
+                                    sender,
+                                    "✅ Nice work — your first invoice is on its way!\n\n"
+                                    "🎁 One more thing: invite a friend and earn "
+                                    "*₦488* every time they upgrade to Pro 👇",
+                                )
+                                self._send_referral_card(sender, issuer_id)
+                            except Exception:
+                                logger.exception(
+                                    "Failed to send post-onboarding referral nudge to %s",
+                                    sender,
+                                )
                 return
 
         # Check if customer is confirming payment

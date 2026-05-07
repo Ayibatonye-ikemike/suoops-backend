@@ -71,13 +71,18 @@ def send_instant_welcome(user_id: int) -> dict:
         #    this BEFORE sending so users have their share link from day zero.
         referral_code: str | None = None
         referral_link: str | None = None
+        referral_share_url: str | None = None
         try:
             from app.services.referral_service import ReferralService
-            from app.services.referral_share import build_referral_link
+            from app.services.referral_share import (
+                build_referral_link,
+                build_whatsapp_share_url,
+            )
 
             code_obj = ReferralService(db).get_or_create_referral_code(user_id)
             referral_code = code_obj.code
             referral_link = build_referral_link(referral_code)
+            referral_share_url = build_whatsapp_share_url(name, referral_code)
         except Exception as e:
             logger.warning("Could not provision referral code for user %s: %s", user_id, e)
 
@@ -104,6 +109,7 @@ def send_instant_welcome(user_id: int) -> dict:
                     whatsapp_number="+234 818 376 3636",
                     referral_code=referral_code,
                     referral_link=referral_link,
+                    referral_share_url=referral_share_url,
                 )
                 plain = (
                     f"Hi {name}! 🎉\n\n"
@@ -111,7 +117,7 @@ def send_instant_welcome(user_id: int) -> dict:
                     "You can now:\n"
                     "📄 Create and send invoices in under 60 seconds\n"
                     "💬 Or just message us on WhatsApp: +234 818 376 3636\n\n"
-                    "Your first 5 invoices are free. Go ahead and send one now:\n"
+                    "Your first 2 invoices are free. Go ahead and send one now:\n"
                     "https://suoops.com/dashboard/invoices/new\n\n"
                 )
                 if referral_code and referral_link:
@@ -119,8 +125,10 @@ def send_instant_welcome(user_id: int) -> dict:
                         "🎁 Earn ₦488 per friend you refer\n"
                         f"Your referral code: {referral_code}\n"
                         f"Your invite link: {referral_link}\n"
-                        "Track earnings: https://suoops.com/dashboard/referrals\n\n"
                     )
+                    if referral_share_url:
+                        plain += f"Share on WhatsApp: {referral_share_url}\n"
+                    plain += "Track earnings: https://suoops.com/dashboard/referrals\n\n"
                 plain += (
                     "We're here if you need anything.\n\n"
                     "— The SuoOps Team"
@@ -234,3 +242,101 @@ def _send_email(to_email: str, subject: str, html_body: str, plain_body: str) ->
     except Exception as e:
         logger.warning("Instant welcome SMTP failed to %s: %s", to_email, e)
         return False
+
+
+# ─────────────────────────────────────────────────────────────────────
+# First-paid-invoice referral nudge
+# ─────────────────────────────────────────────────────────────────────
+# Trigger: dispatched from InvoiceStatusMixin.update_status when an invoice
+# transitions to "paid". We only actually message the user when this is
+# their FIRST paid invoice — that's the moment of peak motivation
+# ("SuoOps got me paid!") so the referral ask lands well.
+FIRST_PAID_REFERRAL_LOG_TYPE = "first_paid_referral_nudge"
+
+
+@celery_app.task(
+    name="referral.send_first_paid_nudge",
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=30,
+    time_limit=45,
+)
+def send_first_paid_referral_nudge(user_id: int) -> dict:
+    """Send a one-time referral nudge after the user's first paid invoice.
+
+    Idempotent — guarded by ``UserEmailLog`` so retries / repeated paid
+    transitions don't spam the user.
+    """
+    from sqlalchemy import func
+
+    from app.models import models
+    from app.models.models import User, UserEmailLog
+
+    result = {"sent": False, "skipped_reason": None}
+
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id).one_or_none()
+        if not user or not user.phone:
+            result["skipped_reason"] = "no_user_or_phone"
+            return result
+
+        # Dedup: only ever send this nudge once per user
+        already = (
+            db.query(UserEmailLog.id)
+            .filter(
+                UserEmailLog.user_id == user_id,
+                UserEmailLog.email_type == FIRST_PAID_REFERRAL_LOG_TYPE,
+            )
+            .first()
+        )
+        if already:
+            result["skipped_reason"] = "already_sent"
+            return result
+
+        # Confirm this really is the first paid invoice — guards against
+        # races where status.py dispatches before checking, or back-fills.
+        paid_count = (
+            db.query(func.count(models.Invoice.id))
+            .filter(
+                models.Invoice.issuer_id == user_id,
+                models.Invoice.status == "paid",
+            )
+            .scalar()
+            or 0
+        )
+        if paid_count > 1:
+            result["skipped_reason"] = "not_first_paid"
+            db.add(UserEmailLog(user_id=user_id, email_type=FIRST_PAID_REFERRAL_LOG_TYPE))
+            db.flush()
+            return result
+
+        try:
+            from app.core.whatsapp import get_whatsapp_client
+            from app.services.referral_service import ReferralService
+            from app.services.referral_share import build_referral_whatsapp_message
+
+            code_obj = ReferralService(db).get_or_create_referral_code(user_id)
+            first_name = (user.name or "there").split()[0]
+
+            intro = (
+                f"🎉 *You just got paid, {first_name}!*\n\n"
+                "Now's the perfect time — friends running businesses will trust "
+                "*your* recommendation. Share SuoOps and earn *₦488* every time "
+                "one of them upgrades to Pro 👇"
+            )
+            body = build_referral_whatsapp_message(user.name or first_name, code_obj.code)
+
+            client = get_whatsapp_client()
+            client.send_text(user.phone, intro)
+            client.send_text(user.phone, body)
+
+            db.add(UserEmailLog(user_id=user_id, email_type=FIRST_PAID_REFERRAL_LOG_TYPE))
+            db.flush()
+            result["sent"] = True
+            logger.info("First-paid referral nudge sent to user %s", user_id)
+        except Exception as e:
+            logger.warning("First-paid referral nudge failed for user %s: %s", user_id, e)
+            result["skipped_reason"] = f"error: {e}"
+
+    return result

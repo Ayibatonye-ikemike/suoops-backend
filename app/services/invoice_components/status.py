@@ -98,6 +98,22 @@ class InvoiceStatusMixin:
                 )
             self._handle_manual_payment(invoice)
 
+            # ── First-paid referral nudge: when this paid invoice is the
+            #    user's first, queue a one-tap WhatsApp referral card. The
+            #    Celery task itself confirms "first paid" + dedups, so we
+            #    can dispatch optimistically without a count query here.
+            try:
+                from app.workers.tasks.welcome_tasks import (
+                    send_first_paid_referral_nudge,
+                )
+
+                send_first_paid_referral_nudge.delay(invoice.issuer_id)
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue first-paid referral nudge for issuer %s",
+                    invoice.issuer_id,
+                )
+
         if self.cache:
             self.cache.invalidate_invoice(invoice_id)
             self.cache.invalidate_user_invoices(issuer_id)

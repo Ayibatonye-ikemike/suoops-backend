@@ -360,9 +360,11 @@ class ReferralService:
         # COMMISSION MODEL: Calculate total earnings
         total_commission_earned = paid_completed * REFERRAL_COMMISSION_AMOUNT  # ₦488 per paid referral
 
+        from app.services.referral_share import build_referral_link
+
         return {
             "referral_code": referral_code.code,
-            "referral_link": f"https://suoops.ng/register?ref={referral_code.code}",
+            "referral_link": build_referral_link(referral_code.code),
             "total_referrals": free_completed + paid_completed,
             "pending_referrals": pending_count,
             "free_signups": free_completed,

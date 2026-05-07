@@ -569,7 +569,7 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
                 "🧾 Receipts with QR verification for every payment\n"
                 "💰 Track expenses to see your real profit\n"
                 "👥 Customer database built automatically from invoices\n\n"
-                "You have 5 free invoices to get started.\n\n"
+                "You have 2 free invoices to get started.\n\n"
                 "Create your first invoice: https://suoops.com/dashboard/invoices/new\n\n"
                 "— SuoOps"
             ),

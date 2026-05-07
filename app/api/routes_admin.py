@@ -298,7 +298,7 @@ def get_user_detail(
     ).order_by(desc(PaymentTransaction.created_at)).limit(10).all()
     
     # Calculate invoices used (total created minus current balance)
-    # For new users with 5 free invoices, total would be total_invoices + remaining balance - 5
+    # For new users with 2 free invoices, total would be total_invoices + remaining balance - 2
     # Simpler: invoices_used = total_invoices (each invoice created consumes 1)
     invoices_used = invoice_counts.total
     
@@ -1906,10 +1906,10 @@ def get_starter_users(
     
     now = dt.datetime.now(dt.timezone.utc)
     
-    # Return FREE users who have purchased packs (invoice_balance > 5 or have transactions)
+    # Return FREE users who have purchased packs (invoice_balance > 2 or have transactions)
     starter_users = db.query(models.User).filter(
         models.User.plan == SubscriptionPlan.FREE,
-        models.User.invoice_balance > 5,  # More than the initial 5 free invoices
+        models.User.invoice_balance > 2,  # More than the initial 2 free invoices
     ).all()
     
     result = []
