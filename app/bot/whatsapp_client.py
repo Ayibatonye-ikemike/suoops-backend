@@ -186,7 +186,31 @@ class WhatsAppClient:
         language: str,
         components: list[dict[str, Any]] | None = None,
     ) -> bool:
-        """Send a pre-approved template message."""
+        """Send a pre-approved template message.
+
+        Returns True on success, False on failure. Use
+        :meth:`send_template_with_id` if you need the returned wamid (e.g. to
+        correlate delivery-status webhooks).
+        """
+        wamid = self.send_template_with_id(to, template_name, language, components)
+        if wamid is None:
+            return False
+        # An empty string is a successful test-mode send.
+        return True
+
+    def send_template_with_id(
+        self,
+        to: str,
+        template_name: str,
+        language: str,
+        components: list[dict[str, Any]] | None = None,
+    ) -> str | None:
+        """Send a pre-approved template and return the WhatsApp message id (wamid).
+
+        Returns:
+            The wamid string on success, ``""`` in test/unconfigured mode,
+            or ``None`` on failure.
+        """
         if self._is_test_mode():
             logger.info(
                 "[WHATSAPP TEMPLATE][TEST] Would send to %s: %s (%s)",
@@ -194,14 +218,14 @@ class WhatsAppClient:
                 template_name,
                 language,
             )
-            return True
+            return ""
         if not self.phone_number_id or not self.api_key:
             logger.warning(
                 "[WHATSAPP TEMPLATE] Not configured, would send to %s: %s",
                 to,
                 template_name,
             )
-            return False
+            return None
 
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
@@ -234,14 +258,23 @@ class WhatsAppClient:
             )
             response.raise_for_status()
             logger.info("[WHATSAPP TEMPLATE] ✓ Sent to %s with %s", to, template_name)
-            return True
+            try:
+                data = response.json() or {}
+                messages = data.get("messages") or []
+                if messages and isinstance(messages, list):
+                    wamid = messages[0].get("id")
+                    if wamid:
+                        return str(wamid)
+            except Exception:  # noqa: BLE001
+                logger.debug("[WHATSAPP TEMPLATE] Could not parse wamid from response", exc_info=True)
+            return ""
         except requests.HTTPError as exc:
             detail = exc.response.text if exc.response is not None else "(no body)"
             logger.error("[WHATSAPP TEMPLATE] HTTP Error to %s: %s | Response: %s", to, exc, detail)
-            return False
+            return None
         except Exception as exc:  # noqa: BLE001
             logger.error("[WHATSAPP TEMPLATE] Failed to send to %s: %s", to, exc)
-            return False
+            return None
 
     def send_otp_template(
         self,
@@ -249,20 +282,13 @@ class WhatsAppClient:
         otp_code: str,
         template_name: str = "otp_verifications",
         language: str = "en",
-    ) -> bool:
+    ) -> str | None:
         """Send OTP verification code using approved authentication template.
-        
-        Uses Meta's authentication template format which allows sending to users
-        who haven't messaged the business first (bypasses 24-hour window).
-        
-        Args:
-            to: Recipient phone number
-            otp_code: The OTP code to send
-            template_name: Name of the approved auth template (default: otp_verifications)
-            language: Template language code (default: en)
-        
+
         Returns:
-            True if sent successfully, False otherwise
+            The wamid (WhatsApp message id) on success, ``""`` in test/unconfigured
+            mode, or ``None`` on failure. Callers should treat both wamid strings
+            and ``""`` as successful sends.
         """
         # Authentication templates with "Copy code" button structure:
         # - Body: {{1}} is the OTP code
@@ -285,7 +311,7 @@ class WhatsAppClient:
         ]
         
         logger.info("[WHATSAPP OTP] Sending OTP template '%s' to %s", template_name, to)
-        return self.send_template(to, template_name, language, components)
+        return self.send_template_with_id(to, template_name, language, components)
 
     async def get_media_url(self, media_id: str) -> str:
         """Resolve a media ID into a downloadable URL."""

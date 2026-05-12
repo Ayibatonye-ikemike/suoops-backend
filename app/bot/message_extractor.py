@@ -37,13 +37,33 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any] | None:
                 errors = status.get("errors", [])
                 if errors:
                     err = errors[0]
+                    wamid = status.get("id")
+                    err_code = err.get("code")
+                    err_title = err.get("title")
+                    err_detail = err.get("error_data", {}).get("details", "")
                     logger.warning(
-                        "[STATUS] Delivery FAILED to %s: code=%s title=%s -- %s",
+                        "[STATUS] Delivery FAILED to %s: wamid=%s code=%s title=%s -- %s",
                         status.get("recipient_id"),
-                        err.get("code"),
-                        err.get("title"),
-                        err.get("error_data", {}).get("details", ""),
+                        wamid,
+                        err_code,
+                        err_title,
+                        err_detail,
                     )
+                    # If this wamid corresponds to a pending OTP, flag the
+                    # delivery failure so the frontend can surface it to the
+                    # user instead of leaving them on a spinning OTP screen.
+                    if wamid:
+                        try:
+                            from app.services.otp_service import OTPService
+
+                            OTPService().record_delivery_failure(
+                                wamid=wamid,
+                                error_code=err_code,
+                                error_title=err_title,
+                                error_detail=err_detail,
+                            )
+                        except Exception:  # noqa: BLE001
+                            logger.exception("Failed to record OTP delivery failure for wamid=%s", wamid)
             return None
 
         message = messages[0]

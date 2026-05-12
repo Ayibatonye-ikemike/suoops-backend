@@ -145,6 +145,7 @@ RATE_LIMITS = {
     "login_request": "10/minute",
     "login_verify": "10/minute",
     "otp_resend": "10/minute",
+    "otp_status": "60/minute",
     "refresh": "20/minute",
     # OAuth
     "oauth_login": "30/minute",

@@ -128,11 +128,30 @@ _SHARED_STORE: BaseKeyValueStore | None = None
 
 
 def _build_store() -> BaseKeyValueStore:
+    """Return a shared OTP store.
+
+    Behaviour:
+    * If ``REDIS_URL`` is configured, always return a ``RedisStore``. We
+      intentionally do NOT fall back to ``InMemoryStore`` on a transient Redis
+      hiccup, because doing so would silently cache an in-memory fallback for
+      the entire worker process lifetime — causing per-worker split-brain
+      (OTPs written by one worker invisible to another), which surfaces as
+      "code expired" errors for the user even though Redis itself is healthy.
+      Better to let the request fail loudly and retry against a healthy
+      worker than to drift into split-brain.
+    * Only when ``REDIS_URL`` is empty (tests / local dev without Redis) do we
+      use ``InMemoryStore``, and that fallback IS cached because it is the
+      only store available.
+    """
     global _SHARED_STORE
     if _SHARED_STORE is not None:
         return _SHARED_STORE
     redis_url = getattr(settings, "REDIS_URL", "")
     if redis_url:
+        # Construct (and cache) a RedisStore. The underlying redis client uses
+        # a connection pool with retry-on-timeout, so transient network errors
+        # bubble up as exceptions instead of silently turning the worker into
+        # an island.
         try:
             store = RedisStore(redis_url)
             store.set("__otp_healthcheck__", "ok", ttl_seconds=5)
@@ -140,7 +159,23 @@ def _build_store() -> BaseKeyValueStore:
             _SHARED_STORE = store
             return store
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Falling back to in-memory OTP store: %s", exc)
+            # In production, do NOT cache an in-memory fallback when Redis is
+            # configured. Surface the failure so the next request retries
+            # Redis instead of locking this worker into split-brain mode.
+            env = getattr(settings, "ENV", "dev").lower()
+            if env in {"prod", "production"}:
+                logger.error(
+                    "OTP RedisStore initialisation failed in %s; refusing in-memory fallback: %s",
+                    env,
+                    exc,
+                )
+                raise
+            logger.warning(
+                "OTP RedisStore unavailable in %s; falling back to in-memory store: %s",
+                env,
+                exc,
+            )
+    logger.warning("REDIS_URL not configured — using InMemoryStore for OTPs")
     _SHARED_STORE = InMemoryStore()
     return _SHARED_STORE
 
@@ -173,6 +208,85 @@ class OTPService:
     def _signup_key(identifier: str) -> str:
         """Generate signup data key for phone or email."""
         return f"signup-data:{identifier}"
+
+    @staticmethod
+    def _wamid_key(wamid: str) -> str:
+        """Map a WhatsApp message id back to the OTP it belongs to."""
+        return f"otp:wamid:{wamid}"
+
+    @staticmethod
+    def _delivery_failure_key(identifier: str, purpose: str) -> str:
+        """Flag set when a status webhook reports delivery failure."""
+        return f"otp:delivery-failed:{purpose}:{identifier}"
+
+    def record_delivery_failure(
+        self,
+        wamid: str,
+        error_code: int | str | None = None,
+        error_title: str | None = None,
+        error_detail: str | None = None,
+    ) -> bool:
+        """Mark the OTP associated with ``wamid`` as undeliverable.
+
+        Returns True if a matching OTP session was found and flagged.
+        """
+        if not wamid:
+            return False
+        mapping_raw = self._store.get(self._wamid_key(wamid))
+        if not mapping_raw:
+            return False
+        try:
+            mapping = json.loads(mapping_raw)
+            purpose = mapping["purpose"]
+            identifier = mapping["identifier"]
+        except (ValueError, KeyError):
+            logger.warning("Malformed wamid mapping for %s: %r", wamid, mapping_raw)
+            return False
+        payload = json.dumps({
+            "code": str(error_code) if error_code is not None else None,
+            "title": error_title,
+            "detail": error_detail,
+            "at": datetime.now(timezone.utc).isoformat(),
+        })
+        self._store.set(
+            self._delivery_failure_key(identifier, purpose),
+            payload,
+            self.OTP_TTL,
+        )
+        logger.info(
+            "[OTP] Recorded delivery failure for %s purpose=%s wamid=%s code=%s",
+            identifier,
+            purpose,
+            wamid,
+            error_code,
+        )
+        # Mapping no longer needed once we've flagged the failure.
+        self._store.delete(self._wamid_key(wamid))
+        return True
+
+    def get_delivery_status(self, identifier: str, purpose: str) -> dict[str, Any]:
+        """Return delivery status for a pending OTP.
+
+        Possible ``state`` values:
+            - ``failed``  – status webhook reported the message could not be delivered
+            - ``pending`` – OTP issued, no failure reported yet
+            - ``none``    – no active OTP for this identifier+purpose
+        """
+        failure_raw = self._store.get(self._delivery_failure_key(identifier, purpose))
+        if failure_raw:
+            try:
+                info = json.loads(failure_raw)
+            except ValueError:
+                info = {}
+            return {
+                "state": "failed",
+                "code": info.get("code"),
+                "title": info.get("title"),
+                "detail": info.get("detail"),
+            }
+        if self._store.get(self._otp_key(identifier, purpose)):
+            return {"state": "pending"}
+        return {"state": "none"}
     
     def _get_delivery_method(self, identifier: str) -> str:
         """Determine if identifier is email or phone number."""
@@ -352,9 +466,11 @@ Powered by SuoOps
         now_ts = datetime.now(timezone.utc).timestamp()
         record = OTPRecord(code=code, attempts=0, created_at=now_ts)
         self._store.set(self._otp_key(identifier, purpose), record.serialize(), self.OTP_TTL)
-        
+        # Clear any stale delivery-failure flag from a previous attempt.
+        self._store.delete(self._delivery_failure_key(identifier, purpose))
+
         delivery_method = self._get_delivery_method(identifier)
-        
+
         if delivery_method == "email":
             try:
                 self._send_email_otp(identifier, code, purpose)
@@ -365,18 +481,27 @@ Powered by SuoOps
         else:
             # WhatsApp OTP using approved authentication template
             try:
-                success = self._delivery.send_otp_template(
+                wamid = self._delivery.send_otp_template(
                     to=identifier,
                     otp_code=code,
                     template_name="otp_verifications",  # Approved authentication template
                     language="en",
                 )
-                if success:
-                    metrics.otp_whatsapp_delivery_success()
-                    logger.info("OTP template sent successfully to %s", identifier)
-                else:
+                # send_otp_template returns the wamid on success, "" in test/
+                # unconfigured mode, or None on failure.
+                if wamid is None:
                     metrics.otp_whatsapp_delivery_failure()
                     raise ValueError("Failed to send OTP via WhatsApp template")
+                metrics.otp_whatsapp_delivery_success()
+                logger.info("OTP template sent successfully to %s (wamid=%s)", identifier, wamid or "<none>")
+                if wamid:
+                    # Map wamid -> (purpose, identifier) so the delivery-status
+                    # webhook can flag failures back to the waiting user.
+                    self._store.set(
+                        self._wamid_key(wamid),
+                        json.dumps({"purpose": purpose, "identifier": identifier}),
+                        self.OTP_TTL,
+                    )
             except Exception:
                 metrics.otp_whatsapp_delivery_failure()
                 raise

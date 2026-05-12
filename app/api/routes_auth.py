@@ -158,6 +158,43 @@ def resend_otp(request: Request, payload: schemas.OTPResend, svc: AuthServiceDep
         raise HTTPException(status_code=429, detail=str(exc)) from exc
 
 
+@router.get("/otp/status")
+@limiter.limit(RATE_LIMITS["otp_status"])
+def otp_delivery_status(
+    request: Request,
+    svc: AuthServiceDep,
+    purpose: str,
+    phone: str | None = None,
+    email: str | None = None,
+):
+    """Return delivery status for a pending OTP.
+
+    Frontends poll this after requesting an OTP to detect WhatsApp delivery
+    failures reported asynchronously via Meta's status webhook (e.g. the
+    recipient is not a WhatsApp user, the business account has a payment
+    issue, the number is in a restricted region, etc.).
+
+    Response shape::
+
+        {"state": "pending" | "failed" | "none",
+         "code": "131026", "title": "...", "detail": "..."}
+    """
+    if purpose not in {"signup", "login"}:
+        raise HTTPException(status_code=400, detail="Invalid purpose")
+    if not phone and not email:
+        raise HTTPException(status_code=400, detail="phone or email is required")
+    if phone:
+        try:
+            identifier = svc._normalize_phone(phone)  # noqa: SLF001 - intentional reuse
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    else:
+        identifier = (email or "").strip().lower()
+        if not identifier:
+            raise HTTPException(status_code=400, detail="email is required")
+    return svc.otp.get_delivery_status(identifier, purpose)
+
+
 @router.post("/refresh", response_model=schemas.TokenOut)
 @limiter.limit(RATE_LIMITS["refresh"])
 def refresh_token(request: Request, svc: AuthServiceDep, payload: schemas.RefreshRequest | None = None):
