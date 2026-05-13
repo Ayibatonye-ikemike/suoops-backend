@@ -1,7 +1,9 @@
 import logging
 import threading
+import time
 
 import redis
+from limits.storage import MemoryStorage, RedisStorage
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
@@ -46,77 +48,179 @@ def get_user_identifier(request: Request) -> str:
     return f"{ip_address}:{plan}"
 
 
-def _create_redis_storage_uri() -> str:
+def _should_use_redis() -> bool:
+    """Whether Redis should back the rate limiter (production with rediss:// URL)."""
+    if settings.ENV.lower() != "prod":
+        return False
+    redis_url = settings.REDIS_URL
+    return bool(redis_url) and redis_url.startswith("rediss://")
+
+
+class ResilientStorage(MemoryStorage):
     """
-    Create a properly configured Redis URI for SlowAPI/limits.
-    
-    SlowAPI uses the 'limits' library which creates its own Redis connection pool.
-    We need to pass SSL configuration via the URI or create a custom storage.
+    Rate-limiter storage that prefers Redis but falls back to in-memory on failure.
+
+    Unlike a fixed Redis or memory storage, this:
+      • Lazily initialises the underlying Redis storage on first use (so a Redis
+        blip at gunicorn boot does not permanently degrade rate limiting).
+      • Retries Redis initialisation periodically (every ``_retry_interval``
+        seconds) when currently in fallback mode.
+      • Catches Redis exceptions on every operation and transparently falls back
+        to the in-memory parent class for that call.
+      • Logs (rate-limited) when fallback is in effect so operators can see it.
+
+    Inherits from MemoryStorage so any method we don't explicitly override
+    automatically uses the in-memory implementation.
     """
+
+    _retry_interval: float = 30.0  # seconds between Redis init retry attempts
+    _log_throttle_interval: float = 60.0  # seconds between fallback log lines
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._redis_storage: RedisStorage | None = None
+        self._redis_init_lock = threading.Lock()
+        self._last_redis_attempt: float = 0.0
+        self._last_fallback_log: float = 0.0
+
+    # ── Redis lifecycle ──────────────────────────────────────────────
+    def _try_init_redis(self) -> RedisStorage | None:
+        """Attempt to (re)build the Redis-backed storage. Returns None on failure."""
+        if not _should_use_redis():
+            return None
+        now = time.monotonic()
+        if now - self._last_redis_attempt < self._retry_interval:
+            return self._redis_storage  # don't hammer Redis if it just failed
+        with self._redis_init_lock:
+            # Re-check inside the lock
+            now = time.monotonic()
+            if self._redis_storage is not None:
+                return self._redis_storage
+            if now - self._last_redis_attempt < self._retry_interval:
+                return self._redis_storage
+            self._last_redis_attempt = now
+            try:
+                from app.db.redis_client import get_redis_client
+                client = get_redis_client()
+                # Storage URI is informational only here; pool drives the connection.
+                self._redis_storage = RedisStorage(
+                    uri=settings.REDIS_URL or "redis://",
+                    connection_pool=client.connection_pool,
+                )
+                logger.info("Rate limiter Redis storage initialised (lazy)")
+                return self._redis_storage
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Rate limiter Redis init failed (%s); using in-memory fallback. "
+                    "Will retry in %.0fs.",
+                    exc,
+                    self._retry_interval,
+                )
+                self._redis_storage = None
+                return None
+
+    def _redis(self) -> RedisStorage | None:
+        if self._redis_storage is not None:
+            return self._redis_storage
+        return self._try_init_redis()
+
+    def _log_fallback(self, op: str, exc: BaseException) -> None:
+        now = time.monotonic()
+        if now - self._last_fallback_log < self._log_throttle_interval:
+            return
+        self._last_fallback_log = now
+        logger.warning(
+            "Rate limiter Redis %s failed (%s); falling back to in-memory for this call.",
+            op, exc,
+        )
+        # Drop reference so next call retries init on the schedule.
+        self._redis_storage = None
+
+    # ── Storage methods used by FixedWindow / MovingWindow strategies ─
+    def incr(self, key, expiry, amount=1):
+        r = self._redis()
+        if r is not None:
+            try:
+                return r.incr(key, expiry, amount=amount)
+            except Exception as exc:  # noqa: BLE001
+                self._log_fallback("incr", exc)
+        return super().incr(key, expiry, amount=amount)
+
+    def get(self, key):
+        r = self._redis()
+        if r is not None:
+            try:
+                return r.get(key)
+            except Exception as exc:  # noqa: BLE001
+                self._log_fallback("get", exc)
+        return super().get(key)
+
+    def get_expiry(self, key):
+        r = self._redis()
+        if r is not None:
+            try:
+                return r.get_expiry(key)
+            except Exception as exc:  # noqa: BLE001
+                self._log_fallback("get_expiry", exc)
+        return super().get_expiry(key)
+
+    def check(self):
+        r = self._redis()
+        if r is not None:
+            try:
+                return r.check()
+            except Exception as exc:  # noqa: BLE001
+                self._log_fallback("check", exc)
+        return super().check()
+
+    def reset(self):
+        r = self._redis()
+        if r is not None:
+            try:
+                return r.reset()
+            except Exception as exc:  # noqa: BLE001
+                self._log_fallback("reset", exc)
+        return super().reset()
+
+    def clear(self, key):
+        r = self._redis()
+        if r is not None:
+            try:
+                return r.clear(key)
+            except Exception as exc:  # noqa: BLE001
+                self._log_fallback("clear", exc)
+        return super().clear(key)
+
+
+def _build_limiter() -> Limiter:
+    """Construct the slowapi Limiter, using Redis-backed resilient storage in prod."""
+    if _should_use_redis():
+        storage = ResilientStorage()
+        # Pre-warm so we surface errors at boot (but don't block — failure just
+        # means the first few requests use memory until retry succeeds).
+        storage._try_init_redis()
+        if storage._redis_storage is None:
+            logger.warning(
+                "Rate limiter starting with in-memory fallback; Redis will be retried."
+            )
+        # slowapi's Limiter only accepts a URI string in __init__; build with
+        # memory:// then swap in our resilient storage and rebuild the strategy.
+        lim = Limiter(key_func=get_user_identifier, storage_uri="memory://")
+        from limits.strategies import STRATEGIES
+        lim._storage = storage
+        strategy_name = lim._strategy or "fixed-window"
+        lim._limiter = STRATEGIES[strategy_name](storage)
+        logger.info("Rate limiter initialised with ResilientStorage (Redis + memory fallback)")
+        return lim
+
     if settings.ENV.lower() != "prod":
         logger.info("Rate limiter using in-memory storage (dev/test mode)")
-        return "memory://"
-    
-    redis_url = settings.REDIS_URL
-    if not redis_url:
-        return "memory://"
-    
-    # For TLS Redis, use the shared connection pool via custom storage below
-    if redis_url.startswith("rediss://"):
-        logger.info("Rate limiter will use custom Redis client with proper SSL config")
-        return "memory://"  # Placeholder — overridden by custom storage below
-    
-    return redis_url
+    else:
+        logger.warning("Rate limiter using in-memory storage in PRODUCTION — REDIS_URL not configured")
+    return Limiter(key_func=get_user_identifier, storage_uri="memory://")
 
 
-def _create_custom_redis_client() -> redis.Redis | None:
-    """
-    Create a Redis client with proper SSL configuration for rate limiting.
-    This bypasses SlowAPI's URI parsing issues.
-    """
-    if settings.ENV.lower() != "prod":
-        return None
-    
-    redis_url = settings.REDIS_URL
-    if not redis_url or not redis_url.startswith("rediss://"):
-        return None
-    
-    try:
-        # Use our centralized Redis pool
-        from app.db.redis_client import get_redis_client
-        client = get_redis_client()
-        logger.info("Rate limiter using shared Redis pool with proper SSL configuration")
-        return client
-    except Exception as e:
-        logger.warning("Failed to create Redis client for rate limiter: %s, falling back to memory", e)
-        return None
-
-
-# Configure rate limiter storage with custom Redis client
-storage_uri = _create_redis_storage_uri()
-
-# Try to use custom Redis client if in production
-_custom_redis_client = _create_custom_redis_client()
-
-if _custom_redis_client:
-    # Create limiter with custom storage using our Redis pool
-    # Use custom key function that includes user plan for dynamic rate limiting
-    from limits.storage import RedisStorage
-    try:
-        custom_storage = RedisStorage(uri=storage_uri, connection_pool=_custom_redis_client.connection_pool)
-        limiter = Limiter(
-            key_func=get_user_identifier,  # Dynamic rate limiting by plan
-            storage_uri=custom_storage,
-            storage_options={}
-        )
-        logger.info("Rate limiter initialized with shared Redis pool and plan-based limits")
-    except Exception as e:
-        logger.error("Failed to create custom Redis storage for rate limiter: %s, using memory", e)
-        limiter = Limiter(key_func=get_user_identifier, storage_uri="memory://")
-else:
-    if settings.ENV.lower() == "prod":
-        logger.warning("Rate limiter using in-memory storage in PRODUCTION — Redis unavailable")
-    limiter = Limiter(key_func=get_user_identifier, storage_uri=storage_uri)
+limiter = _build_limiter()
 
 
 # ── Monkey-patch slowapi to fail-open on Redis errors ─────────────
