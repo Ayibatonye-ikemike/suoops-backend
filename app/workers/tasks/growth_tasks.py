@@ -34,9 +34,11 @@ def _is_valid_phone(phone: str | None) -> bool:
 
 @celery_app.task(
     name="growth.send_aggregate_unpaid_alerts",
-    autoretry_for=(Exception,),
-    retry_backoff=60,
-    retry_kwargs={"max_retries": 2},
+    # NOTE: autoretry intentionally disabled. This task does bulk WhatsApp
+    # sends; a retry after a partial run would re-deliver the same template
+    # to users whose dedup row was not yet committed (we observed a 60s gap
+    # duplicate exactly matching retry_backoff). The task is on a Mon+Thu
+    # cron, so a single missed run is recoverable on the next schedule.
     soft_time_limit=300,
     time_limit=360,
 )
@@ -119,6 +121,21 @@ def send_aggregate_unpaid_alerts() -> dict[str, Any]:
                     f"collect 40% faster._"
                 )
 
+                # Claim the dedup slot BEFORE sending so a crash/retry mid-send
+                # cannot cause a second delivery within the 3-day window.
+                dedup_row = UserEmailLog(user_id=user.id, email_type="aggregate_unpaid")
+                db.add(dedup_row)
+                try:
+                    db.commit()
+                except Exception as commit_exc:  # noqa: BLE001
+                    db.rollback()
+                    logger.warning(
+                        "aggregate_unpaid: dedup commit failed for user %s (%s); skipping",
+                        user.id, commit_exc,
+                    )
+                    stats["skipped"] += 1
+                    continue
+
                 sent = False
                 has_phone = _is_valid_phone(user.phone)
 
@@ -163,9 +180,15 @@ def send_aggregate_unpaid_alerts() -> dict[str, Any]:
                         sent = True
 
                 if sent:
-                    db.add(UserEmailLog(user_id=user.id, email_type="aggregate_unpaid"))
-                    db.commit()  # Commit immediately so retries won't re-send
+                    pass  # dedup row already committed above
                 else:
+                    # Send failed across all channels. Remove the dedup claim so
+                    # the next scheduled run can try again.
+                    try:
+                        db.delete(dedup_row)
+                        db.commit()
+                    except Exception:  # noqa: BLE001
+                        db.rollback()
                     stats["failed"] += 1
 
         logger.info(
