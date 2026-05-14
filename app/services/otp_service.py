@@ -131,14 +131,18 @@ def _build_store() -> BaseKeyValueStore:
     """Return a shared OTP store.
 
     Behaviour:
-    * If ``REDIS_URL`` is configured, always return a ``RedisStore``. We
-      intentionally do NOT fall back to ``InMemoryStore`` on a transient Redis
-      hiccup, because doing so would silently cache an in-memory fallback for
-      the entire worker process lifetime — causing per-worker split-brain
-      (OTPs written by one worker invisible to another), which surfaces as
-      "code expired" errors for the user even though Redis itself is healthy.
-      Better to let the request fail loudly and retry against a healthy
-      worker than to drift into split-brain.
+    * If ``REDIS_URL`` is configured, always return a ``RedisStore`` (cached).
+      We do NOT perform a live healthcheck here, because a transient Redis
+      hiccup at worker boot (e.g. "max number of clients reached") would
+      otherwise crash the entire worker before it can serve any traffic.
+      The ``RedisStore`` is a thin wrapper around the shared connection pool;
+      real OTP operations performed at request time will surface Redis errors
+      to the caller as 500s, prompting a client-side retry that will likely
+      hit a healthy moment.
+    * We also do NOT cache an ``InMemoryStore`` fallback when ``REDIS_URL``
+      is set, because doing so would lock the worker into per-process
+      split-brain mode for its entire lifetime — OTPs written by one worker
+      would be invisible to others. Failing loudly is preferable.
     * Only when ``REDIS_URL`` is empty (tests / local dev without Redis) do we
       use ``InMemoryStore``, and that fallback IS cached because it is the
       only store available.
@@ -148,33 +152,27 @@ def _build_store() -> BaseKeyValueStore:
         return _SHARED_STORE
     redis_url = getattr(settings, "REDIS_URL", "")
     if redis_url:
-        # Construct (and cache) a RedisStore. The underlying redis client uses
-        # a connection pool with retry-on-timeout, so transient network errors
-        # bubble up as exceptions instead of silently turning the worker into
-        # an island.
         try:
             store = RedisStore(redis_url)
-            store.set("__otp_healthcheck__", "ok", ttl_seconds=5)
-            store.delete("__otp_healthcheck__")
-            _SHARED_STORE = store
-            return store
         except Exception as exc:  # noqa: BLE001
-            # In production, do NOT cache an in-memory fallback when Redis is
-            # configured. Surface the failure so the next request retries
-            # Redis instead of locking this worker into split-brain mode.
+            # Constructing the RedisStore should not require a live connection
+            # (it just resolves the shared pool). If it somehow fails, fall
+            # back to in-memory ONLY in dev/test. In prod, re-raise so the
+            # deploy fails clearly instead of starting in split-brain mode.
             env = getattr(settings, "ENV", "dev").lower()
             if env in {"prod", "production"}:
                 logger.error(
-                    "OTP RedisStore initialisation failed in %s; refusing in-memory fallback: %s",
-                    env,
-                    exc,
+                    "OTP RedisStore construction failed in %s; aborting: %s",
+                    env, exc,
                 )
                 raise
             logger.warning(
                 "OTP RedisStore unavailable in %s; falling back to in-memory store: %s",
-                env,
-                exc,
+                env, exc,
             )
+        else:
+            _SHARED_STORE = store
+            return store
     logger.warning("REDIS_URL not configured — using InMemoryStore for OTPs")
     _SHARED_STORE = InMemoryStore()
     return _SHARED_STORE
