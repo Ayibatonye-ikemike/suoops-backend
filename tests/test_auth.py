@@ -22,7 +22,7 @@ def test_signup_and_login_with_otp():
     # Step 1: request signup OTP
     reg = client.post(
         "/auth/signup/request",
-        json={"phone": phone, "name": "UserA"},
+        json={"phone": phone, "name": "UserA", "business_name": "User A Biz"},
     )
     assert reg.status_code == 200, reg.text
 
@@ -31,7 +31,13 @@ def test_signup_and_login_with_otp():
     # Step 2: verify signup OTP and receive tokens
     verify_signup = client.post(
         "/auth/signup/verify",
-        json={"phone": phone, "otp": otp},
+        json={
+            "phone": phone,
+            "otp": otp,
+            "bank_name": "Test Bank",
+            "account_number": "0123456789",
+            "account_name": "User A Biz",
+        },
     )
     assert verify_signup.status_code == 200, verify_signup.text
     signup_payload = verify_signup.json()

@@ -13,13 +13,22 @@ from app.services.otp_service import _SHARED_STORE, OTPRecord
 def _auth_headers(client: TestClient) -> dict[str, str]:
     """Obtain auth headers via OTP signup flow (replaces legacy password endpoints)."""
     phone = "+234" + secrets.token_hex(4)
-    start = client.post("/auth/signup/request", json={"phone": phone, "name": "PUser"})
+    start = client.post("/auth/signup/request", json={"phone": phone, "name": "PUser", "business_name": "PUser Biz"})
     assert start.status_code == 200, start.text
     key = f"otp:signup:{phone}"
     raw = _SHARED_STORE.get(key)  # type: ignore[attr-defined]
     assert raw, "Signup OTP missing"
     otp = OTPRecord.deserialize(raw).code
-    verify = client.post("/auth/signup/verify", json={"phone": phone, "otp": otp, "name": "PUser"})
+    verify = client.post(
+        "/auth/signup/verify",
+        json={
+            "phone": phone,
+            "otp": otp,
+            "bank_name": "Test Bank",
+            "account_number": "0123456789",
+            "account_name": "PUser Biz",
+        },
+    )
     assert verify.status_code == 200, verify.text
     token = verify.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

@@ -24,7 +24,16 @@ def _auth_client() -> tuple[TestClient, str]:
     r = client.post("/auth/signup/request", json={"phone": phone, "name": "TaxUser", "business_name": "Test Biz"})
     assert r.status_code == 200, r.text
     otp = _extract_otp(phone, "signup")
-    v = client.post("/auth/signup/verify", json={"phone": phone, "otp": otp})
+    v = client.post(
+        "/auth/signup/verify",
+        json={
+            "phone": phone,
+            "otp": otp,
+            "bank_name": "Test Bank",
+            "account_number": "0123456789",
+            "account_name": "Test Biz",
+        },
+    )
     assert v.status_code == 200, v.text
 
     # Tax endpoints require PRO plan.

@@ -14,7 +14,7 @@ def _signup_and_get_token(client: TestClient):
     """
     phone = "+234" + secrets.token_hex(4)
     # Request signup OTP
-    req = client.post("/auth/signup/request", json={"phone": phone, "name": "SmokeUser"})
+    req = client.post("/auth/signup/request", json={"phone": phone, "name": "SmokeUser", "business_name": "Smoke Biz"})
     assert req.status_code == 200, req.text
     # Retrieve OTP directly from in-memory store (test environment convenience)
     key = f"otp:signup:{phone}"
@@ -22,7 +22,14 @@ def _signup_and_get_token(client: TestClient):
     assert raw, "Signup OTP missing from store"
     otp = OTPRecord.deserialize(raw).code
     verify = client.post(
-        "/auth/signup/verify", json={"phone": phone, "otp": otp, "name": "SmokeUser"}
+        "/auth/signup/verify",
+        json={
+            "phone": phone,
+            "otp": otp,
+            "bank_name": "SmokeBank",
+            "account_number": "1234567890",
+            "account_name": "Smoke Biz",
+        },
     )
     assert verify.status_code == 200, verify.text
     token = verify.json()["access_token"]
