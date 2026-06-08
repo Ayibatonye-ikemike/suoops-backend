@@ -165,6 +165,11 @@ class BaseAppSettings(BaseSettings):
             default_violations: list[str] = []
             if self.JWT_SECRET == "change_me":
                 default_violations.append("JWT_SECRET uses default placeholder")
+            elif len(self.JWT_SECRET) < 32:
+                # HS256 signing keys should be at least 32 bytes (RFC 7518 §3.2).
+                default_violations.append(
+                    "JWT_SECRET is too short — use at least 32 characters of random entropy"
+                )
             if self.OAUTH_STATE_SECRET == "change_me_oauth_state":
                 default_violations.append("OAUTH_STATE_SECRET uses default placeholder")
             # WhatsApp verify token — block startup if empty or using old defaults.
