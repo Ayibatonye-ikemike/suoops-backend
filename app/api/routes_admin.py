@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+# Safety ceiling for admin analytics list queries that load full result sets
+# into memory. Generous enough to never truncate real data at current scale,
+# but prevents pathological memory blowup if the table grows unexpectedly.
+ADMIN_LIST_CAP = 5000
+
 
 # ── Admin response schemas ────────────────────────────────────────────
 
@@ -761,7 +766,7 @@ def get_platform_metrics(
         PaymentTransaction.status == PaymentStatus.SUCCESS,
     ).group_by(models.User.id).order_by(
         desc(func.max(PaymentTransaction.created_at))
-    ).all()
+    ).limit(ADMIN_LIST_CAP).all()
 
     pack_buyers_list: list[PackBuyerInfo] = []
     for user, pack_count, last_purchase in pack_buyer_rows:
@@ -792,7 +797,7 @@ def get_platform_metrics(
 
     paid_users_query = db.query(models.User).filter(
         models.User.plan.in_(paid_plans)
-    ).order_by(desc(models.User.subscription_started_at)).all()
+    ).order_by(desc(models.User.subscription_started_at)).limit(ADMIN_LIST_CAP).all()
     
     # Build paid users list with referral info
     paid_users_list: list[PaidUserInfo] = []
@@ -1452,7 +1457,7 @@ def get_business_intelligence(
             | (models.User.email.ilike(term))
         )
 
-    all_users = q.all()
+    all_users = q.limit(ADMIN_LIST_CAP).all()
 
     # ── Pre-fetch aggregated invoice data per user ──
     inv_stats = (

@@ -48,6 +48,9 @@ test_engine = create_engine(
 # Ensure application code uses the test engine
 settings.DATABASE_URL = TEST_DATABASE_URL  # type: ignore[attr-defined]
 settings.ENV = "test"  # type: ignore[attr-defined]
+# Use a 32+ char secret so JWT (HS256) token operations during tests don't emit
+# pyjwt's InsecureKeyLengthWarning from the short dev secret in .env.
+settings.JWT_SECRET = "test-jwt-secret-key-min-32-characters-long"  # type: ignore[attr-defined]
 db_session.engine = test_engine  # type: ignore[assignment]
 SessionLocal.configure(bind=test_engine)
 
