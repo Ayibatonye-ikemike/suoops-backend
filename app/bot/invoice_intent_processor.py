@@ -916,7 +916,7 @@ class InvoiceIntentProcessor:
         """
 
         from app.models import models
-        from app.services.invoice_components.status import InvoiceStatusComponent
+        from app.services.invoice_service import build_invoice_service
         from app.utils.phone import get_phone_variants
         
         # Normalize phone number for lookup - build all possible formats
@@ -983,8 +983,8 @@ class InvoiceIntentProcessor:
             )
             return True
         
-        # Use the status component to confirm transfer (same as clicking the button)
-        status_component = InvoiceStatusComponent(self.db)
+        # Use the invoice service to confirm transfer (same as clicking the button)
+        status_component = build_invoice_service(self.db)
         try:
             status_component.confirm_transfer(pending_invoice.invoice_id)
             
