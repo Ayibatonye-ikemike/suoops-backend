@@ -139,7 +139,13 @@ class AdminIPAllowlistMiddleware(BaseHTTPMiddleware):
             is_admin_ip_allowed,
         )
 
-        path = request.url.path
+        # Use the raw ASGI scope path for the security decision rather than
+        # request.url.path. request.url is reconstructed from the Host header and,
+        # on some Starlette versions (PYSEC-2026-161), a crafted Host header can
+        # make request.url.path differ from the path actually routed — which would
+        # let an attacker slip past this prefix check. scope["path"] is the path
+        # the router actually dispatches on, so it cannot be spoofed this way.
+        path = request.scope.get("path") or request.url.path
         # The IP-verdict endpoint must always respond so the frontend can render
         # a friendly "blocked" page instead of an opaque network error.
         if path == "/admin/auth/ip-allowed":

@@ -127,8 +127,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if request.method in SAFE_METHODS:
             return await call_next(request)
         
-        # Skip CSRF check for exempt paths
-        path = request.url.path
+        # Skip CSRF check for exempt paths. Use the raw ASGI scope path rather
+        # than request.url.path: request.url is rebuilt from the Host header and a
+        # crafted Host (PYSEC-2026-161) could make request.url.path look like an
+        # exempt prefix while the router dispatches the real, non-exempt path.
+        path = request.scope.get("path") or request.url.path
         if any(path.startswith(exempt) for exempt in EXEMPT_PATHS):
             return await call_next(request)
         
