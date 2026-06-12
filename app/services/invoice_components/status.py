@@ -1,7 +1,6 @@
 """Status update and public retrieval helpers."""
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 import logging
 
@@ -10,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app import metrics
 from app.core.exceptions import InvalidInvoiceStatusError, InvoiceNotFoundError
 from app.models import models
+from app.utils.async_utils import run_async
 
 logger = logging.getLogger(__name__)
 
@@ -193,13 +193,14 @@ class InvoiceStatusMixin:
                     pdf_url=invoice.pdf_url,
                 )
 
-            results = asyncio.run(_run())
-            logger.info(
-                "Receipt sent for invoice %s - Email: %s, WhatsApp: %s",
-                invoice_id,
-                results["email"],
-                results["whatsapp"],
-            )
+            results = run_async(_run())
+            if results:
+                logger.info(
+                    "Receipt sent for invoice %s - Email: %s, WhatsApp: %s",
+                    invoice_id,
+                    results["email"],
+                    results["whatsapp"],
+                )
             
             # If no customer contact info, notify business with receipt PDF via WhatsApp
             if not customer_email and not customer_phone:
@@ -289,7 +290,7 @@ class InvoiceStatusMixin:
                     results["whatsapp"],
                 )
 
-            asyncio.run(_run())
+            run_async(_run())
         except Exception as exc:  # noqa: BLE001
             logger.error("Notification dispatch failed for invoice %s: %s", invoice.invoice_id, exc)
 
@@ -534,7 +535,7 @@ class InvoiceStatusMixin:
                     except Exception as exc:
                         logger.error("Failed to send low stock email: %s", exc)
             
-            asyncio.run(_run())
+            run_async(_run())
 
             # Also send WhatsApp template if configured (one per product)
             from app.core.config import settings as _settings

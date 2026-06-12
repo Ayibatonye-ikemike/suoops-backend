@@ -89,7 +89,14 @@ class InvoiceQuotaMixin:
     
     def deduct_invoice_balance(self, issuer_id: int) -> None:
         """Deduct one invoice from user's balance after creating revenue invoice."""
-        user = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
+        # Lock the user row so concurrent deductions serialize and cannot both
+        # read the same balance and decrement past zero (race condition).
+        user = (
+            self.db.query(models.User)
+            .with_for_update()
+            .filter(models.User.id == issuer_id)
+            .one_or_none()
+        )
         if user and hasattr(user, 'invoice_balance') and user.invoice_balance > 0:
             user.invoice_balance -= 1
             self.db.commit()
@@ -101,13 +108,8 @@ class InvoiceQuotaMixin:
             # Sync low balance status to Brevo (best-effort, fire-and-forget)
             try:
                 from app.services.brevo_service import sync_low_balance_status
-                import asyncio
-                try:
-                    loop = asyncio.get_running_loop()
-                    # Inside an async context — schedule as a task
-                    loop.create_task(sync_low_balance_status(user))
-                except RuntimeError:
-                    # No running loop (sync context / threadpool) — run directly
-                    asyncio.run(sync_low_balance_status(user))
+                from app.utils.async_utils import run_async
+
+                run_async(sync_low_balance_status(user))
             except Exception as e:
                 logger.debug("Brevo low balance sync skipped: %s", e)
