@@ -156,9 +156,12 @@ class AdminIPAllowlistMiddleware(BaseHTTPMiddleware):
                         self.logger.warning(
                             "Blocked admin access from disallowed IP %s (%s)", client_ip, path
                         )
+                        # Respond exactly like a route that does not exist so a
+                        # disallowed visitor learns nothing about the admin panel
+                        # or the allowlist (no 403, no descriptive message).
                         return JSONResponse(
-                            status_code=403,
-                            content={"detail": "Access to the admin panel is not allowed from your network."},
+                            status_code=404,
+                            content={"detail": "Not Found"},
                         )
             finally:
                 db.close()
