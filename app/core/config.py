@@ -132,6 +132,12 @@ class BaseAppSettings(BaseSettings):
     # Admin bootstrap
     DEFAULT_ADMIN_PASSWORD: str | None = None  # One-time admin bootstrap password
 
+    # Admin access IP allowlist. Comma-separated IPv4/IPv6 addresses or CIDR
+    # ranges (e.g. "203.0.113.4, 198.51.100.0/24"). When empty/unset, the admin
+    # panel is reachable from any IP (no restriction). When set, only matching
+    # client IPs may reach any /admin* route.
+    ADMIN_IP_ALLOWLIST: str | None = None
+
     # Operational
     NGN_USD_RATE: str | None = None  # Naira/USD conversion rate (e.g. "1600")
     AUDIT_LOG_FILE: str = "storage/audit.log"  # Path to structured audit log

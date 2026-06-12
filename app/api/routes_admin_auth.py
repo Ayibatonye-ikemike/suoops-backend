@@ -15,10 +15,12 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from app.api.rate_limit import limiter
+from app.core.admin_security import record_admin_login_event
 from app.core.config import settings
-from app.core.security import TokenType, create_access_token, decode_token, hash_password, verify_password
+from app.core.security import TokenType, create_access_token, decode_token, hash_password
 from app.db.session import get_db
-from app.models.admin_models import AdminUser
+from app.models.admin_models import AdminLoginAudit, AdminUser
+from app.services.otp_service import OTPService
 
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 logger = logging.getLogger(__name__)
@@ -53,9 +55,15 @@ DEFAULT_ADMIN_EMAIL = "support@suoops.com"
 # Schemas
 # ============================================================================
 
-class AdminLoginRequest(BaseModel):
+class AdminOTPRequest(BaseModel):
+    """Step 1 of passwordless login: request a one-time code by email."""
     email: EmailStr
-    password: str
+
+
+class AdminOTPVerify(BaseModel):
+    """Step 2 of passwordless login: verify the emailed one-time code."""
+    email: EmailStr
+    otp: str
 
 
 class AdminLoginResponse(BaseModel):
@@ -81,7 +89,6 @@ class AdminInviteResponse(BaseModel):
 
 class AcceptInviteRequest(BaseModel):
     token: str
-    password: str
 
 
 class AdminUserOut(BaseModel):
@@ -100,14 +107,23 @@ class AdminUserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
-
-
 class SuccessMessageOut(BaseModel):
     success: bool
     message: str
+
+
+class AdminLoginAuditOut(BaseModel):
+    id: int
+    admin_id: int | None
+    email: str | None
+    ip: str | None
+    user_agent: str | None
+    status: str
+    event: str
+    reason: str | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -176,30 +192,19 @@ async def get_current_admin(
 
 def create_default_admin(db: Session) -> AdminUser | None:
     """Create the default admin if it doesn't exist.
-    
-    Requires DEFAULT_ADMIN_PASSWORD env var to be set.
-    Will NOT create an admin with a hardcoded password.
+
+    Admin login is passwordless (email OTP), so no password is needed. The
+    account is created with an unusable random password hash purely to satisfy
+    the non-null column; it can never be used to authenticate.
     """
     existing = db.query(AdminUser).filter(AdminUser.email == DEFAULT_ADMIN_EMAIL).first()
     if existing:
         return existing
-    
-    default_password = settings.DEFAULT_ADMIN_PASSWORD
-    if not default_password:
-        logger.warning(
-            "DEFAULT_ADMIN_PASSWORD env var not set — skipping default admin creation. "
-            "Set this env var on first deploy, then change the password via the admin panel."
-        )
-        return None
-    
-    if len(default_password) < 12:
-        logger.error("DEFAULT_ADMIN_PASSWORD must be at least 12 characters")
-        return None
-    
+
     admin = AdminUser(
         email=DEFAULT_ADMIN_EMAIL,
         name="SuoOps Support",
-        hashed_password=hash_password(default_password),
+        hashed_password=hash_password(secrets.token_urlsafe(32)),  # unusable, OTP-only login
         is_active=True,
         is_super_admin=True,
         can_manage_tickets=True,
@@ -287,53 +292,15 @@ def send_admin_invite_email(to_email: str, name: str, invite_link: str) -> bool:
 # Routes
 # ============================================================================
 
-@router.post("/login", response_model=AdminLoginResponse)
-@limiter.limit("3/minute;10/hour")
-def admin_login(request: Request, payload: AdminLoginRequest, db: Session = Depends(get_db)):
-    """Login to admin dashboard."""
-    # Validate email domain - only @suoops.com emails allowed
-    email_lower = payload.email.lower()
-    if not email_lower.endswith("@suoops.com"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only @suoops.com email addresses can access the admin panel",
-        )
-    
-    # Try to find admin user
-    admin = db.query(AdminUser).filter(AdminUser.email == email_lower).first()
-    
-    # If no admins exist and this is the default admin email, create it
-    if not admin and payload.email.lower() == DEFAULT_ADMIN_EMAIL:
-        admin = create_default_admin(db)
-    
-    if not admin:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
-    
-    if not admin.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled",
-        )
-    
-    if not verify_password(payload.password, admin.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
-    
-    # Update last login
-    admin.last_login = datetime.now(timezone.utc)
-    db.commit()
-    
-    # Create admin token with 'admin:' prefix
+ADMIN_OTP_PURPOSE = "admin_login"
+
+
+def _build_login_response(admin: AdminUser) -> JSONResponse:
+    """Issue an admin access token + cookie and return the login response."""
     token = create_access_token(
         subject=f"admin:{admin.id}",
         expires_minutes=60 * 2,  # 2 hours
     )
-
     response_data = AdminLoginResponse(
         access_token=token,
         user={
@@ -350,10 +317,107 @@ def admin_login(request: Request, payload: AdminLoginRequest, db: Session = Depe
             },
         },
     )
-
     response = JSONResponse(content=jsonable_encoder(response_data))
     _set_admin_cookie(response, token)
     return response
+
+
+@router.post("/request-otp", response_model=SuccessMessageOut)
+@limiter.limit("3/minute;10/hour")
+def admin_request_otp(request: Request, payload: AdminOTPRequest, db: Session = Depends(get_db)):
+    """Passwordless login step 1: email a one-time code to an admin.
+
+    Always returns a generic success message so the endpoint cannot be used to
+    enumerate which @suoops.com addresses are admins.
+    """
+    email_lower = payload.email.lower().strip()
+
+    generic = {"success": True, "message": "If that address is an admin, a code has been sent."}
+
+    # Only @suoops.com addresses can ever be admins.
+    if not email_lower.endswith("@suoops.com"):
+        record_admin_login_event(
+            db, request=request, status="failure", event="otp_requested",
+            email=email_lower, reason="bad_domain",
+        )
+        return generic
+
+    admin = db.query(AdminUser).filter(AdminUser.email == email_lower).first()
+
+    # Bootstrap the default admin on first use if no admin exists yet.
+    if not admin and email_lower == DEFAULT_ADMIN_EMAIL:
+        if db.query(AdminUser.id).first() is None:
+            admin = create_default_admin(db)
+
+    if not admin or not admin.is_active:
+        record_admin_login_event(
+            db, request=request, status="failure", event="otp_requested",
+            email=email_lower, reason="unknown_admin",
+        )
+        return generic
+
+    try:
+        OTPService().send_code(email_lower, ADMIN_OTP_PURPOSE)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to send admin login OTP to %s: %s", email_lower, exc)
+        record_admin_login_event(
+            db, request=request, status="failure", event="otp_requested",
+            admin_id=admin.id, email=email_lower, reason="delivery_failed",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not send the login code. Please try again shortly.",
+        )
+
+    record_admin_login_event(
+        db, request=request, status="success", event="otp_requested",
+        admin_id=admin.id, email=email_lower,
+    )
+    return generic
+
+
+@router.post("/verify-otp", response_model=AdminLoginResponse)
+@limiter.limit("5/minute;20/hour")
+def admin_verify_otp(request: Request, payload: AdminOTPVerify, db: Session = Depends(get_db)):
+    """Passwordless login step 2: verify the emailed code and issue a session."""
+    email_lower = payload.email.lower().strip()
+    code = payload.otp.strip()
+
+    if not email_lower.endswith("@suoops.com"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only @suoops.com email addresses can access the admin panel",
+        )
+
+    admin = db.query(AdminUser).filter(AdminUser.email == email_lower).first()
+    if not admin or not admin.is_active:
+        record_admin_login_event(
+            db, request=request, status="failure", event="login",
+            email=email_lower, reason="unknown_admin",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired code",
+        )
+
+    if not OTPService().verify_otp(email_lower, code, ADMIN_OTP_PURPOSE):
+        record_admin_login_event(
+            db, request=request, status="failure", event="login",
+            admin_id=admin.id, email=email_lower, reason="bad_otp",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired code",
+        )
+
+    admin.last_login = datetime.now(timezone.utc)
+    db.commit()
+
+    record_admin_login_event(
+        db, request=request, status="success", event="login",
+        admin_id=admin.id, email=email_lower,
+    )
+    return _build_login_response(admin)
 
 
 @router.post("/invite", response_model=AdminInviteResponse)
@@ -445,7 +509,7 @@ def invite_admin(
 @router.post("/accept-invite", response_model=AdminLoginResponse)
 @limiter.limit("3/minute")
 def accept_invite(request: Request, payload: AcceptInviteRequest, db: Session = Depends(get_db)):
-    """Accept an admin invitation and set password."""
+    """Accept an admin invitation and activate the account (passwordless)."""
     admin = db.query(AdminUser).filter(AdminUser.invite_token == payload.token).first()
     
     if not admin:
@@ -466,58 +530,20 @@ def accept_invite(request: Request, payload: AcceptInviteRequest, db: Session = 
             detail="Invitation already accepted",
         )
     
-    # Validate password — same strength rules as change-password
-    pw = payload.password
-    if len(pw) < 12:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 12 characters",
-        )
-    if not any(c.isupper() for c in pw) or not any(c.islower() for c in pw):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must contain both uppercase and lowercase letters",
-        )
-    if not any(c.isdigit() for c in pw):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must contain at least one digit",
-        )
-    
-    # Activate admin
-    admin.hashed_password = hash_password(payload.password)
+    # Activate admin. Login is passwordless (email OTP); store an unusable
+    # random hash purely to satisfy the non-null column.
+    admin.hashed_password = hash_password(secrets.token_urlsafe(32))
     admin.is_active = True
     admin.invite_token = None
     admin.invite_expires_at = None
     admin.last_login = datetime.now(timezone.utc)
     db.commit()
-    
-    # Create token
-    token = create_access_token(
-        subject=f"admin:{admin.id}",
-        expires_minutes=60 * 2,  # 2 hours
-    )
 
-    response_data = AdminLoginResponse(
-        access_token=token,
-        user={
-            "id": admin.id,
-            "email": admin.email,
-            "name": admin.name,
-            "role": "admin",
-            "is_super_admin": admin.is_super_admin,
-            "permissions": {
-                "can_manage_tickets": admin.can_manage_tickets,
-                "can_view_users": admin.can_view_users,
-                "can_view_analytics": admin.can_view_analytics,
-                "can_invite_admins": admin.can_invite_admins,
-            },
-        },
+    record_admin_login_event(
+        db, request=request, status="success", event="invite_accepted",
+        admin_id=admin.id, email=admin.email,
     )
-
-    response = JSONResponse(content=jsonable_encoder(response_data))
-    _set_admin_cookie(response, token)
-    return response
+    return _build_login_response(admin)
 
 
 @router.post("/logout")
@@ -611,44 +637,28 @@ def remove_admin(
     return {"success": True, "message": f"Admin {admin_to_remove.email} has been removed"}
 
 
-@router.post("/change-password", response_model=SuccessMessageOut)
-def change_password(
-    payload: ChangePasswordRequest,
+@router.get("/login-audit", response_model=list[AdminLoginAuditOut])
+def list_login_audit(
     current_admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
+    limit: int = 100,
 ):
-    """Change admin password. Requires admin authentication."""
-    # Verify current password
-    if not verify_password(payload.current_password, current_admin.hashed_password):
+    """Return recent admin authentication events (logins, failures, OTP requests).
+
+    Lets admins spot logins from unexpected IPs. Restricted to super admins.
+    """
+    if not current_admin.is_super_admin:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins can view the login audit log",
         )
-    
-    # Validate new password strength
-    new_pw = payload.new_password
-    if len(new_pw) < 12:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password must be at least 12 characters",
-        )
-    if not any(c.isupper() for c in new_pw) or not any(c.islower() for c in new_pw):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must contain both uppercase and lowercase letters",
-        )
-    if not any(c.isdigit() for c in new_pw):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must contain at least one digit",
-        )
-    
-    # Update password
-    current_admin.hashed_password = hash_password(new_pw)
-    db.commit()
-    
-    logger.info("Admin %s changed their password", current_admin.email)
-    return {"success": True, "message": "Password changed successfully"}
+    limit = max(1, min(limit, 500))
+    return (
+        db.query(AdminLoginAudit)
+        .order_by(AdminLoginAudit.created_at.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 # ============================================================================

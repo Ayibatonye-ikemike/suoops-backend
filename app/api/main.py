@@ -119,6 +119,37 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class AdminIPAllowlistMiddleware(BaseHTTPMiddleware):
+    """Restrict every ``/admin*`` route to a configured set of IPs/CIDRs.
+
+    When ``settings.ADMIN_IP_ALLOWLIST`` is empty the middleware is a no-op, so
+    the panel stays reachable from anywhere until an allowlist is configured.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        super().__init__(app)
+        self.logger = logging.getLogger("app.admin_ip")
+
+    async def dispatch(self, request, call_next):  # type: ignore[override]
+        from app.core.admin_security import (
+            admin_ip_allowlist_enabled,
+            get_client_ip,
+            is_admin_ip_allowed,
+        )
+
+        path = request.url.path
+        if (path.startswith("/admin") or path == "/admin") and admin_ip_allowlist_enabled():
+            client_ip = get_client_ip(request)
+            if not is_admin_ip_allowed(client_ip):
+                self.logger.warning("Blocked admin access from disallowed IP %s (%s)", client_ip, path)
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Access to the admin panel is not allowed from your network."},
+                )
+        return await call_next(request)
+
+
+
 def create_app() -> FastAPI:
     init_logging()
     init_monitoring()
@@ -186,6 +217,7 @@ def create_app() -> FastAPI:
     # The middleware causes redirect loops because the app sees HTTP internally
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestSizeLimitMiddleware)
+    app.add_middleware(AdminIPAllowlistMiddleware)
     register_error_handlers(app)
     app.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
     app.include_router(auth_router, prefix="/auth", tags=["auth"])

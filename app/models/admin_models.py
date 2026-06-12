@@ -59,3 +59,33 @@ class AdminUser(Base):
     
     def __repr__(self) -> str:
         return f"<AdminUser {self.email}>"
+
+
+class AdminLoginAudit(Base):
+    """Audit trail of admin authentication events.
+
+    Persisted to the database (unlike the file-based audit log) so it can be
+    queried from the admin panel to spot logins from unexpected IPs.
+    """
+    __tablename__ = "admin_login_audit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admin_id: Mapped[int | None] = mapped_column(index=True, nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # "success" | "failure"
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    # machine-readable event, e.g. "login", "login_failed", "password_changed"
+    event: Mapped[str] = mapped_column(String(40), nullable=False, server_default="login")
+    # short reason on failure (e.g. "bad_password", "inactive", "bad_domain")
+    reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+        index=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<AdminLoginAudit {self.email} {self.status} {self.created_at}>"

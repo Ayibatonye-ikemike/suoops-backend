@@ -399,6 +399,15 @@ Powered by SuoOps
         """
         self._send_otp(identifier, purpose="login")
 
+    def send_code(self, identifier: str, purpose: str) -> None:
+        """Generate and deliver an OTP for an arbitrary purpose.
+
+        Used by flows (e.g. admin passwordless login) that need a code outside
+        the standard signup/login helpers. Delivery channel is inferred from the
+        identifier (email vs phone).
+        """
+        self._send_otp(identifier, purpose=purpose)
+
     def verify_otp(self, identifier: str, otp: str, purpose: str) -> bool:
         key = self._otp_key(identifier, purpose)
         raw_record = self._store.get(key)
