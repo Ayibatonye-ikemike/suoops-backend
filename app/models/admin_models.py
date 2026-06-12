@@ -89,3 +89,27 @@ class AdminLoginAudit(Base):
 
     def __repr__(self) -> str:
         return f"<AdminLoginAudit {self.email} {self.status} {self.created_at}>"
+
+
+class AdminIpAllowlistEntry(Base):
+    """An IP address or CIDR range permitted to reach the admin panel.
+
+    Entries here are merged with the optional ``ADMIN_IP_ALLOWLIST`` env var.
+    When both the database and the env var are empty the allowlist is disabled
+    and the panel is reachable from anywhere (fail open).
+    """
+    __tablename__ = "admin_ip_allowlist"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Stored normalised (e.g. "203.0.113.10/32" or "203.0.113.0/24").
+    cidr: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(index=True, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AdminIpAllowlistEntry {self.cidr}>"

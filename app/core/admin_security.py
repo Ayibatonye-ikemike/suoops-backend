@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-from functools import lru_cache
+import time
+from typing import Iterable
 
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.core.config import settings
-from app.models.admin_models import AdminLoginAudit
+from app.models.admin_models import AdminIpAllowlistEntry, AdminLoginAudit
 
 logger = logging.getLogger(__name__)
 
@@ -42,44 +43,86 @@ def get_client_ip(request: Request) -> str | None:
     return None
 
 
-@lru_cache(maxsize=1)
-def _parse_allowlist(raw: str) -> tuple[ipaddress._BaseNetwork, ...]:
-    """Parse the comma-separated allowlist into network objects (cached)."""
-    networks: list[ipaddress._BaseNetwork] = []
-    for entry in raw.split(","):
-        entry = entry.strip()
+_NETWORK = "ipaddress._BaseNetwork"
+
+# The merged allowlist (env + DB) is cached briefly so we don't hit the database
+# on every admin request. CRUD operations call ``invalidate_admin_allowlist_cache``
+# to apply changes immediately.
+_CACHE_TTL_SECONDS = 30.0
+_cache: dict = {"loaded": False, "expires": 0.0, "networks": ()}
+
+
+def env_allowlist_entries() -> list[str]:
+    """Return the raw entries configured via the ``ADMIN_IP_ALLOWLIST`` env var."""
+    raw = settings.ADMIN_IP_ALLOWLIST or ""
+    return [entry.strip() for entry in raw.split(",") if entry.strip()]
+
+
+def parse_networks(entries: Iterable[str]) -> tuple:
+    """Parse IP/CIDR strings into network objects, ignoring invalid ones."""
+    networks: list = []
+    for entry in entries:
+        entry = (entry or "").strip()
         if not entry:
             continue
         try:
             # strict=False lets a bare host (e.g. "203.0.113.4") parse as a /32.
             networks.append(ipaddress.ip_network(entry, strict=False))
         except ValueError:
-            logger.warning("Ignoring invalid ADMIN_IP_ALLOWLIST entry: %r", entry)
+            logger.warning("Ignoring invalid admin IP allowlist entry: %r", entry)
     return tuple(networks)
 
 
-def admin_ip_allowlist_enabled() -> bool:
-    return bool(settings.ADMIN_IP_ALLOWLIST and settings.ADMIN_IP_ALLOWLIST.strip())
+def _db_allowlist_entries(db: Session) -> list[str]:
+    try:
+        return [row[0] for row in db.query(AdminIpAllowlistEntry.cidr).all()]
+    except Exception:  # noqa: BLE001 — table may not exist yet (pre-migration)
+        logger.debug("Could not load admin IP allowlist from DB", exc_info=True)
+        return []
 
 
-def is_admin_ip_allowed(ip: str | None) -> bool:
-    """Return True if ``ip`` may access admin routes.
+def load_admin_networks(db: Session) -> tuple:
+    """Return the merged (env + DB) allowlist networks, cached for a short TTL."""
+    now = time.monotonic()
+    if _cache["loaded"] and now < _cache["expires"]:
+        return _cache["networks"]
+    networks = parse_networks(env_allowlist_entries() + _db_allowlist_entries(db))
+    _cache.update(loaded=True, expires=now + _CACHE_TTL_SECONDS, networks=networks)
+    return networks
 
-    When no allowlist is configured, all IPs are allowed (feature off).
-    """
-    if not admin_ip_allowlist_enabled():
-        return True
-    networks = _parse_allowlist(settings.ADMIN_IP_ALLOWLIST or "")
-    if not networks:
-        # Misconfigured (all entries invalid) — fail open rather than lock out.
-        return True
-    if not ip:
+
+def invalidate_admin_allowlist_cache() -> None:
+    """Force the next ``load_admin_networks`` call to re-read from env + DB."""
+    _cache["loaded"] = False
+
+
+def ip_matches_networks(ip: str | None, networks: Iterable) -> bool:
+    """Return True if ``ip`` falls within any of ``networks``."""
+    networks = tuple(networks)
+    if not ip or not networks:
         return False
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return False
     return any(addr in net for net in networks)
+
+
+def admin_ip_allowlist_enabled(db: Session) -> bool:
+    """True when at least one valid allowlist entry exists (env or DB)."""
+    return bool(load_admin_networks(db))
+
+
+def is_admin_ip_allowed(ip: str | None, db: Session) -> bool:
+    """Return True if ``ip`` may access admin routes.
+
+    When no allowlist is configured (env + DB both empty/invalid), all IPs are
+    allowed so the panel can never be locked out by accident.
+    """
+    networks = load_admin_networks(db)
+    if not networks:
+        return True
+    return ip_matches_networks(ip, networks)
 
 
 def record_admin_login_event(

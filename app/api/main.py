@@ -120,10 +120,12 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
 
 class AdminIPAllowlistMiddleware(BaseHTTPMiddleware):
-    """Restrict every ``/admin*`` route to a configured set of IPs/CIDRs.
+    """Restrict every ``/admin*`` route to an allowed set of IPs/CIDRs.
 
-    When ``settings.ADMIN_IP_ALLOWLIST`` is empty the middleware is a no-op, so
-    the panel stays reachable from anywhere until an allowlist is configured.
+    The allowlist is the union of the ``ADMIN_IP_ALLOWLIST`` env var and the
+    entries managed from the admin panel (``admin_ip_allowlist`` table). When
+    both are empty the middleware is a no-op, so the panel stays reachable from
+    anywhere until an allowlist is configured.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -138,14 +140,28 @@ class AdminIPAllowlistMiddleware(BaseHTTPMiddleware):
         )
 
         path = request.url.path
-        if (path.startswith("/admin") or path == "/admin") and admin_ip_allowlist_enabled():
-            client_ip = get_client_ip(request)
-            if not is_admin_ip_allowed(client_ip):
-                self.logger.warning("Blocked admin access from disallowed IP %s (%s)", client_ip, path)
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "Access to the admin panel is not allowed from your network."},
-                )
+        # The IP-verdict endpoint must always respond so the frontend can render
+        # a friendly "blocked" page instead of an opaque network error.
+        if path == "/admin/auth/ip-allowed":
+            return await call_next(request)
+
+        if path.startswith("/admin") or path == "/admin":
+            from app.db.session import SessionLocal
+
+            db = SessionLocal()
+            try:
+                if admin_ip_allowlist_enabled(db):
+                    client_ip = get_client_ip(request)
+                    if not is_admin_ip_allowed(client_ip, db):
+                        self.logger.warning(
+                            "Blocked admin access from disallowed IP %s (%s)", client_ip, path
+                        )
+                        return JSONResponse(
+                            status_code=403,
+                            content={"detail": "Access to the admin panel is not allowed from your network."},
+                        )
+            finally:
+                db.close()
         return await call_next(request)
 
 

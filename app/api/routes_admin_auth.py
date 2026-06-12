@@ -15,11 +15,20 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 
 from app.api.rate_limit import limiter
-from app.core.admin_security import record_admin_login_event
+from app.core.admin_security import (
+    env_allowlist_entries,
+    get_client_ip,
+    invalidate_admin_allowlist_cache,
+    ip_matches_networks,
+    is_admin_ip_allowed,
+    load_admin_networks,
+    parse_networks,
+    record_admin_login_event,
+)
 from app.core.config import settings
 from app.core.security import TokenType, create_access_token, decode_token, hash_password
 from app.db.session import get_db
-from app.models.admin_models import AdminLoginAudit, AdminUser
+from app.models.admin_models import AdminIpAllowlistEntry, AdminLoginAudit, AdminUser
 from app.services.otp_service import OTPService
 
 router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
@@ -124,6 +133,21 @@ class AdminLoginAuditOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AdminIpAllowlistEntryOut(BaseModel):
+    id: int
+    cidr: str
+    label: str | None
+    created_by_id: int | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminIpAllowlistCreate(BaseModel):
+    cidr: str
+    label: str | None = None
 
 
 # ============================================================================
@@ -659,6 +683,162 @@ def list_login_audit(
         .limit(limit)
         .all()
     )
+
+
+# ============================================================================
+# IP allowlist (network-based access control)
+# ============================================================================
+
+@router.get("/ip-allowed")
+def admin_ip_allowed(request: Request, db: Session = Depends(get_db)):
+    """Public verdict used by the frontend to gate the /admin pages.
+
+    Returns whether the requesting IP may access the admin panel. This route is
+    intentionally exempt from the IP-allowlist middleware so a blocked client
+    still receives a clean ``{"allowed": false}`` answer (rather than a 403),
+    letting the dashboard show a friendly "blocked" page.
+    """
+    ip = get_client_ip(request)
+    return {"allowed": is_admin_ip_allowed(ip, db), "ip": ip}
+
+
+@router.get("/ip-allowlist", response_model=list[AdminIpAllowlistEntryOut])
+def list_ip_allowlist(
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """List IP addresses/ranges allowed to access the admin panel (super admin)."""
+    if not current_admin.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins can manage the IP allowlist",
+        )
+    return (
+        db.query(AdminIpAllowlistEntry)
+        .order_by(AdminIpAllowlistEntry.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/ip-allowlist", response_model=AdminIpAllowlistEntryOut)
+def add_ip_allowlist_entry(
+    request: Request,
+    payload: AdminIpAllowlistCreate,
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Add an IP/CIDR to the admin allowlist (super admin).
+
+    Guards against lock-out: the entry is rejected if applying it would block
+    the IP the requesting admin is currently connecting from.
+    """
+    if not current_admin.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins can manage the IP allowlist",
+        )
+
+    raw = (payload.cidr or "").strip()
+    networks = parse_networks([raw])
+    if not networks:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Enter a valid IP address or range, e.g. 203.0.113.10 or 203.0.113.0/24",
+        )
+    normalized = str(networks[0])
+
+    if db.query(AdminIpAllowlistEntry).filter(AdminIpAllowlistEntry.cidr == normalized).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{normalized} is already on the allowlist",
+        )
+
+    # Lock-out guard: the resulting allowlist must still include the caller.
+    caller_ip = get_client_ip(request)
+    resulting = load_admin_networks(db) + networks
+    if not ip_matches_networks(caller_ip, resulting):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"This would block your current IP ({caller_ip or 'unknown'}). "
+                "Add your own IP/range first so you don't lock yourself out."
+            ),
+        )
+
+    entry = AdminIpAllowlistEntry(
+        cidr=normalized,
+        label=(payload.label or None),
+        created_by_id=current_admin.id,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    invalidate_admin_allowlist_cache()
+
+    record_admin_login_event(
+        db, request=request, status="success", event="ip_allowlist_add",
+        admin_id=current_admin.id, email=current_admin.email, reason=normalized,
+    )
+    logger.info("Admin %s added IP allowlist entry %s", current_admin.email, normalized)
+    return entry
+
+
+@router.delete("/ip-allowlist/{entry_id}", response_model=SuccessMessageOut)
+def delete_ip_allowlist_entry(
+    entry_id: int,
+    request: Request,
+    current_admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove an IP/CIDR from the admin allowlist (super admin).
+
+    Guards against lock-out: removal is rejected if the remaining allowlist
+    would block the requesting admin's current IP.
+    """
+    if not current_admin.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins can manage the IP allowlist",
+        )
+
+    entry = db.query(AdminIpAllowlistEntry).filter(AdminIpAllowlistEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Allowlist entry not found",
+        )
+
+    # Compute what the allowlist would be without this entry.
+    remaining_raw = [
+        row[0]
+        for row in db.query(AdminIpAllowlistEntry.cidr)
+        .filter(AdminIpAllowlistEntry.id != entry_id)
+        .all()
+    ]
+    remaining = parse_networks(env_allowlist_entries() + remaining_raw)
+    caller_ip = get_client_ip(request)
+    # If entries remain, the caller must still be covered; an empty result
+    # disables the allowlist entirely (everyone allowed), which is safe.
+    if remaining and not ip_matches_networks(caller_ip, remaining):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Removing this entry would block your current IP ({caller_ip or 'unknown'}). "
+                "Add a range that covers you before removing it."
+            ),
+        )
+
+    removed = entry.cidr
+    db.delete(entry)
+    db.commit()
+    invalidate_admin_allowlist_cache()
+
+    record_admin_login_event(
+        db, request=request, status="success", event="ip_allowlist_remove",
+        admin_id=current_admin.id, email=current_admin.email, reason=removed,
+    )
+    logger.info("Admin %s removed IP allowlist entry %s", current_admin.email, removed)
+    return {"success": True, "message": f"{removed} removed from the allowlist"}
 
 
 # ============================================================================
