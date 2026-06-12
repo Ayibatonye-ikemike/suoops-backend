@@ -224,9 +224,21 @@ def create_app() -> FastAPI:
     app.add_middleware(ResilientSlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
     app.add_exception_handler(SuoOpsException, _suoops_exception_handler)
-    
-    # CORS must be added AFTER CSRF (Starlette processes middleware in reverse order)
-    # This ensures CORS headers are set even when CSRF fails
+
+    # CSRF Protection - Only enabled in production for security
+    app.add_middleware(CSRFMiddleware, enabled=is_production)
+    # Note: HTTPSRedirectMiddleware removed — Render handles HTTPS at the load balancer level
+    # The middleware causes redirect loops because the app sees HTTP internally
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RequestSizeLimitMiddleware)
+    app.add_middleware(AdminIPAllowlistMiddleware)
+
+    # CORS is added LAST so it is the OUTERMOST middleware (Starlette applies
+    # middleware in reverse-registration order). This guarantees CORS headers are
+    # present on EVERY response — including ones short-circuited by inner
+    # middleware such as the admin IP block (404), CSRF rejections (403), and
+    # rate limits (429). Without this, a browser sees those responses as opaque
+    # CORS errors instead of the real status code.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ALLOW_ORIGINS,
@@ -235,14 +247,6 @@ def create_app() -> FastAPI:
         allow_methods=settings.CORS_ALLOW_METHODS,
         allow_headers=settings.CORS_ALLOW_HEADERS,
     )
-    
-    # CSRF Protection - Only enabled in production for security
-    app.add_middleware(CSRFMiddleware, enabled=is_production)
-    # Note: HTTPSRedirectMiddleware removed — Render handles HTTPS at the load balancer level
-    # The middleware causes redirect loops because the app sees HTTP internally
-    app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(RequestSizeLimitMiddleware)
-    app.add_middleware(AdminIPAllowlistMiddleware)
     register_error_handlers(app)
     app.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
     app.include_router(auth_router, prefix="/auth", tags=["auth"])
