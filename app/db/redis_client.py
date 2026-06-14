@@ -28,7 +28,7 @@ def get_redis_pool() -> ConnectionPool:
     
     # Parse connection parameters
     pool_kwargs = {
-        "max_connections": 5,  # Conservative cap shared with Celery workers under managed-Redis connection limits
+        "max_connections": 10,  # Shared across rate limiter, app cache; Celery has its own pool
         "socket_timeout": 5,
         "socket_connect_timeout": 5,
         "retry_on_timeout": True,
@@ -40,7 +40,7 @@ def get_redis_pool() -> ConnectionPool:
     # No need to add them again in pool_kwargs - this can cause conflicts
     
     _pool = ConnectionPool.from_url(redis_url, **pool_kwargs)
-    logger.info("Redis connection pool created (max_connections=5)")
+    logger.info("Redis connection pool created (max_connections=10)")
     return _pool
 
 

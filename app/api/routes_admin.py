@@ -151,13 +151,18 @@ def get_user_stats(
     month_start = today_start.replace(day=1)
     thirty_days_ago = now - dt.timedelta(days=30)
     
-    # Total users
-    total = db.query(models.User).count()
+    # Single aggregated query for all user stats (replaces 7 separate queries)
+    from sqlalchemy import case as sa_case
+    stats_row = db.query(
+        func.count(models.User.id).label("total"),
+        func.count(sa_case((models.User.phone_verified.is_(True), 1))).label("verified"),
+        func.count(sa_case((models.User.created_at >= today_start, 1))).label("today"),
+        func.count(sa_case((models.User.created_at >= week_start, 1))).label("this_week"),
+        func.count(sa_case((models.User.created_at >= month_start, 1))).label("this_month"),
+        func.count(sa_case((models.User.last_login >= thirty_days_ago, 1))).label("active_30d"),
+    ).one()
     
-    # Verified vs unverified
-    verified = db.query(models.User).filter(models.User.phone_verified.is_(True)).count()
-    
-    # Users by plan
+    # Plan breakdown still needs group_by
     plan_counts = db.query(
         models.User.plan,
         func.count(models.User.id)
@@ -165,33 +170,15 @@ def get_user_stats(
     
     users_by_plan = {str(plan.value): count for plan, count in plan_counts}
     
-    # Registration stats
-    registered_today = db.query(models.User).filter(
-        models.User.created_at >= today_start
-    ).count()
-    
-    registered_this_week = db.query(models.User).filter(
-        models.User.created_at >= week_start
-    ).count()
-    
-    registered_this_month = db.query(models.User).filter(
-        models.User.created_at >= month_start
-    ).count()
-    
-    # Active users (logged in last 30 days)
-    active_last_30_days = db.query(models.User).filter(
-        models.User.last_login >= thirty_days_ago
-    ).count()
-    
     return UserStats(
-        total_users=total,
-        verified_users=verified,
-        unverified_users=total - verified,
+        total_users=stats_row.total,
+        verified_users=stats_row.verified,
+        unverified_users=stats_row.total - stats_row.verified,
         users_by_plan=users_by_plan,
-        users_registered_today=registered_today,
-        users_registered_this_week=registered_this_week,
-        users_registered_this_month=registered_this_month,
-        active_users_last_30_days=active_last_30_days
+        users_registered_today=stats_row.today,
+        users_registered_this_week=stats_row.this_week,
+        users_registered_this_month=stats_row.this_month,
+        active_users_last_30_days=stats_row.active_30d,
     )
 
 

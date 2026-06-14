@@ -121,7 +121,6 @@ def warn_inactive_accounts() -> dict[str, Any]:
     from sqlalchemy import func
 
     from app.models.models import Invoice, SubscriptionPlan, User, UserEmailLog
-    from app.utils.smtp import send_smtp_email as _send_smtp_email
 
     stats = {"warned": 0, "skipped": 0, "failed": 0}
 
@@ -152,6 +151,9 @@ def warn_inactive_accounts() -> dict[str, Any]:
                 return {"success": True, **stats}
 
             logger.info("Found %d inactive empty accounts", len(inactive_users))
+
+            pending_warns: list[tuple] = []
+            email_type_val = WARNING_EMAIL_TYPE
 
             for user in inactive_users:
                 # Skip if already warned
@@ -190,13 +192,22 @@ def warn_inactive_accounts() -> dict[str, Any]:
                     f"— The SuoOps Team"
                 )
 
-                if _send_smtp_email(user.email, subject, None, plain):
-                    db.add(UserEmailLog(user_id=user.id, email_type=WARNING_EMAIL_TYPE))
-                    db.commit()
-                    stats["warned"] += 1
-                    logger.info("Sent deletion warning to user %s (%s)", user.id, user.email)
-                else:
-                    stats["failed"] += 1
+                # Collect for batch send
+                pending_warns.append((user, email_type_val, subject, plain))
+
+            # Batch send all warning emails over a single SMTP connection
+            if pending_warns:
+                from app.utils.smtp import send_smtp_batch
+                batch = [(u.email, subj, None, body) for u, _, subj, body in pending_warns]
+                results = send_smtp_batch(batch)
+                for (user, etype, _, _), ok in zip(pending_warns, results):
+                    if ok:
+                        db.add(UserEmailLog(user_id=user.id, email_type=etype))
+                        stats["warned"] += 1
+                        logger.info("Sent deletion warning to user %s (%s)", user.id, user.email)
+                    else:
+                        stats["failed"] += 1
+                db.commit()
 
         logger.info("Inactive account warnings: %s", stats)
         return {"success": True, **stats}

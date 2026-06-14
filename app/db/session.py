@@ -38,9 +38,9 @@ else:
             engine = create_engine(
                 raw_url,
                 future=True,
-                pool_size=5,  # Base pool size (kept low to share Postgres connection budget with workers)
-                max_overflow=10,  # Allow up to 15 total connections (5 + 10)
-                pool_recycle=3600,  # Recycle connections after 1 hour
+                pool_size=8,  # Base pool size (shared with Celery workers)
+                max_overflow=12,  # Allow up to 20 total connections (8 + 12)
+                pool_recycle=1800,  # Recycle connections every 30 min to prevent stale
                 pool_pre_ping=True,  # Verify connection health before use
             )
         except ModuleNotFoundError:

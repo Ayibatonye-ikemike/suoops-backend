@@ -193,6 +193,7 @@ def send_engagement_emails() -> dict[str, Any]:
     """Send lifecycle engagement emails to users based on their behavior.
 
     Runs daily at 09:00 UTC (10:00 WAT).
+    Processes users in batches of 50 to avoid blocking the worker.
 
     Segments:
     1. Activation — new users who haven't created an invoice yet (Day 0/1/3)
@@ -212,24 +213,34 @@ def send_engagement_emails() -> dict[str, Any]:
         "failed": 0,
     }
 
+    BATCH_SIZE = 50
+
     try:
         with session_scope() as db:
-            all_users = (
-                db.query(User)
-                .filter(
-                    User.email != None,  # noqa: E711 – need email to send
+            total_users = db.query(func.count(User.id)).filter(
+                User.email != None,  # noqa: E711
+            ).scalar() or 0
+
+            for offset in range(0, total_users, BATCH_SIZE):
+                users = (
+                    db.query(User)
+                    .filter(User.email != None)  # noqa: E711
+                    .order_by(User.id)
+                    .offset(offset)
+                    .limit(BATCH_SIZE)
+                    .all()
                 )
-                .all()
-            )
 
-            for user in all_users:
-                try:
-                    _process_user(db, user, now, stats)
-                except Exception as e:
-                    logger.warning("Engagement email failed for user %s: %s", user.id, e)
-                    stats["failed"] += 1
+                for user in users:
+                    try:
+                        _process_user(db, user, now, stats)
+                    except Exception as e:
+                        logger.warning("Engagement email failed for user %s: %s", user.id, e)
+                        stats["failed"] += 1
 
-            db.commit()
+                db.commit()
+                # Expire loaded objects to free memory
+                db.expire_all()
 
         logger.info(
             "Engagement emails complete: activation=%d monetization=%d tips=%d phone_nudge=%d whatsapp=%d skipped=%d failed=%d",
