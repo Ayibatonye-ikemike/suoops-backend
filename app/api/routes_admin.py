@@ -648,6 +648,8 @@ def get_referral_payouts(
 
 class InfluencerCreate(BaseModel):
     """Payload for creating an influencer partnership."""
+    user_phone: str | None = None  # Phone of existing user to link as influencer
+    user_email: str | None = None  # Email of existing user to link as influencer
     influencer_name: str
     influencer_contact: str | None = None
     custom_slug: str  # vanity URL slug — letters, numbers, hyphens only
@@ -709,12 +711,35 @@ def create_influencer(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
 ) -> Any:
-    """Create a new influencer partnership with a custom vanity link."""
+    """Create a new influencer partnership linked to an existing user account."""
     import re
 
     from app.models.referral_models import ReferralCode, Referral, ReferralStatus, ReferralType, generate_referral_code
 
     log_audit_event("admin.influencer.create", user_id=admin_user.id, slug=payload.custom_slug)
+
+    # Must provide at least one identifier to find the user
+    if not payload.user_phone and not payload.user_email:
+        raise HTTPException(400, "Provide the influencer's phone number or email to link their account")
+
+    # Look up the user by phone or email
+    target_user = None
+    if payload.user_phone:
+        phone = payload.user_phone.strip()
+        # Normalize: strip leading 0, add +234 if needed
+        if phone.startswith("0"):
+            phone = "+234" + phone[1:]
+        elif not phone.startswith("+"):
+            phone = "+" + phone
+        target_user = db.query(models.User).filter(models.User.phone == phone).first()
+    if not target_user and payload.user_email:
+        email = payload.user_email.strip().lower()
+        target_user = db.query(models.User).filter(
+            func.lower(models.User.email) == email
+        ).first()
+
+    if not target_user:
+        raise HTTPException(404, "No user found with that phone/email. They must sign up first.")
 
     # Validate slug format
     slug = payload.custom_slug.strip().lower()
@@ -722,39 +747,57 @@ def create_influencer(
         raise HTTPException(400, "Slug must be 3-50 chars: lowercase letters, numbers, hyphens. No leading/trailing hyphens.")
 
     # Check slug uniqueness
-    existing = db.query(ReferralCode).filter(
+    existing_slug = db.query(ReferralCode).filter(
         func.lower(ReferralCode.custom_slug) == slug
     ).first()
-    if existing:
+    if existing_slug:
         raise HTTPException(409, f"Slug '{slug}' is already taken")
 
-    # Create a dedicated user-less referral code for this influencer
-    # Influencer codes are linked to admin's user_id as the "referrer"
-    # but we'll create a placeholder approach: use admin user
-    code_str = generate_referral_code()
+    # Check if this user already has a ReferralCode — upgrade it
+    existing_code = db.query(ReferralCode).filter(
+        ReferralCode.user_id == target_user.id
+    ).first()
 
-    # Check code uniqueness
-    while db.query(ReferralCode).filter(ReferralCode.code == code_str).first():
+    if existing_code:
+        # Upgrade existing code to influencer
+        existing_code.is_influencer = True
+        existing_code.custom_slug = slug
+        existing_code.influencer_name = payload.influencer_name
+        existing_code.influencer_contact = payload.influencer_contact
+        existing_code.commission_first = payload.commission_first
+        existing_code.commission_recurring = payload.commission_recurring
+        existing_code.commission_months = payload.commission_months
+        existing_code.commission_perpetual_pct = payload.commission_perpetual_pct
+        existing_code.bonus_invoices = payload.bonus_invoices
+        existing_code.notes = payload.notes
+        existing_code.is_active = True
+        db.commit()
+        db.refresh(existing_code)
+        code = existing_code
+    else:
+        # Create new referral code for this user
         code_str = generate_referral_code()
+        while db.query(ReferralCode).filter(ReferralCode.code == code_str).first():
+            code_str = generate_referral_code()
 
-    code = ReferralCode(
-        user_id=admin_user.id,
-        code=code_str,
-        is_active=True,
-        is_influencer=True,
-        custom_slug=slug,
-        influencer_name=payload.influencer_name,
-        influencer_contact=payload.influencer_contact,
-        commission_first=payload.commission_first,
-        commission_recurring=payload.commission_recurring,
-        commission_months=payload.commission_months,
-        commission_perpetual_pct=payload.commission_perpetual_pct,
-        bonus_invoices=payload.bonus_invoices,
-        notes=payload.notes,
-    )
-    db.add(code)
-    db.commit()
-    db.refresh(code)
+        code = ReferralCode(
+            user_id=target_user.id,
+            code=code_str,
+            is_active=True,
+            is_influencer=True,
+            custom_slug=slug,
+            influencer_name=payload.influencer_name,
+            influencer_contact=payload.influencer_contact,
+            commission_first=payload.commission_first,
+            commission_recurring=payload.commission_recurring,
+            commission_months=payload.commission_months,
+            commission_perpetual_pct=payload.commission_perpetual_pct,
+            bonus_invoices=payload.bonus_invoices,
+            notes=payload.notes,
+        )
+        db.add(code)
+        db.commit()
+        db.refresh(code)
 
     return InfluencerInfo(
         id=code.id,
