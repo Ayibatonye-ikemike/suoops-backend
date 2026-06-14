@@ -1486,6 +1486,10 @@ def get_activity_analytics(
     last_month_start = (month_start - dt.timedelta(days=1)).replace(day=1)
     year_start = today_start.replace(month=1, day=1)
 
+    # Channel tracking was added June 14 2026; historical data is inaccurate.
+    # Only surface channel breakdown for invoices created from that date onward.
+    channel_cutoff = dt.datetime(2026, 6, 14, tzinfo=dt.timezone.utc)
+
     def _count_period(start: dt.datetime, end: dt.datetime) -> PeriodActivity:
         rows = (
             db.query(
@@ -1500,11 +1504,12 @@ def get_activity_analytics(
         total = 0
         for ch, cnt in rows:
             total += cnt
-            if ch == "whatsapp":
-                breakdown.whatsapp = cnt
-            else:
-                # NULL, "dashboard", "email", or any other value = web dashboard
-                breakdown.dashboard += cnt
+            # Only populate channel split for periods starting after the cutoff
+            if start >= channel_cutoff:
+                if ch == "whatsapp":
+                    breakdown.whatsapp = cnt
+                else:
+                    breakdown.dashboard += cnt
         return PeriodActivity(total=total, by_channel=breakdown)
 
     today_act = _count_period(today_start, now)
@@ -1545,8 +1550,9 @@ def get_activity_analytics(
         DailyPoint(
             date=str(r.day),
             total=r.total,
-            whatsapp=r.wa or 0,
-            dashboard=r.dash or 0,
+            # Only show channel split for days on/after the tracking cutoff
+            whatsapp=(r.wa or 0) if r.day >= channel_cutoff.date() else 0,
+            dashboard=(r.dash or 0) if r.day >= channel_cutoff.date() else 0,
         )
         for r in daily_rows
     ]
