@@ -1419,6 +1419,178 @@ class BusinessListResponse(BaseModel):
     page_size: int
 
 
+# ─── Activity Analytics ─────────────────────────────────────────
+
+
+class ChannelBreakdown(BaseModel):
+    whatsapp: int = 0
+    dashboard: int = 0
+    email: int = 0
+    other: int = 0
+
+
+class PeriodActivity(BaseModel):
+    total: int = 0
+    by_channel: ChannelBreakdown = ChannelBreakdown()
+
+
+class DailyPoint(BaseModel):
+    date: str
+    total: int = 0
+    whatsapp: int = 0
+    dashboard: int = 0
+
+
+class ActivityAnalytics(BaseModel):
+    today: PeriodActivity
+    yesterday: PeriodActivity
+    this_week: PeriodActivity
+    last_week: PeriodActivity
+    this_month: PeriodActivity
+    last_month: PeriodActivity
+    this_year: PeriodActivity
+
+    # Active users (created ≥1 invoice in period)
+    active_users_today: int = 0
+    active_users_this_week: int = 0
+    active_users_this_month: int = 0
+
+    # Daily trend (last 30 days)
+    daily_trend: list[DailyPoint] = []
+
+    # Logins
+    logins_today: int = 0
+    logins_this_week: int = 0
+    logins_this_month: int = 0
+
+
+@router.get("/metrics/activity", response_model=ActivityAnalytics)
+def get_activity_analytics(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> Any:
+    """
+    User activity analytics — daily/weekly/monthly invoice creation
+    broken down by channel (WhatsApp vs dashboard vs email).
+    """
+    from sqlalchemy import func, case, distinct
+
+    from app.models.models import Invoice
+
+    log_audit_event("admin.metrics.activity", user_id=admin_user.id)
+
+    now = dt.datetime.now(dt.timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = today_start - dt.timedelta(days=1)
+    week_start = today_start - dt.timedelta(days=today_start.weekday())
+    last_week_start = week_start - dt.timedelta(days=7)
+    month_start = today_start.replace(day=1)
+    last_month_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+    year_start = today_start.replace(month=1, day=1)
+
+    def _count_period(start: dt.datetime, end: dt.datetime) -> PeriodActivity:
+        rows = (
+            db.query(
+                Invoice.channel,
+                func.count(Invoice.id),
+            )
+            .filter(Invoice.created_at >= start, Invoice.created_at < end)
+            .group_by(Invoice.channel)
+            .all()
+        )
+        breakdown = ChannelBreakdown()
+        total = 0
+        for ch, cnt in rows:
+            total += cnt
+            if ch == "whatsapp":
+                breakdown.whatsapp = cnt
+            elif ch == "dashboard":
+                breakdown.dashboard = cnt
+            elif ch == "email":
+                breakdown.email = cnt
+            else:
+                breakdown.other += cnt
+        return PeriodActivity(total=total, by_channel=breakdown)
+
+    today_act = _count_period(today_start, now)
+    yesterday_act = _count_period(yesterday_start, today_start)
+    this_week_act = _count_period(week_start, now)
+    last_week_act = _count_period(last_week_start, week_start)
+    this_month_act = _count_period(month_start, now)
+    last_month_act = _count_period(last_month_start, month_start)
+    this_year_act = _count_period(year_start, now)
+
+    # Active unique users per period
+    def _active_users(start: dt.datetime, end: dt.datetime) -> int:
+        return (
+            db.query(func.count(distinct(Invoice.user_id)))
+            .filter(Invoice.created_at >= start, Invoice.created_at < end)
+            .scalar()
+        ) or 0
+
+    active_today = _active_users(today_start, now)
+    active_week = _active_users(week_start, now)
+    active_month = _active_users(month_start, now)
+
+    # Daily trend — last 30 days
+    thirty_days_ago = today_start - dt.timedelta(days=30)
+    daily_rows = (
+        db.query(
+            func.date(Invoice.created_at).label("day"),
+            func.count(Invoice.id).label("total"),
+            func.sum(case((Invoice.channel == "whatsapp", 1), else_=0)).label("wa"),
+            func.sum(case((Invoice.channel == "dashboard", 1), else_=0)).label("dash"),
+        )
+        .filter(Invoice.created_at >= thirty_days_ago)
+        .group_by(func.date(Invoice.created_at))
+        .order_by(func.date(Invoice.created_at))
+        .all()
+    )
+    daily_trend = [
+        DailyPoint(
+            date=str(r.day),
+            total=r.total,
+            whatsapp=r.wa or 0,
+            dashboard=r.dash or 0,
+        )
+        for r in daily_rows
+    ]
+
+    # Logins (approximate via last_login timestamps)
+    logins_today = (
+        db.query(func.count(models.User.id))
+        .filter(models.User.last_login >= today_start)
+        .scalar()
+    ) or 0
+    logins_week = (
+        db.query(func.count(models.User.id))
+        .filter(models.User.last_login >= week_start)
+        .scalar()
+    ) or 0
+    logins_month = (
+        db.query(func.count(models.User.id))
+        .filter(models.User.last_login >= month_start)
+        .scalar()
+    ) or 0
+
+    return ActivityAnalytics(
+        today=today_act,
+        yesterday=yesterday_act,
+        this_week=this_week_act,
+        last_week=last_week_act,
+        this_month=this_month_act,
+        last_month=last_month_act,
+        this_year=this_year_act,
+        active_users_today=active_today,
+        active_users_this_week=active_week,
+        active_users_this_month=active_month,
+        daily_trend=daily_trend,
+        logins_today=logins_today,
+        logins_this_week=logins_week,
+        logins_this_month=logins_month,
+    )
+
+
 @router.get("/businesses", response_model=BusinessListResponse)
 def get_business_intelligence(
     page: int = Query(1, ge=1),
