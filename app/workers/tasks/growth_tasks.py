@@ -139,32 +139,36 @@ def send_aggregate_unpaid_alerts() -> dict[str, Any]:
                 sent = False
                 has_phone = _is_valid_phone(user.phone)
 
-                # Try WhatsApp
+                # Try WhatsApp (budget-gated — unpaid alerts are high value)
                 if has_phone:
-                    template_name = getattr(settings, "WHATSAPP_TEMPLATE_UNPAID_ALERT", None)
-                    if template_name:
-                        lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
-                        ok = client.send_template(
-                            user.phone,
-                            template_name,
-                            lang,
-                            components=[{
-                                "type": "body",
-                                "parameters": [
-                                    {"type": "text", "text": name},
-                                    {"type": "text", "text": f"₦{total:,.0f}"},
-                                    {"type": "text", "text": str(count)},
-                                ],
-                            }],
-                        )
-                        if ok:
-                            stats["whatsapp_sent"] += 1
-                            sent = True
+                    from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+                    if can_send_whatsapp(priority=True):
+                        template_name = getattr(settings, "WHATSAPP_TEMPLATE_UNPAID_ALERT", None)
+                        if template_name:
+                            lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                            ok = client.send_template(
+                                user.phone,
+                                template_name,
+                                lang,
+                                components=[{
+                                    "type": "body",
+                                    "parameters": [
+                                        {"type": "text", "text": name},
+                                        {"type": "text", "text": f"₦{total:,.0f}"},
+                                        {"type": "text", "text": str(count)},
+                                    ],
+                                }],
+                            )
+                            if ok:
+                                record_whatsapp_send(priority=True)
+                                stats["whatsapp_sent"] += 1
+                                sent = True
 
-                    if not sent and is_window_open(user.phone):
-                        if client.send_text(user.phone, message):
-                            stats["whatsapp_sent"] += 1
-                            sent = True
+                        if not sent and is_window_open(user.phone):
+                            if client.send_text(user.phone, message):
+                                record_whatsapp_send(priority=True)
+                                stats["whatsapp_sent"] += 1
+                                sent = True
 
                 # Email fallback
                 if not sent and user.email:
@@ -339,11 +343,17 @@ def send_weekly_free_summary() -> dict[str, Any]:
 
                     sent = False
 
-                    # Try WhatsApp
-                    if has_phone and is_window_open(user.phone):
-                        if client.send_text(user.phone, message):
-                            stats["whatsapp_sent"] += 1
-                            sent = True
+                    # Try WhatsApp (weekly summary = low priority, prefer email)
+                    if has_phone and user.email:
+                        # If user has email, prefer email to save WhatsApp budget
+                        pass
+                    elif has_phone and is_window_open(user.phone):
+                        from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+                        if can_send_whatsapp():
+                            if client.send_text(user.phone, message):
+                                record_whatsapp_send()
+                                stats["whatsapp_sent"] += 1
+                                sent = True
 
                     # Email fallback
                     if not sent and user.email:
@@ -470,31 +480,36 @@ def send_payment_upsells() -> dict[str, Any]:
                 sent = False
                 has_phone = _is_valid_phone(user.phone)
 
-                # Try WhatsApp template first
-                if has_phone:
-                    template_name = getattr(settings, "WHATSAPP_TEMPLATE_PAYMENT_UPSELL", None)
-                    if template_name:
-                        lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
-                        ok = client.send_template(
-                            user.phone,
-                            template_name,
-                            lang,
-                            components=[{
-                                "type": "body",
-                                "parameters": [
-                                    {"type": "text", "text": name},
-                                    {"type": "text", "text": f"₦{total:,.0f}"},
-                                ],
-                            }],
-                        )
-                        if ok:
-                            stats["whatsapp_sent"] += 1
-                            sent = True
+                # Upsell = marketing spend. Prefer email; only use WhatsApp
+                # if no email and within budget.
+                if has_phone and not user.email:
+                    from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+                    if can_send_whatsapp():
+                        template_name = getattr(settings, "WHATSAPP_TEMPLATE_PAYMENT_UPSELL", None)
+                        if template_name:
+                            lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                            ok = client.send_template(
+                                user.phone,
+                                template_name,
+                                lang,
+                                components=[{
+                                    "type": "body",
+                                    "parameters": [
+                                        {"type": "text", "text": name},
+                                        {"type": "text", "text": f"₦{total:,.0f}"},
+                                    ],
+                                }],
+                            )
+                            if ok:
+                                record_whatsapp_send()
+                                stats["whatsapp_sent"] += 1
+                                sent = True
 
-                    if not sent and is_window_open(user.phone):
-                        if client.send_text(user.phone, message):
-                            stats["whatsapp_sent"] += 1
-                            sent = True
+                        if not sent and is_window_open(user.phone):
+                            if client.send_text(user.phone, message):
+                                record_whatsapp_send()
+                                stats["whatsapp_sent"] += 1
+                                sent = True
 
                 # Email fallback
                 if not sent and user.email:

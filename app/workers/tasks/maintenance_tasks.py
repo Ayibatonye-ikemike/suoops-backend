@@ -485,42 +485,45 @@ def winback_churned_businesses() -> dict[str, Any]:
                         f"— The SuoOps Team"
                     )
 
-                # Try email first
+                # Try email first (free, always preferred)
                 sent = False
                 if user.email:
                     sent = _send_smtp_email(user.email, subject, None, plain)
 
-                # Also send WhatsApp if they have a verified phone
-                if user.phone and user.phone_verified:
-                    try:
-                        from app.core.whatsapp import get_whatsapp_client
-                        client = get_whatsapp_client()
-                        wa_msg = (
-                            f"Hi {name} 👋\n\n"
-                            f"It's been {days_inactive} days since you used SuoOps.\n\n"
-                        )
-                        if tier == 30:
-                            wa_msg += (
-                                f"You have {pending_count} pending invoices ({revenue_str} tracked). "
-                                f"Your customers might be ready to pay — send a quick reminder?\n\n"
-                                f"Tap to log in: https://suoops.com/login"
+                # WhatsApp only if no email and within budget (winback = low priority)
+                if not sent and user.phone and user.phone_verified:
+                    from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+                    if can_send_whatsapp():
+                        try:
+                            from app.core.whatsapp import get_whatsapp_client
+                            client = get_whatsapp_client()
+                            wa_msg = (
+                                f"Hi {name} 👋\n\n"
+                                f"It's been {days_inactive} days since you used SuoOps.\n\n"
                             )
-                        elif tier == 60:
-                            wa_msg += (
-                                f"You still have {pending_count} unpaid invoices. "
-                                f"A quick reminder could help you collect.\n\n"
-                                f"Log in: https://suoops.com/login"
-                            )
-                        else:
-                            wa_msg += (
-                                f"Your {total_invoices} invoices and {revenue_str} in records "
-                                f"are still safe. Pick up where you left off anytime.\n\n"
-                                f"https://suoops.com/login"
-                            )
-                        client.send_text(user.phone, wa_msg)
-                        sent = True
-                    except Exception as e:
-                        logger.warning("WhatsApp winback failed for user %s: %s", user.id, e)
+                            if tier == 30:
+                                wa_msg += (
+                                    f"You have {pending_count} pending invoices ({revenue_str} tracked). "
+                                    f"Your customers might be ready to pay — send a quick reminder?\n\n"
+                                    f"Tap to log in: https://suoops.com/login"
+                                )
+                            elif tier == 60:
+                                wa_msg += (
+                                    f"You still have {pending_count} unpaid invoices. "
+                                    f"A quick reminder could help you collect.\n\n"
+                                    f"Log in: https://suoops.com/login"
+                                )
+                            else:
+                                wa_msg += (
+                                    f"Your {total_invoices} invoices and {revenue_str} in records "
+                                    f"are still safe. Pick up where you left off anytime.\n\n"
+                                    f"https://suoops.com/login"
+                                )
+                            if client.send_text(user.phone, wa_msg):
+                                record_whatsapp_send()
+                                sent = True
+                        except Exception as e:
+                            logger.warning("WhatsApp winback failed for user %s: %s", user.id, e)
 
                 if sent:
                     db.add(UserEmailLog(user_id=user.id, email_type=email_type))
@@ -681,12 +684,19 @@ def nudge_zero_invoice_users() -> dict[str, Any]:
                 try:
                     from app.core.config import settings as _settings
                     from app.core.whatsapp import get_whatsapp_client
+                    from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+
+                    if not can_send_whatsapp():
+                        stats["skipped"] += 1
+                        continue
+
                     client = get_whatsapp_client()
 
                     sent = False
                     # Try free-form text first (works inside 24h window)
                     try:
                         if client.send_text(user.phone, msg):
+                            record_whatsapp_send()
                             sent = True
                     except Exception:
                         pass
@@ -703,6 +713,7 @@ def nudge_zero_invoice_users() -> dict[str, Any]:
                                 }
                             ]
                             if client.send_template(user.phone, tpl, lang, components):
+                                record_whatsapp_send()
                                 sent = True
 
                     if sent:

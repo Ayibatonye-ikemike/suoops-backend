@@ -136,8 +136,9 @@ def _send_wa_template(
     wa_type: str,
     db,
     user_id: int,
+    priority: bool = False,
 ) -> bool:
-    """Send a WhatsApp template if configured and not yet sent.
+    """Send a WhatsApp template if configured, not yet sent, and within budget.
 
     Tracks delivery via ``UserEmailLog`` using ``wa_`` prefixed types
     so templates are never sent twice to the same user.
@@ -147,6 +148,12 @@ def _send_wa_template(
         return False
 
     if _was_sent(db, user_id, wa_type):
+        return False
+
+    # Check daily WhatsApp budget before sending
+    from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+    if not can_send_whatsapp(priority=priority):
+        logger.debug("WhatsApp daily budget exceeded, skipping %s for user %s", wa_type, user_id)
         return False
 
     try:
@@ -168,6 +175,7 @@ def _send_wa_template(
         ok = client.send_template(phone, template_name, lang, components)
         if ok:
             _record_sent(db, user_id, wa_type)
+            record_whatsapp_send(priority=priority)
         return ok
     except Exception as e:
         logger.warning(
@@ -221,6 +229,18 @@ def send_engagement_emails() -> dict[str, Any]:
                 User.email != None,  # noqa: E711
             ).scalar() or 0
 
+            # Pre-fetch invoice counts for all users in one query
+            # (eliminates per-user invoice count query — saves 50K queries at scale)
+            from app.models.models import Invoice
+            invoice_count_map: dict[int, int] = {}
+            for row in (
+                db.query(Invoice.issuer_id, func.count(Invoice.id))
+                .filter(Invoice.invoice_type == "revenue")
+                .group_by(Invoice.issuer_id)
+                .all()
+            ):
+                invoice_count_map[row[0]] = row[1]
+
             for offset in range(0, total_users, BATCH_SIZE):
                 users = (
                     db.query(User)
@@ -233,7 +253,7 @@ def send_engagement_emails() -> dict[str, Any]:
 
                 for user in users:
                     try:
-                        _process_user(db, user, now, stats)
+                        _process_user(db, user, now, stats, invoice_count_map)
                     except Exception as e:
                         logger.warning("Engagement email failed for user %s: %s", user.id, e)
                         stats["failed"] += 1
@@ -259,19 +279,22 @@ def send_engagement_emails() -> dict[str, Any]:
         raise
 
 
-def _process_user(db, user, now: datetime, stats: dict[str, int]) -> None:
+def _process_user(db, user, now: datetime, stats: dict[str, int], invoice_count_map: dict[int, int] | None = None) -> None:
     """Determine which email (if any) to send to a single user."""
     from app.models.models import Invoice
 
     name = _get_user_name(user)
     signup_age = now - user.created_at.replace(tzinfo=timezone.utc) if user.created_at.tzinfo is None else now - user.created_at
 
-    # Count user's total invoices
-    invoice_count = (
-        db.query(func.count(Invoice.id))
-        .filter(Invoice.issuer_id == user.id, Invoice.invoice_type == "revenue")
-        .scalar()
-    ) or 0
+    # Use pre-fetched count if available, otherwise query (fallback)
+    if invoice_count_map is not None:
+        invoice_count = invoice_count_map.get(user.id, 0)
+    else:
+        invoice_count = (
+            db.query(func.count(Invoice.id))
+            .filter(Invoice.issuer_id == user.id, Invoice.invoice_type == "revenue")
+            .scalar()
+        ) or 0
 
     # ── 0. PHONE VERIFICATION NUDGE — DISABLED (phone-first signup) ──
     # With phone-first signup, users already have WhatsApp connected.
@@ -521,20 +544,22 @@ def _send_zero_invoice_nudge(db, user, name: str, day: int, stats: dict[str, int
         if _send_smtp_email(user.email, subject, None, plain_email):
             sent = True
 
-    # WhatsApp: try free plain text first, fall back to win_back template
-    if user.phone:
+    # WhatsApp: only if no email (save budget) and within daily cap
+    if user.phone and not sent:
+        from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
         wa_sent = False
-        if is_window_open(user.phone):
+        if can_send_whatsapp() and is_window_open(user.phone):
             try:
                 from app.core.whatsapp import get_whatsapp_client
                 client = get_whatsapp_client()
                 if client.send_text(user.phone, wa_message):
+                    record_whatsapp_send()
                     wa_sent = True
             except Exception as e:
                 logger.warning("Day %d WhatsApp nudge failed for user %s: %s", day, user.id, e)
 
         # Fall back to win_back_reminder template (outside 24h window)
-        if not wa_sent:
+        if not wa_sent and can_send_whatsapp():
             win_back_tpl = getattr(settings, "WHATSAPP_TEMPLATE_WIN_BACK", None)
             if win_back_tpl:
                 if _send_wa_template(
