@@ -76,6 +76,7 @@ class ReferralCode(Base):
     """
     Unique referral code for each user.
     Each user gets one code that they can share.
+    Influencer codes have custom slugs, commission rates, and signup perks.
     """
     __tablename__ = "referral_code"
     
@@ -88,6 +89,22 @@ class ReferralCode(Base):
         default=utcnow,
         server_default=func.now(),
     )
+
+    # ── Influencer / affiliate fields ────────────────────────────
+    is_influencer: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    custom_slug: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True, index=True)
+    influencer_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    influencer_contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Commission: first Pro purchase
+    commission_first: Mapped[int] = mapped_column(Integer, default=500, server_default="500")
+    # Commission: recurring (months 2–N)
+    commission_recurring: Mapped[int] = mapped_column(Integer, default=100, server_default="100")
+    # How many months of recurring commission (after the first)
+    commission_months: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    # Bonus free invoices for users who sign up through this code
+    bonus_invoices: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Admin notes
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     # Relationships
     user: Mapped[User] = relationship("User", back_populates="referral_code")
@@ -208,6 +225,8 @@ REFERRAL_THRESHOLDS = {
 }
 
 # Pro plan price for commission calculation
-PRO_PLAN_PRICE = 3250  # ₦3,250/month
-REFERRAL_COMMISSION_PERCENTAGE = 15  # 15% commission
-REFERRAL_COMMISSION_AMOUNT = PRO_PLAN_PRICE * REFERRAL_COMMISSION_PERCENTAGE // 100  # ₦488
+PRO_PLAN_PRICE = 2000  # ₦2,000 Pro Pack
+REFERRAL_COMMISSION_PERCENTAGE = 25  # 25% first purchase
+REFERRAL_COMMISSION_AMOUNT = 500  # ₦500 first purchase
+REFERRAL_RECURRING_AMOUNT = 100  # ₦100 months 2–5
+REFERRAL_RECURRING_MONTHS = 5  # pay recurring for up to 5 months after first

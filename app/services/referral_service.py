@@ -1,11 +1,13 @@
 """
 Referral service for managing referral codes, tracking referrals, and distributing rewards.
 
-COMMISSION-BASED MODEL (Updated February 2026):
+COMMISSION MODEL (Updated June 2026 — Influencer Program):
 - Each user gets a unique 8-character referral code
-- Paid referral commission: 15% = ₦488 per Pro subscriber (instant reward)
-- Free signup referrals: No reward (focus on quality paid referrals)
-- Note: Starter has no monthly subscription - only Pro counts as paid referrals
+- Influencer codes can have custom vanity slugs (e.g. "coachade")
+- First Pro purchase commission: ₦500 (25% of ₦2,000 Pro Pack) — configurable per code
+- Recurring commission: ₦100 for months 2–5 (5%) — configurable per code
+- Max total per referred user: ₦900 over 5 months
+- Bonus invoices: influencer codes can grant extra free invoices to signups
 - CASH PAYOUT: Commissions are paid out at the end of each month
 - Rewards expire after 90 days if not claimed for payout
 """
@@ -79,10 +81,19 @@ class ReferralService:
         return referral_code
 
     def get_code_by_string(self, code: str) -> ReferralCode | None:
-        """Look up a referral code by its string value."""
-        return self.db.execute(
+        """Look up a referral code by its code string or custom vanity slug."""
+        # Try exact code match first
+        result = self.db.execute(
             select(ReferralCode)
             .where(ReferralCode.code == code.upper())
+            .where(ReferralCode.is_active.is_(True))
+        ).scalar_one_or_none()
+        if result:
+            return result
+        # Try custom slug (case-insensitive)
+        return self.db.execute(
+            select(ReferralCode)
+            .where(func.lower(ReferralCode.custom_slug) == code.lower())
             .where(ReferralCode.is_active.is_(True))
         ).scalar_one_or_none()
 
@@ -206,12 +217,87 @@ class ReferralService:
 
         return True
 
+    def process_recurring_commission(self, referred_user_id: int) -> bool:
+        """
+        Create a recurring commission reward when a referred user buys another Pro Pack.
+
+        Called on each Pro purchase AFTER the first one. Pays commission_recurring
+        (default ₦100) for up to commission_months (default 5) purchases after the first.
+
+        Returns True if a recurring reward was created.
+        """
+        referral = self.db.execute(
+            select(Referral)
+            .where(Referral.referred_id == referred_user_id)
+            .where(Referral.status == ReferralStatus.COMPLETED)
+            .where(Referral.referral_type == ReferralType.PAID_SIGNUP)
+        ).scalar_one_or_none()
+
+        if not referral:
+            return False
+
+        # Get the referral code to check commission config
+        code_obj = self.db.execute(
+            select(ReferralCode).where(ReferralCode.id == referral.referral_code_id)
+        ).scalar_one_or_none()
+
+        if not code_obj or not code_obj.is_active:
+            return False
+
+        recurring_amount = code_obj.commission_recurring
+        max_months = code_obj.commission_months
+
+        if recurring_amount <= 0 or max_months <= 0:
+            return False
+
+        # Count how many recurring rewards have already been paid
+        recurring_count = self.db.execute(
+            select(func.count(ReferralReward.id))
+            .where(ReferralReward.user_id == referral.referrer_id)
+            .where(ReferralReward.reward_type == "commission_recurring")
+            .where(ReferralReward.reward_description.contains(f"user #{referred_user_id}"))
+        ).scalar() or 0
+
+        if recurring_count >= max_months:
+            logger.info(
+                "Recurring commission cap reached for referrer %s / referred %s (%d/%d)",
+                referral.referrer_id, referred_user_id, recurring_count, max_months,
+            )
+            return False
+
+        referred_user = self.db.execute(
+            select(User).where(User.id == referred_user_id)
+        ).scalar_one_or_none()
+        referred_name = referred_user.name if referred_user else "a user"
+
+        reward = ReferralReward(
+            user_id=referral.referrer_id,
+            reward_type="commission_recurring",
+            reward_description=(
+                f"₦{recurring_amount} recurring commission for {referred_name}'s "
+                f"Pro purchase (month {recurring_count + 2}, user #{referred_user_id})"
+            ),
+            free_referrals_count=0,
+            paid_referrals_count=0,
+            status=RewardStatus.PENDING,
+            expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=90),
+        )
+        self.db.add(reward)
+        self.db.commit()
+
+        logger.info(
+            "Created recurring commission ₦%s for referrer %s (referred user %s, month %d/%d)",
+            recurring_amount, referral.referrer_id, referred_user_id,
+            recurring_count + 2, max_months + 1,
+        )
+        return True
+
     # ==================== REWARD MANAGEMENT ====================
 
     def _create_commission_reward(self, referrer_id: int, referred_user_id: int) -> ReferralReward | None:
         """
         Create an instant commission reward when a referred user subscribes to Pro.
-        COMMISSION MODEL: ₦488 commission per paid referral (legacy figure; the referral program is currently disabled).
+        Uses per-code commission_first rate (default ₦500).
         CASH PAYOUT: Commissions are paid out at the end of each month.
         """
         # Get referred user name for reward description
@@ -220,12 +306,24 @@ class ReferralService:
         ).scalar_one_or_none()
         
         referred_name = referred_user.name if referred_user else "a user"
+
+        # Look up the referral code to get the per-code commission rate
+        referral = self.db.execute(
+            select(Referral).where(Referral.referred_id == referred_user_id)
+        ).scalar_one_or_none()
+        commission_amount = REFERRAL_COMMISSION_AMOUNT  # default ₦500
+        if referral:
+            code_obj = self.db.execute(
+                select(ReferralCode).where(ReferralCode.id == referral.referral_code_id)
+            ).scalar_one_or_none()
+            if code_obj:
+                commission_amount = code_obj.commission_first
         
         # Create commission reward
         reward = ReferralReward(
             user_id=referrer_id,
             reward_type="commission",
-            reward_description=f"₦{REFERRAL_COMMISSION_AMOUNT} cash commission for {referred_name}'s Pro subscription",
+            reward_description=f"₦{commission_amount} commission for {referred_name}'s first Pro purchase",
             free_referrals_count=0,
             paid_referrals_count=1,
             status=RewardStatus.PENDING,
@@ -236,8 +334,9 @@ class ReferralService:
         self.db.refresh(reward)
 
         logger.info(
-            f"Created commission reward for user {referrer_id}: ₦{REFERRAL_COMMISSION_AMOUNT} "
-            f"(referred user {referred_user_id} subscribed to Pro)"
+            "Created commission reward for user %s: ₦%s "
+            "(referred user %s subscribed to Pro)",
+            referrer_id, commission_amount, referred_user_id,
         )
         return reward
 

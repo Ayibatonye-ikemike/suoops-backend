@@ -116,6 +116,23 @@ class AuthService:
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
+
+        # Credit bonus invoices if signed up through an influencer code
+        referral_code_str = stored_data.get("referral_code")
+        if referral_code_str:
+            try:
+                from app.services.referral_service import ReferralService
+                ref_svc = ReferralService(self.db)
+                code_obj = ref_svc.get_code_by_string(referral_code_str)
+                if code_obj and code_obj.bonus_invoices > 0:
+                    user.invoice_balance += code_obj.bonus_invoices
+                    self.db.commit()
+                    logger.info(
+                        "Credited %d bonus invoices to user %s via code %s",
+                        code_obj.bonus_invoices, user.id, referral_code_str,
+                    )
+            except Exception as e:
+                logger.warning("Failed to credit bonus invoices: %s", e)
         
         # Sync new user to Brevo (real-time)
         try:

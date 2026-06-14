@@ -124,9 +124,13 @@ async def verify_subscription_payment(
                 try:
                     from app.services.referral_service import ReferralService
                     referral_service = ReferralService(db)
-                    referral_service.upgrade_referral_to_paid(current_user_id)
+                    # First Pro purchase → one-time ₦500 commission
+                    upgraded = referral_service.upgrade_referral_to_paid(current_user_id)
+                    if not upgraded:
+                        # Already paid → this is a repeat purchase → recurring commission
+                        referral_service.process_recurring_commission(current_user_id)
                 except Exception as e:
-                    logger.warning(f"Failed to upgrade referral to paid: {e}")
+                    logger.warning(f"Failed to process referral commission: {e}")
             
             # Record metrics
             metrics.subscription_payment_success(plan.lower())

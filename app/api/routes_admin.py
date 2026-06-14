@@ -655,6 +655,293 @@ def get_referral_payouts(
 
 
 # ============================================================================
+# Influencer / Affiliate Program
+# ============================================================================
+
+
+class InfluencerCreate(BaseModel):
+    """Payload for creating an influencer partnership."""
+    influencer_name: str
+    influencer_contact: str | None = None
+    custom_slug: str  # vanity URL slug — letters, numbers, hyphens only
+    commission_first: int = 500  # ₦ on first Pro purchase
+    commission_recurring: int = 100  # ₦ on months 2–N
+    commission_months: int = 5  # how many recurring months
+    bonus_invoices: int = 3  # extra free invoices for signups
+    notes: str | None = None
+
+
+class InfluencerUpdate(BaseModel):
+    """Payload for updating an influencer partnership."""
+    influencer_name: str | None = None
+    influencer_contact: str | None = None
+    custom_slug: str | None = None
+    commission_first: int | None = None
+    commission_recurring: int | None = None
+    commission_months: int | None = None
+    bonus_invoices: int | None = None
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+class InfluencerInfo(BaseModel):
+    """Influencer partnership with performance stats."""
+    id: int
+    code: str
+    custom_slug: str | None
+    influencer_name: str | None
+    influencer_contact: str | None
+    commission_first: int
+    commission_recurring: int
+    commission_months: int
+    bonus_invoices: int
+    notes: str | None
+    is_active: bool
+    created_at: dt.datetime
+    # Performance
+    total_signups: int = 0
+    activated_users: int = 0  # created at least 1 invoice
+    pro_conversions: int = 0
+    total_commission_earned: int = 0
+    signup_link: str = ""
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InfluencerListResponse(BaseModel):
+    total: int
+    influencers: list[InfluencerInfo]
+
+
+@router.post("/influencers", response_model=InfluencerInfo, status_code=201)
+def create_influencer(
+    payload: InfluencerCreate,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> Any:
+    """Create a new influencer partnership with a custom vanity link."""
+    import re
+
+    from app.models.referral_models import ReferralCode, Referral, ReferralStatus, ReferralType, generate_referral_code
+
+    log_audit_event("admin.influencer.create", user_id=admin_user.id, slug=payload.custom_slug)
+
+    # Validate slug format
+    slug = payload.custom_slug.strip().lower()
+    if not re.match(r"^[a-z0-9][a-z0-9\-]{1,48}[a-z0-9]$", slug):
+        raise HTTPException(400, "Slug must be 3-50 chars: lowercase letters, numbers, hyphens. No leading/trailing hyphens.")
+
+    # Check slug uniqueness
+    existing = db.query(ReferralCode).filter(
+        func.lower(ReferralCode.custom_slug) == slug
+    ).first()
+    if existing:
+        raise HTTPException(409, f"Slug '{slug}' is already taken")
+
+    # Create a dedicated user-less referral code for this influencer
+    # Influencer codes are linked to admin's user_id as the "referrer"
+    # but we'll create a placeholder approach: use admin user
+    code_str = generate_referral_code()
+
+    # Check code uniqueness
+    while db.query(ReferralCode).filter(ReferralCode.code == code_str).first():
+        code_str = generate_referral_code()
+
+    code = ReferralCode(
+        user_id=admin_user.id,
+        code=code_str,
+        is_active=True,
+        is_influencer=True,
+        custom_slug=slug,
+        influencer_name=payload.influencer_name,
+        influencer_contact=payload.influencer_contact,
+        commission_first=payload.commission_first,
+        commission_recurring=payload.commission_recurring,
+        commission_months=payload.commission_months,
+        bonus_invoices=payload.bonus_invoices,
+        notes=payload.notes,
+    )
+    db.add(code)
+    db.commit()
+    db.refresh(code)
+
+    return InfluencerInfo(
+        id=code.id,
+        code=code.code,
+        custom_slug=code.custom_slug,
+        influencer_name=code.influencer_name,
+        influencer_contact=code.influencer_contact,
+        commission_first=code.commission_first,
+        commission_recurring=code.commission_recurring,
+        commission_months=code.commission_months,
+        bonus_invoices=code.bonus_invoices,
+        notes=code.notes,
+        is_active=code.is_active,
+        created_at=code.created_at,
+        signup_link=f"https://suoops.com/join/{slug}",
+    )
+
+
+@router.get("/influencers", response_model=InfluencerListResponse)
+def list_influencers(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> Any:
+    """List all influencer partnerships with performance stats."""
+    from sqlalchemy import distinct
+
+    from app.models.referral_models import (
+        Referral, ReferralCode, ReferralReward,
+        ReferralStatus, ReferralType, RewardStatus,
+    )
+
+    log_audit_event("admin.influencer.list", user_id=admin_user.id)
+
+    codes = (
+        db.query(ReferralCode)
+        .filter(ReferralCode.is_influencer.is_(True))
+        .order_by(ReferralCode.created_at.desc())
+        .all()
+    )
+
+    influencers = []
+    for code in codes:
+        # Total signups through this code
+        total_signups = (
+            db.query(func.count(Referral.id))
+            .filter(Referral.referral_code_id == code.id)
+            .scalar()
+        ) or 0
+
+        # Users who created at least 1 invoice (activated)
+        activated = 0
+        if total_signups > 0:
+            from app.models.models import Invoice
+            referred_ids = [
+                r[0] for r in
+                db.query(Referral.referred_id)
+                .filter(Referral.referral_code_id == code.id)
+                .all()
+            ]
+            if referred_ids:
+                activated = (
+                    db.query(func.count(distinct(Invoice.issuer_id)))
+                    .filter(Invoice.issuer_id.in_(referred_ids))
+                    .scalar()
+                ) or 0
+
+        # Pro conversions
+        pro_conversions = (
+            db.query(func.count(Referral.id))
+            .filter(
+                Referral.referral_code_id == code.id,
+                Referral.referral_type == ReferralType.PAID_SIGNUP,
+            )
+            .scalar()
+        ) or 0
+
+        # Total commission earned (sum of all reward descriptions with amounts)
+        total_commission = 0
+        rewards = (
+            db.query(ReferralReward)
+            .filter(ReferralReward.user_id == code.user_id)
+            .all()
+        )
+        # Calculate from the commission structure
+        total_commission = pro_conversions * code.commission_first
+        # Add recurring commissions
+        recurring_rewards = (
+            db.query(func.count(ReferralReward.id))
+            .filter(
+                ReferralReward.user_id == code.user_id,
+                ReferralReward.reward_type == "commission_recurring",
+            )
+            .scalar()
+        ) or 0
+        total_commission += recurring_rewards * code.commission_recurring
+
+        influencers.append(InfluencerInfo(
+            id=code.id,
+            code=code.code,
+            custom_slug=code.custom_slug,
+            influencer_name=code.influencer_name,
+            influencer_contact=code.influencer_contact,
+            commission_first=code.commission_first,
+            commission_recurring=code.commission_recurring,
+            commission_months=code.commission_months,
+            bonus_invoices=code.bonus_invoices,
+            notes=code.notes,
+            is_active=code.is_active,
+            created_at=code.created_at,
+            total_signups=total_signups,
+            activated_users=activated,
+            pro_conversions=pro_conversions,
+            total_commission_earned=total_commission,
+            signup_link=f"https://suoops.com/join/{code.custom_slug}" if code.custom_slug else "",
+        ))
+
+    return InfluencerListResponse(total=len(influencers), influencers=influencers)
+
+
+@router.patch("/influencers/{influencer_id}", response_model=InfluencerInfo)
+def update_influencer(
+    influencer_id: int,
+    payload: InfluencerUpdate,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> Any:
+    """Update an influencer partnership's terms."""
+    import re
+
+    from app.models.referral_models import ReferralCode
+
+    log_audit_event("admin.influencer.update", user_id=admin_user.id, influencer_id=influencer_id)
+
+    code = db.query(ReferralCode).filter(
+        ReferralCode.id == influencer_id,
+        ReferralCode.is_influencer.is_(True),
+    ).first()
+    if not code:
+        raise HTTPException(404, "Influencer not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+
+    if "custom_slug" in updates and updates["custom_slug"]:
+        slug = updates["custom_slug"].strip().lower()
+        if not re.match(r"^[a-z0-9][a-z0-9\-]{1,48}[a-z0-9]$", slug):
+            raise HTTPException(400, "Invalid slug format")
+        existing = db.query(ReferralCode).filter(
+            func.lower(ReferralCode.custom_slug) == slug,
+            ReferralCode.id != influencer_id,
+        ).first()
+        if existing:
+            raise HTTPException(409, f"Slug '{slug}' is already taken")
+        updates["custom_slug"] = slug
+
+    for key, value in updates.items():
+        setattr(code, key, value)
+
+    db.commit()
+    db.refresh(code)
+
+    return InfluencerInfo(
+        id=code.id,
+        code=code.code,
+        custom_slug=code.custom_slug,
+        influencer_name=code.influencer_name,
+        influencer_contact=code.influencer_contact,
+        commission_first=code.commission_first,
+        commission_recurring=code.commission_recurring,
+        commission_months=code.commission_months,
+        bonus_invoices=code.bonus_invoices,
+        notes=code.notes,
+        is_active=code.is_active,
+        created_at=code.created_at,
+        signup_link=f"https://suoops.com/join/{code.custom_slug}" if code.custom_slug else "",
+    )
+
+
+# ============================================================================
 # Platform Metrics
 # ============================================================================
 
