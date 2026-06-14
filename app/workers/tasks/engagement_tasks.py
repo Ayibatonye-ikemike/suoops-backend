@@ -550,7 +550,7 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
     Day 0 — Welcome: feature showcase (invoicing, WhatsApp, reminders, receipts,
              expenses, customer DB) + CTA to create first invoice.
     Day 1 — Feature tour: deep dive into 5 key features users may not know about.
-    Day 3 — Pro intro: full Pro plan pitch (₦3,250/mo, all premium features) +
+    Day 3 — Pro intro: full Pro plan pitch (₦2,000 Pro Pack, all premium features) +
              invoice pack option (₦1,250/50).
     """
     # Each day maps to: (email_type, subject, template_file, plain_text_fallback)
@@ -598,8 +598,8 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
             (
                 f"Hi {name},\n\n"
                 "You've been using SuoOps for a few days. Ready to unlock the full toolkit?\n\n"
-                "SuoOps Pro — ₦3,250/month:\n"
-                "✅ 50 invoices/month (vs 5 on free)\n"
+                "SuoOps Pro Pack — ₦2,000 (one-time):\n"
+                "✅ 20 invoices + 30 days of Pro features\n"
                 "✅ Tax reports — PIT & CIT generated automatically\n"
                 "✅ Inventory management with low-stock alerts\n"
                 "✅ Custom logo branding on invoices & receipts\n"
@@ -608,7 +608,7 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
                 "✅ Business insights — customer value, margin analysis\n"
                 "✅ Voice invoicing — 15/month\n"
                 "✅ Priority support\n\n"
-                "₦3,250/month is less than a business lunch — but saves hours every week.\n\n"
+                "₦2,000 is less than a business lunch — but saves hours every week.\n\n"
                 "Not ready? Buy 50 invoices for ₦1,250 anytime.\n\n"
                 "Upgrade: https://suoops.com/dashboard/settings/subscription\n\n"
                 "— SuoOps"

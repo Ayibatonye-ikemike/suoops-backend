@@ -334,7 +334,7 @@ def send_weekly_free_summary() -> dict[str, Any]:
                     message += (
                         "\n🔗 suoops.com/dashboard\n\n"
                         "_Pro users get this daily + tax reports, "
-                        "inventory & more. Upgrade for ₦3,250/mo._"
+                        "inventory & more. Go Pro for ₦2,000 (20 invoices + 30 days of Pro)._"
                     )
 
                     sent = False
@@ -458,8 +458,8 @@ def send_payment_upsells() -> dict[str, Any]:
                     f"🎉 *You've collected ₦{total:,.0f}!*\n\n"
                     f"Hi {name}, you've received {count} payment{'s' if count != 1 else ''} "
                     f"through SuoOps — your business is growing!\n\n"
-                    f"Upgrade to *Pro* for ₦3,250/mo to:\n"
-                    f"✅ 50 invoices/month included\n"
+                    f"Upgrade to *Pro* for ₦2,000 (Pro Pack) to:\n"
+                    f"✅ 20 invoices + 30 days of Pro features\n"
                     f"✅ Tax reports (PIT + CIT)\n"
                     f"✅ Daily WhatsApp business summary\n"
                     f"✅ Customer insights & alerts\n"
@@ -503,8 +503,8 @@ def send_payment_upsells() -> dict[str, Any]:
                         f"Hi {name},\n\n"
                         f"You've received {count} payment{'s' if count != 1 else ''} "
                         f"totalling ₦{total:,.0f} through SuoOps.\n\n"
-                        f"Upgrade to Pro (₦3,250/mo) for tax reports, daily summaries, "
-                        f"customer insights, and 50 invoices/month.\n\n"
+                        f"Upgrade to Pro (₦2,000 Pro Pack) for tax reports, daily summaries, "
+                        f"customer insights, and 20 invoices + 30 days of Pro features.\n\n"
                         f"Upgrade: https://suoops.com/dashboard/settings/subscription\n\n"
                         f"— SuoOps"
                     )

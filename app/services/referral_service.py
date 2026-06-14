@@ -211,7 +211,7 @@ class ReferralService:
     def _create_commission_reward(self, referrer_id: int, referred_user_id: int) -> ReferralReward | None:
         """
         Create an instant commission reward when a referred user subscribes to Pro.
-        COMMISSION MODEL: ₦488 commission per paid referral (15% of Pro plan ₦3,250/month).
+        COMMISSION MODEL: ₦488 commission per paid referral (legacy figure; the referral program is currently disabled).
         CASH PAYOUT: Commissions are paid out at the end of each month.
         """
         # Get referred user name for reward description

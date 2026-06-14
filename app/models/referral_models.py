@@ -1,15 +1,20 @@
 """
 Referral system models for tracking referral codes, referrals, and rewards.
 
-COMMISSION-BASED REFERRAL MODEL (Updated February 2026):
+NOTE: The referral program is currently DISABLED (no UI, router and signup
+capture removed). These models/tables are kept dormant so existing data is
+preserved and the feature can be revived later. Figures below are legacy.
+
+COMMISSION-BASED REFERRAL MODEL (legacy):
 - Paid subscription referrals: 15% commission = ₦488 per Pro subscriber
 - Free signup referrals: No reward (focus on quality paid referrals)
 - CASH PAYOUT: Commissions are paid out at the end of each month
 
-Note: Starter plan has no monthly subscription (pay-per-invoice only).
-Only Pro (₦3,250/month) counts as paid referrals and earns commission.
+Note: Pro is now prepaid (₦2,000 Pro Pack). The ₦3,250/month figure below
+reflects the old recurring price used when this program was active.
+Only Pro counted as paid referrals and earned commission.
 
-Economics:
+Economics (legacy, when Pro was ₦3,250/month recurring):
 - Pro plan revenue: ₦3,250/month
 - Commission per referral: ₦488 (15%)
 - Referrer gets: ₦488 cash (paid monthly)

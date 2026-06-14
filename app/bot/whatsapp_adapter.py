@@ -492,7 +492,7 @@ class WhatsAppHandler:
                     self.client.send_text(
                         sender,
                         "🔒 *Analytics & Reports require a Pro plan.*\n\n"
-                        "Upgrade to Pro (₦3,250/mo) to unlock:\n"
+                        "Go Pro for ₦2,000 (Pro Pack: 20 invoices + 30 days of Pro features) to unlock:\n"
                         "✅ Business analytics & insights\n"
                         "✅ Cash-first dashboard\n"
                         "✅ Customer value tracking\n"
@@ -1386,7 +1386,7 @@ class WhatsAppHandler:
                 self.client.send_text(
                     sender,
                     "🔒 *Tax Reports require a Pro plan.*\n\n"
-                    "Upgrade to Pro (₦3,250/mo) at suoops.com/dashboard/settings/subscription\n"
+                    "Go Pro for ₦2,000 (Pro Pack: 20 invoices + 30 days of Pro features) at suoops.com/dashboard/settings/subscription\n"
                     "to unlock tax reports, analytics & more!"
                 )
                 return

@@ -24,7 +24,7 @@ def calculate_amount_with_paystack_fee(target_amount: Decimal) -> Decimal:
     This ensures after Paystack deducts 1.5% + ₦100, you receive target_amount.
     
     Examples:
-    - Pro ₦3,250 → Customer pays ~₦3,400 (you receive ₦3,250)
+    - Pro Pack ₦2,000 → Customer pays ~₦2,150 (you receive ₦2,000)
     - Invoice Pack ₦1,250 → Customer pays ~₦1,370 (you receive ₦1,250)
     """
     target = Decimal(target_amount)

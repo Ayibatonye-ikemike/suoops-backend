@@ -4,7 +4,7 @@ Feature gating utilities for subscription-based access control.
 NEW BILLING MODEL:
 - Invoice Packs: 50 invoices for ₦1,250 (one-time purchase, never expires)
 - FREE: 2 free invoices to start, then purchase packs. Tax features included.
-- PRO (₦3,250/mo): Premium features (branding, inventory, team, voice) + buy invoice packs
+- PRO (₦2,000 Pro Pack): 20 invoices + 30 days of premium features (branding, inventory, team, voice)
 
 Note: STARTER plan removed. Users start FREE, buy packs as needed.
 Frontend shows "Starter" as a UX label for non-Pro users.

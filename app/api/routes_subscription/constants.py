@@ -13,11 +13,11 @@ PLAN_PRICES = {
     "BUSINESS": 10000, # ₦10,000 - 50 invoices included + Photo OCR (15 max)
 }
 
-# Paystack Plan Codes for auto-recurring subscriptions
-# The plan in Paystack dashboard has the actual amount (₦3,402 for PRO)
-# Customer sees ₦3,250 on our site, pays ₦3,402 at Paystack checkout
+# Paystack Plan Codes (LEGACY — recurring subscriptions retired).
+# Pro is now prepaid (one-time Pro Pack / Pro Features pass); this recurring
+# plan is archived/unused and kept only so legacy subscribers don't break.
 PAYSTACK_PLAN_CODES = {
-    "PRO": "PLN_b9uq4itr2415bdf",  # Plan amount: ₦3,402 (₦3,250 + fees)
+    "PRO": "PLN_b9uq4itr2415bdf",  # archived recurring plan (unused)
     # "BUSINESS": "PLN_xxxxxxxx",  # Add when Business plan is enabled
 }
 
