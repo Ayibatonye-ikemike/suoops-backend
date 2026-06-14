@@ -75,9 +75,12 @@ async def create_invoice(
             data_owner_id,
         )
     try:
+        invoice_data = data.model_dump()
+        if not invoice_data.get("channel"):
+            invoice_data["channel"] = "dashboard"
         invoice = svc.create_invoice(
             issuer_id=data_owner_id,
-            data=data.model_dump(),
+            data=invoice_data,
             async_pdf=effective_async,
             created_by_user_id=current_user_id,  # Track actual creator for confirmation permissions
         )

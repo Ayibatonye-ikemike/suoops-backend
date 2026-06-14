@@ -306,6 +306,7 @@ class InvoiceIntentProcessor:
             )
         
         try:
+            data["channel"] = "whatsapp"
             invoice = invoice_service.create_invoice(issuer_id=issuer_id, data=data)
         except InvoiceBalanceExhaustedError as exc:
             # Invoice balance exhausted - caught by exception type
