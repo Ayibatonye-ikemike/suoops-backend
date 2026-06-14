@@ -1000,6 +1000,10 @@ _SME_MESSAGES: dict[str, str] = {
         "Your staff will receive invite emails shortly. "
         "Each person invoices from their own WhatsApp — "
         "you'll see who created what on the dashboard.\n\n"
+        "🖨️ *Print & share invoices:*\n"
+        "Every invoice generates a professional PDF. "
+        "Download it, print it, or send it directly to "
+        "your customers via WhatsApp or email.\n\n"
         "🌐 *Dashboard:* suoops.com — full analytics, "
         "inventory, customer insights & more\n\n"
         "Need help? Just reply *help* anytime 🙂"
@@ -1030,6 +1034,10 @@ _SME_MESSAGES: dict[str, str] = {
         "👥 *Your team:*\n"
         "Staff can invoice from their own WhatsApp. "
         "You'll see everything on the dashboard.\n\n"
+        "🖨️ *Print & share invoices:*\n"
+        "Every invoice generates a professional PDF. "
+        "Download it, print it, or send it directly to "
+        "your clients via WhatsApp or email.\n\n"
         "🌐 *Dashboard:* suoops.com — analytics, inventory & more\n\n"
         "Need help? Just reply *help* 🙂"
     ),
@@ -1063,6 +1071,10 @@ _SME_MESSAGES: dict[str, str] = {
         "👥 *Your team:*\n"
         "Staff get invite emails and can invoice from their "
         "own WhatsApp — you'll see who sold what.\n\n"
+        "🖨️ *Print & share invoices:*\n"
+        "Every invoice generates a professional PDF. "
+        "Download it, print it, or send it directly to "
+        "your customers via WhatsApp or email.\n\n"
         "🌐 *Dashboard:* suoops.com — full analytics, "
         "inventory tracking, customer management\n\n"
         "Need help? Reply *help* 🙂"
@@ -1092,6 +1104,10 @@ _SME_MESSAGES: dict[str, str] = {
         "🎨 *Brand your invoices:*\n"
         "Upload your logo at suoops.com → Settings. "
         "Professional PDFs with your branding.\n\n"
+        "🖨️ *Print & share invoices:*\n"
+        "Every invoice generates a professional PDF. "
+        "Download it, print it, or send it directly to "
+        "your clients via WhatsApp or email.\n\n"
         "🌐 *Dashboard:* suoops.com — analytics, "
         "client management, financial overview\n\n"
         "Need help? Reply *help* anytime 🙂"
@@ -1122,6 +1138,10 @@ _SME_MESSAGES: dict[str, str] = {
         "👥 *Your team:*\n"
         "Team members will get invite emails. "
         "Each person invoices from their own WhatsApp.\n\n"
+        "🖨️ *Print & share invoices:*\n"
+        "Every invoice generates a professional PDF. "
+        "Download it, print it, or send it directly to "
+        "your customers via WhatsApp or email.\n\n"
         "🌐 *Dashboard:* suoops.com — full business "
         "management, analytics & more\n\n"
         "Need help? Reply *help* 🙂"
@@ -1184,7 +1204,7 @@ def onboard_sme(
             phone=phone,
             phone_verified=True,
             signup_source="admin_onboard",
-            invoice_balance=5,  # generous starter balance
+            invoice_balance=10,  # starter balance for concierge onboard
         )
         user.last_login = dt.datetime.now(dt.timezone.utc)
         db.add(user)
@@ -1199,11 +1219,21 @@ def onboard_sme(
         if not user.name or user.name == phone:
             user.name = payload.name
 
-    # ── 2. Grant Pro access ──────────────────────────────────────
+    # ── 2. Grant Pro subscription (30 days, like a paid Pro Pack) ──
     pro_granted = False
-    if not user.pro_override:
-        user.pro_override = True
+    now = dt.datetime.now(dt.timezone.utc)
+    if user.plan != models.SubscriptionPlan.PRO or (
+        user.subscription_expires_at and user.subscription_expires_at < now
+    ):
+        user.plan = models.SubscriptionPlan.PRO
+        user.subscription_expires_at = now + dt.timedelta(days=30)
+        user.usage_reset_at = now
+        user.invoices_this_month = 0
         pro_granted = True
+
+    # Also ensure they have at least 10 invoices
+    if user.invoice_balance < 10:
+        user.invoice_balance = 10
 
     db.commit()
 
