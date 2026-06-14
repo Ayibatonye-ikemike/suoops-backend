@@ -66,6 +66,7 @@ class UserOut(BaseModel):
     logo_url: str | None = None
     subscription_expires_at: dt.datetime | None = None
     subscription_started_at: dt.datetime | None = None
+    is_influencer: bool = False
 
 
 class TokenOut(BaseModel):

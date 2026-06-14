@@ -40,6 +40,16 @@ class FeatureAccessOut(BaseModel):
     upgrade_url: str | None = None
 
 
+def _check_is_influencer(db: Session, user_id: int) -> bool:
+    """Check if user has an active influencer referral code."""
+    from app.models.referral_models import ReferralCode
+    code = db.query(ReferralCode.is_influencer).filter(
+        ReferralCode.user_id == user_id,
+        ReferralCode.is_influencer.is_(True),
+    ).first()
+    return bool(code)
+
+
 
 @router.get("/me", response_model=schemas.UserOut)
 def get_profile(
@@ -90,6 +100,7 @@ def get_profile(
         logo_url=fresh_logo_url,
         subscription_expires_at=user.subscription_expires_at,
         subscription_started_at=user.usage_reset_at,  # When current billing cycle started
+        is_influencer=_check_is_influencer(db, user.id),
     )
 
 

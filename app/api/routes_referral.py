@@ -298,3 +298,153 @@ def delete_payout_bank_details(
     db.commit()
     
     return {"message": "Payout bank details cleared"}
+
+
+# ==================== INFLUENCER EARNINGS ====================
+
+
+class EarningsBreakdown(BaseModel):
+    """Detailed earnings for influencer dashboard."""
+    first_purchase_earned: int  # Total from first purchases
+    recurring_earned: int  # Total from recurring commissions
+    perpetual_earned: int  # Total from perpetual %
+    total_earned: int
+    total_signups: int
+    total_conversions: int  # Free → paid
+    pending_payout: int
+    custom_link: str | None = None
+    commission_first: int  # Rate: ₦ per first purchase
+    commission_recurring: int  # Rate: ₦ per recurring
+    commission_perpetual_pct: int  # Rate: % perpetual
+    recent_earnings: list[dict]
+
+
+@router.get("/earnings", response_model=EarningsBreakdown)
+def get_influencer_earnings(
+    user_id: CurrentUserDep,
+    db: DbDep,
+):
+    """
+    Get detailed earnings breakdown for influencer dashboard.
+
+    Only meaningful for users with is_influencer=True on their
+    referral code, but any authenticated user can call it.
+    """
+    from sqlalchemy import select, func
+
+    from app.models.models import User
+    from app.models.referral_models import (
+        Referral,
+        ReferralCode,
+        ReferralReward,
+        ReferralStatus,
+        ReferralType,
+        RewardStatus,
+    )
+    from app.services.referral_share import build_referral_link
+
+    # Get referral code
+    code_obj = db.execute(
+        select(ReferralCode).where(ReferralCode.user_id == user_id)
+    ).scalar_one_or_none()
+
+    if not code_obj:
+        return EarningsBreakdown(
+            first_purchase_earned=0,
+            recurring_earned=0,
+            perpetual_earned=0,
+            total_earned=0,
+            total_signups=0,
+            total_conversions=0,
+            pending_payout=0,
+            custom_link=None,
+            commission_first=500,
+            commission_recurring=200,
+            commission_perpetual_pct=5,
+            recent_earnings=[],
+        )
+
+    # Build link
+    if code_obj.custom_slug:
+        custom_link = f"https://suoops.com/join/{code_obj.custom_slug}"
+    else:
+        custom_link = build_referral_link(code_obj.code)
+
+    # Count signups (all referrals)
+    total_signups = db.execute(
+        select(func.count(Referral.id))
+        .where(Referral.referrer_id == user_id)
+    ).scalar() or 0
+
+    # Count conversions (paid signups)
+    total_conversions = db.execute(
+        select(func.count(Referral.id))
+        .where(
+            Referral.referrer_id == user_id,
+            Referral.referral_type == ReferralType.PAID_SIGNUP,
+            Referral.status == ReferralStatus.COMPLETED,
+        )
+    ).scalar() or 0
+
+    # Get all rewards to calculate earnings by type
+    rewards = db.execute(
+        select(ReferralReward)
+        .where(ReferralReward.user_id == user_id)
+        .order_by(ReferralReward.created_at.desc())
+    ).scalars().all()
+
+    first_earned = 0
+    recurring_earned = 0
+    perpetual_earned = 0
+    pending_payout = 0
+
+    for r in rewards:
+        # Parse amount from reward_description (e.g. "₦500 commission...")
+        amount = _extract_amount(r.reward_description)
+        if r.reward_type == "commission_first_purchase":
+            first_earned += amount
+        elif r.reward_type == "commission_recurring":
+            recurring_earned += amount
+        elif r.reward_type == "commission_perpetual":
+            perpetual_earned += amount
+
+        if r.status == RewardStatus.PENDING:
+            pending_payout += amount
+
+    total_earned = first_earned + recurring_earned + perpetual_earned
+
+    # Recent earnings (last 20)
+    recent = []
+    for r in rewards[:20]:
+        amount = _extract_amount(r.reward_description)
+        recent.append({
+            "date": r.created_at.isoformat(),
+            "type": r.reward_type,
+            "amount": amount,
+            "description": r.reward_description,
+            "status": r.status.value,
+        })
+
+    return EarningsBreakdown(
+        first_purchase_earned=first_earned,
+        recurring_earned=recurring_earned,
+        perpetual_earned=perpetual_earned,
+        total_earned=total_earned,
+        total_signups=total_signups,
+        total_conversions=total_conversions,
+        pending_payout=pending_payout,
+        custom_link=custom_link,
+        commission_first=code_obj.commission_first,
+        commission_recurring=code_obj.commission_recurring,
+        commission_perpetual_pct=code_obj.commission_perpetual_pct,
+        recent_earnings=recent,
+    )
+
+
+def _extract_amount(description: str) -> int:
+    """Extract naira amount from reward description like '₦500 commission...'."""
+    import re
+    match = re.search(r"[₦N]?([\d,]+)", description)
+    if match:
+        return int(match.group(1).replace(",", ""))
+    return 0
