@@ -176,10 +176,11 @@ def send_overdue_reminders() -> dict[str, Any]:
 
                 try:
                     wa_delivered = False
+                    from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
 
                     # 1) Try template first (works outside 24h window)
                     overdue_tpl = settings.WHATSAPP_TEMPLATE_OVERDUE_REPORT
-                    if overdue_tpl and has_phone:
+                    if overdue_tpl and has_phone and can_send_whatsapp(priority=True):
                         total_inv = sum(len(v) for v in tiers.values())
                         total_amt = sum(inv.amount for vs in tiers.values() for inv in vs)
                         critical_cnt = len(tiers["owner_critical"])
@@ -200,12 +201,14 @@ def send_overdue_reminders() -> dict[str, Any]:
                             }],
                         )
                         if wa_delivered:
+                            record_whatsapp_send(priority=True)
                             sent += 1
 
                     # 2) Fallback to plain text (only within 24h window)
-                    if not wa_delivered and has_phone and is_window_open(user.phone):
+                    if not wa_delivered and has_phone and is_window_open(user.phone) and can_send_whatsapp(priority=True):
                         wa_delivered = client.send_text(user.phone, message)
                         if wa_delivered:
+                            record_whatsapp_send(priority=True)
                             sent += 1
                         else:
                             logger.warning(
@@ -712,10 +715,16 @@ def _send_customer_whatsapp_reminder(
     Prefers the ``payment_reminder`` template (deliverable outside the 24-hour
     window) and falls back to free-form text when the template is not configured.
     Checks the 24h conversation window before attempting plain text.
+    Budget-gated as priority sends (payment collection = revenue-generating).
     """
     try:
         from app.bot.conversation_window import is_window_open
         from app.core.whatsapp import get_whatsapp_client
+        from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+
+        # Payment reminders are priority (help users collect money)
+        if not can_send_whatsapp(priority=True):
+            return False
 
         client = get_whatsapp_client()
 
@@ -751,7 +760,10 @@ def _send_customer_whatsapp_reminder(
                 }
             ]
             lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
-            return client.send_template(customer.phone, template_name, lang, components)
+            ok = client.send_template(customer.phone, template_name, lang, components)
+            if ok:
+                record_whatsapp_send(priority=True)
+            return ok
 
         # Fallback: free-form text (only works within 24h window)
         if not is_window_open(customer.phone):
@@ -761,7 +773,10 @@ def _send_customer_whatsapp_reminder(
             )
             return False
         message = _format_customer_reminder(inv, tier, business_name)
-        return client.send_text(customer.phone, message)
+        ok = client.send_text(customer.phone, message)
+        if ok:
+            record_whatsapp_send(priority=True)
+        return ok
     except Exception as e:
         logger.warning(
             "WhatsApp reminder failed for invoice %s to %s: %s",

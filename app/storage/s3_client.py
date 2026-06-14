@@ -118,6 +118,56 @@ class S3Client:
             logger.info("Using filesystem storage fallback at %s", root)
         return self._filesystem_root
 
+    def ensure_lifecycle_policy(self) -> bool:
+        """Apply cost-saving S3 lifecycle rules.
+
+        - PDFs older than 90 days → Glacier Instant Retrieval ($0.004/GB vs $0.023)
+        - Receipt images older than 180 days → Glacier Instant Retrieval
+        - Tax report archives older than 365 days → Glacier Flexible Retrieval
+
+        Idempotent — safe to call repeatedly.
+        Returns True if policy was applied.
+        """
+        if self._client is None:
+            return False
+        try:
+            self._client.put_bucket_lifecycle_configuration(
+                Bucket=self.bucket,
+                LifecycleConfiguration={
+                    "Rules": [
+                        {
+                            "ID": "invoices-to-glacier-90d",
+                            "Filter": {"Prefix": "invoices/"},
+                            "Status": "Enabled",
+                            "Transitions": [
+                                {"Days": 90, "StorageClass": "GLACIER_IR"},
+                            ],
+                        },
+                        {
+                            "ID": "receipts-to-glacier-180d",
+                            "Filter": {"Prefix": "receipts/"},
+                            "Status": "Enabled",
+                            "Transitions": [
+                                {"Days": 180, "StorageClass": "GLACIER_IR"},
+                            ],
+                        },
+                        {
+                            "ID": "tax-reports-to-deep-365d",
+                            "Filter": {"Prefix": "tax-reports/"},
+                            "Status": "Enabled",
+                            "Transitions": [
+                                {"Days": 365, "StorageClass": "GLACIER"},
+                            ],
+                        },
+                    ]
+                },
+            )
+            logger.info("S3 lifecycle policy applied to bucket %s", self.bucket)
+            return True
+        except (BotoCoreError, ClientError) as exc:
+            logger.warning("Failed to set S3 lifecycle on %s: %s", self.bucket, exc)
+            return False
+
     def download_bytes(self, key: str) -> bytes | None:
         """Download an object from S3 and return its bytes.
 

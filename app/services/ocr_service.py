@@ -25,6 +25,42 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+# Per-user monthly OCR cap. At ~$0.01/image, 20 scans × 50K users = $10K/month.
+# Cap at 10/user/month → $5K max, but most users use 2-3 → ~$1,250 realistic.
+OCR_MONTHLY_LIMIT = 10
+
+
+def check_ocr_quota(user_id: int) -> bool:
+    """Return True if the user is within their monthly OCR quota."""
+    try:
+        from datetime import datetime, timezone
+        from app.db.redis_client import get_redis_client
+
+        r = get_redis_client()
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        key = f"ocr:usage:{user_id}:{month}"
+        count = int(r.get(key) or 0)
+        return count < OCR_MONTHLY_LIMIT
+    except Exception:
+        return True  # fail-open so users aren't blocked by Redis outage
+
+
+def record_ocr_use(user_id: int) -> None:
+    """Increment the user's monthly OCR counter."""
+    try:
+        from datetime import datetime, timezone
+        from app.db.redis_client import get_redis_client
+
+        r = get_redis_client()
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        key = f"ocr:usage:{user_id}:{month}"
+        pipe = r.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, 35 * 24 * 3600)  # auto-expire after 35 days
+        pipe.execute()
+    except Exception:
+        pass
+
 
 class OCRService:
     """

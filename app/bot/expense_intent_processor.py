@@ -257,6 +257,17 @@ class ExpenseIntentProcessor:
         if not media_id:
             self.client.send_text(sender, "❌ Could not get image from message")
             return
+
+        # Check monthly OCR quota before downloading/processing
+        from app.services.ocr_service import check_ocr_quota, record_ocr_use
+        if not check_ocr_quota(user_id):
+            self.client.send_text(
+                sender,
+                "📸 You've reached your monthly scan limit (10 receipts/month).\n\n"
+                "Type expenses manually instead:\n"
+                "• `Expense: ₦5,000 for transport`"
+            )
+            return
         
         # Download image from WhatsApp (resolve media ID → URL → bytes)
         try:
@@ -277,6 +288,7 @@ class ExpenseIntentProcessor:
                 image_bytes=image_bytes,
                 channel="whatsapp",
             )
+            record_ocr_use(user_id)
             
             # Send confirmation
             await self._send_confirmation(sender, expense, is_photo=True)

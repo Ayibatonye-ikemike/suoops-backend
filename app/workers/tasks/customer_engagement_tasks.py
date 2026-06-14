@@ -177,24 +177,27 @@ def send_dormant_customer_nudges() -> dict[str, Any]:
                             template_name = getattr(settings, "WHATSAPP_TEMPLATE_DORMANT_CUSTOMER", None)
                             if template_name:
                                 from app.core.whatsapp import get_whatsapp_client
+                                from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
 
-                                client = get_whatsapp_client()
-                                components = [
-                                    {
-                                        "type": "body",
-                                        "parameters": [
-                                            {"type": "text", "text": customer_name},
-                                            {"type": "text", "text": business_name},
-                                        ],
-                                    }
-                                ]
-                                lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
-                                if client.send_template(customer.phone, template_name, lang, components):
-                                    _record_send(
-                                        db, last_invoice_pk, "customer_dormant_21d", "whatsapp", customer.phone
-                                    )
-                                    stats["whatsapp_sent"] += 1
-                                    delivered = True
+                                if can_send_whatsapp(priority=False):
+                                    client = get_whatsapp_client()
+                                    components = [
+                                        {
+                                            "type": "body",
+                                            "parameters": [
+                                                {"type": "text", "text": customer_name},
+                                                {"type": "text", "text": business_name},
+                                            ],
+                                        }
+                                    ]
+                                    lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                                    if client.send_template(customer.phone, template_name, lang, components):
+                                        record_whatsapp_send(priority=False)
+                                        _record_send(
+                                            db, last_invoice_pk, "customer_dormant_21d", "whatsapp", customer.phone
+                                        )
+                                        stats["whatsapp_sent"] += 1
+                                        delivered = True
                         except Exception as e:
                             logger.warning("Dormant nudge WA failed for customer %s: %s", customer.id, e)
 

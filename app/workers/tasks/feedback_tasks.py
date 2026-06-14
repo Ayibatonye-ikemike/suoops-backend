@@ -177,8 +177,9 @@ def collect_user_feedback() -> dict[str, Any]:
                     if has_phone:
                         try:
                             from app.core.whatsapp import get_whatsapp_client
+                            from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
                             template_name = getattr(settings, "WHATSAPP_TEMPLATE_FEEDBACK", None)
-                            if template_name:
+                            if template_name and can_send_whatsapp(priority=False):
                                 client = get_whatsapp_client()
                                 lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
                                 components = [{
@@ -189,6 +190,7 @@ def collect_user_feedback() -> dict[str, Any]:
                                     ],
                                 }]
                                 if client.send_template(user.phone, template_name, lang, components):
+                                    record_whatsapp_send(priority=False)
                                     from app.workers.tasks.feedback_tasks import mark_feedback_pending
                                     mark_feedback_pending(user.phone)
                                     stats["whatsapp_sent"] = stats.get("whatsapp_sent", 0) + 1

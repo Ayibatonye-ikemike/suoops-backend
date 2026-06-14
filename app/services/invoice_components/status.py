@@ -544,10 +544,13 @@ class InvoiceStatusMixin:
             if template_name and user.phone:
                 try:
                     from app.bot.whatsapp_client import WhatsAppClient
+                    from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
 
                     client = WhatsAppClient(_settings.WHATSAPP_API_KEY)
                     lang = _settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
                     for product in products:
+                        if not can_send_whatsapp(priority=False):
+                            break
                         product_name = product.name or "Unknown product"
                         qty = str(product.quantity_in_stock)
                         reorder_level = str(product.reorder_level)
@@ -561,7 +564,8 @@ class InvoiceStatusMixin:
                                 ],
                             }
                         ]
-                        client.send_template(user.phone, template_name, lang, components)
+                        if client.send_template(user.phone, template_name, lang, components):
+                            record_whatsapp_send(priority=False)
                 except Exception as exc:
                     logger.error("Failed to send low stock WhatsApp: %s", exc)
             

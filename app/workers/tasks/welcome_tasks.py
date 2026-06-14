@@ -351,9 +351,15 @@ def send_activation_followup(user_id: int) -> dict:
 
         try:
             from app.core.whatsapp import get_whatsapp_client
+            from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+
+            if not can_send_whatsapp(priority=False):
+                result["reason"] = "daily_budget_exhausted"
+                return result
 
             client = get_whatsapp_client()
             if client.send_text(user.phone, msg):
+                record_whatsapp_send(priority=False)
                 db.add(UserEmailLog(user_id=user_id, email_type=FOLLOWUP_LOG_TYPE))
                 db.commit()
                 result["sent"] = True
@@ -366,6 +372,7 @@ def send_activation_followup(user_id: int) -> dict:
                     lang = _settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
                     components = [{"type": "body", "parameters": [{"type": "text", "text": name}]}]
                     if client.send_template(user.phone, tpl, lang, components):
+                        record_whatsapp_send(priority=False)
                         db.add(UserEmailLog(user_id=user_id, email_type=FOLLOWUP_LOG_TYPE))
                         db.commit()
                         result["sent"] = True

@@ -130,11 +130,17 @@ def send_expense_reminders(self: Task) -> dict[str, Any]:
         sent_count = 0
         client = get_whatsapp_client()
 
+        from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+
         for user in users:
             if user.phone:
+                if not can_send_whatsapp(priority=False):
+                    break
                 try:
-                    client.send_text(user.phone, message)
-                    sent_count += 1
+                    ok = client.send_text(user.phone, message)
+                    if ok:
+                        record_whatsapp_send(priority=False)
+                        sent_count += 1
                     logger.info("Sent expense reminder to user %s", user.id)
                 except Exception as e:
                     logger.error("Failed to send reminder to user %s: %s", user.id, e)

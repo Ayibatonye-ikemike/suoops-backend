@@ -16,8 +16,8 @@ def init_monitoring() -> None:
             sentry_sdk.init(
                 dsn=dsn,
                 integrations=[FastApiIntegration()],
-                traces_sample_rate=0.1,
-                profiles_sample_rate=0.0,
+                traces_sample_rate=0.02,  # 2% of requests (saves ~80% vs 10%)
+                profiles_sample_rate=0.0,  # Disabled to minimize Sentry costs
                 environment=settings.ENV,
                 release=f"suoops-backend@{settings.ENV}",
             )

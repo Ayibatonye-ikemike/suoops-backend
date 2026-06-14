@@ -75,6 +75,14 @@ async def parse_receipt_image(
     """
     # Check if user has Business plan with available quota
     check_voice_ocr_quota(db, current_user_id)
+
+    # Check monthly OCR limit (cost control — 10 scans/month per user)
+    from app.services.ocr_service import check_ocr_quota
+    if not check_ocr_quota(current_user_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Monthly OCR limit reached (10 scans/month). Resets next month."
+        )
     
     # Validate file type (fast check before reading bytes)
     allowed_types = ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"]
@@ -123,6 +131,10 @@ async def parse_receipt_image(
             status_code=422,
             detail=f"Could not extract data from image: {result.get('error', 'Unknown error')}"
         )
+
+    # Record successful OCR usage against monthly quota
+    from app.services.ocr_service import record_ocr_use
+    record_ocr_use(current_user_id)
     
     logger.info(
         f"OCR success: amount={result['amount']}, "
@@ -176,6 +188,14 @@ async def create_invoice_from_image(
     """
     # Check if user has Business plan with available quota
     check_voice_ocr_quota(db, current_user_id)
+
+    # Check monthly OCR limit (cost control)
+    from app.services.ocr_service import check_ocr_quota
+    if not check_ocr_quota(current_user_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Monthly OCR limit reached (10 scans/month). Resets next month."
+        )
     
     # Check invoice creation limit
     check_invoice_limit(db, current_user_id)

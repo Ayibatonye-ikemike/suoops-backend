@@ -189,8 +189,8 @@ def create_app() -> FastAPI:
                 RedisIntegration(),
             ],
             environment=settings.ENV,
-            traces_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
-            profiles_sample_rate=0.1 if settings.ENV.lower() == "prod" else 1.0,
+            traces_sample_rate=0.02 if settings.ENV.lower() == "prod" else 1.0,
+            profiles_sample_rate=0.0,  # Disabled in prod to reduce Sentry costs
             # Disable PII to comply with NDPA — user context set explicitly via sentry_sdk.set_user
             send_default_pii=False,
         )

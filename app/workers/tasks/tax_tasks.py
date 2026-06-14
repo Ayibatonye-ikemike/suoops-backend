@@ -234,6 +234,10 @@ def _notify_tax_report_whatsapp(
     try:
         from app.bot.conversation_window import is_window_open
         from app.core.whatsapp import get_whatsapp_client
+        from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+
+        if not can_send_whatsapp(priority=False):
+            return False
 
         client = get_whatsapp_client()
         template_name = getattr(settings, "WHATSAPP_TEMPLATE_TAX_REPORT_READY", None)
@@ -255,6 +259,7 @@ def _notify_tax_report_whatsapp(
                 }],
             )
             if ok:
+                record_whatsapp_send(priority=False)
                 return True
 
         # Plain text fallback (only inside 24h window)
@@ -264,7 +269,10 @@ def _notify_tax_report_whatsapp(
                 "View and download it from your dashboard:\n"
                 "\U0001f517 suoops.com/dashboard/tax-reports"
             )
-            return client.send_text(user.phone, msg)
+            ok = client.send_text(user.phone, msg)
+            if ok:
+                record_whatsapp_send(priority=False)
+            return ok
 
     except Exception as e:
         logger.warning("Tax report WA notification failed for user %s: %s", user.id, e)
