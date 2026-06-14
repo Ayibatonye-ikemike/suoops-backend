@@ -88,6 +88,64 @@ def cleanup_stale_webhooks() -> dict[str, Any]:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# LOG TABLE CLEANUP  (prevents bloat at scale)
+# ═══════════════════════════════════════════════════════════════════════
+
+@celery_app.task(
+    name="maintenance.cleanup_old_logs",
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_kwargs={"max_retries": 1},
+    soft_time_limit=120,
+    time_limit=180,
+)
+def cleanup_old_logs() -> dict[str, Any]:
+    """Delete old reminder and email logs to prevent table bloat.
+
+    At 50K users these tables can grow by 3M+ rows/year.
+    Reminder logs only matter for dedup within a few weeks;
+    email logs matter for lifecycle dedup (~60 days max).
+
+    Retention:
+      - InvoiceReminderLog: 90 days
+      - UserEmailLog: 180 days
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    results = {}
+
+    try:
+        with session_scope() as db:
+            from app.models.models import InvoiceReminderLog, UserEmailLog
+
+            # Reminder logs older than 90 days
+            cutoff_90 = now - dt.timedelta(days=90)
+            reminder_deleted = db.query(InvoiceReminderLog).filter(
+                InvoiceReminderLog.sent_at < cutoff_90,
+            ).delete(synchronize_session=False)
+            results["reminder_logs_deleted"] = reminder_deleted
+
+            # Email logs older than 180 days
+            cutoff_180 = now - dt.timedelta(days=180)
+            email_deleted = db.query(UserEmailLog).filter(
+                UserEmailLog.sent_at < cutoff_180,
+            ).delete(synchronize_session=False)
+            results["email_logs_deleted"] = email_deleted
+
+            db.commit()
+
+        logger.info(
+            "Log cleanup: reminder_logs=%d (>90d), email_logs=%d (>180d)",
+            results["reminder_logs_deleted"],
+            results["email_logs_deleted"],
+        )
+        return {"success": True, **results}
+
+    except Exception as exc:
+        logger.warning("Log cleanup task failure: %s", exc)
+        raise
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # INACTIVE ACCOUNT CLEANUP
 # ═══════════════════════════════════════════════════════════════════════
 

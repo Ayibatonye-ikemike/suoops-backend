@@ -2892,20 +2892,24 @@ async def sync_segment_to_brevo(
             error="BREVO_CONTACTS_API_KEY not configured"
         )
     
-    # Get users based on segment
+    # Get users based on segment (column-only queries to save RAM at scale)
     now = dt.datetime.now(dt.timezone.utc)
+    _brevo_cols = (
+        models.User.email, models.User.name, models.User.phone,
+        models.User.plan, models.User.invoice_balance, models.User.business_name,
+    )
     users = []
     
     if segment == "inactive":
         # Users who never created an invoice
         users_with_invoices = db.query(models.Invoice.issuer_id).distinct()
-        users = db.query(models.User).filter(
+        users = db.query(*_brevo_cols).filter(
             ~models.User.id.in_(users_with_invoices)
         ).all()
     
     elif segment == "low-balance":
         # FREE users with low invoice balance
-        users = db.query(models.User).filter(
+        users = db.query(*_brevo_cols).filter(
             models.User.plan == SubscriptionPlan.FREE,
             models.User.invoice_balance <= 2,
             models.User.invoice_balance > 0
@@ -2920,7 +2924,7 @@ async def sync_segment_to_brevo(
             func.count(models.Invoice.id) >= 3
         ).subquery()
         
-        users = db.query(models.User).filter(
+        users = db.query(*_brevo_cols).filter(
             models.User.id.in_(
                 db.query(user_invoice_counts.c.issuer_id)
             ),
@@ -2931,27 +2935,27 @@ async def sync_segment_to_brevo(
         # Users inactive for 14+ days
         cutoff = now - dt.timedelta(days=14)
         users_with_invoices = db.query(models.Invoice.issuer_id).distinct()
-        users = db.query(models.User).filter(
+        users = db.query(*_brevo_cols).filter(
             models.User.id.in_(users_with_invoices),
             models.User.last_login < cutoff
         ).all()
     
     elif segment == "starter":
         # Legacy: FREE users who bought packs (invoice_balance > 5) - for Pro upsell
-        users = db.query(models.User).filter(
+        users = db.query(*_brevo_cols).filter(
             models.User.plan == SubscriptionPlan.FREE,
             models.User.invoice_balance > 5,
         ).all()
     
     elif segment == "pro":
         # PRO plan users (monthly subscribers) - for retention
-        users = db.query(models.User).filter(
+        users = db.query(*_brevo_cols).filter(
             models.User.plan == SubscriptionPlan.PRO
         ).all()
     
     elif segment == "all":
         # ALL users - sync entire user base to Brevo
-        users = db.query(models.User).all()
+        users = db.query(*_brevo_cols).all()
     
     else:
         return BrevoSyncResult(
@@ -3131,7 +3135,10 @@ def export_users_csv(
 
     from fastapi.responses import StreamingResponse
     
-    users = db.query(models.User).all()
+    users = db.query(
+        models.User.email, models.User.name, models.User.phone,
+        models.User.plan, models.User.invoice_balance, models.User.business_name,
+    ).all()
     
     # Build CSV
     output = io.StringIO()
@@ -3476,7 +3483,7 @@ def sync_brevo_contacts(
     if not brevo_api_key:
         raise HTTPException(status_code=400, detail="BREVO_CONTACTS_API_KEY not configured")
 
-    # Get all current user emails from DB
+    # Get all current user emails from DB (column-only query, no full objects)
     db_emails = set()
     for row in db.query(models.User.email).filter(models.User.email != None).all():  # noqa: E711
         if row.email:

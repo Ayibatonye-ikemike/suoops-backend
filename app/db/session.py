@@ -31,15 +31,13 @@ else:
     if raw_url and raw_url.startswith("postgresql"):
         try:
             # Configure connection pool for production PostgreSQL
-            # Pool size: base connections kept open
-            # Max overflow: additional connections that can be created on demand
-            # Pool recycle: recycle connections after 1 hour to prevent stale connections
-            # Pool pre-ping: verify connection health before using
+            # Render Starter: 512MB total (OS ~100MB, app ~300MB available)
+            # Each PG connection ~25-30MB overhead → cap at 13 total
             engine = create_engine(
                 raw_url,
                 future=True,
-                pool_size=8,  # Base pool size (shared with Celery workers)
-                max_overflow=12,  # Allow up to 20 total connections (8 + 12)
+                pool_size=5,  # Base pool (web + celery share)
+                max_overflow=8,  # Burst to 13 total (5 + 8)
                 pool_recycle=1800,  # Recycle connections every 30 min to prevent stale
                 pool_pre_ping=True,  # Verify connection health before use
             )

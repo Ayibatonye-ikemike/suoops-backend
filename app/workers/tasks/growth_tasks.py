@@ -86,8 +86,15 @@ def send_aggregate_unpaid_alerts() -> dict[str, Any]:
             # Check for recent sends (don't spam)
             three_days_ago = datetime.now(timezone.utc) - timedelta(days=3)
 
+            # Pre-fetch all users in one query (avoid N+1)
+            issuer_ids = [row.issuer_id for row in unpaid_data]
+            users_by_id = {
+                u.id: u
+                for u in db.query(User).filter(User.id.in_(issuer_ids)).all()
+            }
+
             for row in unpaid_data:
-                user = db.query(User).filter(User.id == row.issuer_id).first()
+                user = users_by_id.get(row.issuer_id)
                 if not user:
                     continue
 
@@ -257,57 +264,81 @@ def send_weekly_free_summary() -> dict[str, Any]:
 
             client = get_whatsapp_client()
 
+            # Pre-fetch all summary stats in bulk (avoids 4 queries × N users)
+            user_ids = [u.id for u in free_users_with_invoices]
+
+            # Revenue collected this week per user
+            revenue_map = dict(
+                db.query(
+                    Invoice.issuer_id,
+                    sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0),
+                )
+                .filter(
+                    Invoice.issuer_id.in_(user_ids),
+                    Invoice.invoice_type == "revenue",
+                    Invoice.status == "paid",
+                    Invoice.paid_at >= week_ago,
+                )
+                .group_by(Invoice.issuer_id)
+                .all()
+            )
+
+            # Expenses this week per user
+            expense_map = dict(
+                db.query(
+                    Invoice.issuer_id,
+                    sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0),
+                )
+                .filter(
+                    Invoice.issuer_id.in_(user_ids),
+                    Invoice.invoice_type == "expense",
+                    Invoice.created_at >= week_ago,
+                )
+                .group_by(Invoice.issuer_id)
+                .all()
+            )
+
+            # Total outstanding per user
+            outstanding_map = dict(
+                db.query(
+                    Invoice.issuer_id,
+                    sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0),
+                )
+                .filter(
+                    Invoice.issuer_id.in_(user_ids),
+                    Invoice.invoice_type == "revenue",
+                    Invoice.status.in_(["pending", "awaiting_confirmation"]),
+                )
+                .group_by(Invoice.issuer_id)
+                .all()
+            )
+
+            # Overdue count per user
+            overdue_map = dict(
+                db.query(
+                    Invoice.issuer_id,
+                    sqlfunc.count(Invoice.id),
+                )
+                .filter(
+                    Invoice.issuer_id.in_(user_ids),
+                    Invoice.invoice_type == "revenue",
+                    Invoice.status == "pending",
+                    Invoice.due_date != None,  # noqa: E711
+                    Invoice.due_date < now_utc,
+                )
+                .group_by(Invoice.issuer_id)
+                .all()
+            )
+
             for user in free_users_with_invoices:
                 try:
                     has_phone = _is_valid_phone(user.phone)
                     name = (user.name or "").split()[0] or "there"
 
-                    # Revenue collected this week
-                    revenue_week = float(
-                        db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
-                        .filter(
-                            Invoice.issuer_id == user.id,
-                            Invoice.invoice_type == "revenue",
-                            Invoice.status == "paid",
-                            Invoice.paid_at >= week_ago,
-                        )
-                        .scalar()
-                    )
-
-                    # Expenses this week
-                    expenses_week = float(
-                        db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
-                        .filter(
-                            Invoice.issuer_id == user.id,
-                            Invoice.invoice_type == "expense",
-                            Invoice.created_at >= week_ago,
-                        )
-                        .scalar()
-                    )
-
-                    # Total outstanding
-                    outstanding = float(
-                        db.query(sqlfunc.coalesce(sqlfunc.sum(Invoice.amount), 0))
-                        .filter(
-                            Invoice.issuer_id == user.id,
-                            Invoice.invoice_type == "revenue",
-                            Invoice.status.in_(["pending", "awaiting_confirmation"]),
-                        )
-                        .scalar()
-                    )
-
-                    # Overdue count
-                    overdue_count = (
-                        db.query(sqlfunc.count(Invoice.id))
-                        .filter(
-                            Invoice.issuer_id == user.id,
-                            Invoice.invoice_type == "revenue",
-                            Invoice.status == "pending",
-                            Invoice.due_date != None,  # noqa: E711
-                            Invoice.due_date < now_utc,
-                        )
-                        .scalar()
-                    ) or 0
+                    revenue_week = float(revenue_map.get(user.id, 0))
+                    expenses_week = float(expense_map.get(user.id, 0))
+                    outstanding = float(outstanding_map.get(user.id, 0))
+                    overdue_count = int(overdue_map.get(user.id, 0))
 
                     # Skip if zero activity AND zero outstanding
                     if revenue_week == 0 and expenses_week == 0 and outstanding == 0:
