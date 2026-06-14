@@ -907,8 +907,9 @@ def get_growth_metrics(
     month_start = today_start.replace(day=1)
 
     # ── MRR ──
-    # Pro = ₦3,250/mo (STARTER removed — was pay-per-pack, not MRR)
-    PLAN_PRICES = {"pro": 3250}
+    # Pro is prepaid (₦2,000 Pro Pack / ₦1,500 Features pass), not recurring.
+    # Approximate active-Pro revenue using the Pro Pack price.
+    PLAN_PRICES = {"pro": 2000}
     active_pro = db.query(models.User).filter(
         models.User.plan == SubscriptionPlan.PRO,
         (models.User.subscription_expires_at.is_(None)) |

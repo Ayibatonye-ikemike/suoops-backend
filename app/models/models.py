@@ -80,14 +80,15 @@ class SubscriptionPlan(str, enum.Enum):
 
     @property
     def monthly_price(self) -> int:
-        """Monthly subscription price in Naira.
+        """Pro features price in Naira (prepaid, not recurring).
         
-        FREE has no monthly fee - users just buy invoice packs.
-        Pro includes 50 invoices + premium features.
+        FREE has no fee - users just buy invoice packs.
+        Pro is prepaid: ₦2,000 Pro Pack (20 invoices + 30 days of premium
+        features) or ₦1,500 Pro Features pass (30 days, features only).
         """
         prices = {
             SubscriptionPlan.FREE: 0,
-            SubscriptionPlan.PRO: 3250,  # 50 invoices + all premium features
+            SubscriptionPlan.PRO: 2000,  # Pro Pack: 20 invoices + 30 days Pro features
         }
         return prices.get(self, 0)
     

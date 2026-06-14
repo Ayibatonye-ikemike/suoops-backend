@@ -1,13 +1,16 @@
-"""Subscription plan pricing constants."""
+"""Subscription plan pricing constants.
 
-# Plan SUBSCRIPTION prices in Naira (display prices - what customers see)
-# Note: Paystack plan (PLN_xxx) has the actual charge amount with fees
-# When using a plan code, Paystack ignores the 'amount' param and uses the plan's amount
+Note: Pro is now PREPAID (one-time Pro Pack / Pro Features pass) — the recurring
+subscription tier has been retired and the Paystack plan is archived/unused.
+These constants are kept for legacy/display only.
+"""
+
+# Plan prices in Naira (display prices - what customers see)
 PLAN_PRICES = {
     "FREE": 0,
     # STARTER removed - users are FREE and buy invoice packs as needed
-    "PRO": 3250,       # Display: ₦3,250/month. Paystack plan charges ₦3,402 (includes fees)
-    "BUSINESS": 10000, # ₦10,000/month - 50 invoices included + Photo OCR (15 max)
+    "PRO": 2000,       # Prepaid Pro Pack: ₦2,000 one-time (20 invoices + 30 days Pro features)
+    "BUSINESS": 10000, # ₦10,000 - 50 invoices included + Photo OCR (15 max)
 }
 
 # Paystack Plan Codes for auto-recurring subscriptions

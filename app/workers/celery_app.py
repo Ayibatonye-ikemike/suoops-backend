@@ -77,10 +77,6 @@ def _create_celery() -> Celery:
                 "task": "customer_engagement.send_dormant_customer_nudges",
                 "schedule": crontab(minute=0, hour=10, day_of_week="2"),  # Tue 10:00 UTC
             },
-            "weekly-post-payment-referrals": {
-                "task": "customer_engagement.send_post_payment_referrals",
-                "schedule": crontab(minute=30, hour=14, day_of_week="5"),  # Fri 14:30 UTC
-            },
             "weekly-feedback-collection": {
                 "task": "feedback.collect_user_feedback",
                 "schedule": crontab(minute=0, hour=12, day_of_week=3),  # Wed 12:00 UTC = 13:00 WAT

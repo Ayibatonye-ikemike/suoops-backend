@@ -117,41 +117,6 @@ class AuthService:
         self.db.commit()
         self.db.refresh(user)
         
-        # Record referral if a referral code was provided
-        referral_code = stored_data.get("referral_code")
-        logger.info(
-            "Signup complete for user %s, referral_code in stored_data: %s, stored_data keys: %s",
-            user.id,
-            referral_code,
-            list(stored_data.keys()),
-        )
-        if referral_code:
-            try:
-                from app.models.referral_models import ReferralType
-                from app.services.referral_service import ReferralService
-                referral_service = ReferralService(self.db)
-                referral = referral_service.record_referral(
-                    code=referral_code,
-                    referred_user_id=user.id,
-                    referral_type=ReferralType.FREE_SIGNUP,
-                )
-                if referral:
-                    # Complete the referral immediately since signup is verified
-                    referral_service.complete_referral(user.id)
-                    logger.info(
-                        "Successfully recorded and completed referral for user %s with code %s",
-                        user.id,
-                        referral_code,
-                    )
-                else:
-                    logger.warning(
-                        "record_referral returned None for user %s with code %s",
-                        user.id,
-                        referral_code,
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to record referral: {e}", exc_info=True)
-        
         # Sync new user to Brevo (real-time)
         try:
             from app.services.brevo_service import sync_user_to_brevo_sync
