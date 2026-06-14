@@ -1523,7 +1523,7 @@ def get_activity_analytics(
     # Active unique users per period
     def _active_users(start: dt.datetime, end: dt.datetime) -> int:
         return (
-            db.query(func.count(distinct(Invoice.user_id)))
+            db.query(func.count(distinct(Invoice.issuer_id)))
             .filter(Invoice.created_at >= start, Invoice.created_at < end)
             .scalar()
         ) or 0
