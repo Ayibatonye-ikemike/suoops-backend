@@ -74,6 +74,9 @@ class BaseAppSettings(BaseSettings):
             return v
         return str(v)
     PAYSTACK_SECRET: str | None = None
+    # Paystack plan code for the recurring monthly Pro Features subscription
+    # (₦1,500/mo). Create with scripts/create_pro_features_plan.py, then set here.
+    PAYSTACK_PRO_FEATURES_PLAN_CODE: str | None = None
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SSL_CERT_REQS: str | None = "required"

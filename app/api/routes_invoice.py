@@ -434,7 +434,6 @@ async def initialize_invoice_pack_purchase(
         - \"standard\" (50 invoices for ₦1,250)
         - \"small\" (25 invoices for ₦625)
         - \"pro_pack\" (20 invoices + 30 days Pro features for ₦2,000)
-        - \"pro_features\" (30 days Pro features only for ₦1,500)
     
     **Returns:**
     - authorization_url: Paystack checkout URL
@@ -458,7 +457,7 @@ async def initialize_invoice_pack_purchase(
     if not pack:
         raise HTTPException(
             status_code=400,
-            detail="Invalid pack_type. Use 'standard', 'small', 'pro_pack' or 'pro_features'",
+            detail="Invalid pack_type. Use 'standard', 'small' or 'pro_pack'",
         )
     
     user = db.query(models.User).filter(models.User.id == current_user_id).first()

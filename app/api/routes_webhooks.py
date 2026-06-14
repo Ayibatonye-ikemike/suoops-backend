@@ -226,6 +226,48 @@ def _handle_charge_success(data: dict, db: Session) -> dict:
         db.commit()
         return {"status": "error", "message": "User not found"}
 
+    # ── Recurring Pro Features subscription (₦1,500/mo, features only, 0 invoices) ──
+    # Each successful charge (initial or auto-renewal) extends Pro features by 30
+    # days. We do NOT add invoices here (unlike the generic plan-upgrade path).
+    from app.api.routes_subscription.constants import PAYSTACK_PLAN_CODES
+    plan_obj = data.get("plan") or {}
+    plan_code_in = plan_obj.get("plan_code")
+    plan_name_in = (plan_obj.get("name") or "").upper()
+    pro_features_code = PAYSTACK_PLAN_CODES.get("PRO_FEATURES")
+    is_pro_features = (
+        (plan or "").upper() == "PRO_FEATURES"
+        or (pro_features_code is not None and plan_code_in == pro_features_code)
+        or ("FEATURES" in plan_name_in)
+    )
+    if is_pro_features:
+        from app.utils.feature_gate import grant_pro_features, PRO_FEATURES_DAYS
+        grant_pro_features(user, PRO_FEATURES_DAYS)
+        if subscription_code and hasattr(user, "paystack_subscription_code"):
+            user.paystack_subscription_code = subscription_code
+        from app.models.payment_models import PaymentStatus, PaymentTransaction
+        txn = (
+            db.query(PaymentTransaction)
+            .filter(PaymentTransaction.reference == reference)
+            .one_or_none()
+        )
+        if txn:
+            txn.status = PaymentStatus.SUCCESS
+            txn.plan_after = user.plan.value
+        db.commit()
+        logger.info(
+            "✅ Pro Features recurring charge: user %s +%d days Pro (ref: %s, sub: %s)",
+            user_id, PRO_FEATURES_DAYS, reference, subscription_code,
+        )
+        return {
+            "status": "success",
+            "event": "charge.success",
+            "plan": "PRO_FEATURES",
+            "pro_days": PRO_FEATURES_DAYS,
+            "subscription_code": subscription_code,
+            "reference": reference,
+            "is_recurring": True,
+        }
+
     # Determine plan from metadata or existing subscription
     if not plan:
         # Try to get plan from subscription if available

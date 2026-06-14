@@ -38,14 +38,15 @@ PRO_FEATURES_DAYS = 30
 PRO_PACK_SIZE = 20
 PRO_PACK_PRICE = 2000  # ₦2,000
 
-# Pro Features pass: 30 days of Pro features only (no invoices)
-PRO_FEATURES_PRICE = 1500  # ₦1,500
+# Pro Features: now a RECURRING monthly subscription (₦1,500/mo, features only,
+# no invoices) handled via /subscription/initialize + a Paystack plan — NOT a
+# one-time pack. Constants kept for display + the recurring webhook grant.
+PRO_FEATURES_PRICE = 1500  # ₦1,500/month
 
 PACK_OPTIONS = {
     "standard": {"size": INVOICE_PACK_SIZE, "price": INVOICE_PACK_PRICE, "pro_days": 0},
     "small": {"size": INVOICE_SMALL_PACK_SIZE, "price": INVOICE_SMALL_PACK_PRICE, "pro_days": 0},
     "pro_pack": {"size": PRO_PACK_SIZE, "price": PRO_PACK_PRICE, "pro_days": PRO_FEATURES_DAYS},
-    "pro_features": {"size": 0, "price": PRO_FEATURES_PRICE, "pro_days": PRO_FEATURES_DAYS},
 }
 
 
