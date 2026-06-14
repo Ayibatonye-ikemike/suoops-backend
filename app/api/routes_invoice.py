@@ -430,7 +430,11 @@ async def initialize_invoice_pack_purchase(
     
     **Parameters:**
     - quantity: Number of packs to purchase (default 1)
-    - pack_type: \"standard\" (50 for ₦1,250) or \"small\" (25 for ₦625)
+    - pack_type: one of:
+        - \"standard\" (50 invoices for ₦1,250)
+        - \"small\" (25 invoices for ₦625)
+        - \"pro_pack\" (20 invoices + 30 days Pro features for ₦2,000)
+        - \"pro_features\" (30 days Pro features only for ₦1,500)
     
     **Returns:**
     - authorization_url: Paystack checkout URL
@@ -452,7 +456,10 @@ async def initialize_invoice_pack_purchase(
     
     pack = PACK_OPTIONS.get(pack_type)
     if not pack:
-        raise HTTPException(status_code=400, detail="Invalid pack_type. Use 'standard' or 'small'")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid pack_type. Use 'standard', 'small', 'pro_pack' or 'pro_features'",
+        )
     
     user = db.query(models.User).filter(models.User.id == current_user_id).first()
     if not user:
@@ -465,6 +472,7 @@ async def initialize_invoice_pack_purchase(
     base_amount = pack_price * quantity
     total_amount = calculate_amount_with_paystack_fee(base_amount)
     invoices_to_add = pack_size * quantity
+    pro_days = pack.get("pro_days", 0) * quantity
     
     # Generate unique reference
     reference = f"INVPACK-{current_user_id}-{uuid.uuid4().hex[:8].upper()}"
@@ -479,13 +487,16 @@ async def initialize_invoice_pack_purchase(
         provider=PaymentProvider.PAYSTACK,
         status=PaymentStatus.PENDING,
         plan_before=current_plan,
-        plan_after=current_plan,  # Invoice pack doesn't change plan
+        # Pro packs grant Pro features; plain invoice packs keep the plan
+        plan_after="pro" if pro_days > 0 else current_plan,
         customer_email=user.email or (f"{user.phone}@suoops.com" if user.phone else None),
         customer_phone=user.phone,
         payment_metadata={
-            "payment_type": "invoice_pack",
+            "payment_type": "pro_pack" if pro_days > 0 else "invoice_pack",
+            "pack_type": pack_type,
             "quantity": quantity,
             "invoices_to_add": invoices_to_add,
+            "pro_days": pro_days,
         },
     )
     db.add(transaction)
@@ -510,6 +521,7 @@ async def initialize_invoice_pack_purchase(
                         "user_id": current_user_id,
                         "quantity": quantity,
                         "invoices_to_add": invoices_to_add,
+                        "pro_days": pro_days,
                     },
                 },
             )

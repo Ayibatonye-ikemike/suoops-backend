@@ -22,7 +22,7 @@ from app.models import models
 
 logger = logging.getLogger(__name__)
 
-# Invoice pack pricing
+# Invoice pack pricing (invoices only, never expire)
 INVOICE_PACK_SIZE = 50
 INVOICE_PACK_PRICE = 1250  # ₦1,250
 
@@ -30,9 +30,22 @@ INVOICE_PACK_PRICE = 1250  # ₦1,250
 INVOICE_SMALL_PACK_SIZE = 25
 INVOICE_SMALL_PACK_PRICE = 625  # ₦625
 
+# Pro packs (prepaid, one-time): grant time-limited Pro features.
+# Invoices added to the balance are permanent; Pro features lapse after pro_days.
+PRO_FEATURES_DAYS = 30
+
+# Pro Pack: invoices + 30 days of Pro features
+PRO_PACK_SIZE = 20
+PRO_PACK_PRICE = 2000  # ₦2,000
+
+# Pro Features pass: 30 days of Pro features only (no invoices)
+PRO_FEATURES_PRICE = 1500  # ₦1,500
+
 PACK_OPTIONS = {
-    "standard": {"size": INVOICE_PACK_SIZE, "price": INVOICE_PACK_PRICE},
-    "small": {"size": INVOICE_SMALL_PACK_SIZE, "price": INVOICE_SMALL_PACK_PRICE},
+    "standard": {"size": INVOICE_PACK_SIZE, "price": INVOICE_PACK_PRICE, "pro_days": 0},
+    "small": {"size": INVOICE_SMALL_PACK_SIZE, "price": INVOICE_SMALL_PACK_PRICE, "pro_days": 0},
+    "pro_pack": {"size": PRO_PACK_SIZE, "price": PRO_PACK_PRICE, "pro_days": PRO_FEATURES_DAYS},
+    "pro_features": {"size": 0, "price": PRO_FEATURES_PRICE, "pro_days": PRO_FEATURES_DAYS},
 }
 
 
@@ -354,6 +367,30 @@ def check_invoice_limit(db: Session, user_id: int) -> None:
     """
     gate = FeatureGate(db, user_id)
     gate.check_invoice_creation()
+
+
+def grant_pro_features(user: models.User, days: int) -> None:
+    """Grant/extend prepaid (non-recurring) Pro features for ``days`` days.
+
+    Used by Pro Pack / Pro Features pass purchases. Sets the plan to PRO and
+    extends ``subscription_expires_at``. If the user still has active Pro time
+    the new window is stacked on top of the current expiry; otherwise it starts
+    from now. No Paystack subscription code is set, so there is no auto-renew —
+    when the window passes the user lapses back to FREE (invoice balance kept).
+
+    The caller is responsible for committing the session.
+    """
+    if days <= 0:
+        return
+    now = dt.datetime.now(dt.timezone.utc)
+    current = getattr(user, "subscription_expires_at", None)
+    if current is not None and current.tzinfo is None:
+        current = current.replace(tzinfo=dt.timezone.utc)
+    base = current if (current is not None and current > now) else now
+    user.plan = models.SubscriptionPlan.PRO
+    user.subscription_expires_at = base + dt.timedelta(days=days)
+    if getattr(user, "subscription_started_at", None) is None:
+        user.subscription_started_at = now
 
 
 def check_voice_ocr_quota(db: Session, user_id: int) -> None:

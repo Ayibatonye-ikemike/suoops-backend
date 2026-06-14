@@ -391,6 +391,7 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
     metadata = data.get("metadata") or {}
     user_id = metadata.get("user_id")
     invoices_to_add = int(metadata.get("invoices_to_add", 100))  # Ensure int from metadata
+    pro_days = int(metadata.get("pro_days", 0) or 0)
 
     if not user_id:
         logger.error("Paystack invoice pack webhook missing user_id: %s", metadata)
@@ -403,15 +404,20 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
         db.commit()
         return {"status": "error", "message": "User not found"}
 
-    # No plan change on pack purchase - users stay on FREE.
-    # Frontend shows "Starter" for UX purposes to users who have bought packs.
+    # Plain invoice packs don't change plan; Pro packs grant time-limited Pro
+    # features (prepaid, no auto-renew). Invoices added below never expire.
     old_plan = user.plan.value
 
     # Add invoices to balance (with safe access)
     old_balance = getattr(user, 'invoice_balance', 5)
-    if hasattr(user, 'invoice_balance'):
+    if hasattr(user, 'invoice_balance') and invoices_to_add > 0:
         user.invoice_balance += invoices_to_add
-    
+
+    # Pro Pack / Pro Features pass: grant or extend prepaid Pro features.
+    if pro_days > 0:
+        from app.utils.feature_gate import grant_pro_features
+        grant_pro_features(user, pro_days)
+
     # Update payment transaction if exists
     from app.models.payment_models import PaymentStatus, PaymentTransaction
     transaction = (
@@ -421,16 +427,26 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
     )
     if transaction:
         transaction.status = PaymentStatus.SUCCESS
-    
+        if pro_days > 0:
+            transaction.plan_after = user.plan.value
+
     db.commit()
 
     new_balance = getattr(user, 'invoice_balance', old_balance + invoices_to_add)
+    pro_until = (
+        user.subscription_expires_at.isoformat()
+        if pro_days > 0 and getattr(user, "subscription_expires_at", None)
+        else None
+    )
     logger.info(
-        "✅ Invoice pack purchased: user %s added %d invoices (balance: %d → %d) ref: %s",
+        "✅ Invoice pack purchased: user %s added %d invoices (balance: %d → %d)"
+        " pro_days=%d pro_until=%s ref: %s",
         user_id,
         invoices_to_add,
         old_balance,
         new_balance,
+        pro_days,
+        pro_until,
         reference,
     )
 
@@ -438,6 +454,8 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
         "status": "success",
         "invoices_added": invoices_to_add,
         "new_balance": new_balance,
+        "pro_days": pro_days,
+        "pro_features_until": pro_until,
         "reference": reference,
     }
     
