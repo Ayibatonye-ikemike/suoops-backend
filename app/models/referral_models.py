@@ -97,12 +97,14 @@ class ReferralCode(Base):
     influencer_contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Commission: first Pro purchase
     commission_first: Mapped[int] = mapped_column(Integer, default=500, server_default="500")
-    # Commission: recurring (months 2–N)
-    commission_recurring: Mapped[int] = mapped_column(Integer, default=100, server_default="100")
-    # How many months of recurring commission (after the first)
-    commission_months: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    # Commission: recurring (purchases 2–N within commission_months)
+    commission_recurring: Mapped[int] = mapped_column(Integer, default=200, server_default="200")
+    # How many recurring commission purchases (after the first)
+    commission_months: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+    # Perpetual commission % on every purchase after the recurring window (0 = disabled)
+    commission_perpetual_pct: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     # Bonus free invoices for users who sign up through this code
-    bonus_invoices: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    bonus_invoices: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
     # Admin notes
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     

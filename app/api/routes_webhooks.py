@@ -480,6 +480,17 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
         if pro_days > 0 and getattr(user, "subscription_expires_at", None)
         else None
     )
+
+    # Process referral commission for this purchase (recurring/perpetual)
+    try:
+        from app.services.referral_service import ReferralService
+        ref_svc = ReferralService(db)
+        amount_naira = data.get("amount", 0) // 100  # Paystack sends in kobo
+        if amount_naira > 0:
+            ref_svc.process_recurring_commission(user_id, purchase_amount=amount_naira)
+    except Exception as e:
+        logger.warning("Failed to process referral commission for pack purchase: %s", e)
+
     logger.info(
         "✅ Invoice pack purchased: user %s added %d invoices (balance: %d → %d)"
         " pro_days=%d pro_until=%s ref: %s",

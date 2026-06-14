@@ -127,8 +127,9 @@ async def verify_subscription_payment(
                     # First Pro purchase → one-time ₦500 commission
                     upgraded = referral_service.upgrade_referral_to_paid(current_user_id)
                     if not upgraded:
-                        # Already paid → this is a repeat purchase → recurring commission
-                        referral_service.process_recurring_commission(current_user_id)
+                        # Already paid → repeat purchase → recurring/perpetual commission
+                        amount_naira = payment["amount"] // 100
+                        referral_service.process_recurring_commission(current_user_id, purchase_amount=amount_naira)
                 except Exception as e:
                     logger.warning(f"Failed to process referral commission: {e}")
             

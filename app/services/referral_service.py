@@ -217,14 +217,20 @@ class ReferralService:
 
         return True
 
-    def process_recurring_commission(self, referred_user_id: int) -> bool:
+    def process_recurring_commission(self, referred_user_id: int, purchase_amount: int = 2000) -> bool:
         """
-        Create a recurring commission reward when a referred user buys another Pro Pack.
+        Create a recurring or perpetual commission reward when a referred user
+        makes a purchase (Pro Pack or invoice pack).
 
-        Called on each Pro purchase AFTER the first one. Pays commission_recurring
-        (default ₦100) for up to commission_months (default 5) purchases after the first.
+        Commission tiers:
+        - Purchases 2 to (1 + commission_months): fixed commission_recurring amount
+        - After that: commission_perpetual_pct % of purchase_amount, forever
 
-        Returns True if a recurring reward was created.
+        Args:
+            referred_user_id: The user who was referred and just made a purchase
+            purchase_amount: The purchase amount in Naira (for perpetual % calc)
+
+        Returns True if a commission reward was created.
         """
         referral = self.db.execute(
             select(Referral)
@@ -244,25 +250,34 @@ class ReferralService:
         if not code_obj or not code_obj.is_active:
             return False
 
-        recurring_amount = code_obj.commission_recurring
-        max_months = code_obj.commission_months
-
-        if recurring_amount <= 0 or max_months <= 0:
-            return False
-
-        # Count how many recurring rewards have already been paid
-        recurring_count = self.db.execute(
+        # Count how many recurring/perpetual rewards have already been paid
+        past_rewards = self.db.execute(
             select(func.count(ReferralReward.id))
             .where(ReferralReward.user_id == referral.referrer_id)
-            .where(ReferralReward.reward_type == "commission_recurring")
+            .where(ReferralReward.reward_type.in_(["commission_recurring", "commission_perpetual"]))
             .where(ReferralReward.reward_description.contains(f"user #{referred_user_id}"))
         ).scalar() or 0
 
-        if recurring_count >= max_months:
-            logger.info(
-                "Recurring commission cap reached for referrer %s / referred %s (%d/%d)",
-                referral.referrer_id, referred_user_id, recurring_count, max_months,
-            )
+        # Determine which tier we're in
+        max_recurring = code_obj.commission_months  # e.g. 2 (purchases 2-3)
+        perpetual_pct = code_obj.commission_perpetual_pct  # e.g. 5
+
+        if past_rewards < max_recurring:
+            # Still in the fixed recurring window (₦200 per purchase)
+            commission_amount = code_obj.commission_recurring
+            reward_type = "commission_recurring"
+            purchase_num = past_rewards + 2  # +2 because purchase 1 was the first
+            desc_label = f"purchase #{purchase_num}"
+        elif perpetual_pct > 0:
+            # Perpetual phase: 5% of purchase amount
+            commission_amount = purchase_amount * perpetual_pct // 100
+            if commission_amount <= 0:
+                return False
+            reward_type = "commission_perpetual"
+            purchase_num = past_rewards + 2
+            desc_label = f"purchase #{purchase_num}, {perpetual_pct}% of ₦{purchase_amount:,}"
+        else:
+            # No perpetual commission configured
             return False
 
         referred_user = self.db.execute(
@@ -272,10 +287,10 @@ class ReferralService:
 
         reward = ReferralReward(
             user_id=referral.referrer_id,
-            reward_type="commission_recurring",
+            reward_type=reward_type,
             reward_description=(
-                f"₦{recurring_amount} recurring commission for {referred_name}'s "
-                f"Pro purchase (month {recurring_count + 2}, user #{referred_user_id})"
+                f"₦{commission_amount} commission for {referred_name}'s "
+                f"{desc_label} (user #{referred_user_id})"
             ),
             free_referrals_count=0,
             paid_referrals_count=0,
@@ -286,9 +301,9 @@ class ReferralService:
         self.db.commit()
 
         logger.info(
-            "Created recurring commission ₦%s for referrer %s (referred user %s, month %d/%d)",
-            recurring_amount, referral.referrer_id, referred_user_id,
-            recurring_count + 2, max_months + 1,
+            "Created %s commission ₦%s for referrer %s (referred user %s, %s)",
+            reward_type, commission_amount, referral.referrer_id,
+            referred_user_id, desc_label,
         )
         return True
 

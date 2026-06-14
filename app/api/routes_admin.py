@@ -665,8 +665,9 @@ class InfluencerCreate(BaseModel):
     influencer_contact: str | None = None
     custom_slug: str  # vanity URL slug — letters, numbers, hyphens only
     commission_first: int = 500  # ₦ on first Pro purchase
-    commission_recurring: int = 100  # ₦ on months 2–N
-    commission_months: int = 5  # how many recurring months
+    commission_recurring: int = 200  # ₦ on purchases 2–3
+    commission_months: int = 2  # how many recurring purchases
+    commission_perpetual_pct: int = 5  # % on every purchase after recurring window
     bonus_invoices: int = 3  # extra free invoices for signups
     notes: str | None = None
 
@@ -679,6 +680,7 @@ class InfluencerUpdate(BaseModel):
     commission_first: int | None = None
     commission_recurring: int | None = None
     commission_months: int | None = None
+    commission_perpetual_pct: int | None = None
     bonus_invoices: int | None = None
     notes: str | None = None
     is_active: bool | None = None
@@ -694,6 +696,7 @@ class InfluencerInfo(BaseModel):
     commission_first: int
     commission_recurring: int
     commission_months: int
+    commission_perpetual_pct: int
     bonus_invoices: int
     notes: str | None
     is_active: bool
@@ -758,6 +761,7 @@ def create_influencer(
         commission_first=payload.commission_first,
         commission_recurring=payload.commission_recurring,
         commission_months=payload.commission_months,
+        commission_perpetual_pct=payload.commission_perpetual_pct,
         bonus_invoices=payload.bonus_invoices,
         notes=payload.notes,
     )
@@ -774,6 +778,7 @@ def create_influencer(
         commission_first=code.commission_first,
         commission_recurring=code.commission_recurring,
         commission_months=code.commission_months,
+        commission_perpetual_pct=code.commission_perpetual_pct,
         bonus_invoices=code.bonus_invoices,
         notes=code.notes,
         is_active=code.is_active,
@@ -860,6 +865,23 @@ def list_influencers(
         ) or 0
         total_commission += recurring_rewards * code.commission_recurring
 
+        # Add perpetual commissions (variable amounts — sum from reward descriptions)
+        perpetual_rewards = (
+            db.query(ReferralReward)
+            .filter(
+                ReferralReward.user_id == code.user_id,
+                ReferralReward.reward_type == "commission_perpetual",
+            )
+            .all()
+        )
+        for pr in perpetual_rewards:
+            # Parse amount from description "₦{amount} commission for..."
+            try:
+                amt_str = pr.reward_description.split("₦")[1].split(" ")[0].replace(",", "")
+                total_commission += int(amt_str)
+            except (IndexError, ValueError):
+                total_commission += code.commission_perpetual_pct * 2000 // 100  # fallback
+
         influencers.append(InfluencerInfo(
             id=code.id,
             code=code.code,
@@ -869,6 +891,7 @@ def list_influencers(
             commission_first=code.commission_first,
             commission_recurring=code.commission_recurring,
             commission_months=code.commission_months,
+            commission_perpetual_pct=code.commission_perpetual_pct,
             bonus_invoices=code.bonus_invoices,
             notes=code.notes,
             is_active=code.is_active,
@@ -933,6 +956,7 @@ def update_influencer(
         commission_first=code.commission_first,
         commission_recurring=code.commission_recurring,
         commission_months=code.commission_months,
+        commission_perpetual_pct=code.commission_perpetual_pct,
         bonus_invoices=code.bonus_invoices,
         notes=code.notes,
         is_active=code.is_active,
