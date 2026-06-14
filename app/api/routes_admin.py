@@ -966,6 +966,289 @@ def update_influencer(
 
 
 # ============================================================================
+# SME Concierge Onboarding
+# ============================================================================
+
+# Tailored WhatsApp messages by business type
+_SME_MESSAGES: dict[str, str] = {
+    "bar_restaurant": (
+        "🍻 *Welcome to SuoOps, {name}!*\n\n"
+        "Your bar *{business}* is all set up with Pro features. "
+        "Here's how your team can start using SuoOps today:\n\n"
+        "📱 *Invoice a customer (WhatsApp):*\n"
+        "_invoice Chidi 08012345678, 5000 drinks, 3000 pepper soup_\n\n"
+        "💰 *Check who owes you:*\n"
+        "_owed_\n"
+        "→ Reply with the number to remind or mark paid\n\n"
+        "📦 *Track expenses:*\n"
+        "_expense: 50000 beer supply_\n\n"
+        "📊 *See your daily stats:*\n"
+        "_report_\n\n"
+        "Your team members will receive invite emails shortly. "
+        "Each person can create invoices from their own WhatsApp — "
+        "you'll see who created what.\n\n"
+        "Need help? Just reply *help* anytime 🙂"
+    ),
+    "salon_beauty": (
+        "💅 *Welcome to SuoOps, {name}!*\n\n"
+        "Your salon *{business}* is all set up with Pro features. "
+        "Here's how to get started:\n\n"
+        "📱 *Invoice a client:*\n"
+        "_invoice Amaka 08098765432, 15000 braids, 5000 nails_\n\n"
+        "💰 *Check unpaid services:*\n"
+        "_owed_\n\n"
+        "📦 *Track product expenses:*\n"
+        "_expense: 25000 hair extensions_\n\n"
+        "📊 *View business performance:*\n"
+        "_report_\n\n"
+        "Your team can also invoice from their WhatsApp. "
+        "Need help? Just reply *help* 🙂"
+    ),
+    "retail_shop": (
+        "🛍️ *Welcome to SuoOps, {name}!*\n\n"
+        "Your shop *{business}* is all set with Pro features "
+        "including inventory management. Here's how to start:\n\n"
+        "📱 *Invoice a customer:*\n"
+        "_invoice Joy 08012345678, 10000 shoes, 5000 bag_\n\n"
+        "📦 *Track your stock* (dashboard):\n"
+        "Add products → set reorder levels → get low-stock alerts\n\n"
+        "💰 *Track expenses:*\n"
+        "_expense: 100000 new stock_\n\n"
+        "📊 *Check who owes:*\n"
+        "_owed_\n\n"
+        "Your staff can invoice from their own WhatsApp too. "
+        "Need help? Reply *help* 🙂"
+    ),
+    "services_freelance": (
+        "💼 *Welcome to SuoOps, {name}!*\n\n"
+        "*{business}* is set up with Pro features. "
+        "Here's how to invoice your clients:\n\n"
+        "📱 *Create an invoice:*\n"
+        "_invoice Client Name 08012345678, 150000 web design_\n\n"
+        "💰 *Follow up on payments:*\n"
+        "_owed_\n"
+        "→ Automatic reminders are already enabled\n\n"
+        "📦 *Log project expenses:*\n"
+        "_expense: 20000 hosting_\n\n"
+        "📊 *Business reports:*\n"
+        "_report_\n\n"
+        "Need help? Reply *help* anytime 🙂"
+    ),
+    "general": (
+        "🎉 *Welcome to SuoOps, {name}!*\n\n"
+        "*{business}* is all set up with Pro features. "
+        "Here's how to get started:\n\n"
+        "📱 *Create an invoice:*\n"
+        "_invoice Customer Name Phone, Amount Item_\n"
+        "Example: _invoice Chidi 08012345678, 5000 wig_\n\n"
+        "💰 *Check unpaid invoices:*\n"
+        "_owed_\n\n"
+        "📦 *Track expenses:*\n"
+        "_expense: 5000 transport_\n\n"
+        "📊 *Business reports:*\n"
+        "_report_\n\n"
+        "Your team members will get invite emails. "
+        "Need help? Reply *help* 🙂"
+    ),
+}
+
+
+class SMEOnboardPayload(BaseModel):
+    phone: str  # Business owner phone (Nigerian format)
+    name: str
+    business_name: str
+    business_type: str = "general"  # bar_restaurant, salon_beauty, retail_shop, services_freelance, general
+    staff_emails: list[str] = []  # up to 3 team member emails
+    notes: str | None = None
+
+
+class SMEOnboardResult(BaseModel):
+    user_id: int
+    is_new_user: bool
+    pro_granted: bool
+    team_created: bool
+    invites_sent: int
+    whatsapp_sent: bool
+    message: str
+
+
+@router.post("/sme-onboard", response_model=SMEOnboardResult, status_code=201)
+def onboard_sme(
+    payload: SMEOnboardPayload,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> Any:
+    """
+    Concierge onboard an SME business.
+
+    1. Creates or finds the business owner's account
+    2. Grants Pro access (pro_override)
+    3. Creates a team and invites staff members
+    4. Sends a tailored WhatsApp onboarding message
+    """
+    from app.utils.phone_utils import normalize_phone
+
+    log_audit_event(
+        "admin.sme_onboard",
+        user_id=admin_user.id,
+        phone=payload.phone,
+        business=payload.business_name,
+    )
+
+    # ── 1. Normalize phone and find/create user ──────────────────
+    phone = normalize_phone(payload.phone)
+
+    user = db.query(models.User).filter(models.User.phone == phone).first()
+    is_new = False
+
+    if not user:
+        user = models.User(
+            name=payload.name,
+            business_name=payload.business_name,
+            phone=phone,
+            phone_verified=True,
+            signup_source="admin_onboard",
+            invoice_balance=5,  # generous starter balance
+        )
+        user.last_login = dt.datetime.now(dt.timezone.utc)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        is_new = True
+        logger.info("Created user %s for SME onboard: %s", user.id, payload.business_name)
+    else:
+        # Update business name if not set
+        if not user.business_name and payload.business_name:
+            user.business_name = payload.business_name
+        if not user.name or user.name == phone:
+            user.name = payload.name
+
+    # ── 2. Grant Pro access ──────────────────────────────────────
+    pro_granted = False
+    if not user.pro_override:
+        user.pro_override = True
+        pro_granted = True
+
+    db.commit()
+
+    # ── 3. Create team + invite staff ────────────────────────────
+    team_created = False
+    invites_sent = 0
+
+    if payload.staff_emails:
+        from app.models.team_models import Team, TeamInvitation, InvitationStatus
+
+        # Create team if user doesn't have one
+        team = db.query(Team).filter(Team.admin_user_id == user.id).first()
+        if not team:
+            team = Team(
+                name=payload.business_name or f"{payload.name}'s Team",
+                admin_user_id=user.id,
+                max_members=max(3, len(payload.staff_emails)),
+            )
+            db.add(team)
+            db.commit()
+            db.refresh(team)
+            team_created = True
+
+        # Send invites (skip duplicates)
+        for email in payload.staff_emails[:5]:  # cap at 5
+            email = email.strip().lower()
+            if not email:
+                continue
+            # Skip if already invited
+            existing = db.query(TeamInvitation).filter(
+                TeamInvitation.team_id == team.id,
+                TeamInvitation.email == email,
+                TeamInvitation.status == InvitationStatus.PENDING,
+            ).first()
+            if existing:
+                continue
+
+            import secrets
+            invitation = TeamInvitation(
+                team_id=team.id,
+                email=email,
+                token=secrets.token_urlsafe(32),
+                invited_by_user_id=user.id,
+                expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=7),
+            )
+            db.add(invitation)
+            db.commit()
+            db.refresh(invitation)
+
+            # Send invite email
+            try:
+                from app.utils.smtp import send_smtp_email
+                invite_url = f"https://support.suoops.com/admin/accept-invite?token={invitation.token}"
+                subject = f"You're invited to join {payload.business_name} on SuoOps"
+                body = (
+                    f"Hi,\n\n"
+                    f"{payload.name} has invited you to join *{payload.business_name}* on SuoOps.\n\n"
+                    f"SuoOps helps your team create professional invoices, "
+                    f"track payments, and manage expenses — all from WhatsApp.\n\n"
+                    f"Join the team: {invite_url}\n\n"
+                    f"This link expires in 7 days.\n\n"
+                    f"— The SuoOps Team"
+                )
+                send_smtp_email(email, subject, None, body)
+                invites_sent += 1
+            except Exception as e:
+                logger.warning("Failed to send invite to %s: %s", email, e)
+
+    # ── 4. Send tailored WhatsApp onboarding message ─────────────
+    wa_sent = False
+    try:
+        from app.core.whatsapp import get_whatsapp_client
+        from app.core.config import settings
+
+        client = get_whatsapp_client()
+
+        # Send welcome template first (works outside 24h window)
+        tpl = settings.WHATSAPP_TEMPLATE_ACTIVATION_WELCOME
+        if tpl:
+            first_name = payload.name.split()[0]
+            lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+            components = [{"type": "body", "parameters": [{"type": "text", "text": first_name}]}]
+            client.send_template(phone, tpl, lang, components)
+
+        # Then send the tailored business-type message
+        import time
+        time.sleep(2)
+        biz_type = payload.business_type if payload.business_type in _SME_MESSAGES else "general"
+        msg = _SME_MESSAGES[biz_type].format(
+            name=payload.name.split()[0],
+            business=payload.business_name,
+        )
+        if client.send_text(phone, msg):
+            wa_sent = True
+    except Exception as e:
+        logger.warning("SME onboard WhatsApp failed for %s: %s", phone, e)
+
+    summary_parts = []
+    if is_new:
+        summary_parts.append("account created")
+    if pro_granted:
+        summary_parts.append("Pro granted")
+    if team_created:
+        summary_parts.append("team created")
+    if invites_sent:
+        summary_parts.append(f"{invites_sent} invites sent")
+    if wa_sent:
+        summary_parts.append("WhatsApp sent")
+
+    return SMEOnboardResult(
+        user_id=user.id,
+        is_new_user=is_new,
+        pro_granted=pro_granted,
+        team_created=team_created,
+        invites_sent=invites_sent,
+        whatsapp_sent=wa_sent,
+        message=", ".join(summary_parts) or "User already onboarded",
+    )
+
+
+# ============================================================================
 # Platform Metrics
 # ============================================================================
 
