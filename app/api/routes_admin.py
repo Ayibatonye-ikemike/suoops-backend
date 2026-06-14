@@ -1425,8 +1425,6 @@ class BusinessListResponse(BaseModel):
 class ChannelBreakdown(BaseModel):
     whatsapp: int = 0
     dashboard: int = 0
-    email: int = 0
-    other: int = 0
 
 
 class PeriodActivity(BaseModel):
@@ -1504,12 +1502,9 @@ def get_activity_analytics(
             total += cnt
             if ch == "whatsapp":
                 breakdown.whatsapp = cnt
-            elif ch == "dashboard":
-                breakdown.dashboard = cnt
-            elif ch == "email":
-                breakdown.email = cnt
             else:
-                breakdown.other += cnt
+                # NULL, "dashboard", "email", or any other value = web dashboard
+                breakdown.dashboard += cnt
         return PeriodActivity(total=total, by_channel=breakdown)
 
     today_act = _count_period(today_start, now)
