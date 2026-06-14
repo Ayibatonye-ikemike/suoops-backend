@@ -38,6 +38,7 @@ from .growth_tasks import (
     send_weekly_free_summary,
 )
 from .welcome_tasks import (
+    send_activation_followup,
     send_instant_welcome,
 )
 from .expense_tasks import (
@@ -89,6 +90,7 @@ __all__ = [
     "send_post_payment_referrals",
     # Instant welcome
     "send_instant_welcome",
+    "send_activation_followup",
     # Maintenance
     "downgrade_expired_subscriptions",
     "cleanup_stale_webhooks",

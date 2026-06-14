@@ -230,6 +230,18 @@ def send_instant_welcome(user_id: int) -> dict:
             db.add(UserEmailLog(user_id=user_id, email_type="instant_welcome"))
             db.flush()
 
+        # ── 5. Schedule 1-hour activation check ─────────────────────
+        #    If they haven't created an invoice within 1 hour, re-engage
+        #    with a shorter, action-focused follow-up.
+        if user.phone:
+            try:
+                send_activation_followup.apply_async(
+                    args=[user_id], countdown=3600,
+                )
+                logger.info("Scheduled 1-hour follow-up for user %s", user_id)
+            except Exception as e:
+                logger.warning("Failed to schedule follow-up for user %s: %s", user_id, e)
+
         logger.info(
             "Instant welcome for user %s: email=%s, wa=%s",
             user_id,
@@ -268,6 +280,100 @@ def _send_email(to_email: str, subject: str, html_body: str, plain_body: str) ->
     except Exception as e:
         logger.warning("Instant welcome SMTP failed to %s: %s", to_email, e)
         return False
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 1-hour activation follow-up
+# ─────────────────────────────────────────────────────────────────────
+# Scheduled with countdown=3600 from send_instant_welcome. If the user
+# still has 0 invoices, send a brief, action-focused WhatsApp nudge
+# with a ready-to-copy example they can paste straight back.
+
+FOLLOWUP_LOG_TYPE = "activation_1h_followup"
+
+
+@celery_app.task(
+    name="welcome.send_activation_followup",
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=30,
+    time_limit=45,
+)
+def send_activation_followup(user_id: int) -> dict:
+    """One-hour follow-up for users who didn't create an invoice after signup."""
+    from sqlalchemy import func
+
+    from app.models.models import Invoice, User, UserEmailLog
+
+    result = {"sent": False, "reason": ""}
+
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id).one_or_none()
+        if not user or not user.phone:
+            result["reason"] = "user_not_found"
+            return result
+
+        # Already created an invoice — no nudge needed
+        has_invoice = (
+            db.query(func.count(Invoice.id))
+            .filter(Invoice.issuer_id == user_id)
+            .scalar()
+        )
+        if has_invoice:
+            result["reason"] = "already_activated"
+            return result
+
+        # Already sent this follow-up (idempotent)
+        already = (
+            db.query(UserEmailLog.id)
+            .filter(
+                UserEmailLog.user_id == user_id,
+                UserEmailLog.email_type == FOLLOWUP_LOG_TYPE,
+            )
+            .first()
+        )
+        if already:
+            result["reason"] = "already_sent"
+            return result
+
+        name = (user.name or "").split()[0] or "there"
+
+        msg = (
+            f"Hey {name} 👋\n\n"
+            f"You're one message away from your first invoice!\n\n"
+            f"Just copy and paste this _(edit the details)_:\n\n"
+            f"*invoice Chidi 08012345678, 5000 wig*\n\n"
+            f"That's it — I'll create a professional PDF and send it "
+            f"to your customer instantly.\n\n"
+            f"Try it now 👇"
+        )
+
+        try:
+            from app.core.whatsapp import get_whatsapp_client
+
+            client = get_whatsapp_client()
+            if client.send_text(user.phone, msg):
+                db.add(UserEmailLog(user_id=user_id, email_type=FOLLOWUP_LOG_TYPE))
+                db.commit()
+                result["sent"] = True
+                logger.info("Sent 1-hour follow-up to user %s", user_id)
+            else:
+                # Outside 24h window — use template fallback
+                from app.core.config import settings as _settings
+                tpl = _settings.WHATSAPP_TEMPLATE_WIN_BACK
+                if tpl:
+                    lang = _settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
+                    components = [{"type": "body", "parameters": [{"type": "text", "text": name}]}]
+                    if client.send_template(user.phone, tpl, lang, components):
+                        db.add(UserEmailLog(user_id=user_id, email_type=FOLLOWUP_LOG_TYPE))
+                        db.commit()
+                        result["sent"] = True
+        except Exception as e:
+            logger.warning("1-hour follow-up failed for user %s: %s", user_id, e)
+            result["reason"] = str(e)
+
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────

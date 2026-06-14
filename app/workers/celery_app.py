@@ -117,6 +117,10 @@ def _create_celery() -> Celery:
                 "task": "maintenance.nudge_zero_invoice_users",
                 "schedule": crontab(minute=0, hour=9),  # 09:00 UTC = 10:00 WAT
             },
+            "afternoon-activation-nudges": {
+                "task": "maintenance.nudge_zero_invoice_users",
+                "schedule": crontab(minute=0, hour=16),  # 16:00 UTC = 17:00 WAT — catch morning signups
+            },
         }
     return celery
 

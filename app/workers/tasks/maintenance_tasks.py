@@ -585,7 +585,7 @@ def nudge_zero_invoice_users() -> dict[str, Any]:
                     User.phone_verified.is_(True),
                     ~User.id.in_(db.query(users_with_invoices)),
                     User.created_at >= now - dt.timedelta(days=14),
-                    User.created_at < now - dt.timedelta(hours=20),  # At least ~1 day old
+                    User.created_at < now - dt.timedelta(hours=4),  # At least 4 hours old (gives 1-hour follow-up time first)
                 )
                 .all()
             )

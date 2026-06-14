@@ -336,11 +336,13 @@ def clear_onboarding(phone: str) -> None:
 def send_onboarding_prompt(client, phone: str, name: str) -> None:
     """Send the initial onboarding message that starts the guided flow."""
     msg = (
-        f"🎉 Welcome to SuoOps, {name}!\n\n"
-        "Let's create your *first invoice* together — "
-        "it only takes 30 seconds.\n\n"
-        "👤 *What's your customer's name?*\n\n"
-        "_Type their name (e.g. Joy, Ade, Mrs Bello)_\n\n"
+        f"🎉 Let's create your *first invoice*, {name}!\n\n"
+        "You can do it two ways:\n\n"
+        "⚡ *Quick way — just copy, edit & send:*\n"
+        "_invoice Chidi 08012345678, 5000 wig_\n\n"
+        "📝 *Or step by step — just answer:*\n"
+        "👤 *What's your customer's name?*\n"
+        "_(e.g. Joy, Ade, Mrs Bello)_\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "💡 Type *skip* to explore on your own"
     )
