@@ -256,7 +256,7 @@ def create_app() -> FastAPI:
     app.include_router(invoice_router, prefix="/invoices", tags=["invoices"])
     app.include_router(expense_router, tags=["expenses"])
     app.include_router(ocr_router, tags=["ocr"])
-    app.include_router(referral_router, prefix="/referrals", tags=["referrals"])
+    app.include_router(referral_router, tags=["referrals"])
     app.include_router(subscription_router, prefix="/subscriptions", tags=["subscriptions"])
     app.include_router(tax_router, tags=["tax"])
     # User routers split for maintainability
