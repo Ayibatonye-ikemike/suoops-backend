@@ -29,6 +29,7 @@ from app.api.routes_invoice_public import router as invoice_public_router
 from app.api.routes_metrics import router as metrics_router
 from app.api.routes_oauth import router as oauth_router
 from app.api.routes_ocr import router as ocr_router
+from app.api.routes_referral import router as referral_router
 from app.api.routes_subscription import router as subscription_router
 from app.api.routes_support import router as support_router
 from app.api.routes_tax_main import router as tax_router
@@ -255,6 +256,7 @@ def create_app() -> FastAPI:
     app.include_router(invoice_router, prefix="/invoices", tags=["invoices"])
     app.include_router(expense_router, tags=["expenses"])
     app.include_router(ocr_router, tags=["ocr"])
+    app.include_router(referral_router, prefix="/referrals", tags=["referrals"])
     app.include_router(subscription_router, prefix="/subscriptions", tags=["subscriptions"])
     app.include_router(tax_router, tags=["tax"])
     # User routers split for maintainability
