@@ -556,23 +556,31 @@ def get_referral_payouts(
 ) -> Any:
     """
     Get list of all users with pending referral commission payouts.
-    
-    Shows all users who have referred Pro subscribers and are owed commission.
-    Use month/year to filter to a specific period (for monthly payouts).
-    
-    Returns bank account details for each user so you can process payments.
+
+    Aggregates actual commission rewards earned (ReferralReward records:
+    first-purchase, recurring, and perpetual commissions) so the admin view
+    matches what influencers see on their earnings dashboard.
+
+    Use month/year to filter to a specific period (for the weekly/monthly
+    payout run). Returns payout bank details (falling back to the user's
+    invoice bank account) so you can process payments.
     """
-    from app.models.referral_models import (
-        Referral,
-        ReferralStatus,
-        ReferralType,
-        REFERRAL_COMMISSION_AMOUNT,
-    )
-    
+    import re
+
+    from app.models.referral_models import ReferralReward, RewardStatus
+
     log_audit_event("admin.referrals.payouts", user_id=admin_user.id, month=month, year=year)
-    
+
+    def _extract_amount(description: str | None) -> int:
+        if not description:
+            return 0
+        match = re.search(r"[₦N]?([\d,]+)", description)
+        if match:
+            return int(match.group(1).replace(",", ""))
+        return 0
+
     now = dt.datetime.now(dt.timezone.utc)
-    
+
     # Filter by month/year if specified
     if month and year:
         start_date = dt.datetime(year, month, 1, tzinfo=dt.timezone.utc)
@@ -587,51 +595,66 @@ def get_referral_payouts(
             end_date = dt.datetime(now.year + 1, 1, 1, tzinfo=dt.timezone.utc)
         else:
             end_date = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
-    
-    # Get all users with paid referrals in the period
-    paid_referrals_query = db.query(
-        Referral.referrer_id,
-        func.count(Referral.id).label("paid_count")
-    ).filter(
-        Referral.status == ReferralStatus.COMPLETED,
-        Referral.referral_type == ReferralType.PAID_SIGNUP,
-        Referral.created_at >= start_date,
-        Referral.created_at < end_date
-    ).group_by(Referral.referrer_id).all()
-    
+
+    # Pull all commission rewards earned in the period
+    rewards = db.query(ReferralReward).filter(
+        ReferralReward.reward_type.in_([
+            "commission_first_purchase",
+            "commission_recurring",
+            "commission_perpetual",
+        ]),
+        ReferralReward.created_at >= start_date,
+        ReferralReward.created_at < end_date,
+    ).all()
+
+    # Aggregate per referrer
+    by_user: dict[int, dict[str, int]] = {}
+    for r in rewards:
+        bucket = by_user.setdefault(r.user_id, {"amount": 0, "count": 0})
+        bucket["amount"] += _extract_amount(r.reward_description)
+        bucket["count"] += 1
+
     payouts = []
     total_amount = 0
     users_with_bank = 0
     users_without_bank = 0
-    
-    for referrer_id, paid_count in paid_referrals_query:
+
+    for referrer_id, agg in by_user.items():
+        if agg["amount"] <= 0:
+            continue
         user = db.query(models.User).filter(models.User.id == referrer_id).first()
-        if user and paid_count > 0:
-            commission = paid_count * REFERRAL_COMMISSION_AMOUNT
-            has_bank = bool(user.payout_bank_name and user.payout_account_number)
-            
-            payouts.append(PayoutUserInfo(
-                user_id=user.id,
-                name=user.name,
-                email=user.email,
-                phone=user.phone,
-                payout_bank_name=user.payout_bank_name,
-                payout_account_number=user.payout_account_number,
-                payout_account_name=user.payout_account_name,
-                paid_referrals=paid_count,
-                commission_amount=commission,
-                has_bank_details=has_bank
-            ))
-            
-            total_amount += commission
-            if has_bank:
-                users_with_bank += 1
-            else:
-                users_without_bank += 1
-    
+        if not user:
+            continue
+
+        # Prefer dedicated payout account, fall back to invoice bank details
+        has_payout = bool(user.payout_bank_name and user.payout_account_number)
+        bank_name = user.payout_bank_name if has_payout else user.bank_name
+        account_number = user.payout_account_number if has_payout else user.account_number
+        account_name = user.payout_account_name if has_payout else user.account_name
+        has_bank = bool(bank_name and account_number)
+
+        payouts.append(PayoutUserInfo(
+            user_id=user.id,
+            name=user.name,
+            email=user.email,
+            phone=user.phone,
+            payout_bank_name=bank_name,
+            payout_account_number=account_number,
+            payout_account_name=account_name,
+            paid_referrals=agg["count"],
+            commission_amount=agg["amount"],
+            has_bank_details=has_bank,
+        ))
+
+        total_amount += agg["amount"]
+        if has_bank:
+            users_with_bank += 1
+        else:
+            users_without_bank += 1
+
     # Sort by commission amount descending
     payouts.sort(key=lambda x: x.commission_amount, reverse=True)
-    
+
     return PayoutListResponse(
         total_users=len(payouts),
         total_amount=total_amount,
