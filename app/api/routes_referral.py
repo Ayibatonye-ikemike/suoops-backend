@@ -78,6 +78,7 @@ class PayoutBankDetailsResponse(BaseModel):
     account_number: str | None = None
     account_name: str | None = None
     is_complete: bool = False
+    using_business_bank: bool = False
 
 
 class PayoutBankDetailsUpdate(BaseModel):
@@ -218,9 +219,12 @@ def get_payout_bank_details(
     db: DbDep,
 ):
     """
-    Get the current user's payout bank details for referral commissions.
-    
-    This is separate from the business bank account shown on invoices.
+        Get the current user's payout bank details for referral commissions.
+
+        Behavior:
+        - If a dedicated payout account is set, return that (override)
+        - Otherwise, fall back to the user's business invoice bank account
+            so influencers don't have to set bank details twice
     """
     from sqlalchemy import select
     from app.models.models import User
@@ -229,17 +233,30 @@ def get_payout_bank_details(
         select(User).where(User.id == user_id)
     ).scalar_one()
     
-    is_complete = all([
+    has_payout_account = all([
         user.payout_bank_name,
         user.payout_account_number,
         user.payout_account_name,
     ])
+
+    has_business_bank = all([
+        user.bank_name,
+        user.account_number,
+        user.account_name,
+    ])
+
+    using_business_bank = not has_payout_account and has_business_bank
+
+    bank_name = user.payout_bank_name if has_payout_account else user.bank_name
+    account_number = user.payout_account_number if has_payout_account else user.account_number
+    account_name = user.payout_account_name if has_payout_account else user.account_name
     
     return PayoutBankDetailsResponse(
-        bank_name=user.payout_bank_name,
-        account_number=user.payout_account_number,
-        account_name=user.payout_account_name,
-        is_complete=is_complete,
+        bank_name=bank_name,
+        account_number=account_number,
+        account_name=account_name,
+        is_complete=bool(bank_name and account_number and account_name),
+        using_business_bank=using_business_bank,
     )
 
 
@@ -252,7 +269,7 @@ def update_payout_bank_details(
     """
     Update the current user's payout bank details for referral commissions.
     
-    This is where commission payouts will be sent at the end of each month.
+    This is where commission payouts will be sent (weekly payout schedule).
     """
     from sqlalchemy import select
     from app.models.models import User
@@ -273,6 +290,7 @@ def update_payout_bank_details(
         account_number=user.payout_account_number,
         account_name=user.payout_account_name,
         is_complete=True,
+        using_business_bank=False,
     )
 
 
