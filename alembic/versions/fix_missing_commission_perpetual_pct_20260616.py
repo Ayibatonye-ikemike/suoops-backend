@@ -4,7 +4,7 @@ Some environments have app code that expects `commission_perpetual_pct`
 but the database schema is missing the column. This migration is idempotent
 and safely adds the column only when absent.
 
-Revision ID: fix_missing_commission_perpetual_pct_20260616
+Revision ID: fix_comm_pct_20260616
 Revises: db_scaling_fixes_20260614
 Create Date: 2026-06-16
 """
@@ -14,7 +14,7 @@ from typing import Sequence, Union
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "fix_missing_commission_perpetual_pct_20260616"
+revision: str = "fix_comm_pct_20260616"
 down_revision: Union[str, None] = "db_scaling_fixes_20260614"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
