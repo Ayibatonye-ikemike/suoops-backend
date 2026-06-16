@@ -600,6 +600,7 @@ def get_referral_payouts(
     rewards = db.query(ReferralReward).filter(
         ReferralReward.reward_type.in_([
             "commission_first_purchase",
+            "commission",  # legacy first-purchase type
             "commission_recurring",
             "commission_perpetual",
         ]),

@@ -439,7 +439,8 @@ def get_influencer_earnings(
     for r in rewards:
         # Parse amount from reward_description (e.g. "₦500 commission...")
         amount = _extract_amount(r.reward_description)
-        if r.reward_type == "commission_first_purchase":
+        # "commission" is the legacy type for first-purchase rewards
+        if r.reward_type in ("commission_first_purchase", "commission"):
             first_earned += amount
         elif r.reward_type == "commission_recurring":
             recurring_earned += amount

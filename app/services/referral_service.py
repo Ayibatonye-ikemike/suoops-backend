@@ -337,7 +337,7 @@ class ReferralService:
         # Create commission reward
         reward = ReferralReward(
             user_id=referrer_id,
-            reward_type="commission",
+            reward_type="commission_first_purchase",
             reward_description=f"₦{commission_amount} commission for {referred_name}'s first Pro purchase",
             free_referrals_count=0,
             paid_referrals_count=1,
