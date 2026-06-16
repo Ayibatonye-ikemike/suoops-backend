@@ -273,25 +273,35 @@ def update_payout_bank_details(
     """
     from sqlalchemy import select
     from app.models.models import User
+    import logging
+    logger = logging.getLogger(__name__)
     
-    user = db.execute(
-        select(User).where(User.id == user_id)
-    ).scalar_one()
-    
-    user.payout_bank_name = request.bank_name
-    user.payout_account_number = request.account_number
-    user.payout_account_name = request.account_name
-    
-    db.commit()
-    db.refresh(user)
-    
-    return PayoutBankDetailsResponse(
-        bank_name=user.payout_bank_name,
-        account_number=user.payout_account_number,
-        account_name=user.payout_account_name,
-        is_complete=True,
-        using_business_bank=False,
-    )
+    try:
+        user = db.execute(
+            select(User).where(User.id == user_id)
+        ).scalar_one()
+        
+        user.payout_bank_name = request.bank_name
+        user.payout_account_number = request.account_number
+        user.payout_account_name = request.account_name
+        
+        db.commit()
+        db.refresh(user)
+        
+        return PayoutBankDetailsResponse(
+            bank_name=user.payout_bank_name,
+            account_number=user.payout_account_number,
+            account_name=user.payout_account_name,
+            is_complete=True,
+            using_business_bank=False,
+        )
+    except Exception as e:
+        logger.error(f"Error updating payout bank for user {user_id}: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not save payout account: {str(e)}"
+        )
 
 
 @router.delete("/payout-bank", response_model=MessageResponse)
@@ -304,18 +314,28 @@ def delete_payout_bank_details(
     """
     from sqlalchemy import select
     from app.models.models import User
+    import logging
+    logger = logging.getLogger(__name__)
     
-    user = db.execute(
-        select(User).where(User.id == user_id)
-    ).scalar_one()
-    
-    user.payout_bank_name = None
-    user.payout_account_number = None
-    user.payout_account_name = None
-    
-    db.commit()
-    
-    return {"message": "Payout bank details cleared"}
+    try:
+        user = db.execute(
+            select(User).where(User.id == user_id)
+        ).scalar_one()
+        
+        user.payout_bank_name = None
+        user.payout_account_number = None
+        user.payout_account_name = None
+        
+        db.commit()
+        
+        return {"message": "Payout bank details cleared"}
+    except Exception as e:
+        logger.error(f"Error deleting payout bank for user {user_id}: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not clear payout account: {str(e)}"
+        )
 
 
 # ==================== INFLUENCER EARNINGS ====================
