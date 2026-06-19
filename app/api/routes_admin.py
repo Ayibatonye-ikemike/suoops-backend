@@ -2207,6 +2207,14 @@ class ActivityAnalytics(BaseModel):
     active_users_this_week: int = 0
     active_users_this_month: int = 0
 
+    # Active user cohorts by account age
+    new_active_users_today: int = 0
+    returning_active_users_today: int = 0
+    new_active_users_this_week: int = 0
+    returning_active_users_this_week: int = 0
+    new_active_users_this_month: int = 0
+    returning_active_users_this_month: int = 0
+
     # Daily trend (last 30 days)
     daily_trend: list[DailyPoint] = []
 
@@ -2225,7 +2233,7 @@ def get_activity_analytics(
     User activity analytics — daily/weekly/monthly invoice creation
     broken down by channel (WhatsApp vs dashboard vs email).
     """
-    from sqlalchemy import func, case, distinct
+    from sqlalchemy import case, distinct, func
 
     from app.models.models import Invoice
 
@@ -2239,6 +2247,7 @@ def get_activity_analytics(
     month_start = today_start.replace(day=1)
     last_month_start = (month_start - dt.timedelta(days=1)).replace(day=1)
     year_start = today_start.replace(month=1, day=1)
+    seven_days_ago = now - dt.timedelta(days=7)
 
     # Channel tracking was added June 14 2026; historical data is inaccurate.
     # Only surface channel breakdown for invoices created from that date onward.
@@ -2285,6 +2294,33 @@ def get_activity_analytics(
     active_today = _active_users(today_start, now)
     active_week = _active_users(week_start, now)
     active_month = _active_users(month_start, now)
+
+    def _active_users_by_signup_age(start: dt.datetime, end: dt.datetime) -> tuple[int, int]:
+        new_count = (
+            db.query(func.count(distinct(Invoice.issuer_id)))
+            .join(models.User, models.User.id == Invoice.issuer_id)
+            .filter(
+                Invoice.created_at >= start,
+                Invoice.created_at < end,
+                models.User.created_at >= seven_days_ago,
+            )
+            .scalar()
+        ) or 0
+        returning_count = (
+            db.query(func.count(distinct(Invoice.issuer_id)))
+            .join(models.User, models.User.id == Invoice.issuer_id)
+            .filter(
+                Invoice.created_at >= start,
+                Invoice.created_at < end,
+                models.User.created_at < seven_days_ago,
+            )
+            .scalar()
+        ) or 0
+        return new_count, returning_count
+
+    new_today, returning_today = _active_users_by_signup_age(today_start, now)
+    new_week, returning_week = _active_users_by_signup_age(week_start, now)
+    new_month, returning_month = _active_users_by_signup_age(month_start, now)
 
     # Daily trend — last 30 days
     thirty_days_ago = today_start - dt.timedelta(days=30)
@@ -2339,6 +2375,12 @@ def get_activity_analytics(
         active_users_today=active_today,
         active_users_this_week=active_week,
         active_users_this_month=active_month,
+        new_active_users_today=new_today,
+        returning_active_users_today=returning_today,
+        new_active_users_this_week=new_week,
+        returning_active_users_this_week=returning_week,
+        new_active_users_this_month=new_month,
+        returning_active_users_this_month=returning_month,
         daily_trend=daily_trend,
         logins_today=logins_today,
         logins_this_week=logins_week,
