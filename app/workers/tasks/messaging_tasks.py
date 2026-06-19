@@ -436,8 +436,12 @@ def _send_mark_paid_email(
     inv_lines = []
     for inv in oldest_invoices:
         cust_name = inv.customer.name if inv.customer else "Unknown"
-        age = (today - inv.due_date.date()).days
-        inv_lines.append(f"• {cust_name} — ₦{inv.amount:,.0f} ({age}d overdue)")
+        if inv.due_date:
+            age = (today - inv.due_date.date()).days
+            age_str = f"{age}d overdue"
+        else:
+            age_str = f"{(today - inv.created_at.date()).days}d old"
+        inv_lines.append(f"• {cust_name} — ₦{inv.amount:,.0f} ({age_str})")
 
     body_html = (
         f"You have <b>{pending_count}</b> pending invoices totalling "

@@ -34,6 +34,7 @@ def _create_celery() -> Celery:
         # Limit Redis connections to avoid "max number of clients reached"
         broker_pool_limit=3,
         redis_backend_transport_options={"max_connections": 5},
+        broker_connection_retry_on_startup=True,
     )
     if ssl_options:
         celery.conf.update(
