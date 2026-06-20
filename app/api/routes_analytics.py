@@ -166,7 +166,8 @@ def get_revenue_by_customer(
     currency: str = Query("NGN", pattern="^(NGN|USD)$"),
 ):
     """Get top customers by revenue (team data for team members)."""
-    
+    require_plan_feature(db, current_user_id, "cash_dashboard", "Revenue by Customer")
+
     start_date, _ = get_date_range(period)
     conversion_rate = get_conversion_rate(currency)
     
@@ -213,7 +214,8 @@ def get_conversion_funnel(
     period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
 ):
     """Get invoice conversion funnel (created → paid). Returns team data for team members."""
-    
+    require_plan_feature(db, current_user_id, "cash_dashboard", "Conversion Funnel")
+
     start_date, _ = get_date_range(period)
     
     # Count invoices by status using data_owner_id
