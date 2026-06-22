@@ -62,7 +62,7 @@ class ApplyRewardResponse(BaseModel):
 
 class ValidateCodeRequest(BaseModel):
     """Request to validate a referral code."""
-    code: str = Field(..., min_length=6, max_length=20)
+    code: str = Field(..., min_length=3, max_length=50)
 
 
 class ValidateCodeResponse(BaseModel):
@@ -181,35 +181,35 @@ def validate_referral_code(
     
     This endpoint is used to check if a referral code is valid
     before the user completes registration.
-    """
-    from sqlalchemy import select
 
+    Accepts either the random referral code OR an influencer's custom
+    vanity slug (case-insensitive) — matching the same lookup used when
+    the referral is actually recorded at signup.
+    """
     from app.models.models import User
-    from app.models.referral_models import ReferralCode
-    
-    code = payload.code.upper().strip()
-    
-    # Look up the code
-    referral_code = db.execute(
-        select(ReferralCode)
-        .where(ReferralCode.code == code)
-            .where(ReferralCode.is_active.is_(True))
-    ).scalar_one_or_none()
-    
+
+    code = payload.code.strip()
+
+    # Use the shared lookup so this matches the apply-at-signup path:
+    # checks both ReferralCode.code and the influencer custom_slug.
+    service = ReferralService(db)
+    referral_code = service.get_code_by_string(code)
+
     if not referral_code:
         return ValidateCodeResponse(
             valid=False,
             error="Invalid referral code",
         )
-    
+
     # Get referrer's name (for display)
-    referrer = db.execute(
-        select(User).where(User.id == referral_code.user_id)
-    ).scalar_one_or_none()
-    
+    referrer = db.get(User, referral_code.user_id)
+
+    # Prefer the influencer's display name when present
+    referrer_name = referral_code.influencer_name or (referrer.name if referrer else None)
+
     return ValidateCodeResponse(
         valid=True,
-        referrer_name=referrer.name if referrer else None,
+        referrer_name=referrer_name,
     )
 
 
