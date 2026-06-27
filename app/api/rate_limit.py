@@ -261,6 +261,7 @@ RATE_LIMITS = {
     "webhook_whatsapp_verify": "120/minute",
     "webhook_whatsapp_inbound": "300/minute",
     "webhook_paystack": "60/minute",
+    "webhook_ses": "300/minute",
 }
 
 

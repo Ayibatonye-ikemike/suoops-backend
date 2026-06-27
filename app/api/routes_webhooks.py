@@ -86,6 +86,31 @@ async def whatsapp_webhook(request: Request):
     return {"ok": True, "queued": True}
 
 
+@router.post("/ses")
+@limiter.limit(RATE_LIMITS["webhook_ses"])
+async def ses_webhook(request: Request):
+    """Handle Amazon SNS notifications for SES bounces and complaints.
+
+    SNS posts bounce/complaint events here. We verify the SNS signature,
+    auto-confirm the topic subscription, and record hard-bounced / complained
+    addresses in the suppression list so we stop emailing them.
+    """
+    from starlette.concurrency import run_in_threadpool
+
+    from app.services.email_suppression import process_sns_payload
+
+    raw_body = await request.body()
+    msg_type = request.headers.get("x-amz-sns-message-type", "")
+
+    try:
+        result = await run_in_threadpool(process_sns_payload, raw_body, msg_type)
+    except ValueError as e:
+        logger.warning("SES SNS webhook rejected: %s", e)
+        raise HTTPException(status_code=403, detail="Invalid SNS message")
+
+    return result
+
+
 def _record_webhook(db: Session, provider: str, external_id: str, signature: str | None) -> bool:
     existing = (
         db.query(models.WebhookEvent)

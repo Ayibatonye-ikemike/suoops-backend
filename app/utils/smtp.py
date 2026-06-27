@@ -31,6 +31,12 @@ def send_smtp_email(to_email: str, subject: str, html_body: str | None, plain_bo
         logger.warning("SMTP not configured, skipping email to %s", to_email)
         return False
 
+    # Never email a hard-bounced / complained address — protects sender reputation.
+    from app.services.email_suppression import is_suppressed
+    if is_suppressed(to_email):
+        logger.info("Skipping suppressed address %s", to_email)
+        return False
+
     msg = MIMEMultipart("alternative")
     msg["From"] = from_email
     msg["To"] = to_email
@@ -67,6 +73,8 @@ def send_smtp_batch(
         logger.warning("SMTP not configured, skipping batch of %d emails", len(emails))
         return [False] * len(emails)
 
+    from app.services.email_suppression import is_suppressed
+
     results: list[bool] = []
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
@@ -74,6 +82,10 @@ def send_smtp_batch(
             server.login(smtp_user, smtp_password)
 
             for to_email, subject, html_body, plain_body in emails:
+                if is_suppressed(to_email):
+                    logger.info("Skipping suppressed address %s", to_email)
+                    results.append(False)
+                    continue
                 msg = MIMEMultipart("alternative")
                 msg["From"] = from_email
                 msg["To"] = to_email

@@ -472,6 +472,29 @@ class UserEmailLog(Base):
     )
 
 
+class EmailSuppression(Base):
+    """Email addresses suppressed due to a hard bounce or spam complaint.
+
+    Populated from SES/SNS bounce + complaint notifications. The send path
+    checks this table and skips suppressed addresses to protect domain
+    sending reputation. Keyed by lowercased email (covers both platform
+    users and invoice-recipient customers).
+    """
+
+    __tablename__ = "email_suppression"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    reason: Mapped[str] = mapped_column(String(40))  # 'bounce' | 'complaint'
+    detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source: Mapped[str] = mapped_column(String(20), server_default="ses")
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
+
+
 class InvoiceReminderLog(Base):
     """Tracks payment reminders sent per invoice to prevent duplicates.
 
