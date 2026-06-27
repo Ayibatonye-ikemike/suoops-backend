@@ -9,6 +9,10 @@ services:
     startCommand: gunicorn app.api.main:app -k uvicorn.workers.UvicornWorker -w 1 --threads 2 --timeout 60 --bind 0.0.0.0:$PORT
     healthCheckPath: /ready
     envVars:
+      # Shared secrets (Brevo, WhatsApp, SES, etc.) live in ONE group linked to
+      # both web + worker so they can never drift apart. Create the group in the
+      # Render dashboard (Environment Groups > "suoops-shared") before syncing.
+      - fromGroup: suoops-shared
       - key: PYTHON_VERSION
         value: "3.12.0"
       - key: ENV
@@ -32,6 +36,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A app.workers.celery_app worker --beat --loglevel=info --concurrency=1
     envVars:
+      # Same shared group as the web service — guarantees both have identical secrets.
+      - fromGroup: suoops-shared
       - key: PYTHON_VERSION
         value: "3.12.0"
       - key: ENV
