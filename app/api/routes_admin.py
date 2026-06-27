@@ -3291,6 +3291,8 @@ ALLOWED_TASKS = {
     "warn_inactive": "maintenance.warn_inactive_accounts",
     "delete_inactive": "maintenance.delete_inactive_accounts",
     "activation_nudges": "maintenance.nudge_zero_invoice_users",
+    "reconcile_brevo": "maintenance.reconcile_brevo_contacts",
+    "reconcile_brevo_dry": "maintenance.reconcile_brevo_contacts",
 }
 
 
@@ -3738,8 +3740,9 @@ def trigger_task(
 
     task_name = ALLOWED_TASKS[task_key]
     args = ["paid"] if task_key == "tax_reports" else []
+    kwargs = {"dry_run": True} if task_key == "reconcile_brevo_dry" else {}
 
-    result = celery.send_task(task_name, args=args)
+    result = celery.send_task(task_name, args=args, kwargs=kwargs)
 
     log_audit_event(
         "admin.tasks.trigger",

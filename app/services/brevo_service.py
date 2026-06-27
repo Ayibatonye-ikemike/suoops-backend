@@ -266,6 +266,77 @@ async def sync_low_balance_status(user: "models.User") -> bool:
         return False
 
 
+def get_all_contact_emails_sync(list_id: int = BREVO_LIST_ALL_USERS) -> Optional[set[str]]:
+    """Return the set of lowercased contact emails in a Brevo list.
+
+    Paginates through the Brevo list-contacts endpoint (max 500 per page).
+    Returns None if the API key is missing or a request fails (so callers can
+    abort the reconcile safely rather than treating an error as "no contacts").
+    """
+    brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
+    if not brevo_api_key:
+        logger.debug("BREVO_CONTACTS_API_KEY not configured, skipping contact fetch")
+        return None
+
+    headers = {"api-key": brevo_api_key, "Content-Type": "application/json"}
+    emails: set[str] = set()
+    limit = 500
+    offset = 0
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            while True:
+                resp = client.get(
+                    f"https://api.brevo.com/v3/contacts/lists/{list_id}/contacts",
+                    headers=headers,
+                    params={"limit": limit, "offset": offset},
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "Brevo list %d fetch failed at offset %d: %s",
+                        list_id, offset, resp.status_code,
+                    )
+                    return None
+                data = resp.json()
+                contacts = data.get("contacts", [])
+                for c in contacts:
+                    email = (c.get("email") or "").strip().lower()
+                    if email:
+                        emails.add(email)
+                if len(contacts) < limit:
+                    break
+                offset += limit
+    except Exception as e:
+        logger.warning("Brevo list %d fetch error: %s", list_id, e)
+        return None
+
+    return emails
+
+
+def delete_contact_sync(email: str) -> bool:
+    """Delete a contact from Brevo entirely. Returns True on success/absent."""
+    brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
+    if not brevo_api_key or not email:
+        return False
+
+    headers = {"api-key": brevo_api_key, "Content-Type": "application/json"}
+    encoded_email = urllib.parse.quote(email, safe="")
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.delete(
+                f"https://api.brevo.com/v3/contacts/{encoded_email}",
+                headers=headers,
+            )
+            if resp.status_code in (200, 204, 404):
+                return True
+            logger.warning("Brevo delete contact %s: %s", email, resp.status_code)
+            return False
+    except Exception as e:
+        logger.warning("Brevo delete contact error for %s: %s", email, e)
+        return False
+
+
 def sync_user_to_brevo_sync(user: "models.User") -> bool:
     """
     Synchronous wrapper for sync_user_to_brevo.

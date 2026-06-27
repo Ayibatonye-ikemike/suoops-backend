@@ -379,6 +379,81 @@ def delete_inactive_accounts() -> dict[str, Any]:
         raise
 
 
+# Safety cap: never delete more than this many Brevo contacts in a single run.
+BREVO_RECONCILE_MAX_DELETES = 1000
+
+
+@celery_app.task(
+    name="maintenance.reconcile_brevo_contacts",
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=300,
+    time_limit=360,
+)
+def reconcile_brevo_contacts(dry_run: bool = False) -> dict[str, Any]:
+    """Reconcile Brevo's master contact list against the live user table.
+
+    Registered app users are the single source of truth. Any Brevo contact
+    whose email is not an active user is stale (purged/deleted user, failed
+    real-time removal, or legacy import) and is deleted from Brevo.
+
+    Steady-state sync is already real-time (add on signup, remove on
+    purge/delete); this sweep catches historical drift and any missed removals.
+
+    Pass dry_run=True to log what would be removed without deleting.
+    Runs weekly.
+    """
+    from app.models.models import User
+    from app.services import brevo_service
+
+    stats = {"brevo_contacts": 0, "db_users": 0, "stale": 0, "removed": 0, "dry_run": dry_run}
+
+    # Pull all emails currently in Brevo's master list.
+    brevo_emails = brevo_service.get_all_contact_emails_sync(
+        brevo_service.BREVO_LIST_ALL_USERS
+    )
+    if brevo_emails is None:
+        logger.warning("Brevo reconcile skipped: could not fetch contacts (missing key or API error)")
+        return {"success": False, "reason": "brevo_fetch_failed", **stats}
+    stats["brevo_contacts"] = len(brevo_emails)
+
+    # Pull all active user emails from the DB (source of truth).
+    with session_scope() as db:
+        rows = db.query(User.email).filter(User.email.isnot(None)).all()
+    user_emails = {(r[0] or "").strip().lower() for r in rows if r[0]}
+    stats["db_users"] = len(user_emails)
+
+    # Contacts in Brevo that are no longer registered users.
+    stale_emails = sorted(brevo_emails - user_emails)
+    stats["stale"] = len(stale_emails)
+
+    if not stale_emails:
+        logger.info("Brevo reconcile: in sync (%d contacts, %d users)", stats["brevo_contacts"], stats["db_users"])
+        return {"success": True, **stats}
+
+    if dry_run:
+        logger.info(
+            "Brevo reconcile DRY RUN: %d stale contacts (sample: %s)",
+            len(stale_emails), stale_emails[:20],
+        )
+        return {"success": True, **stats}
+
+    to_remove = stale_emails[:BREVO_RECONCILE_MAX_DELETES]
+    if len(stale_emails) > BREVO_RECONCILE_MAX_DELETES:
+        logger.warning(
+            "Brevo reconcile: %d stale contacts exceed cap %d; removing first %d this run",
+            len(stale_emails), BREVO_RECONCILE_MAX_DELETES, len(to_remove),
+        )
+
+    for email in to_remove:
+        if brevo_service.delete_contact_sync(email):
+            stats["removed"] += 1
+
+    logger.info("Brevo reconcile: removed %d/%d stale contacts", stats["removed"], stats["stale"])
+    return {"success": True, **stats}
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # CHURNED BUSINESS RE-ENGAGEMENT
 # ═══════════════════════════════════════════════════════════════════════
