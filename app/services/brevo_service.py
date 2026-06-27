@@ -266,10 +266,13 @@ async def sync_low_balance_status(user: "models.User") -> bool:
         return False
 
 
-def get_all_contact_emails_sync(list_id: int = BREVO_LIST_ALL_USERS) -> Optional[set[str]]:
-    """Return the set of lowercased contact emails in a Brevo list.
+def get_all_contacts_sync(list_id: int = BREVO_LIST_ALL_USERS) -> Optional[dict[str, bool]]:
+    """Return a mapping of {lowercased email: is_blocklisted} for a Brevo list.
 
     Paginates through the Brevo list-contacts endpoint (max 500 per page).
+    The blocklist flag lets callers preserve suppressed contacts (hard bounces /
+    unsubscribes) instead of deleting them and losing their suppression state.
+
     Returns None if the API key is missing or a request fails (so callers can
     abort the reconcile safely rather than treating an error as "no contacts").
     """
@@ -279,7 +282,7 @@ def get_all_contact_emails_sync(list_id: int = BREVO_LIST_ALL_USERS) -> Optional
         return None
 
     headers = {"api-key": brevo_api_key, "Content-Type": "application/json"}
-    emails: set[str] = set()
+    contacts: dict[str, bool] = {}
     limit = 500
     offset = 0
 
@@ -298,19 +301,19 @@ def get_all_contact_emails_sync(list_id: int = BREVO_LIST_ALL_USERS) -> Optional
                     )
                     return None
                 data = resp.json()
-                contacts = data.get("contacts", [])
-                for c in contacts:
+                page = data.get("contacts", [])
+                for c in page:
                     email = (c.get("email") or "").strip().lower()
                     if email:
-                        emails.add(email)
-                if len(contacts) < limit:
+                        contacts[email] = bool(c.get("emailBlacklisted", False))
+                if len(page) < limit:
                     break
                 offset += limit
     except Exception as e:
         logger.warning("Brevo list %d fetch error: %s", list_id, e)
         return None
 
-    return emails
+    return contacts
 
 
 def delete_contact_sync(email: str) -> bool:
