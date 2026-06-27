@@ -318,22 +318,24 @@ def _process_user(db, user, now: datetime, stats: dict[str, int], invoice_count_
             _send_activation(db, user, name, signup_age.days, stats)
         return
 
-    # ── 2. FIRST INVOICE FOLLOW-UP (email + optional WhatsApp) ─────
+    # ── 2. FIRST INVOICE FOLLOW-UP (WhatsApp-only, email fallback) ─────
     if invoice_count >= 1 and not _was_sent(db, user.id, "wa_first_invoice"):
         sent_any = False
-        # WhatsApp (if template still exists)
-        if _send_wa_template(
+        # WhatsApp first — this is a celebration, single channel is enough.
+        wa_sent = _send_wa_template(
             user.phone,
             settings.WHATSAPP_TEMPLATE_FIRST_INVOICE,
             [name],
             "wa_first_invoice",
             db,
             user.id,
-        ):
+        )
+        if wa_sent:
             stats["whatsapp_sent"] += 1
             sent_any = True
-        # Email fallback/complement
-        if user.email and not _was_sent(db, user.id, "email_first_invoice"):
+        # Email ONLY as a fallback when WhatsApp couldn't be delivered
+        # (no phone, missing template, or send failure) — avoids double-send.
+        if not wa_sent and user.email and not _was_sent(db, user.id, "email_first_invoice"):
             try:
                 tpl = _jinja_env.get_template("engagement_first_invoice.html")
                 html = tpl.render(
