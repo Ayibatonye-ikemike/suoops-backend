@@ -378,6 +378,47 @@ def toggle_pro_override(
     }
 
 
+@router.post("/users/{user_id}/downgrade-free")
+def downgrade_user_to_free(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Force a user back to the FREE plan.
+
+    Clears the PRO plan, any subscription expiry, and the admin pro_override
+    flag. Use for stale PRO accounts that have no subscription dates and never
+    get caught by the auto-downgrade task. Invoice balance is preserved.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    old_plan = user.plan.value if hasattr(user.plan, "value") else str(user.plan)
+    user.plan = models.SubscriptionPlan.FREE
+    user.subscription_expires_at = None
+    if getattr(user, "pro_override", False):
+        user.pro_override = False
+    db.commit()
+
+    log_audit_event(
+        "admin.users.downgrade_free",
+        user_id=admin_user.id,
+        target_user_id=user_id,
+        old_plan=old_plan,
+    )
+    logger.info(
+        "Admin %s downgraded user %s (%s) from %s to FREE",
+        admin_user.id, user_id, user.email or user.phone, old_plan,
+    )
+
+    return {
+        "user_id": user_id,
+        "plan": "FREE",
+        "message": f"{user.name or user.email or user_id} downgraded to FREE",
+    }
+
+
 # ============================================================================
 # Referral Statistics
 # ============================================================================
