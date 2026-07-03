@@ -2,13 +2,8 @@ import logging
 from contextlib import asynccontextmanager
 
 import redis.exceptions
-import sentry_sdk
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.redis import RedisIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -177,24 +172,10 @@ class AdminIPAllowlistMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     init_logging()
+    # Sentry is initialized exactly once inside init_monitoring(). A second
+    # sentry_sdk.init() here previously double-patched RedisIntegration and
+    # caused a RecursionError on every Redis command in the web process.
     init_monitoring()
-    
-    # Initialize Sentry for error tracking and performance monitoring
-    if settings.SENTRY_DSN:
-        sentry_sdk.init(
-            dsn=settings.SENTRY_DSN,
-            integrations=[
-                FastApiIntegration(),
-                StarletteIntegration(),
-                SqlalchemyIntegration(),
-                RedisIntegration(),
-            ],
-            environment=settings.ENV,
-            traces_sample_rate=0.02 if settings.ENV.lower() == "prod" else 1.0,
-            profiles_sample_rate=0.0,  # Disabled in prod to reduce Sentry costs
-            # Disable PII to comply with NDPA — user context set explicitly via sentry_sdk.set_user
-            send_default_pii=False,
-        )
     
     # Lifespan replaces deprecated on_event startup/shutdown
     @asynccontextmanager
