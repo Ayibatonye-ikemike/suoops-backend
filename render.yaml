@@ -28,13 +28,21 @@ services:
           property: connectionString
 
   # Background Worker - Celery
+  # IMPORTANT: keep this at a SINGLE instance. The worker embeds --beat, so
+  # running multiple instances risks duplicate scheduled tasks (reminders,
+  # summaries) and multiplies cost. Throughput is scaled via --concurrency
+  # INSIDE one instance, never by adding instances. (A drifted dashboard
+  # scale-up to ~12 instances cost ~$86/mo in Jun 2026 vs ~$7 expected.)
   - type: worker
     name: suoops-worker
     runtime: python
     region: oregon
     plan: starter
+    scaling:
+      minInstances: 1
+      maxInstances: 1
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.workers.celery_app worker --beat --loglevel=info --concurrency=1
+    startCommand: celery -A app.workers.celery_app worker --beat --loglevel=info --concurrency=4
     envVars:
       # Same shared group as the web service — guarantees both have identical secrets.
       - fromGroup: suoops-shared
