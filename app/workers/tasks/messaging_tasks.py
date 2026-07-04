@@ -1485,6 +1485,15 @@ def send_daily_summaries() -> dict[str, Any]:
 
                     if wa_success:
                         sent += 1
+                        # Follow up with the visual cash snapshot. Images, like
+                        # plain text, are only deliverable inside the 24h window.
+                        if has_phone:
+                            try:
+                                _send_daily_cash_image(db, client, user, is_window_open)
+                            except Exception as img_err:  # noqa: BLE001
+                                logger.warning(
+                                    "Daily cash image failed for user %s: %s", user.id, img_err
+                                )
                         continue
 
                     # ── Email fallback ──────────────────────────────
@@ -1531,6 +1540,38 @@ def send_daily_summaries() -> dict[str, Any]:
     except Exception as exc:
         logger.error("Daily summary task failed: %s", exc)
         raise
+
+
+def _send_daily_cash_image(db, client, user, window_check) -> None:
+    """Send the visual cash snapshot as a daily-summary follow-up.
+
+    Only attempted inside the 24-hour customer-service window (free-form images,
+    like plain text, cannot be delivered outside it). Skips fully empty snapshots
+    to avoid noise.
+    """
+    if not user.phone or not window_check(user.phone):
+        return
+
+    from app.services.analytics_service import calculate_cash_position
+    from app.services.cash_dashboard_image import build_cash_snapshot_png
+    from app.utils.currency_fmt import get_user_currency
+
+    cash = calculate_cash_position(db, user.id)
+    if not any(
+        cash.get(k)
+        for k in (
+            "cash_collected_today", "cash_collected_this_week", "total_outstanding",
+            "total_overdue", "expected_inflow_7_days", "expenses_today",
+        )
+    ):
+        return
+
+    currency = get_user_currency(db, user.id)
+    business = user.business_name or user.name or "Your Business"
+    png = build_cash_snapshot_png(cash, str(business), currency)
+    media_id = client.upload_media(png, "image/png", "cash-snapshot.png")
+    if media_id:
+        client.send_image(user.phone, media_id, caption="💰 Your cash snapshot")
 
 
 def _format_daily_summary(

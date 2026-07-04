@@ -150,6 +150,51 @@ class WhatsAppClient:
             logger.error("[WHATSAPP DOC] Failed to send to %s: %s", to, exc)
             return False
 
+    def send_image(self, to: str, url: str, caption: str | None = None) -> bool:
+        """Send an image message. Accepts a URL or a media_id.
+
+        Returns True on success, False on failure.
+        """
+        if self._is_test_mode():
+            logger.info("[WHATSAPP IMG][TEST] Would send to %s: %s", to, url)
+            return True
+        if not self.phone_number_id or not self.api_key:
+            logger.warning("[WHATSAPP IMG] Not configured, would send to %s: %s", to, url)
+            return False
+
+        try:
+            image: dict[str, Any] = {}
+            if caption:
+                image["caption"] = caption
+            # If it looks like a media_id (no :// scheme), use "id"; otherwise "link"
+            if "://" in url:
+                image["link"] = url
+            else:
+                image["id"] = url
+
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": to.replace("+", ""),
+                "type": "image",
+                "image": image,
+            }
+
+            response = requests.post(
+                self.base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=10,
+            )
+            response.raise_for_status()
+            logger.info("[WHATSAPP IMG] ✓ Sent to %s", to)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[WHATSAPP IMG] Failed to send to %s: %s", to, exc)
+            return False
+
     def upload_media(self, data: bytes, mime_type: str = "application/pdf", filename: str = "document.pdf") -> str | None:
         """Upload media bytes directly to WhatsApp's Media API.
 

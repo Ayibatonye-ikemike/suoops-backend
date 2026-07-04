@@ -29,6 +29,7 @@ from app.services.analytics_service import (
     calculate_customer_metrics,
     calculate_invoice_metrics,
     calculate_revenue_metrics,
+    calculate_cash_position,
     get_conversion_rate,
     get_date_range,
 )
@@ -1326,6 +1327,12 @@ class WhatsAppHandler:
 
             self.client.send_text(sender, msg)
 
+            # Mobile-optimized visual cash snapshot (non-fatal if it fails)
+            try:
+                self._send_cash_snapshot_image(sender, issuer_id, currency)
+            except Exception as img_err:  # noqa: BLE001
+                logger.warning("Cash snapshot image failed for user %s: %s", issuer_id, img_err)
+
         except Exception as exc:
             logger.exception("Error generating analytics for user %s: %s", issuer_id, exc)
             self.client.send_text(
@@ -1333,6 +1340,23 @@ class WhatsAppHandler:
                 "⚠️ Couldn't generate your report right now. "
                 "Try again or view full analytics at suoops.com/dashboard/analytics"
             )
+
+    def _send_cash_snapshot_image(self, sender: str, issuer_id: int, currency: str) -> None:
+        """Render the cash-first dashboard as a mobile image and send via WhatsApp."""
+        from app.services.cash_dashboard_image import build_cash_snapshot_png
+
+        cash = calculate_cash_position(self.db, issuer_id)
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        business = (
+            getattr(user, "business_name", None)
+            or getattr(user, "name", None)
+            or "Your Business"
+        )
+
+        png = build_cash_snapshot_png(cash, str(business), currency)
+        media_id = self.client.upload_media(png, "image/png", "cash-snapshot.png")
+        if media_id:
+            self.client.send_image(sender, media_id, caption="💰 Your cash snapshot")
 
     def _send_tax_report(self, sender: str, issuer_id: int) -> None:
         """Generate and send the latest monthly tax report PDF via WhatsApp."""
