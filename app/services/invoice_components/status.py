@@ -261,13 +261,17 @@ class InvoiceStatusMixin:
         items = "\n".join(
             f"• {ln.quantity} × {ln.description}" for ln in (invoice.lines or [])
         ) or "• (see dashboard)"
+        bank_name = getattr(user, "bank_name", None)
+        settle_to = f"your {bank_name} account" if bank_name else "your bank account"
         message = (
             f"🛒 New paid order — payment confirmed ✅\n\n"
             f"👤 {customer_name}"
             + (f" ({customer_phone})" if customer_phone else "")
-            + f"\n💵 ₦{invoice.amount:,.2f} — paid online (auto-confirmed & settling to your account)\n\n"
+            + f"\n💵 ₦{invoice.amount:,.2f} — paid online\n"
+            f"💰 Your money (less the 3% fee) settles to {settle_to} by the next "
+            "business day — Paystack pays you directly.\n\n"
             f"{items}\n\n"
-            f"📦 No payment action needed — just prepare and deliver the order.\n"
+            f"📦 No action needed on payment — just prepare and deliver the order.\n"
             f"🔗 Order details:\n{order_link}"
         )
 

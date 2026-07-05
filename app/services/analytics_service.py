@@ -738,7 +738,24 @@ def calculate_professionalism_score(db: Session, user_id: int) -> dict:
     if not checks["sends_receipts"]:
         tips.append("Send receipts when customers pay — it builds trust and repeat business.")
 
-    score = sum(20 for v in checks.values() if v)
+    # 6. Has an inventory/catalog (unlocks the shareable storefront)
+    from app.models.inventory_models import Product
+
+    product_count = (
+        db.query(Product)
+        .filter(Product.user_id == user_id, Product.is_active.is_(True))
+        .count()
+    )
+    checks["has_inventory"] = product_count > 0
+    if not checks["has_inventory"]:
+        tips.append(
+            "Add products to your inventory — then share your storefront so "
+            "customers can order and pay online."
+        )
+
+    total_checks = len(checks) or 1
+    passed = sum(1 for v in checks.values() if v)
+    score = round(passed / total_checks * 100)
     if score >= 80:
         level = "Excellent"
     elif score >= 60:
