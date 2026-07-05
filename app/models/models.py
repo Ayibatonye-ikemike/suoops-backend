@@ -331,6 +331,8 @@ class User(Base):
     # Public storefront: a shareable catalog of the business's inventory.
     storefront_enabled: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
     storefront_slug: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True, unique=True)
+    # Short public description of what the shop sells (shown in the directory).
+    storefront_description: Mapped[str | None] = mapped_column(String(160), nullable=True)
     
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)

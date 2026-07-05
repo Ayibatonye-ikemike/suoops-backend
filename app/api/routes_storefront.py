@@ -80,12 +80,18 @@ def _wa_url(user) -> str | None:
 
 class StorefrontEnableIn(BaseModel):
     slug: str | None = Field(default=None, max_length=60)
+    description: str | None = Field(default=None, max_length=160)
+
+
+class StorefrontUpdateIn(BaseModel):
+    description: str | None = Field(default=None, max_length=160)
 
 
 class StorefrontOut(BaseModel):
     enabled: bool
     slug: str | None
     link: str | None
+    description: str | None = None
 
 
 class StoreOrderItem(BaseModel):
@@ -128,9 +134,34 @@ def enable_storefront(
 
     user.storefront_slug = slug
     user.storefront_enabled = True
+    if payload.description is not None:
+        user.storefront_description = payload.description.strip() or None
     db.commit()
     logger.info("Storefront enabled for user %s -> %s", user.id, slug)
-    return StorefrontOut(enabled=True, slug=slug, link=_link_for(slug))
+    return StorefrontOut(
+        enabled=True, slug=slug, link=_link_for(slug),
+        description=user.storefront_description,
+    )
+
+
+@router.patch("/storefront", response_model=StorefrontOut)
+def update_storefront(
+    payload: StorefrontUpdateIn,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StorefrontOut:
+    """Update the storefront description (what the shop sells)."""
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.storefront_description = (payload.description or "").strip() or None
+    db.commit()
+    return StorefrontOut(
+        enabled=bool(user.storefront_enabled),
+        slug=user.storefront_slug,
+        link=_link_for(user.storefront_slug) if user.storefront_enabled else None,
+        description=user.storefront_description,
+    )
 
 
 @router.get("/storefront", response_model=StorefrontOut)
@@ -146,6 +177,7 @@ def get_storefront(
         enabled=bool(user.storefront_enabled),
         slug=user.storefront_slug,
         link=_link_for(user.storefront_slug) if user.storefront_enabled else None,
+        description=user.storefront_description,
     )
 
 
@@ -188,6 +220,7 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
     return {
         "slug": slug.lower(),
         "business_name": owner.business_name or owner.name,
+        "description": owner.storefront_description,
         "logo_url": _presign(owner.logo_url),
         "online_payments_enabled": bool(
             owner.paystack_subaccount_active and owner.paystack_subaccount_code
@@ -260,6 +293,7 @@ def list_public_stores(
                 "slug": o.storefront_slug,
                 "business_name": o.business_name or o.name,
                 "logo_url": _presign(o.logo_url),
+                "description": o.storefront_description,
             }
             for o in owners
         ],
