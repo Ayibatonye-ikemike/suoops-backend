@@ -1525,15 +1525,28 @@ def get_platform_metrics(
         models.User.storefront_enabled.is_(True)
     ).count()
 
-    # Commission earned this month = the flat 3% (min ₦20, cap ₦2,000) charged on
-    # each revenue invoice created this month, recomputed as the wallet is debited.
+    # Commission earned this month, from BOTH streams:
+    #  - Manual (wallet): non-storefront revenue invoices are charged the flat 3%
+    #    from the wallet at CREATION, so count them by created_at.
+    #  - Online (storefront): the 3% is taken by Paystack when the customer PAYS,
+    #    so count storefront orders by paid_at (paid only).
+    from sqlalchemy import or_
+
     from app.utils.feature_gate import platform_fee_kobo
-    month_revenue_amounts = db.query(Invoice.amount).filter(
+    manual_amounts = db.query(Invoice.amount).filter(
         Invoice.invoice_type == "revenue",
         Invoice.created_at >= month_start,
+        or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
     ).all()
-    commission_this_month = sum(
-        platform_fee_kobo(amount) for (amount,) in month_revenue_amounts
+    online_amounts = db.query(Invoice.amount).filter(
+        Invoice.invoice_type == "revenue",
+        Invoice.channel == "storefront",
+        Invoice.status == "paid",
+        Invoice.paid_at >= month_start,
+    ).all()
+    commission_this_month = (
+        sum(platform_fee_kobo(a) for (a,) in manual_amounts)
+        + sum(platform_fee_kobo(a) for (a,) in online_amounts)
     ) / 100
 
     # Customers
@@ -1569,7 +1582,6 @@ def get_platform_metrics(
     # Monetized businesses = distinct users who actually pay Suoops: they either
     # enabled online payments (commission on each order) OR funded their wallet
     # via a top-up. Distinct so the two groups aren't double-counted.
-    from sqlalchemy import or_
     monetized_users = db.query(func.count(func.distinct(models.User.id))).filter(
         or_(
             models.User.paystack_subaccount_active.is_(True),
@@ -1647,6 +1659,8 @@ def get_growth_metrics(
     admin_user=Depends(get_current_admin)
 ) -> Any:
     """Get business growth metrics — commission, churn, activation funnel, trends."""
+    from sqlalchemy import or_
+
     from app.models.models import Invoice
     from app.utils.feature_gate import platform_fee_kobo
 
@@ -1666,13 +1680,25 @@ def get_growth_metrics(
         return list(reversed(starts))
 
     def _commission_between(start: dt.datetime, end: dt.datetime) -> float:
-        """Commission (Naira) charged on revenue invoices created in [start, end)."""
-        amounts = db.query(Invoice.amount).filter(
+        """Commission (Naira) earned in [start, end): manual invoices charged at
+        creation + storefront orders charged (via Paystack) when paid."""
+        manual = db.query(Invoice.amount).filter(
             Invoice.invoice_type == "revenue",
             Invoice.created_at >= start,
             Invoice.created_at < end,
+            or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
         ).all()
-        return sum(platform_fee_kobo(a) for (a,) in amounts) / 100
+        online = db.query(Invoice.amount).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.channel == "storefront",
+            Invoice.status == "paid",
+            Invoice.paid_at >= start,
+            Invoice.paid_at < end,
+        ).all()
+        return (
+            sum(platform_fee_kobo(a) for (a,) in manual)
+            + sum(platform_fee_kobo(a) for (a,) in online)
+        ) / 100
 
     # ── Commission (Suoops earnings this month) ──
     next_month = (month_start + dt.timedelta(days=32)).replace(day=1)
