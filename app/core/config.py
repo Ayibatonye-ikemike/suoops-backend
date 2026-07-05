@@ -50,9 +50,9 @@ class BaseAppSettings(BaseSettings):
     # Lifecycle / engagement templates
     WHATSAPP_TEMPLATE_ACTIVATION_WELCOME: str | None = None  # New signup welcome
     WHATSAPP_TEMPLATE_FIRST_INVOICE: str | None = None  # After first invoice
-    WHATSAPP_TEMPLATE_LOW_BALANCE: str | None = None  # 80% invoice limit reached
-    WHATSAPP_TEMPLATE_INVOICE_PACK_PROMO: str | None = None  # Invoice limit hit
-    WHATSAPP_TEMPLATE_PRO_UPGRADE: str | None = None  # Upsell to Pro plan
+    WHATSAPP_TEMPLATE_LOW_BALANCE: str | None = None  # Wallet balance running low
+    WHATSAPP_TEMPLATE_INVOICE_PACK_PROMO: str | None = None  # Wallet empty — top up prompt
+    WHATSAPP_TEMPLATE_PRO_UPGRADE: str | None = None  # Invoice milestone nudge (all features free at 3%)
     WHATSAPP_TEMPLATE_WIN_BACK: str | None = None  # Inactive user re-engagement
     WHATSAPP_TEMPLATE_LOW_STOCK_ALERT: str | None = None  # Low inventory alert
     WHATSAPP_TEMPLATE_OVERDUE_REPORT: str | None = None  # Owner overdue summary
@@ -63,7 +63,7 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_TEMPLATE_REFERRAL_ASK: str | None = None  # Post-payment referral ask
     WHATSAPP_TEMPLATE_FEEDBACK: str | None = None  # Feedback/testimonial request
     WHATSAPP_TEMPLATE_UNPAID_ALERT: str | None = None  # Aggregate unpaid notification
-    WHATSAPP_TEMPLATE_PAYMENT_UPSELL: str | None = None  # Payment-triggered Pro upsell
+    WHATSAPP_TEMPLATE_PAYMENT_UPSELL: str | None = None  # Payment-triggered growth nudge (3% model)
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
     
     @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")
