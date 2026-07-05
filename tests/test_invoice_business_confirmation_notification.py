@@ -35,6 +35,7 @@ def test_business_confirmation_notifications(monkeypatch, db_session):
         bank_name="TestBank",
         account_number="0123000000",
         account_name="ISSUER",
+        wallet_balance_kobo=10_000_000,
     )
     db_session.add(user)
     db_session.commit()

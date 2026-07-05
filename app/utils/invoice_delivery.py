@@ -1,0 +1,50 @@
+"""
+Helpers for invoice payment delivery: deciding when an invoice is *online-only*
+(pay via Paystack link, bank account hidden) vs *offline* (business shares their
+account and confirms manually).
+
+Single source of truth so the pay page, PDF, WhatsApp templates and billing all
+agree — no duplicated logic.
+"""
+from __future__ import annotations
+
+
+def invoice_has_contact(invoice) -> bool:
+    """True when the invoice's customer has a phone or email (pay link deliverable)."""
+    customer = getattr(invoice, "customer", None)
+    return bool(customer and (getattr(customer, "phone", None) or getattr(customer, "email", None)))
+
+
+def is_online_only(issuer, *, has_contact: bool, channel: str | None = None) -> bool:
+    """
+    True when an invoice must be paid online (bank account hidden from customer).
+
+    Only storefront/online orders (customer-initiated) are online-only: the
+    customer pays as part of ordering, so the platform commission cannot be
+    bypassed. Invoices a business creates for a customer are always offline
+    (manual bank transfer, pack-funded) — that path has no online option, so
+    there is nothing to circumvent.
+    """
+    return channel == "storefront"
+
+
+def template_bank_params(issuer, *, online_only: bool) -> tuple[str, str, str]:
+    """
+    (bank_name, account_number, account_name) for WhatsApp invoice templates.
+
+    For online-only invoices the real bank account is replaced with a
+    "pay online" instruction so payment flows through the link (and Paystack).
+    Returns non-empty placeholders (Meta rejects empty template params).
+    """
+    if online_only:
+        biz = (
+            getattr(issuer, "business_name", None)
+            or getattr(issuer, "name", None)
+            or "your order"
+        )
+        return ("Pay securely online", "Use the link below \U0001F447", biz)
+    return (
+        getattr(issuer, "bank_name", None) or "N/A",
+        getattr(issuer, "account_number", None) or "N/A",
+        getattr(issuer, "account_name", None) or "N/A",
+    )

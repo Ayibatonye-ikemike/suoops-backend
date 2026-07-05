@@ -368,8 +368,8 @@ def send_weekly_free_summary() -> dict[str, Any]:
 
                     message += (
                         "\n🔗 suoops.com/dashboard\n\n"
-                        "_Pro users get this daily + tax reports, "
-                        "inventory & more. Go Pro for ₦2,000 (20 invoices + 30 days of Pro)._"
+                        "_Every feature is free — tax reports, inventory, daily "
+                        "summaries & more. You only pay a flat 3% per invoice._"
                     )
 
                     sent = False
@@ -499,13 +499,11 @@ def send_payment_upsells() -> dict[str, Any]:
                     f"🎉 *You've collected ₦{total:,.0f}!*\n\n"
                     f"Hi {name}, you've received {count} payment{'s' if count != 1 else ''} "
                     f"through SuoOps — your business is growing!\n\n"
-                    f"Upgrade to *Pro* for ₦2,000 (Pro Pack) to:\n"
-                    f"✅ 20 invoices + 30 days of Pro features\n"
-                    f"✅ Tax reports (PIT + CIT)\n"
-                    f"✅ Daily WhatsApp business summary\n"
-                    f"✅ Customer insights & alerts\n"
-                    f"✅ Priority support\n\n"
-                    f"🔗 suoops.com/dashboard/settings/subscription"
+                    f"Everything's included, free — tax reports, inventory, daily "
+                    f"summaries & customer insights. You only pay a flat 3% per invoice.\n\n"
+                    f"💡 Get paid faster: share your storefront so customers order and "
+                    f"pay online, or top up your wallet for more manual invoices.\n\n"
+                    f"🔗 suoops.com/dashboard"
                 )
 
                 sent = False
@@ -544,14 +542,15 @@ def send_payment_upsells() -> dict[str, Any]:
 
                 # Email fallback
                 if not sent and user.email:
-                    subject = f"You've collected ₦{total:,.0f} — ready for Pro?"
+                    subject = f"You've collected ₦{total:,.0f} through SuoOps 🎉"
                     plain = (
                         f"Hi {name},\n\n"
                         f"You've received {count} payment{'s' if count != 1 else ''} "
                         f"totalling ₦{total:,.0f} through SuoOps.\n\n"
-                        f"Upgrade to Pro (₦2,000 Pro Pack) for tax reports, daily summaries, "
-                        f"customer insights, and 20 invoices + 30 days of Pro features.\n\n"
-                        f"Upgrade: https://suoops.com/dashboard/settings/subscription\n\n"
+                        f"Every feature is free — tax reports, daily summaries, "
+                        f"customer insights & more. You only pay a flat 3% per invoice.\n\n"
+                        f"Keep it flowing: share your storefront or top up your wallet at "
+                        f"https://suoops.com/dashboard/billing/purchase\n\n"
                         f"— SuoOps"
                     )
                     if _send_smtp_email(user.email, subject, None, plain):

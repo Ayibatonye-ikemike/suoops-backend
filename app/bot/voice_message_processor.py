@@ -29,11 +29,11 @@ class VoiceMessageProcessor:
 
     def _check_user_has_business_plan(self, sender: str) -> tuple[bool, models.User | None]:
         """
-        Check if user has Pro plan for voice features.
-        
-        Voice is exclusive to Pro plan.
-        Pro plan: 15 voice invoices per month quota.
-        
+        Resolve the business user for a WhatsApp sender.
+
+        Voice invoicing is free under the commission model, so access only
+        requires a linked business account.
+
         Returns:
             (has_access: bool, user: User | None)
         """
@@ -61,9 +61,8 @@ class VoiceMessageProcessor:
         if not user:
             return False, None
         
-        # Check if Pro plan (voice is premium feature now included in Pro)
-        has_access = user.effective_plan == models.SubscriptionPlan.PRO
-        return has_access, user
+        # Voice invoicing is free under the commission model.
+        return True, user
 
     async def process(self, sender: str, media_id: str, payload: dict[str, Any]) -> None:
         try:
@@ -78,23 +77,16 @@ class VoiceMessageProcessor:
                 )
                 return
 
-            # Check if user has Pro plan (voice is premium feature)
+            # Voice is free; we only need a linked business account.
             has_access, user = self._check_user_has_business_plan(sender)
-            if not has_access:
+            if not has_access or user is None:
                 self.client.send_text(
                     sender,
-                    "🔒 Voice Invoice Feature\n\n"
-                    "Voice message invoices are only available on the Pro plan.\n\n"
-                    "📊 Plans:\n"
-                    "• Free: 2 free invoices to start, buy packs (₦625 for 25 or ₦1,250 for 50)\n"
-                    "• Pro Pack (₦2,000): 20 invoices + 30 days of Voice & all premium features\n\n"
-                    "Visit suoops.com/dashboard/settings/subscription to upgrade!"
+                    "❌ Your WhatsApp number isn't linked to a business account.\n"
+                    "Register at suoops.com to start invoicing!"
                 )
                 return
-            
-            # TODO: Check Pro plan quota (15 voice per month)
-            # For now, allow all Pro users
-            
+
             self.client.send_text(sender, "🎙️ Processing your voice message...")
             media_url = await self.client.get_media_url(media_id)
             audio_bytes = await self.client.download_media(media_url)

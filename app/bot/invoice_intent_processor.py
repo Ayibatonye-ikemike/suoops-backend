@@ -109,26 +109,22 @@ class InvoiceIntentProcessor:
             logger.error("Failed to check quota: %s", exc)
             return True
 
-        balance = quota_check.get("invoice_balance", 0)
-
         # Don't show warning here - we'll show remaining count AFTER successful creation
         # This prevents confusing UX when invoice creation succeeds
 
         if quota_check.get("can_create"):
             return True
 
-        # No balance remaining — give the user a one-tap upgrade path with
-        # interactive buttons (falls back to plain text if the client
-        # doesn't render them).
-        plan = (quota_check.get("plan", "") or "").upper()
-        pack_price = quota_check.get("pack_price", 2500)
-        pack_size = quota_check.get("pack_size", 100)
+        # Wallet is empty — offer a one-tap top-up, or the storefront (where the
+        # customer pays online, so no wallet is needed).
+        balance_naira = quota_check.get("wallet_balance_naira", 0)
+        topup_from = quota_check.get("topup_from", 1250)
         body = (
-            "🚫 *You're out of invoices.*\n\n"
-            f"Plan: *{plan or 'FREE'}*\n"
-            f"Balance: *{balance}* remaining\n\n"
-            f"💳 Top up *{pack_size}* invoices for *₦{pack_price:,}* — "
-            "or upgrade to *Pro* for unlimited.\n\n"
+            "🚫 *Your invoice wallet is empty.*\n\n"
+            f"Balance: *₦{balance_naira:,.0f}*\n\n"
+            f"Top up (from ₦{topup_from:,}) to keep creating invoices — or share "
+            "your storefront so customers order and pay you online (no wallet "
+            "needed).\n\n"
             "What would you like to do?"
         )
         sent_buttons = False
@@ -140,19 +136,19 @@ class InvoiceIntentProcessor:
                     body,
                     [
                         {"id": "quota_topup", "title": "💳 Top up"},
-                        {"id": "quota_upgrade", "title": "🚀 Go Pro"},
+                        {"id": "quota_store", "title": "🛒 My storefront"},
                         {"id": "quota_later", "title": "⏰ Later"},
                     ],
                 ))
         except Exception:
-            logger.exception("failed to send quota upgrade buttons")
+            logger.exception("failed to send wallet top-up buttons")
             sent_buttons = False
         if not sent_buttons:
             self.client.send_text(
                 sender,
                 body
                 + "\n\n• *Top up:* suoops.com/dashboard/billing/purchase\n"
-                "• *Upgrade:* suoops.com/dashboard/settings/subscription",
+                "• *Storefront:* suoops.com/dashboard/settings",
             )
         return False
 
@@ -313,11 +309,11 @@ class InvoiceIntentProcessor:
             logger.warning("Invoice balance exhausted for user %s: %s", issuer_id, exc)
             self.client.send_text(
                 sender,
-                "🚫 No invoices remaining!\n\n"
-                "Buy a pack:\n"
-                "• 25 invoices — ₦625\n"
-                "• 50 invoices — ₦1,250\n\n"
-                "Visit: suoops.com/dashboard/billing/purchase",
+                "🚫 *Your invoice wallet is too low.*\n\n"
+                "Top up to keep creating invoices:\n"
+                "• ₦1,250 · ₦5,000 · ₦20,000\n\n"
+                "Or share your storefront so customers order & pay you online.\n\n"
+                "Top up: suoops.com/dashboard/billing/purchase",
             )
             return
         except MissingBankDetailsError:
@@ -345,11 +341,11 @@ class InvoiceIntentProcessor:
             if "invoice_balance_exhausted" in error_msg or "inv005" in error_msg:
                 self.client.send_text(
                     sender,
-                    "🚫 No invoices remaining!\n\n"
-                    "Buy a pack:\n"
-                    "• 25 invoices — ₦625\n"
-                    "• 50 invoices — ₦1,250\n\n"
-                    "Visit: suoops.com/dashboard/billing/purchase",
+                    "🚫 *Your invoice wallet is too low.*\n\n"
+                    "Top up to keep creating invoices:\n"
+                    "• ₦1,250 · ₦5,000 · ₦20,000\n\n"
+                    "Or share your storefront so customers order & pay you online.\n\n"
+                    "Top up: suoops.com/dashboard/billing/purchase",
                 )
             # Missing amount
             elif "amount" in error_msg or data.get("amount", 0) == 0:
@@ -503,12 +499,12 @@ class InvoiceIntentProcessor:
         else:
             short_id = full_id[:10] or full_id
         
-        # Get remaining invoice balance
-        remaining_balance = None
+        # Get the business's wallet balance (Naira) for a post-creation nudge.
+        wallet_naira = None
         quota_check = None
         try:
             quota_check = invoice_service.check_invoice_quota(issuer_id)
-            remaining_balance = quota_check.get("invoice_balance", 0)
+            wallet_naira = quota_check.get("wallet_balance_naira", 0)
         except Exception:
             pass
         
@@ -528,12 +524,10 @@ class InvoiceIntentProcessor:
             f"📊 Status: {status_display}\n"
         )
         
-        # Show remaining invoice count
-        if remaining_balance is not None:
-            if remaining_balance <= 5:
-                business_message += f"📉 Invoices remaining: {remaining_balance}\n"
-            else:
-                business_message += f"📊 Invoices remaining: {remaining_balance}\n"
+        # Show the wallet balance
+        if wallet_naira is not None:
+            icon = "📉" if wallet_naira < 500 else "👛"
+            business_message += f"{icon} Wallet: ₦{wallet_naira:,.0f}\n"
         
         # Show notification status
         if no_contact_info:
@@ -562,13 +556,11 @@ class InvoiceIntentProcessor:
         else:
             business_message += "\n✅ Full invoice sent to customer via WhatsApp!"
         
-        # Append low balance warning to same message (saves an API call)
-        if remaining_balance is not None and 0 < remaining_balance <= 5:
-            pack_price = quota_check.get("pack_price", 2500) if quota_check else 2500
-            pack_size = quota_check.get("pack_size", 100) if quota_check else 100
+        # Append low-wallet nudge to the same message (saves an API call)
+        if wallet_naira is not None and wallet_naira < 500:
             business_message += (
-                f"\n⚠️ Running low! {remaining_balance} invoice{'s' if remaining_balance != 1 else ''} left.\n"
-                f"💳 Buy more: ₦{pack_price:,} for {pack_size} → suoops.com/dashboard/billing/purchase"
+                f"\n⚠️ Wallet low: ₦{wallet_naira:,.0f}.\n"
+                "💳 Top up → suoops.com/dashboard/billing/purchase"
             )
 
         # Inline the "create another?" hint to avoid splitting the
@@ -671,9 +663,19 @@ class InvoiceIntentProcessor:
             # Use the full template with bank details
             logger.info("[BOT TEMPLATE] Using invoice_with_payment template: %s", template_name)
             issuer = self._load_issuer(issuer_id)
-            bank_name = getattr(issuer, "bank_name", "N/A") if issuer else "N/A"
-            account_number = getattr(issuer, "account_number", "N/A") if issuer else "N/A"
-            account_name = getattr(issuer, "account_name", "N/A") if issuer else "N/A"
+            from app.utils.invoice_delivery import (
+                invoice_has_contact,
+                is_online_only,
+                template_bank_params,
+            )
+            online_only = is_online_only(
+                issuer,
+                has_contact=invoice_has_contact(invoice),
+                channel=getattr(invoice, "channel", None),
+            )
+            bank_name, account_number, account_name = template_bank_params(
+                issuer, online_only=online_only
+            )
             
             frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
             payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
@@ -1060,8 +1062,15 @@ class InvoiceIntentProcessor:
             message += f"\n\n📋 Items:\n{items_summary}"
         message += f"\n\n🔗 View & Pay Securely:\n{payment_link}"
 
-        # Add bank transfer details if available
-        if issuer and issuer.bank_name and issuer.account_number:
+        # Add bank transfer details if available (unless online-only — then the
+        # customer must pay via the link so the payment flows through Paystack).
+        from app.utils.invoice_delivery import invoice_has_contact, is_online_only
+        online_only = is_online_only(
+            issuer,
+            has_contact=invoice_has_contact(invoice),
+            channel=getattr(invoice, "channel", None),
+        )
+        if issuer and issuer.bank_name and issuer.account_number and not online_only:
             message += (
                 f"\n\n💳 Or pay via Bank Transfer:\n"
                 f"Bank: {issuer.bank_name}\n"

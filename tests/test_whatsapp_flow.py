@@ -110,6 +110,7 @@ def business_user(db_session):
         bank_name="GTBank",
         account_number="1234567890",
         account_name="Mike Business",
+        wallet_balance_kobo=10_000_000,
     )
     db_session.add(user)
     db_session.commit()

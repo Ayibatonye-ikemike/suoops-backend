@@ -457,7 +457,13 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
 
     metadata = data.get("metadata") or {}
     user_id = metadata.get("user_id")
-    invoices_to_add = int(metadata.get("invoices_to_add", 100))  # Ensure int from metadata
+    # New model: top-ups credit the prepaid wallet (kobo). Legacy in-flight
+    # purchases carried invoices_to_add (bought at ₦25) — convert those too.
+    wallet_credit_kobo = int(
+        metadata.get("wallet_credit_kobo")
+        or int(metadata.get("invoices_to_add", 0) or 0) * 2500
+    )
+    invoices_to_add = 0  # legacy count field, no longer credited
     pro_days = int(metadata.get("pro_days", 0) or 0)
 
     if not user_id:
@@ -471,16 +477,17 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
         db.commit()
         return {"status": "error", "message": "User not found"}
 
-    # Plain invoice packs don't change plan; Pro packs grant time-limited Pro
-    # features (prepaid, no auto-renew). Invoices added below never expire.
+    # Wallet top-ups don't change plan; in-flight Pro packs still grant their
+    # prepaid Pro days (Pro is no longer sold, but honour pending purchases).
     old_plan = user.plan.value
 
-    # Add invoices to balance (with safe access)
-    old_balance = getattr(user, 'invoice_balance', 5)
-    if hasattr(user, 'invoice_balance') and invoices_to_add > 0:
-        user.invoice_balance += invoices_to_add
+    # Credit the prepaid wallet with the purchased top-up.
+    old_balance = getattr(user, 'invoice_balance', 0)
+    if wallet_credit_kobo > 0:
+        user.wallet_balance_kobo = (
+            int(getattr(user, "wallet_balance_kobo", 0) or 0) + wallet_credit_kobo
+        )
 
-    # Pro Pack / Pro Features pass: grant or extend prepaid Pro features.
     if pro_days > 0:
         from app.utils.feature_gate import grant_pro_features
         grant_pro_features(user, pro_days)
@@ -506,15 +513,15 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
         else None
     )
 
-    # Process referral commission for this purchase (recurring/perpetual)
+    # Referral settlement: pay the referrer a share of this wallet top-up.
     try:
         from app.services.referral_service import ReferralService
         ref_svc = ReferralService(db)
-        amount_naira = data.get("amount", 0) // 100  # Paystack sends in kobo
-        if amount_naira > 0:
-            ref_svc.process_recurring_commission(user_id, purchase_amount=amount_naira)
+        topup_naira = wallet_credit_kobo // 100
+        if topup_naira > 0:
+            ref_svc.process_topup_commission(user_id, topup_naira=topup_naira)
     except Exception as e:
-        logger.warning("Failed to process referral commission for pack purchase: %s", e)
+        logger.warning("Failed to process referral commission for top-up: %s", e)
 
     logger.info(
         "✅ Invoice pack purchased: user %s added %d invoices (balance: %d → %d)"
@@ -531,6 +538,7 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
     result = {
         "status": "success",
         "invoices_added": invoices_to_add,
+        "wallet_credited_naira": wallet_credit_kobo / 100,
         "new_balance": new_balance,
         "pro_days": pro_days,
         "pro_features_until": pro_until,
@@ -538,6 +546,63 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
     }
     
     return result
+
+
+def _handle_paystack_invoice_payment(payload: dict, db: Session, signature: str | None) -> dict:
+    """Auto-confirm an invoice paid online via the issuer's Paystack subaccount."""
+    from app.models.payment_models import PaymentStatus, PaymentTransaction
+    from app.services.invoice_service import build_invoice_service
+
+    event_type = (payload.get("event") or "").lower()
+    data = payload.get("data") or {}
+    reference = data.get("reference")
+
+    if not reference or not reference.startswith("INVPAY-"):
+        return {"status": "ignored", "reason": "not invoice payment"}
+
+    duplicate = _record_webhook(db, "paystack:invoice_payment", reference, signature)
+    if duplicate:
+        logger.info("Paystack invoice payment webhook duplicate for %s", reference)
+        return {"status": "duplicate", "reference": reference}
+
+    if event_type != "charge.success":
+        db.commit()
+        return {"status": "ignored", "event": event_type}
+
+    transaction = (
+        db.query(PaymentTransaction)
+        .filter(PaymentTransaction.reference == reference)
+        .one_or_none()
+    )
+    metadata = data.get("metadata") or {}
+    invoice_id = metadata.get("invoice_id") or (
+        (transaction.payment_metadata or {}).get("invoice_id") if transaction else None
+    )
+    if not invoice_id:
+        logger.error("INVPAY webhook missing invoice_id (ref=%s): %s", reference, metadata)
+        db.commit()
+        return {"status": "error", "message": "Missing invoice_id"}
+
+    service = build_invoice_service(db)
+    try:
+        invoice, issuer = service.get_public_invoice(invoice_id)
+    except ValueError:
+        logger.error("INVPAY webhook invoice %s not found (ref=%s)", invoice_id, reference)
+        db.commit()
+        return {"status": "error", "message": "Invoice not found"}
+
+    if invoice.status != "paid":
+        try:
+            service.update_status(issuer.id, invoice_id, "paid", via_online=True)
+        except Exception:
+            logger.exception("INVPAY: failed to mark invoice %s paid", invoice_id)
+
+    if transaction:
+        transaction.status = PaymentStatus.SUCCESS
+
+    db.commit()
+    logger.info("✅ Invoice %s auto-confirmed paid via Paystack (ref=%s)", invoice_id, reference)
+    return {"status": "success", "invoice_id": invoice_id, "reference": reference}
 
 
 @router.post("/paystack")
@@ -578,6 +643,8 @@ async def paystack_webhook(
     reference = data.get("reference") or ""
     
     # Route to appropriate handler based on reference or event type
+    if reference.startswith("INVPAY-"):
+        return _handle_paystack_invoice_payment(payload, db, signature)
     if reference.startswith("INVPACK-"):
         return _handle_paystack_invoice_pack(payload, db, signature)
     elif event_type in [

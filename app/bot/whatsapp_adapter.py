@@ -76,13 +76,7 @@ class WhatsAppHandler:
             return False
 
         user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-        if not user or user.effective_plan.value != "pro":
-            self.client.send_text(
-                sender,
-                "🔒 *Product Catalog is a Pro feature.*\n\n"
-                "Upgrade to Pro at suoops.com/dashboard/subscription\n"
-                "to manage products, build invoices from your catalog & more!"
-            )
+        if not user:
             return False
         return True
 
@@ -486,20 +480,7 @@ class WhatsAppHandler:
         if text_lower in analytics_keywords:
             issuer_id = self.invoice_processor._resolve_issuer_id(sender)
             if issuer_id is not None:
-                user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-                if user and user.effective_plan.value == "pro":
-                    self._send_analytics(sender, issuer_id)
-                else:
-                    self.client.send_text(
-                        sender,
-                        "🔒 *Analytics & Reports require a Pro plan.*\n\n"
-                        "Go Pro for ₦2,000 (Pro Pack: 20 invoices + 30 days of Pro features) to unlock:\n"
-                        "✅ Business analytics & insights\n"
-                        "✅ Cash-first dashboard\n"
-                        "✅ Customer value tracking\n"
-                        "✅ Daily WhatsApp summary\n\n"
-                        "Upgrade: suoops.com/dashboard/settings/subscription"
-                    )
+                self._send_analytics(sender, issuer_id)
             else:
                 self.client.send_text(
                     sender,
@@ -662,7 +643,6 @@ class WhatsAppHandler:
         # If we get here with an unknown intent, send a friendly nudge
         issuer_id = self.invoice_processor._resolve_issuer_id(sender)
         if issuer_id is not None:
-            user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
             nudge = (
                 "Hmm, I didn't quite catch that 😅\n\n"
                 "Here's what I can help with:\n\n"
@@ -671,13 +651,14 @@ class WhatsAppHandler:
                 "📊 *Report:* Type *report*\n"
                 "📊 *Tax report:* Type *tax report*\n"
             )
-            if user and user.effective_plan.value == "pro":
-                nudge += "📦 *Inventory:* Type *products*\n"
+            nudge += "📦 *Inventory:* Type *products*\n"
+            nudge += "👛 *Wallet:* Type *wallet*\n"
+            nudge += "🛒 *Storefront:* Type *storefront*\n"
             nudge += (
                 "💱 *Currency:* Type *usd* or *naira*\n"
                 "🚀 *Setup:* Type *setup*\n\n"
                 "❓ Or just ask me a question!\n"
-                "e.g. \"how do I get paid?\" or \"what are the plans?\""
+                "e.g. \"how do I get paid?\" or \"what's the fee?\""
             )
             self.client.send_text(sender, nudge)
         else:
@@ -812,7 +793,7 @@ class WhatsAppHandler:
             )
             .scalar()
         ) or 0
-        balance = getattr(user, "invoice_balance", 0)
+        wallet_naira = int(getattr(user, "wallet_balance_kobo", 0) or 0) // 100
 
         msg = "📊 *Your Quick Status*\n\n"
         if pending_count > 0:
@@ -821,14 +802,52 @@ class WhatsAppHandler:
         else:
             msg += "✅ No pending invoices\n"
         msg += f"✅ Paid: {paid_count} invoices\n"
-        msg += f"📦 Invoice balance: {balance} remaining\n"
+        msg += f"👛 Wallet: ₦{wallet_naira:,}\n"
 
-        if balance <= 2 and balance > 0:
-            msg += "\n⚠️ Running low! Buy more at suoops.com/dashboard/billing/purchase"
-        elif balance == 0:
-            msg += "\n🚫 No invoices left! Buy a pack to continue invoicing."
+        if wallet_naira < 500:
+            msg += "\n⚠️ Wallet low — top up at suoops.com/dashboard/billing/purchase"
 
         self.client.send_text(sender, msg)
+
+    def _send_wallet(self, sender: str, issuer_id: int) -> None:
+        """Show the prepaid invoice wallet balance + a top-up link."""
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        if not user:
+            return
+        wallet_naira = int(getattr(user, "wallet_balance_kobo", 0) or 0) // 100
+        msg = (
+            "👛 *Your invoice wallet*\n\n"
+            f"Balance: *₦{wallet_naira:,}*\n\n"
+            "Manual invoices cost a flat 3% (₦20–₦2,000) from your wallet at "
+            "creation. Storefront orders are free — the customer pays 3% online.\n\n"
+        )
+        if wallet_naira < 500:
+            msg += "⚠️ Running low — "
+        msg += "💳 Top up: suoops.com/dashboard/billing/purchase"
+        self.client.send_text(sender, msg)
+
+    def _send_storefront_link(self, sender: str, issuer_id: int) -> None:
+        """Share the business's storefront link, or explain how to enable it."""
+        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
+        if not user:
+            return
+        frontend = getattr(settings, "FRONTEND_URL", "https://suoops.com").rstrip("/")
+        if getattr(user, "storefront_enabled", False) and getattr(user, "storefront_slug", None):
+            link = f"{frontend}/store/{user.storefront_slug}"
+            self.client.send_text(
+                sender,
+                "🛒 *Your storefront*\n\n"
+                f"Share this link so customers order & pay you online:\n{link}\n\n"
+                "You only pay 3% when a customer pays — nothing upfront.",
+            )
+        else:
+            self.client.send_text(
+                sender,
+                "🛒 *Set up your storefront*\n\n"
+                "Let customers browse your products, order, and pay you online "
+                "(you keep 97%, no upfront cost).\n\n"
+                "Enable it here: suoops.com/dashboard/settings",
+            )
 
     # ── "Who owes me money?" ────────────────────────────────────
     def _send_owed_list(self, sender: str, issuer_id: int) -> None:
@@ -1027,8 +1046,7 @@ class WhatsAppHandler:
         else:
             bank_line = "🏦 No bank set — add one at suoops.com/dashboard/settings"
         currency = (getattr(user, "preferred_currency", "NGN") or "NGN").upper()
-        plan = user.effective_plan.value.upper()
-        balance = getattr(user, "invoice_balance", 0)
+        wallet_naira = int(getattr(user, "wallet_balance_kobo", 0) or 0) // 100
 
         lines = [
             f"📋 *{biz}*",
@@ -1036,15 +1054,11 @@ class WhatsAppHandler:
             verified,
             bank_line,
             f"🌍 Currency: *{currency}*",
-            f"💼 Plan: *{plan}*",
-            f"📦 Invoice balance: *{balance}* remaining",
+            f"👛 Wallet: *₦{wallet_naira:,}*",
         ]
-        if balance <= 2:
+        if wallet_naira < 500:
             lines.append("")
-            lines.append("⚠️ Running low — top up at suoops.com/dashboard/billing/purchase")
-        if plan != "PRO":
-            lines.append("")
-            lines.append("🚀 Type *upgrade* to unlock Pro (analytics, inventory, daily summary)")
+            lines.append("⚠️ Wallet low — top up at suoops.com/dashboard/billing/purchase")
         self.client.send_text(sender, "\n".join(lines))
 
     # ── Undo last invoice (5-minute window) ────────────────────
@@ -1363,17 +1377,6 @@ class WhatsAppHandler:
         import datetime as dt
 
         try:
-            # Check plan — tax reports require Pro
-            user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-            if not user or user.effective_plan.value != "pro":
-                self.client.send_text(
-                    sender,
-                    "🔒 *Tax Reports require a Pro plan.*\n\n"
-                    "Go Pro for ₦2,000 (Pro Pack: 20 invoices + 30 days of Pro features) at suoops.com/dashboard/settings/subscription\n"
-                    "to unlock tax reports, analytics & more!"
-                )
-                return
-
             now = dt.datetime.now(dt.timezone.utc)
             year = now.year
             month = now.month
@@ -1592,17 +1595,15 @@ class WhatsAppHandler:
             "• `Invoice Blessing 5000 braids, 2000 gel, 500 pins`\n\n"
         )
 
-        # Only show inventory section if user has PRO plan
-        user = self.db.query(models.User).filter(models.User.id == issuer_id).first()
-        if user and user.effective_plan.value == "pro":
-            help_message += (
-                "━━━━━━━━━━━━━━━━━━━━━\n"
-                "📦 *INVOICE FROM INVENTORY*\n"
-                "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "• Type *products* — browse & pick from your stock\n"
-                "• Type *search wig* — find a specific product\n"
-                "• Select items, set quantities, send invoice!\n\n"
-            )
+        # Inventory is free — always show the inventory section.
+        help_message += (
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "📦 *INVOICE FROM INVENTORY*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "• Type *products* — browse & pick from your stock\n"
+            "• Type *search wig* — find a specific product\n"
+            "• Select items, set quantities, send invoice!\n\n"
+        )
 
         help_message += (
             "⚠️ *IMPORTANT:*\n"
@@ -1635,9 +1636,11 @@ class WhatsAppHandler:
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Type *report* — get revenue, invoices & customer stats\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "🏛️ *TAX REPORT (Pro)*\n"
+            "🏛️ *TAX REPORT*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Type *tax report* — get your tax summary + PDF\n\n"
+            "👛 Type *wallet* — check your balance & top up\n"
+            "🛒 Type *storefront* — get your store link (customers pay online)\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "💱 *CURRENCY DISPLAY*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1694,16 +1697,17 @@ class WhatsAppHandler:
         # ── End onboarding review buttons ──────────────────────────
 
         # ── Quota cap upgrade buttons ──────────────────────────────
-        if button_id in ("quota_topup", "quota_upgrade", "quota_later"):
+        if button_id in ("quota_topup", "quota_store", "quota_later"):
             if button_id == "quota_topup":
                 self.client.send_text(
                     sender,
-                    "💳 Top up here: suoops.com/dashboard/billing/purchase",
+                    "💳 Top up your invoice wallet: suoops.com/dashboard/billing/purchase",
                 )
-            elif button_id == "quota_upgrade":
+            elif button_id == "quota_store":
                 self.client.send_text(
                     sender,
-                    "🚀 Upgrade to Pro: suoops.com/dashboard/settings/subscription",
+                    "🛍️ Set up your storefront so customers order & pay you online: "
+                    "suoops.com/dashboard/settings",
                 )
             else:
                 self.client.send_text(sender, "👍 No problem — I'll be here.")

@@ -26,28 +26,39 @@ logger = logging.getLogger(__name__)
 INVOICE_PACK_SIZE = 50
 INVOICE_PACK_PRICE = 1250  # ₦1,250
 
-# Small pack option
-INVOICE_SMALL_PACK_SIZE = 25
-INVOICE_SMALL_PACK_PRICE = 625  # ₦625
-
-# Pro packs (prepaid, one-time): grant time-limited Pro features.
-# Invoices added to the balance are permanent; Pro features lapse after pro_days.
+# Pro features grant window (days) — kept for the in-flight subscription webhook
+# that honours existing Pro subscribers until their period lapses. Pro is no
+# longer sold.
 PRO_FEATURES_DAYS = 30
+PRO_FEATURES_PRICE = 1500  # ₦1,500/month (legacy recurring plan, not sold)
 
-# Pro Pack: invoices + 30 days of Pro features
-PRO_PACK_SIZE = 20
-PRO_PACK_PRICE = 2000  # ₦2,000
+# ── Commission billing model ──
+# The platform takes a flat percentage per invoice. Manual invoices are charged
+# this fee from the business's prepaid wallet at creation; storefront orders pay
+# it as a Paystack commission when the customer pays online.
+PLATFORM_FEE_PERCENT = 3
+MANUAL_INVOICE_MIN_FEE_KOBO = 2000  # ₦20 floor per manual invoice
+MANUAL_INVOICE_MAX_FEE_KOBO = 200000  # ₦2,000 cap per manual invoice
 
-# Pro Features: now a RECURRING monthly subscription (₦1,500/mo, features only,
-# no invoices) handled via /subscription/initialize + a Paystack plan — NOT a
-# one-time pack. Constants kept for display + the recurring webhook grant.
-PRO_FEATURES_PRICE = 1500  # ₦1,500/month
+# Wallet top-up tiers (Naira) sold to fund manual invoicing.
+WALLET_TOPUP_TIERS = [1250, 5000, 20000]
 
-PACK_OPTIONS = {
-    "standard": {"size": INVOICE_PACK_SIZE, "price": INVOICE_PACK_PRICE, "pro_days": 0},
-    "small": {"size": INVOICE_SMALL_PACK_SIZE, "price": INVOICE_SMALL_PACK_PRICE, "pro_days": 0},
-    "pro_pack": {"size": PRO_PACK_SIZE, "price": PRO_PACK_PRICE, "pro_days": PRO_FEATURES_DAYS},
-}
+
+def platform_fee_kobo(amount) -> int:
+    """Platform commission in kobo: 3% of the amount, clamped to [₦20, ₦2,000].
+
+    Used for both the manual-invoice wallet fee (charged at creation) and the
+    storefront/online commission (passed to Paystack as a flat transaction
+    charge). Amount is in Naira, so 3% of it in kobo is simply amount * 3.
+    """
+    from decimal import ROUND_HALF_UP, Decimal
+
+    amt = Decimal(str(amount or 0))
+    fee_kobo = (amt * PLATFORM_FEE_PERCENT).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return min(
+        max(int(fee_kobo), MANUAL_INVOICE_MIN_FEE_KOBO),
+        MANUAL_INVOICE_MAX_FEE_KOBO,
+    )
 
 
 class FeatureGate:
@@ -112,100 +123,26 @@ class FeatureGate:
         """Check if user has any paid subscription (not FREE, respects pro_override)."""
         return self.user.effective_plan != models.SubscriptionPlan.FREE
     
-    def _get_invoice_balance_safe(self) -> int:
-        """Safely get invoice_balance, defaulting to 2 if column doesn't exist yet."""
-        return getattr(self.user, 'invoice_balance', 2)
-    
-    def _set_invoice_balance_safe(self, value: int) -> None:
-        """Safely set invoice_balance if column exists."""
-        if hasattr(self.user, 'invoice_balance'):
-            self.user.invoice_balance = value
-    
-    def get_invoice_balance(self) -> int:
-        """Get user's current invoice balance."""
-        return self._get_invoice_balance_safe()
-    
     def can_create_invoice(self) -> tuple[bool, str | None]:
         """
-        Check if user has invoice balance to create an invoice.
-        
-        NEW MODEL: Check invoice_balance instead of monthly limits.
-        All plans work the same - need balance >= 1 to create invoice.
-        
+        Check if the wallet can cover at least the minimum manual-invoice fee.
+
+        The precise per-invoice fee (3%, ₦20–₦2,000) is charged at creation; this
+        is a cheap pre-gate so we fail fast when the wallet is effectively empty.
+
         Returns:
             (can_create: bool, error_message: str | None)
         """
-        balance = self._get_invoice_balance_safe()
-        
-        if balance <= 0:
+        wallet = int(getattr(self.user, "wallet_balance_kobo", 0) or 0)
+
+        if wallet < MANUAL_INVOICE_MIN_FEE_KOBO:
             return False, (
-                "You've used all your invoices! "
-                f"Purchase an invoice pack (₦{INVOICE_PACK_PRICE:,} for {INVOICE_PACK_SIZE} invoices) to continue."
+                "Your invoice wallet is empty. Top up to keep creating invoices, "
+                "or share your storefront link so customers order and pay online."
             )
-        
+
         return True, None
     
-    def deduct_invoice(self) -> None:
-        """Atomically deduct one invoice from user's balance.
-
-        Uses SELECT FOR UPDATE to prevent race conditions where concurrent
-        requests could both pass the balance check before either deducts.
-        """
-        from sqlalchemy import text
-
-        # Lock the user row and read the current balance atomically
-        result = self.db.execute(
-            text("SELECT invoice_balance FROM \"user\" WHERE id = :uid FOR UPDATE"),
-            {"uid": self.user_id},
-        ).fetchone()
-
-        if not result:
-            return
-
-        balance = result[0] or 0
-        if balance <= 0:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "invoice_balance_exhausted",
-                    "message": "No invoice balance remaining.",
-                    "invoice_balance": 0,
-                },
-            )
-
-        self.db.execute(
-            text("UPDATE \"user\" SET invoice_balance = invoice_balance - 1 WHERE id = :uid AND invoice_balance > 0"),
-            {"uid": self.user_id},
-        )
-        self.db.commit()
-        # Refresh the ORM object so subsequent reads see the new balance
-        self.db.refresh(self.user)
-        logger.info(
-            "Deducted 1 invoice from user %s balance (remaining: %d)",
-            self.user_id, self._get_invoice_balance_safe(),
-        )
-    
-    def add_invoice_pack(self, quantity: int = 1) -> int:
-        """
-        Add invoice pack(s) to user's balance.
-        
-        Args:
-            quantity: Number of packs to add (default 1)
-            
-        Returns:
-            New invoice balance
-        """
-        invoices_to_add = INVOICE_PACK_SIZE * quantity
-        current_balance = self._get_invoice_balance_safe()
-        self._set_invoice_balance_safe(current_balance + invoices_to_add)
-        self.db.commit()
-        new_balance = self._get_invoice_balance_safe()
-        logger.info(
-            "Added %d invoices (%d packs) to user %s balance (new balance: %d)",
-            invoices_to_add, quantity, self.user_id, new_balance
-        )
-        return new_balance
-
     def get_monthly_invoice_count(self) -> int:
         """Return count of revenue invoices created in the current month.
 
@@ -226,28 +163,15 @@ class FeatureGate:
         return int(count or 0)
     
     def require_paid_plan(self, feature_name: str = "This feature") -> None:
+        """No-op: every feature is free under the commission model.
+
+        Premium tiers were removed — the platform monetises via a flat 3% per
+        invoice (wallet on manual, commission on storefront), so all features are
+        available to all users. Kept as a no-op so existing call sites are
+        unchanged.
         """
-        Raise HTTPException if user is not on a paid plan (FREE tier).
-        
-        Note: Starter, Pro, and Business are all considered "paid" for feature access.
-        
-        Args:
-            feature_name: Name of the feature being accessed (for error message)
-        
-        Raises:
-            HTTPException: 403 if user is on free tier
-        """
-        if self.is_free_tier():
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "premium_feature_required",
-                    "message": f"{feature_name} is only available on paid plans. Upgrade to unlock this feature.",
-                    "current_plan": self.user.plan.value,
-                    "upgrade_url": "/subscription/initialize"
-                }
-            )
-    
+        return None
+
     def check_invoice_creation(self) -> None:
         """
         Check if user can create invoice and raise exception if not.
@@ -260,12 +184,10 @@ class FeatureGate:
             raise HTTPException(
                 status_code=403,
                 detail={
-                    "error": "invoice_balance_exhausted",
+                    "error": "invoice_wallet_empty",
                     "message": error_msg,
-                    "invoice_balance": self._get_invoice_balance_safe(),
-                    "pack_price": INVOICE_PACK_PRICE,
-                    "pack_size": INVOICE_PACK_SIZE,
-                    "current_plan": self.user.plan.value,
+                    "wallet_balance_kobo": int(getattr(self.user, "wallet_balance_kobo", 0) or 0),
+                    "topup_from": WALLET_TOPUP_TIERS[0],
                     "purchase_url": "/invoices/purchase-pack"
                 }
             )

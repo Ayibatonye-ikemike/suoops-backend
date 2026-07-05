@@ -12,6 +12,7 @@ from app.core.exceptions import MissingBankDetailsError
 from app.models import models
 from app.services.fiscalization_service import VATCalculator
 from app.utils.id_generator import generate_id
+from app.utils.invoice_delivery import invoice_has_contact, is_online_only
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,11 @@ class InvoiceCreationMixin:
         data: dict[str, object],
         async_pdf: bool = False,
         created_by_user_id: int | None = None,
+        consume_balance: bool = True,
     ) -> models.Invoice:
         invoice_type = data.get("invoice_type", "revenue")
-        self.enforce_quota(issuer_id, invoice_type)
+        if consume_balance:
+            self.enforce_quota(issuer_id, invoice_type, amount=data.get("amount"))
 
         if invoice_type == "revenue":
             customer = self._get_or_create_customer(
@@ -153,14 +156,23 @@ class InvoiceCreationMixin:
         total_amount = sum(float(line.unit_price) * line.quantity for line in invoice.lines)
         metrics.record_invoice_amount(total_amount)
 
-        if async_pdf:
+        online_only = is_online_only(
+            user, has_contact=invoice_has_contact(invoice), channel=invoice.channel
+        )
+        if invoice_type == "revenue" and online_only:
+            # No free invoice PDF for online-only invoices — the deliverable
+            # (receipt) is produced on payment (online) or when a pack is used.
+            invoice.pdf_url = None
+        elif async_pdf:
             self._queue_pdf_generation(invoice, invoice_type, user)
         else:
             invoice.pdf_url = self._generate_pdf(invoice, invoice_type, user)
 
-        # Deduct from invoice_balance for revenue invoices (new billing model)
-        if invoice_type == "revenue":
-            self.deduct_invoice_balance(issuer_id)
+        # Deduct from invoice_balance for revenue invoices (new billing model).
+        # Storefront / online-commission orders pass consume_balance=False so the
+        # business is not charged a pack invoice for an inbound sale.
+        if invoice_type == "revenue" and consume_balance:
+            self.deduct_invoice_balance(issuer_id, amount=invoice.amount)
 
         self.db.commit()
         self.db.refresh(invoice)
@@ -199,7 +211,10 @@ class InvoiceCreationMixin:
         from app.workers.tasks import generate_invoice_pdf_async
 
         bank_details = None
-        if invoice_type == "revenue":
+        online_only = is_online_only(
+            user, has_contact=invoice_has_contact(invoice), channel=invoice.channel
+        )
+        if invoice_type == "revenue" and not online_only:
             bank_details = self._ensure_bank_details(user)
 
         # Generate fresh presigned URL for logo
@@ -223,7 +238,14 @@ class InvoiceCreationMixin:
     def _generate_pdf(self, invoice: models.Invoice, invoice_type: str, user: models.User) -> str | None:
         from app.storage.s3_client import s3_client
         
-        bank_details = self._ensure_bank_details(user) if invoice_type == "revenue" else None
+        online_only = is_online_only(
+            user, has_contact=invoice_has_contact(invoice), channel=invoice.channel
+        )
+        bank_details = (
+            self._ensure_bank_details(user)
+            if invoice_type == "revenue" and not online_only
+            else None
+        )
         
         # Generate fresh presigned URL for logo
         logo_url = None

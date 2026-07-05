@@ -746,8 +746,10 @@ def _send_customer_whatsapp_reminder(
             else:
                 days_info = str(abs(days_until_due))
 
-            bank_name = issuer.bank_name or "N/A"
-            account_number = issuer.account_number or "N/A"
+            from app.utils.invoice_delivery import template_bank_params
+            bank_name, account_number, _ = template_bank_params(
+                issuer, online_only=bool(getattr(issuer, "online_payments_active", False))
+            )
 
             components = [
                 {

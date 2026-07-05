@@ -50,6 +50,7 @@ def _make_user(session, business_name: str = "Acme Corp"):
         bank_name="Test Bank",
         account_number="0123456789",
         account_name="TESTER",
+        wallet_balance_kobo=10_000_000,
     )
     session.add(user)
     session.commit()

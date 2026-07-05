@@ -104,21 +104,21 @@ class InvoiceLimitExceededError(InvoiceError):
 
 
 class InvoiceBalanceExhaustedError(InvoiceError):
-    """User has no invoice balance remaining - needs to purchase a pack."""
-    
-    def __init__(self, balance: int, pack_price: int, pack_size: int):
+    """User's prepaid invoice wallet can't cover this invoice's fee."""
+
+    def __init__(self, balance: int = 0, pack_price: int = 1250, pack_size: int | None = None):
         message = (
-            f"Your invoice balance is exhausted! "
-            f"Purchase an invoice pack (₦{pack_price:,} for {pack_size} invoices) to continue."
+            "Your invoice wallet is too low to create this invoice. "
+            f"Top up (from ₦{pack_price:,}) to continue, or share your storefront "
+            "link so the customer orders and pays online instead."
         )
         super().__init__(
             message=message,
             code="INV005",
             status_code=403,
             details={
-                "invoice_balance": balance,
-                "pack_price": pack_price,
-                "pack_size": pack_size,
+                "wallet_balance_kobo": balance,
+                "topup_from": pack_price,
                 "purchase_url": "/invoices/purchase-pack",
             },
         )

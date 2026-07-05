@@ -77,6 +77,10 @@ class BaseAppSettings(BaseSettings):
     # Paystack plan code for the recurring monthly Pro Features subscription
     # (₦1,500/mo). Create with scripts/create_pro_features_plan.py, then set here.
     PAYSTACK_PRO_FEATURES_PLAN_CODE: str | None = None
+    # Platform commission (percent) retained by SuoOps on online invoice/marketplace
+    # payments settled through a business's Paystack subaccount. The business
+    # receives (100 - this) percent, settled directly to their bank by Paystack.
+    PAYSTACK_PLATFORM_COMMISSION_PERCENT: float = 3.0
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SSL_CERT_REQS: str | None = "required"
@@ -182,7 +186,10 @@ class BaseAppSettings(BaseSettings):
             if self.OAUTH_STATE_SECRET == "change_me_oauth_state":
                 default_violations.append("OAUTH_STATE_SECRET uses default placeholder")
             # WhatsApp verify token — block startup if empty or using old defaults.
-            if not self.WHATSAPP_VERIFY_TOKEN or self.WHATSAPP_VERIFY_TOKEN in ("suoops_verify_2025", "suoops_verify_token_2024"):
+            if not self.WHATSAPP_VERIFY_TOKEN or self.WHATSAPP_VERIFY_TOKEN in (
+                "suoops_verify_2025",
+                "suoops_verify_token_2024",
+            ):
                 default_violations.append(
                     "WHATSAPP_VERIFY_TOKEN is empty or uses a known default — "
                     "set a unique random value in production env vars"

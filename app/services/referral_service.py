@@ -307,6 +307,70 @@ class ReferralService:
         )
         return True
 
+    def process_topup_commission(self, referred_user_id: int, topup_naira: int) -> bool:
+        """Pay the referrer a share of a referred user's wallet top-up.
+
+        This is the settlement event under the commission billing model: when a
+        referred business tops up their invoice wallet (money we receive), the
+        referrer earns commission_perpetual_pct%% of that top-up. Because it is a
+        fraction of cash we just collected, the platform always stays profitable
+        (we keep 100 - pct%%, minus Paystack fees the customer already covered).
+
+        The first top-up also converts the referral to PAID_SIGNUP.
+        Returns True if a commission reward was created.
+        """
+        if topup_naira <= 0:
+            return False
+
+        referral = self.db.execute(
+            select(Referral)
+            .where(Referral.referred_id == referred_user_id)
+            .where(Referral.status == ReferralStatus.COMPLETED)
+        ).scalar_one_or_none()
+        if not referral:
+            return False
+
+        code_obj = self.db.execute(
+            select(ReferralCode).where(ReferralCode.id == referral.referral_code_id)
+        ).scalar_one_or_none()
+        if not code_obj or not code_obj.is_active:
+            return False
+
+        # First top-up converts the referral to "paid".
+        if referral.referral_type != ReferralType.PAID_SIGNUP:
+            referral.referral_type = ReferralType.PAID_SIGNUP
+
+        pct = max(0, int(code_obj.commission_perpetual_pct or 0))
+        commission_amount = topup_naira * pct // 100
+        if commission_amount <= 0:
+            self.db.commit()  # persist the conversion even if pct is 0
+            return False
+
+        referred_user = self.db.execute(
+            select(User).where(User.id == referred_user_id)
+        ).scalar_one_or_none()
+        referred_name = referred_user.name if referred_user else "a user"
+
+        reward = ReferralReward(
+            user_id=referral.referrer_id,
+            reward_type="commission_perpetual",
+            reward_description=(
+                f"₦{commission_amount} commission ({pct}% of {referred_name}'s "
+                f"₦{topup_naira:,} wallet top-up, user #{referred_user_id})"
+            ),
+            free_referrals_count=0,
+            paid_referrals_count=0,
+            status=RewardStatus.PENDING,
+            expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=90),
+        )
+        self.db.add(reward)
+        self.db.commit()
+        logger.info(
+            "Referral top-up commission ₦%s (%s%%) for referrer %s from user %s top-up ₦%s",
+            commission_amount, pct, referral.referrer_id, referred_user_id, topup_naira,
+        )
+        return True
+
     # ==================== REWARD MANAGEMENT ====================
 
     def _create_commission_reward(self, referrer_id: int, referred_user_id: int) -> ReferralReward | None:

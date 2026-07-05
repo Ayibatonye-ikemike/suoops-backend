@@ -43,6 +43,18 @@ def _signup_and_get_token(client: TestClient):
     }
     bd = client.patch("/users/me/bank-details", json=bank_payload, headers=headers)
     assert bd.status_code == 200, bd.text
+    # Fund the wallet so invoice creation (3% fee) isn't blocked by the
+    # ₦60 starter balance.
+    from app.db.session import SessionLocal
+    from app.models import models as _m
+    _s = SessionLocal()
+    try:
+        _u = _s.query(_m.User).filter(_m.User.phone == phone).first()
+        if _u is not None:
+            _u.wallet_balance_kobo = 10_000_000
+            _s.commit()
+    finally:
+        _s.close()
     return headers
 
 

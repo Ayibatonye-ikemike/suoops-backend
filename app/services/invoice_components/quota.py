@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING
 
 from app.core.exceptions import InvoiceBalanceExhaustedError, UserNotFoundError
 from app.models import models
-from app.utils.feature_gate import INVOICE_PACK_PRICE, INVOICE_PACK_SIZE
+from app.utils.feature_gate import (
+    MANUAL_INVOICE_MIN_FEE_KOBO,
+    WALLET_TOPUP_TIERS,
+    platform_fee_kobo,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from sqlalchemy.orm import Session
@@ -22,55 +26,53 @@ logger = logging.getLogger(__name__)
 
 
 class InvoiceQuotaMixin:
-    """Provides invoice balance utilities for invoice flows."""
+    """Provides invoice wallet utilities for invoice flows."""
 
     db: Session
-    
-    def _get_invoice_balance_safe(self, user) -> int:
-        """Safely get invoice_balance, defaulting to 5 if column doesn't exist yet."""
-        return getattr(user, 'invoice_balance', 5)
+
+    def _wallet_kobo(self, user) -> int:
+        """Prepaid wallet balance in kobo (the active billing field)."""
+        return int(getattr(user, "wallet_balance_kobo", 0) or 0)
 
     def check_invoice_quota(self, issuer_id: int) -> dict[str, object]:
-        """Check user's invoice balance and return quota info."""
+        """Check the user's wallet and return quota info."""
         user = self.db.query(models.User).filter(models.User.id == issuer_id).one_or_none()
         if not user:
             raise UserNotFoundError()
 
-        balance = self._get_invoice_balance_safe(user)
+        wallet = self._wallet_kobo(user)
+        can_create = wallet >= MANUAL_INVOICE_MIN_FEE_KOBO
+        naira = wallet / 100
 
-        if balance <= 0:
-            return {
-                "can_create": False,
-                "plan": user.plan.value,
-                "invoice_balance": 0,
-                "pack_price": INVOICE_PACK_PRICE,
-                "pack_size": INVOICE_PACK_SIZE,
-                "message": (
-                    "No invoices remaining. Purchase a pack "
-                    f"(₦{INVOICE_PACK_PRICE:,} for {INVOICE_PACK_SIZE} invoices)."
-                ),
-            }
-
-        message = f"{balance} invoices remaining"
-        if balance <= 10:
-            message = f"⚠️ Only {balance} invoices left! Purchase a pack to top up."
+        if not can_create:
+            message = (
+                "Your invoice wallet is empty. Top up to keep creating invoices, "
+                "or share your storefront link so customers order and pay online."
+            )
+        elif wallet < 50000:  # under ₦500
+            message = f"⚠️ Wallet low: ₦{naira:,.0f} left. Top up soon."
+        else:
+            message = f"Wallet balance: ₦{naira:,.0f}"
 
         return {
-            "can_create": True,
+            "can_create": can_create,
             "plan": user.plan.value,
-            "invoice_balance": balance,
-            "pack_price": INVOICE_PACK_PRICE,
-            "pack_size": INVOICE_PACK_SIZE,
+            "wallet_balance_kobo": wallet,
+            "wallet_balance_naira": naira,
+            # Legacy key: rough "invoices left" at the minimum fee.
+            "invoice_balance": wallet // MANUAL_INVOICE_MIN_FEE_KOBO,
+            "topup_from": WALLET_TOPUP_TIERS[0],
             "message": message,
         }
 
-    def enforce_quota(self, issuer_id: int, invoice_type: str) -> None:
-        """Raise if the issuer has no invoice balance (revenue invoices only)."""
+    def enforce_quota(self, issuer_id: int, invoice_type: str, amount=None) -> None:
+        """Raise if the wallet can't cover this revenue invoice's fee."""
         if invoice_type != "revenue":
-            return  # Expense invoices don't consume balance
+            return  # Expense invoices don't consume the wallet
 
-        # Lock the user row to prevent concurrent invoice creation from
-        # bypassing the balance check (race condition).
+        fee = platform_fee_kobo(amount)
+        # Lock the user row to serialise concurrent invoice creation against the
+        # wallet balance (race condition).
         user = (
             self.db.query(models.User)
             .with_for_update()
@@ -79,32 +81,31 @@ class InvoiceQuotaMixin:
         )
         if not user:
             raise UserNotFoundError()
-        balance = self._get_invoice_balance_safe(user)
-        if balance <= 0:
+        if self._wallet_kobo(user) < fee:
             raise InvoiceBalanceExhaustedError(
-                balance=0,
-                pack_price=INVOICE_PACK_PRICE,
-                pack_size=INVOICE_PACK_SIZE,
+                balance=self._wallet_kobo(user),
+                pack_price=WALLET_TOPUP_TIERS[0],
             )
-    
-    def deduct_invoice_balance(self, issuer_id: int) -> None:
-        """Deduct one invoice from user's balance after creating revenue invoice."""
-        # Lock the user row so concurrent deductions serialize and cannot both
-        # read the same balance and decrement past zero (race condition).
+
+    def deduct_invoice_balance(self, issuer_id: int, amount=None) -> None:
+        """Charge the manual-invoice fee from the wallet after creation."""
+        fee = platform_fee_kobo(amount)
+        # Lock the user row so concurrent deductions serialise and cannot both
+        # read the same balance and overdraw the wallet (race condition).
         user = (
             self.db.query(models.User)
             .with_for_update()
             .filter(models.User.id == issuer_id)
             .one_or_none()
         )
-        if user and hasattr(user, 'invoice_balance') and user.invoice_balance > 0:
-            user.invoice_balance -= 1
+        if user and self._wallet_kobo(user) >= fee:
+            user.wallet_balance_kobo = self._wallet_kobo(user) - fee
             self.db.commit()
             logger.info(
-                "Deducted 1 invoice from user %s balance (remaining: %d)",
-                issuer_id, self._get_invoice_balance_safe(user)
+                "Charged ₦%.2f from user %s wallet (remaining ₦%.2f)",
+                fee / 100, issuer_id, self._wallet_kobo(user) / 100,
             )
-            
+
             # Sync low balance status to Brevo (best-effort, fire-and-forget)
             try:
                 from app.services.brevo_service import sync_low_balance_status

@@ -115,8 +115,8 @@ class SubscriptionPlan(str, enum.Enum):
     
     @property
     def has_premium_features(self) -> bool:
-        """Check if plan has access to premium features (voice, etc)."""
-        return self == SubscriptionPlan.PRO
+        """All features are free under the commission model (Pro removed)."""
+        return True
     
     @property
     def features(self) -> dict:
@@ -138,26 +138,20 @@ class SubscriptionPlan(str, enum.Enum):
             "email_notifications": True,  # Available to all
             "pdf_generation": True,  # Available to all
             "qr_verification": True,  # Available to all
-            # Tax features: PRO only
-            "tax_automation": self == SubscriptionPlan.PRO,
-            "tax_reports": self == SubscriptionPlan.PRO,
-            # Custom branding: Pro only
-            "custom_branding": self == SubscriptionPlan.PRO,
-            # Inventory management: Pro only
-            "inventory": self == SubscriptionPlan.PRO,
-            # Team management: Pro only (invite up to 3 team members)
-            "team_management": self == SubscriptionPlan.PRO,
-            # Priority support: Pro only
-            "priority_support": self == SubscriptionPlan.PRO,
-            # Voice: Pro only (15/mo quota)
-            "voice_invoice": self == SubscriptionPlan.PRO,
-            "voice_quota": 15 if self == SubscriptionPlan.PRO else 0,
-            # Business insights: Pro only
-            "cash_dashboard": self == SubscriptionPlan.PRO,
-            "customer_insights": self == SubscriptionPlan.PRO,
-            "professionalism_score": self == SubscriptionPlan.PRO,
-            "margin_insights": self == SubscriptionPlan.PRO,
-            "daily_summary": self == SubscriptionPlan.PRO,
+            # Commission model (Pro removed): every feature is free for all users.
+            "tax_automation": True,
+            "tax_reports": True,
+            "custom_branding": True,
+            "inventory": True,
+            "team_management": True,
+            "priority_support": True,
+            "voice_invoice": True,
+            "voice_quota": 15,
+            "cash_dashboard": True,
+            "customer_insights": True,
+            "professionalism_score": True,
+            "margin_insights": True,
+            "daily_summary": True,
         }
 
 
@@ -213,7 +207,8 @@ class Invoice(Base):
         default="revenue",
         index=True,
     )  # "revenue" or "expense"
-    category: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)  # For expenses: rent, utilities, etc.
+    # For expenses: rent, utilities, etc.
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     vendor_name: Mapped[str | None] = mapped_column(String(200), nullable=True)  # For expenses: supplier name
     merchant: Mapped[str | None] = mapped_column(String(200), nullable=True)  # Merchant/vendor alternative field
     receipt_url: Mapped[str | None] = mapped_column(String(500), nullable=True)  # Receipt image/PDF URL
@@ -298,6 +293,11 @@ class User(Base):
     # Invoice balance: purchased invoices available to use (100 invoices = ₦2,500 pack)
     # Decremented when creating revenue invoices. Users buy packs to replenish.
     invoice_balance: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+    # Prepaid wallet balance in KOBO. Manual invoices deduct max(3% of amount,
+    # ₦20) at creation; this is the active billing field. New signups start with
+    # a ₦60 starter wallet (≨32 small invoices’ worth of goodwill). invoice_balance
+    # above is legacy (its value was migrated into this wallet at ₦30/credit).
+    wallet_balance_kobo: Mapped[int] = mapped_column(Integer, default=6000, server_default="6000")
     # Legacy field - kept for backward compatibility, will be deprecated
     # Track monthly invoice usage (resets based on subscription start, not calendar month)
     invoices_this_month: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -321,6 +321,16 @@ class User(Base):
     # Paystack subscription tracking (for auto-recurring billing)
     paystack_subscription_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     paystack_customer_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Paystack subaccount for online payments / marketplace splits. Created from
+    # the business's bank details; each sale settles to their bank minus the
+    # platform commission. `active` is True once the subaccount is verified.
+    paystack_subaccount_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    paystack_subaccount_active: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
+
+    # Public storefront: a shareable catalog of the business's inventory.
+    storefront_enabled: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
+    storefront_slug: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True, unique=True)
     
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -345,7 +355,7 @@ class User(Base):
     )
 
     @property
-    def effective_plan(self) -> "SubscriptionPlan":
+    def effective_plan(self) -> SubscriptionPlan:
         """Return the plan used for feature gating.
 
         If pro_override is True, treat user as PRO regardless of actual plan.
@@ -354,7 +364,16 @@ class User(Base):
         if self.pro_override:
             return SubscriptionPlan.PRO
         return self.plan
-    
+
+    @property
+    def online_payments_active(self) -> bool:
+        """True when this business can be paid online via its Paystack subaccount.
+
+        When active, invoices are online-only: the business's raw bank account is
+        hidden from customers so payments flow through Paystack (commission).
+        """
+        return bool(self.paystack_subaccount_active and self.paystack_subaccount_code)
+
     # Tax and compliance relationships
     tax_profile: Mapped[TaxProfile | None] = relationship(
         "TaxProfile",

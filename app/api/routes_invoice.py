@@ -51,18 +51,22 @@ async def create_invoice(
               Defaults to True for better user experience. When an invoice email is requested,
               the system automatically forces synchronous generation so the attachment is present.
     """
-    # Require bank details before creating revenue invoices
-    if not hasattr(data, 'invoice_type') or data.invoice_type != 'expense':
-        user = db.query(models.User).filter(models.User.id == data_owner_id).one_or_none()
-        if user and (not user.bank_name or not user.account_number):
-            raise HTTPException(
-                status_code=400,
-                detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
-            )
+    is_revenue = not (hasattr(data, 'invoice_type') and data.invoice_type == 'expense')
+    user = db.query(models.User).filter(models.User.id == data_owner_id).one_or_none()
 
-    # Check invoice creation limit based on data owner's subscription plan
+    # Require bank details before creating revenue invoices
+    if is_revenue and user and (not user.bank_name or not user.account_number):
+        raise HTTPException(
+            status_code=400,
+            detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
+        )
+
+    # Business-created invoices are always offline: the business shares their
+    # bank account and confirms payment manually, funded by a pack. Online
+    # (commission) payments happen only through the storefront, where the
+    # customer pays as part of ordering — so there is nothing to bypass here.
     check_invoice_limit(db, data_owner_id)
-    
+
     svc = get_invoice_service_for_user(data_owner_id, db)
 
     # Ensure PDF exists before sending notifications so it's available when customer replies
@@ -83,6 +87,7 @@ async def create_invoice(
             data=invoice_data,
             async_pdf=effective_async,
             created_by_user_id=current_user_id,  # Track actual creator for confirmation permissions
+            consume_balance=True,
         )
         
         # Send notifications via available channels (Email, WhatsApp) - ONLY for revenue invoices
@@ -225,7 +230,7 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
     
     gate = FeatureGate(db, data_owner_id)
     plan = gate.user.effective_plan  # Uses effective_plan to respect pro_override
-    invoice_balance = gate.get_invoice_balance()  # Safe access
+    invoice_balance = getattr(gate.user, "invoice_balance", 0) or 0
     can_create, _ = gate.can_create_invoice()
     purchase_url = "/invoices/purchase-pack" if not can_create else None
     
@@ -425,24 +430,20 @@ async def initialize_invoice_pack_purchase(
     request: Request,
     current_user_id: CurrentUserDep,
     db: DbDep,
-    quantity: int = 1,
-    pack_type: str = "standard",
+    amount: int = 1250,
 ):
     """
-    Initialize Paystack payment for invoice pack purchase.
-    
+    Initialize a Paystack payment to top up the prepaid invoice wallet.
+
     **Parameters:**
-    - quantity: Number of packs to purchase (default 1)
-    - pack_type: one of:
-        - \"standard\" (50 invoices for ₦1,250)
-        - \"small\" (25 invoices for ₦625)
-        - \"pro_pack\" (20 invoices + 30 days Pro features for ₦2,000)
-    
+    - amount: Top-up amount in Naira. Must be one of the offered tiers
+      (₦1,250 / ₦5,000 / ₦20,000).
+
     **Returns:**
     - authorization_url: Paystack checkout URL
     - reference: Payment reference for tracking
-    - amount: Amount in kobo (₦ x 100)
-    - invoices_to_add: Number of invoices that will be added
+    - amount: Total charged in Naira (includes Paystack fees)
+    - wallet_credit_naira: Amount credited to the wallet
     """
     import uuid
 
@@ -451,35 +452,26 @@ async def initialize_invoice_pack_purchase(
     from app.core.config import settings
     from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
     from app.services.payment_providers import calculate_amount_with_paystack_fee
-    from app.utils.feature_gate import PACK_OPTIONS
-    
-    if quantity < 1 or quantity > 10:
-        raise HTTPException(status_code=400, detail="Quantity must be between 1 and 10 packs")
-    
-    pack = PACK_OPTIONS.get(pack_type)
-    if not pack:
+    from app.utils.feature_gate import WALLET_TOPUP_TIERS
+
+    if amount not in WALLET_TOPUP_TIERS:
         raise HTTPException(
             status_code=400,
-            detail="Invalid pack_type. Use 'standard', 'small' or 'pro_pack'",
+            detail=f"Invalid top-up amount. Choose one of: {WALLET_TOPUP_TIERS}",
         )
-    
+
     user = db.query(models.User).filter(models.User.id == current_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    pack_price = pack["price"]
-    pack_size = pack["size"]
-    
-    # Calculate total - add Paystack fees so customer pays them
-    base_amount = pack_price * quantity
-    total_amount = calculate_amount_with_paystack_fee(base_amount)
-    invoices_to_add = pack_size * quantity
-    pro_days = pack.get("pro_days", 0) * quantity
-    
+
+    wallet_credit_kobo = amount * 100
+    # Customer pays the tier amount plus Paystack fees.
+    total_amount = calculate_amount_with_paystack_fee(amount)
+
     # Generate unique reference
     reference = f"INVPACK-{current_user_id}-{uuid.uuid4().hex[:8].upper()}"
-    
-    # Record transaction (invoice pack - plan stays the same)
+
+    # Record transaction (wallet top-up - plan unchanged)
     current_plan = user.plan.value if user.plan else "free"
     transaction = PaymentTransaction(
         user_id=current_user_id,
@@ -489,16 +481,12 @@ async def initialize_invoice_pack_purchase(
         provider=PaymentProvider.PAYSTACK,
         status=PaymentStatus.PENDING,
         plan_before=current_plan,
-        # Pro packs grant Pro features; plain invoice packs keep the plan
-        plan_after="pro" if pro_days > 0 else current_plan,
+        plan_after=current_plan,
         customer_email=user.email or (f"{user.phone}@suoops.com" if user.phone else None),
         customer_phone=user.phone,
         payment_metadata={
-            "payment_type": "pro_pack" if pro_days > 0 else "invoice_pack",
-            "pack_type": pack_type,
-            "quantity": quantity,
-            "invoices_to_add": invoices_to_add,
-            "pro_days": pro_days,
+            "payment_type": "wallet_topup",
+            "wallet_credit_kobo": wallet_credit_kobo,
         },
     )
     db.add(transaction)
@@ -519,11 +507,9 @@ async def initialize_invoice_pack_purchase(
                     "reference": reference,
                     "callback_url": f"{settings.FRONTEND_URL}/dashboard/billing/success?reference={reference}",
                     "metadata": {
-                        "payment_type": "invoice_pack",
+                        "payment_type": "wallet_topup",
                         "user_id": current_user_id,
-                        "quantity": quantity,
-                        "invoices_to_add": invoices_to_add,
-                        "pro_days": pro_days,
+                        "wallet_credit_kobo": wallet_credit_kobo,
                     },
                 },
             )
@@ -543,13 +529,62 @@ async def initialize_invoice_pack_purchase(
     auth_url = data["data"]["authorization_url"]
     
     logger.info(
-        "Invoice pack payment initialized | user=%s quantity=%d invoices=%d amount=%d ref=%s",
-        current_user_id, quantity, invoices_to_add, total_amount, reference
+        "Wallet top-up initialized | user=%s credit=₦%d charged=₦%d ref=%s",
+        current_user_id, amount, total_amount, reference
     )
-    
+
     return schemas.InvoicePackPurchaseInitOut(
         authorization_url=auth_url,
         reference=reference,
         amount=total_amount,
-        invoices_to_add=invoices_to_add,
+        wallet_credit_naira=amount,
+        invoices_to_add=0,
     )
+
+
+@router.post("/enable-online-payments")
+async def enable_online_payments(
+    current_user_id: CurrentUserDep,
+    db: DbDep,
+) -> dict:
+    """
+    Create (or refresh) this business's Paystack subaccount so customers can
+    pay their invoices online and payment is auto-confirmed.
+
+    Uses the bank details already on file. Returns once the subaccount is
+    verified and active.
+    """
+    from app.services.paystack_subaccount_service import (
+        PaystackSubaccountService,
+        SubaccountError,
+    )
+
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        code = await PaystackSubaccountService(db).ensure_subaccount(user)
+    except SubaccountError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {
+        "enabled": True,
+        "subaccount_code": code,
+        "message": "Online payments enabled. Invoices can now be paid online.",
+    }
+
+
+@router.get("/online-payments-status")
+def online_payments_status(current_user_id: CurrentUserDep, db: DbDep) -> dict:
+    """Whether the current business has online payments (Paystack subaccount) enabled."""
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "enabled": bool(
+            getattr(user, "paystack_subaccount_active", False)
+            and getattr(user, "paystack_subaccount_code", None)
+        ),
+        "has_bank_details": bool(user.bank_name and user.account_number),
+    }

@@ -588,8 +588,7 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
     Day 0 — Welcome: feature showcase (invoicing, WhatsApp, reminders, receipts,
              expenses, customer DB) + CTA to create first invoice.
     Day 1 — Feature tour: deep dive into 5 key features users may not know about.
-    Day 3 — Pro intro: full Pro plan pitch (₦2,000 Pro Pack, all premium features) +
-             invoice pack option (₦1,250/50).
+    Day 3 — Pricing intro: how the flat 3% model works + a wallet top-up nudge.
     """
     # Each day maps to: (email_type, subject, template_file, plain_text_fallback)
     email_map = {
@@ -631,24 +630,19 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
         ),
         3: (
             EMAIL_DAILY_HABIT,
-            "Ready to Level Up? Meet SuoOps Pro ⭐",
+            "How SuoOps pricing works — simple 3% ⭐",
             "activation_day3_pro.html",
             (
                 f"Hi {name},\n\n"
-                "You've been using SuoOps for a few days. Ready to unlock the full toolkit?\n\n"
-                "SuoOps Pro Pack — ₦2,000 (one-time):\n"
-                "✅ 20 invoices + 30 days of Pro features\n"
-                "✅ Tax reports — PIT & CIT generated automatically\n"
-                "✅ Inventory management with low-stock alerts\n"
-                "✅ Custom logo branding on invoices & receipts\n"
-                "✅ Team management — add up to 3 members\n"
-                "✅ Daily WhatsApp business summary\n"
-                "✅ Business insights — customer value, margin analysis\n"
-                "✅ Voice invoicing — 15/month\n"
-                "✅ Priority support\n\n"
-                "₦2,000 is less than a business lunch — but saves hours every week.\n\n"
-                "Not ready? Buy 50 invoices for ₦1,250 anytime.\n\n"
-                "Upgrade: https://suoops.com/dashboard/settings/subscription\n\n"
+                "Quick note on pricing — it's refreshingly simple:\n\n"
+                "Every feature is free. We only take a flat 3% per invoice:\n"
+                "✅ Storefront orders — 3% when your customer pays online (nothing upfront)\n"
+                "✅ Manual invoices — 3% (₦20–₦2,000) from your prepaid wallet\n\n"
+                "So custom branding, tax reports, inventory, team, voice notes,\n"
+                "daily summaries and insights are all included — no plan to buy.\n\n"
+                "Top up your wallet anytime (₦1,250 / ₦5,000 / ₦20,000), or just share\n"
+                "your storefront link and let customers pay you online.\n\n"
+                "Your dashboard: https://suoops.com/dashboard\n\n"
                 "— SuoOps"
             ),
         ),
@@ -690,34 +684,36 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
 
 def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str, int]) -> bool:
     """Send monetization email if user hits a threshold. Returns True if sent."""
-    invoice_balance = getattr(user, "invoice_balance", 5)
+    wallet_kobo = getattr(user, "wallet_balance_kobo", 0) or 0
+    wallet_naira = wallet_kobo // 100
 
-    # At limit reached (0 invoices remaining)
-    if invoice_balance <= 0 and not _was_sent(db, user.id, EMAIL_LIMIT_REACHED):
-        subject = "You've used all your free invoices"
-        headline = "Invoice Limit Reached"
+    # Wallet empty
+    if wallet_kobo <= 0 and not _was_sent(db, user.id, EMAIL_LIMIT_REACHED):
+        subject = "Your invoice wallet is empty"
+        headline = "Top up to keep invoicing"
         body = (
             f"You've sent {invoice_count} invoices — that's great progress! "
-            "You've used all your available invoices. To keep sending, "
-            "grab a Starter pack — 50 more invoices for just ₦1,250."
+            "Your invoice wallet is now empty. Top up to keep creating manual "
+            "invoices (just 3% each, ₦20–₦2,000) — or share your storefront so "
+            "customers order and pay you online, no wallet needed."
         )
-        tip = "Go to Settings → Subscription to get more invoices instantly."
-        cta_url = "https://suoops.com/dashboard/settings/subscription"
-        cta_label = "Get More Invoices →"
+        tip = "Top up ₦1,250, ₦5,000 or ₦20,000 in Settings → Billing."
+        cta_url = "https://suoops.com/dashboard/billing/purchase"
+        cta_label = "Top up wallet →"
         email_type = EMAIL_LIMIT_REACHED
 
-    # At 80% of initial free balance (1 invoice remaining out of 5)
-    elif invoice_balance == 1 and not _was_sent(db, user.id, EMAIL_80PCT_LIMIT):
-        subject = "You have 1 invoice left"
-        headline = "Almost Out of Invoices"
+    # Wallet low (under ₦50)
+    elif 0 < wallet_naira < 50 and not _was_sent(db, user.id, EMAIL_80PCT_LIMIT):
+        subject = f"Wallet low: ₦{wallet_naira} left"
+        headline = "Almost out — top up soon"
         body = (
             f"You've sent {invoice_count} invoices so far — you're clearly getting value from SuoOps. "
-            "You have just 1 invoice left on your free plan. "
-            "The Starter pack gives you 50 more for ₦1,250."
+            f"Your wallet is down to ₦{wallet_naira}. Top up so invoicing never pauses "
+            "(3% per invoice, ₦20–₦2,000)."
         )
-        tip = "Upgrade before you run out so there's no interruption."
-        cta_url = "https://suoops.com/dashboard/settings/subscription"
-        cta_label = "Upgrade to Starter →"
+        tip = "Top up before you run out so there's no interruption."
+        cta_url = "https://suoops.com/dashboard/billing/purchase"
+        cta_label = "Top up wallet →"
         email_type = EMAIL_80PCT_LIMIT
 
     # After 3 invoices sent (soft mention)
@@ -726,8 +722,8 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         headline = "You're on a Roll 🎉"
         body = (
             f"You've already sent {invoice_count} invoices through SuoOps. "
-            "You're building a real record of your business transactions. "
-            "When you're ready for more, the Starter plan gives you 50 invoices and extra features."
+            "You're building a real record of your business — and every feature is "
+            "included, so you only pay a flat 3% per invoice."
         )
         tip = None
         cta_url = "https://suoops.com/dashboard"
@@ -767,7 +763,7 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
             if _send_wa_template(
                 user.phone,
                 settings.WHATSAPP_TEMPLATE_LOW_BALANCE,
-                [name, str(invoice_balance)],
+                [name, str(wallet_naira)],
                 "wa_monetization_80pct",
                 db,
                 user.id,

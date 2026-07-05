@@ -10,6 +10,7 @@ from app import metrics
 from app.core.exceptions import InvalidInvoiceStatusError, InvoiceNotFoundError
 from app.models import models
 from app.utils.async_utils import run_async
+from app.utils.invoice_delivery import invoice_has_contact, is_online_only
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class InvoiceStatusMixin:
         invoice_id: str,
         status: str,
         updated_by_user_id: int | None = None,
+        via_online: bool = False,
     ) -> models.Invoice:
         if status not in {"pending", "awaiting_confirmation", "paid", "cancelled"}:
             raise InvalidInvoiceStatusError(new_status=status)
@@ -63,6 +65,23 @@ class InvoiceStatusMixin:
             raise ValueError(
                 f"Cannot change invoice from '{previous_status}' to '{status}'"
             )
+
+        # Offline settlement of an online-only invoice consumes a pack. The
+        # business either earns us a commission (paid online via webhook,
+        # via_online=True) or pays for a pack (marking it paid manually). This
+        # closes the "free invoice + bypass the commission" loophole.
+        if (
+            status == "paid"
+            and previous_status != "paid"
+            and not via_online
+            and is_online_only(
+                invoice.issuer,
+                has_contact=invoice_has_contact(invoice),
+                channel=invoice.channel,
+            )
+        ):
+            self.enforce_quota(issuer_id, "revenue", amount=invoice.amount)
+            self.deduct_invoice_balance(issuer_id, amount=invoice.amount)
 
         invoice.status = status
         
@@ -208,9 +227,72 @@ class InvoiceStatusMixin:
                 
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to send receipt notifications for %s: %s", invoice_id, exc)
-        
+
+        # Storefront orders: alert the business of the new paid order so they can
+        # fulfil it (the customer already received the receipt above).
+        if getattr(invoice, "channel", None) == "storefront":
+            self._notify_business_of_order(invoice)
+
         # Check for low stock and send alerts (non-critical, done after receipt is sent)
         self._check_and_send_low_stock_alerts(invoice)
+
+    def _notify_business_of_order(self, invoice: models.Invoice) -> None:
+        """Alert the business of a new paid storefront order so they can fulfil it."""
+        user = getattr(invoice, "issuer", None) or (
+            self.db.query(models.User)
+            .filter(models.User.id == invoice.issuer_id)
+            .one_or_none()
+        )
+        if not user:
+            logger.warning("Cannot notify business of order %s: issuer missing", invoice.invoice_id)
+            return
+
+        from app.core.config import settings
+
+        frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+        order_link = f"{frontend_url.rstrip('/')}/dashboard/invoices/{invoice.invoice_id}"
+        customer_name = invoice.customer.name if invoice.customer else "Customer"
+        customer_phone = getattr(invoice.customer, "phone", None) if invoice.customer else None
+
+        items = "\n".join(
+            f"• {ln.quantity} × {ln.description}" for ln in (invoice.lines or [])
+        ) or "• (see dashboard)"
+        message = (
+            f"🛒 New paid order!\n\n"
+            f"👤 {customer_name}"
+            + (f" ({customer_phone})" if customer_phone else "")
+            + f"\n💵 ₦{invoice.amount:,.2f} — paid online\n\n"
+            f"{items}\n\n"
+            f"🔗 View & fulfil:\n{order_link}"
+        )
+
+        try:
+            from app.services.notification.service import NotificationService
+
+            service = NotificationService()
+
+            async def _run():  # pragma: no cover - network IO
+                if user.email:
+                    try:
+                        await service.send_email(
+                            to_email=user.email,
+                            subject=f"New paid order — {invoice.invoice_id}",
+                            body=message,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error("Order email to business failed %s: %s", invoice.invoice_id, exc)
+                if user.phone:
+                    try:
+                        from app.bot.whatsapp_client import WhatsAppClient
+                        whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
+                        if whatsapp_key:
+                            WhatsAppClient(whatsapp_key).send_text(user.phone, message)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error("Order WhatsApp to business failed %s: %s", invoice.invoice_id, exc)
+
+            run_async(_run())
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Order notification dispatch failed for %s: %s", invoice.invoice_id, exc)
 
     def _notify_business_of_transfer(self, invoice: models.Invoice) -> None:
         try:

@@ -61,7 +61,8 @@ class UserOut(BaseModel):
     bank_name: str | None = None
     account_number: str | None = None
     plan: str  # FREE, STARTER, PRO, BUSINESS
-    invoice_balance: int = 0  # Available invoices (new billing model)
+    invoice_balance: int = 0  # Legacy count (migrated into wallet)
+    wallet_balance_kobo: int = 0  # Prepaid invoice wallet, in kobo
     invoices_this_month: int = 0  # Deprecated, kept for backward compat
     logo_url: str | None = None
     subscription_expires_at: dt.datetime | None = None

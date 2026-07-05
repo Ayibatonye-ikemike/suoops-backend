@@ -129,14 +129,13 @@ _FAQ_ENTRIES: list[dict[str, Any]] = [
             "what plan", "my plan",
         ],
         "answer": (
-            "💰 *SuoOps Plans*\n\n"
-            "🆓 *Free* — 2 free invoices to try it out\n"
-            "   Buy packs: ₦625 for 25 or ₦1,250 for 50 invoices\n\n"
-            "👑 *Pro Pack* — ₦2,000 (one-time)\n"
-            "   20 invoices + 30 days of Pro features\n"
-            "   Analytics, inventory, tax reports, expense tracking & more\n"
-            "   Or Pro Features only (no invoices): ₦1,500 for 30 days\n\n"
-            "Manage your plan at suoops.com/dashboard/settings/subscription"
+            "💰 *SuoOps Pricing — simple 3%*\n\n"
+            "Every feature is free. We only take a flat 3% per invoice:\n"
+            "🧾 *Manual invoices* — 3% (₦20–₦2,000) from your prepaid wallet\n"
+            "🛒 *Storefront orders* — 3% when the customer pays online\n\n"
+            "So branding, inventory, tax reports, analytics & voice are all "
+            "included — no plans.\n\n"
+            "Top up your wallet at suoops.com/dashboard/billing/purchase"
         ),
     },
     # ── Expenses ──
@@ -168,8 +167,7 @@ _FAQ_ENTRIES: list[dict[str, Any]] = [
             "🏛️ *Tax Reports*\n\n"
             "Type *tax report* here to get your monthly tax summary + PDF.\n\n"
             "Or visit suoops.com/dashboard/tax for full details.\n\n"
-            "📋 Includes: Income tax, VAT, dev levy — all auto-calculated!\n\n"
-            "⚠️ Requires Pro plan."
+            "📋 Includes: Income tax, VAT, dev levy — all auto-calculated!"
         ),
     },
     # ── Account Issues ──

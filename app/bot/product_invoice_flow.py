@@ -25,7 +25,6 @@ from sqlalchemy.orm import Session
 
 from app.bot.whatsapp_client import WhatsAppClient
 from app.models.inventory_models import Product
-from app.models.models import User
 from app.services.inventory.product_service import ProductService
 from app.utils.currency_fmt import fmt_money, get_user_currency
 
@@ -237,16 +236,7 @@ class ProductInvoiceFlow:
         return text.lower().strip() in ProductInvoiceFlow.TRIGGER_KEYWORDS
 
     def _require_pro(self, phone: str, user_id: int) -> bool:
-        """Check if user has PRO plan. Returns True if allowed, False if blocked."""
-        user = self.db.query(User).filter(User.id == user_id).first()
-        if not user or user.effective_plan.value != "pro":
-            self.client.send_text(
-                phone,
-                "🔒 *Product Catalog is a Pro feature.*\n\n"
-                "Upgrade to Pro at suoops.com/dashboard/subscription\n"
-                "to manage products, build invoices from your catalog & more!"
-            )
-            return False
+        """Product catalog is free under the commission model; always allowed."""
         return True
 
     def start_browsing(self, phone: str, user_id: int, search: str | None = None) -> None:

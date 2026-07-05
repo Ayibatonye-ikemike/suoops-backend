@@ -35,6 +35,19 @@ def _signup_and_get_token():
     assert v.status_code == 200, v.text
     token = v.json()["access_token"]
 
+    # Fund the wallet so invoice creation (3% fee) isn't blocked by the
+    # ₦60 starter balance.
+    from app.db.session import SessionLocal
+    from app.models import models as _m
+    _s = SessionLocal()
+    try:
+        _u = _s.query(_m.User).filter(_m.User.phone == phone).first()
+        if _u is not None:
+            _u.wallet_balance_kobo = 10_000_000
+            _s.commit()
+    finally:
+        _s.close()
+
     # Bank details are now captured during signup verification, so no
     # follow-up PATCH is needed.
     return token

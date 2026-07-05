@@ -25,6 +25,8 @@ from app.api.routes_metrics import router as metrics_router
 from app.api.routes_oauth import router as oauth_router
 from app.api.routes_ocr import router as ocr_router
 from app.api.routes_referral import router as referral_router
+from app.api.routes_storefront import public_router as storefront_public_router
+from app.api.routes_storefront import router as storefront_router
 from app.api.routes_subscription import router as subscription_router
 from app.api.routes_support import router as support_router
 from app.api.routes_tax_main import router as tax_router
@@ -248,6 +250,8 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router, tags=["metrics"])
     app.include_router(telemetry_router, tags=["telemetry"])
     app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
+    app.include_router(storefront_router, prefix="/inventory", tags=["storefront"])
+    app.include_router(storefront_public_router, prefix="/public", tags=["storefront"])
     app.include_router(team_router, tags=["team"])
     app.include_router(support_router, tags=["support"])
     app.include_router(testimonial_public_router, prefix="/public", tags=["public"])

@@ -45,6 +45,17 @@ async def initialize_subscription_payment(
     - authorization_url: Paystack checkout URL for subscription
     - reference: Subscription reference for tracking
     """
+    # Subscriptions are discontinued under the commission model: every feature is
+    # free and the platform monetises via a flat 3% per invoice. Existing Pro
+    # subscribers keep their features until their current period lapses.
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Plans are no longer sold — all features are free now. "
+            "Top up your invoice wallet instead."
+        ),
+    )
+
     # Validate plan
     plan = plan.upper()
     if plan not in PLAN_PRICES:

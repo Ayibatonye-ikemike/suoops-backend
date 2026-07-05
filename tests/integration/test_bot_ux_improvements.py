@@ -50,17 +50,18 @@ async def test_error_message_on_zero_amount():
     try:
         await processor.handle("+2348012345678", parse, {})
         
-        # Verify error message was sent
+        # Verify a helpful message was sent
         assert client.send_text.called, "Expected send_text to be called"
         error_message = client.send_text.call_args[0][1]
-        print(f"\n📱 Error message sent:\n{error_message}")
-        
-        # Verify message contains helpful guidance
-        assert "CORRECT FORMAT" in error_message, "Expected format guidance"
-        assert "Invoice [Name]" in error_message or "Invoice Joy" in error_message, "Expected format example"
-        assert "TIP" in error_message, "Expected helpful tip"
-        
-        print("\n✅ Test passed! Helpful error message was sent.")
+        print(f"\n📱 Message sent:\n{error_message}")
+
+        # A zero/missing amount now starts a friendly guided flow that
+        # acknowledges what was parsed and prompts for the amount, instead of
+        # dumping a rigid format guide.
+        assert "How much" in error_message, "Expected a prompt for the amount"
+        assert "invoice for" in error_message.lower(), "Expected acknowledgement of the parsed invoice"
+
+        print("\n✅ Test passed! Helpful guided-flow message was sent.")
     finally:
         # Restore original function
         iip_module.build_invoice_service = original_build

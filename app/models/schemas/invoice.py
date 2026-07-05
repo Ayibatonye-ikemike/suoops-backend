@@ -164,6 +164,13 @@ class InvoicePublicOut(BaseModel):
     account_number: str | None = None
     account_name: str | None = None
     paid_at: dt.datetime | None = None
+    # True when the issuer has an active Paystack subaccount (can be paid online).
+    online_payments_enabled: bool = False
+    # True for storefront orders that must be paid online (bank transfer hidden).
+    online_only: bool = False
+    # Present only once the invoice is paid, so customers can download it.
+    pdf_url: str | None = None
+    receipt_pdf_url: str | None = None
     lines: list[InvoiceLinePublicOut] = []
 
     @field_serializer("account_number")
@@ -217,7 +224,8 @@ class InvoicePackPurchaseInitOut(BaseModel):
     authorization_url: str = Field(description="Paystack checkout URL for payment")
     reference: str = Field(description="Payment reference for tracking")
     amount: int = Field(description="Total amount in Naira")
-    invoices_to_add: int = Field(description="Number of invoices that will be added after payment")
+    invoices_to_add: int = Field(default=0, description="Legacy: invoices added (0 under wallet model)")
+    wallet_credit_naira: int = Field(default=0, description="Amount credited to the prepaid wallet")
 
 class PaginatedResponse(BaseModel, Generic[T]):
     """Generic paginated API response."""

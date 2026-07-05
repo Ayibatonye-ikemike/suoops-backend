@@ -58,22 +58,17 @@ def get_profile(
 ):
     """Return current user's core profile and subscription details."""
     from app.utils.feature_gate import FeatureGate
-    
-    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
 
-    # Use FeatureGate for subscription expiry check (downgrades to FREE if expired)
+    # FeatureGate.user triggers the subscription-expiry check (downgrades a
+    # lapsed paid plan to FREE) and returns the user; raises 404 if missing.
     gate = FeatureGate(db, current_user_id)
-    
-    # Re-fetch user after FeatureGate may have updated plan
-    db.refresh(user)
+    user = gate.user
 
     # If pilot encryption stored encrypted email, attempt decrypt
     email_plain = decrypt_value(user.email) if user.email else None
     
-    # Safely get invoice_balance (may not exist if migration hasn't run)
-    invoice_balance = gate.get_invoice_balance()  # Uses safe access internally
+    # Safely get legacy invoice count (kept for backward compat; frontend uses wallet)
+    invoice_balance = getattr(user, "invoice_balance", 0) or 0
     
     # Generate a fresh presigned URL for the logo (the stored URL expires)
     fresh_logo_url = None
@@ -95,7 +90,8 @@ def get_profile(
         bank_name=user.bank_name,
         account_number=user.account_number,
         plan=user.effective_plan.value,  # Uses effective_plan to respect pro_override
-        invoice_balance=invoice_balance,  # New billing model: available invoices
+        invoice_balance=invoice_balance,  # Legacy count (kept for backward compat)
+        wallet_balance_kobo=getattr(user, "wallet_balance_kobo", 0) or 0,
         invoices_this_month=0,  # Deprecated, kept for backward compat
         logo_url=fresh_logo_url,
         subscription_expires_at=user.subscription_expires_at,

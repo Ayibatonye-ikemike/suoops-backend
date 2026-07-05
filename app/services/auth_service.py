@@ -125,11 +125,14 @@ class AuthService:
                 ref_svc = ReferralService(self.db)
                 code_obj = ref_svc.get_code_by_string(referral_code_str)
                 if code_obj and code_obj.bonus_invoices > 0:
-                    user.invoice_balance += code_obj.bonus_invoices
+                    # Credit the influencer signup bonus to the wallet at ₦30 per
+                    # bonus invoice (matching the migration rate) — commission model.
+                    bonus_kobo = code_obj.bonus_invoices * 3000
+                    user.wallet_balance_kobo += bonus_kobo
                     self.db.commit()
                     logger.info(
-                        "Credited %d bonus invoices to user %s via code %s",
-                        code_obj.bonus_invoices, user.id, referral_code_str,
+                        "Credited ₦%d bonus wallet to user %s via code %s",
+                        bonus_kobo // 100, user.id, referral_code_str,
                     )
             except Exception as e:
                 logger.warning("Failed to credit bonus invoices: %s", e)

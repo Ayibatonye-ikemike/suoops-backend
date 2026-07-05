@@ -242,11 +242,12 @@ class WhatsAppChannel:
         amount_text = f"₦{invoice.amount:,.2f}"
         items_text = self._build_items_text(invoice)
         
-        # Get issuer's bank details
+        # Get issuer's bank details (hidden for online-only invoices)
         issuer = getattr(invoice, "issuer", None)
-        bank_name = getattr(issuer, "bank_name", "N/A") if issuer else "N/A"
-        account_number = getattr(issuer, "account_number", "N/A") if issuer else "N/A"
-        account_name = getattr(issuer, "account_name", "N/A") if issuer else "N/A"
+        from app.utils.invoice_delivery import template_bank_params
+        bank_name, account_number, account_name = template_bank_params(
+            issuer, online_only=bool(getattr(issuer, "online_payments_active", False))
+        )
         
         # Build payment link
         frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
