@@ -537,11 +537,36 @@ class InvoiceIntentProcessor:
                 f"💡 Click 'Mark Paid' when customer pays: suoops.com/dashboard/invoices/{invoice.invoice_id}"
             )
         elif whatsapp_pending:
-            business_message += (
-                "\n📱 WhatsApp notification sent!\n"
-                "⏳ Customer needs to reply 'OK' to receive payment details & PDF.\n"
-                "💡 First-time customers must reply once to enable full messaging."
+            # The template we sent already carries the payment details (bank
+            # details or a pay-online link). Only the PDF document waits for the
+            # customer to reply (a WhatsApp first-message rule), so don't imply
+            # they must reply before they can pay.
+            from app.utils.invoice_delivery import (
+                invoice_has_contact,
+                is_online_only,
             )
+            issuer = getattr(invoice, "issuer", None)
+            online_only = (
+                is_online_only(
+                    issuer,
+                    has_contact=invoice_has_contact(invoice),
+                    channel=getattr(invoice, "channel", None),
+                )
+                if issuer
+                else False
+            )
+            if online_only:
+                business_message += (
+                    "\n📱 WhatsApp sent with a pay-online link!\n"
+                    "💳 Your customer can pay right away — no reply needed.\n"
+                    "💡 The invoice PDF arrives once they reply to the message."
+                )
+            else:
+                business_message += (
+                    "\n📱 WhatsApp sent with payment details!\n"
+                    "💳 Your customer can pay now with the details in the message.\n"
+                    "💡 The invoice PDF arrives once they reply (first-time customers)."
+                )
         elif notification_results:
             sent_channels = []
             if notification_results.get("email"):
