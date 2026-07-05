@@ -584,6 +584,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
 
                 # --- WhatsApp ---
                 wa_delivered = False
+                email_handled = False
                 if customer_phone and _is_valid_phone(customer_phone):
                     already = (
                         db.query(InvoiceReminderLog)
@@ -628,6 +629,11 @@ def send_customer_payment_reminders() -> dict[str, Any]:
                                 email_ok = _send_customer_email_reminder(
                                     inv, customer, issuer, tier, business_name
                                 )
+                                # Mark handled so the email-only block below
+                                # doesn't re-send (the log added here is still
+                                # pending/unflushed and its dedup query would
+                                # miss it, causing a duplicate-row IntegrityError).
+                                email_handled = True
                                 if email_ok:
                                     db.add(
                                         InvoiceReminderLog(
@@ -642,7 +648,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
                                     stats["failed"] += 1
 
                 # --- Email (only for email-only customers, skip if WA delivered) ---
-                if customer_email and not wa_delivered:
+                if customer_email and not wa_delivered and not email_handled:
                     already = (
                         db.query(InvoiceReminderLog)
                         .filter(
@@ -1107,7 +1113,7 @@ def send_mark_paid_nudges() -> dict[str, Any]:
 
 def _format_customer_reminder(inv: Any, tier: str, business_name: str) -> str:
     """Format a customer-facing payment reminder message."""
-    payment_link = f"{settings.BASE_URL}/pay/{inv.invoice_id}"
+    payment_link = f"{settings.FRONTEND_URL}/pay/{inv.invoice_id}"
     amount_str = f"₦{inv.amount:,.0f}"
     due_str = inv.due_date.strftime("%d %b %Y") if inv.due_date else "N/A"
 
@@ -1203,9 +1209,9 @@ def sync_provider_status(self: Task, provider: str, reference: str) -> dict[str,
         logger.warning("Unsupported provider: %s", provider)
         return {"success": False, "error": f"Unsupported provider: {provider}"}
 
-    paystack_key = settings.PAYSTACK_SECRET_KEY
+    paystack_key = settings.PAYSTACK_SECRET
     if not paystack_key:
-        logger.error("PAYSTACK_SECRET_KEY not configured, cannot verify")
+        logger.error("PAYSTACK_SECRET not configured, cannot verify")
         return {"success": False, "error": "Paystack key not configured"}
 
     try:

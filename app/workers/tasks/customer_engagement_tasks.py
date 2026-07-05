@@ -289,8 +289,11 @@ def send_post_payment_referrals() -> dict[str, Any]:
                         stats["skipped"] += 1
                         continue
 
-                    # Check if already sent for this invoice
-                    if _already_sent(db, inv.id, "post_payment_referral", "email"):
+                    # Check if already sent for this invoice. Referral asks go
+                    # out on WhatsApp (email is disabled below), and the send is
+                    # recorded on the "whatsapp" channel — so dedup on that
+                    # channel, otherwise the same customer is re-asked every run.
+                    if _already_sent(db, inv.id, "post_payment_referral", "whatsapp"):
                         stats["skipped"] += 1
                         continue
 

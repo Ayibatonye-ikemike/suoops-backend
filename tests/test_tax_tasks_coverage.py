@@ -116,11 +116,12 @@ def _inject_service_fakes(monkeypatch, reporting_cls=_FakeReporting):
 
 
 # ═══════════════════ generate_previous_month_reports ═══════════════════
-def test_generate_reports_nameerror_bug(db_session):
-    """Unpatched: MONTH_NAMES is undefined -> NameError (documents the bug)."""
-    _make_user(db_session, 1)
-    with pytest.raises(NameError):
-        tax_tasks.generate_previous_month_reports.run(basis="paid")
+def test_month_names_defined_and_indexable():
+    """Regression: MONTH_NAMES must exist and be 1-indexed — the task builds a
+    period label via MONTH_NAMES[prev_month] for months 1-12."""
+    assert tax_tasks.MONTH_NAMES[1] == "January"
+    assert tax_tasks.MONTH_NAMES[12] == "December"
+    assert len(tax_tasks.MONTH_NAMES) == 13
 
 
 def test_generate_reports_whatsapp_notify_path(monkeypatch, db_session):
@@ -369,12 +370,11 @@ def test_notify_whatsapp_plaintext_fallback(monkeypatch):
     assert client.texts
 
 
-def test_notify_whatsapp_handles_exception(monkeypatch):
-    # settings missing entirely -> internal NameError caught -> returns False.
-    monkeypatch.setattr("app.utils.whatsapp_budget.can_send_whatsapp", lambda priority=False: True)
+def test_notify_whatsapp_returns_false_when_over_budget(monkeypatch):
+    # Over the WhatsApp budget -> early False (no template/window attempt).
+    monkeypatch.setattr("app.utils.whatsapp_budget.can_send_whatsapp", lambda priority=False: False)
     monkeypatch.setattr("app.core.whatsapp.get_whatsapp_client", lambda: _FakeWaClient())
     user = SimpleNamespace(phone="+2348012345678", name="Ada", id=1)
-    # `settings` is undefined at module scope -> NameError -> caught -> False
     assert tax_tasks._notify_tax_report_whatsapp(user, "July 2025", None) is False
 
 

@@ -269,8 +269,8 @@ def test_referral_skips_already_sent(db_session, monkeypatch):
         models.InvoiceReminderLog(
             invoice_id=inv.id,
             reminder_type="post_payment_referral",
-            channel="email",
-            recipient="a@b.com",
+            channel="whatsapp",
+            recipient="+2348012345678",
         )
     )
     db_session.commit()

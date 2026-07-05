@@ -558,12 +558,13 @@ def test_sync_provider_status_unsupported():
 
 
 def test_sync_provider_status_no_key():
-    # Inject a falsy key to reach the "not configured" branch.
-    settings.__dict__["PAYSTACK_SECRET_KEY"] = None
+    # Force a falsy Paystack key to reach the "not configured" branch.
+    original = settings.__dict__.get("PAYSTACK_SECRET")
+    settings.__dict__["PAYSTACK_SECRET"] = None
     try:
         result = mt.sync_provider_status("paystack", "ref-1")
     finally:
-        settings.__dict__.pop("PAYSTACK_SECRET_KEY", None)
+        settings.__dict__["PAYSTACK_SECRET"] = original
     assert result["success"] is False
 
 

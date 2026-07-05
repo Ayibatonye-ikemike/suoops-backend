@@ -7,6 +7,10 @@ from __future__ import annotations
 
 import gc
 import logging
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 try:
     import resource
@@ -14,7 +18,9 @@ except Exception:
     resource = None  # type: ignore
 
 from celery import Task
+from jinja2 import Template
 
+from app.core.config import settings
 from app.db.session import session_scope
 from app.models.models import Invoice, User
 from app.models.tax_models import FiscalInvoice
@@ -25,6 +31,12 @@ from app.storage.s3_client import s3_client
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+# Month names indexed 1-12 (index 0 is an unused placeholder) for report labels.
+MONTH_NAMES = [
+    "", "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
 
 
 def _rss_mb() -> float:
