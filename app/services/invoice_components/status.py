@@ -262,12 +262,13 @@ class InvoiceStatusMixin:
             f"• {ln.quantity} × {ln.description}" for ln in (invoice.lines or [])
         ) or "• (see dashboard)"
         message = (
-            f"🛒 New paid order!\n\n"
+            f"🛒 New paid order — payment confirmed ✅\n\n"
             f"👤 {customer_name}"
             + (f" ({customer_phone})" if customer_phone else "")
-            + f"\n💵 ₦{invoice.amount:,.2f} — paid online\n\n"
+            + f"\n💵 ₦{invoice.amount:,.2f} — paid online (auto-confirmed & settling to your account)\n\n"
             f"{items}\n\n"
-            f"🔗 View & fulfil:\n{order_link}"
+            f"📦 No payment action needed — just prepare and deliver the order.\n"
+            f"🔗 Order details:\n{order_link}"
         )
 
         try:
