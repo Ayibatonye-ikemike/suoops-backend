@@ -86,6 +86,20 @@ class WhatsAppChannel:
                 "[WHATSAPP] Customer %s is not opted-in, using template",
                 recipient_phone
             )
+
+            # Preferred: short template with a DOCUMENT header — the PDF rides
+            # along with the template so a first-time customer gets it without
+            # replying, and the body carries no bank number.
+            doc_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_DOC", None)
+            doc_pdf = pdf_url if (pdf_url or "").startswith("http") else None
+            if doc_template and doc_pdf and self._send_doc_template(
+                client, invoice, recipient_phone, doc_pdf, doc_template
+            ):
+                logger.info(
+                    "[WHATSAPP] Doc template (PDF attached) sent to %s", recipient_phone
+                )
+                return True
+
             template_sent = await self._send_template_only(client, invoice, recipient_phone)
             
             if not template_sent:
@@ -283,6 +297,63 @@ class WhatsAppChannel:
             logger.warning("[WHATSAPP] Failed to send full invoice template to %s", recipient_phone)
         
         return template_sent
+
+    def _send_doc_template(
+        self,
+        client,
+        invoice: models.Invoice,
+        recipient_phone: str,
+        pdf_url: str,
+        template_name: str,
+    ) -> bool:
+        """Send the short invoice template with the PDF as a document header.
+
+        Body params (6): customer_name, business_name, invoice_id, amount, items,
+        payment_link. No bank number — the customer pays via the link.
+        """
+        customer_name = invoice.customer.name if invoice.customer else "valued customer"
+        amount_text = f"₦{invoice.amount:,.2f}"
+        items_text = self._build_items_text(invoice)
+        issuer = getattr(invoice, "issuer", None)
+        business_name = (
+            getattr(issuer, "business_name", None)
+            or getattr(issuer, "name", None)
+            or "your business"
+        )
+        frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+        payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
+
+        components = [
+            {
+                "type": "header",
+                "parameters": [
+                    {
+                        "type": "document",
+                        "document": {
+                            "link": pdf_url,
+                            "filename": f"Invoice_{invoice.invoice_id}.pdf",
+                        },
+                    }
+                ],
+            },
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": customer_name},
+                    {"type": "text", "text": business_name},
+                    {"type": "text", "text": invoice.invoice_id},
+                    {"type": "text", "text": amount_text},
+                    {"type": "text", "text": items_text},
+                    {"type": "text", "text": payment_link},
+                ],
+            },
+        ]
+        return client.send_template(
+            recipient_phone,
+            template_name=template_name,
+            language=getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
+            components=components,
+        )
 
     def _build_payment_message(self, invoice: models.Invoice, business_name: str) -> str:
         """Build payment message with bank details."""

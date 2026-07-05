@@ -464,6 +464,10 @@ class InvoiceIntentProcessor:
                 logger.error("Failed to send invoice email: %s", exc)
 
         whatsapp_pending = self._notify_customer(invoice, data, issuer_id) if customer_phone else False
+        # If WhatsApp went out and isn't waiting on a reply (doc template delivered
+        # the PDF, or a full message was sent), record it as a completed channel.
+        if customer_phone and not whatsapp_pending:
+            results["whatsapp"] = True
         self._notify_business(sender, invoice, invoice_service, issuer_id, customer_email, results, whatsapp_pending, no_contact_info)
 
     def _notify_business(
@@ -639,7 +643,8 @@ class InvoiceIntentProcessor:
         # messaging window.  The template opens a new window so the PDF
         # document sent right after will also be delivered.
         has_template = bool(
-            getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
+            getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_DOC", None)
+            or getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
             or getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
         )
 
@@ -649,7 +654,12 @@ class InvoiceIntentProcessor:
                 customer_phone,
                 invoice.invoice_id,
             )
-            self._send_template_only(invoice, customer_phone, issuer_id)
+            pdf_delivered = self._send_template_only(invoice, customer_phone, issuer_id)
+            if pdf_delivered:
+                # The PDF rode along with the template (document header), so the
+                # customer already has everything — nothing is pending a reply.
+                self.db.commit()
+                return False
             invoice.whatsapp_delivery_pending = True
             self.db.commit()
             return True
@@ -665,16 +675,54 @@ class InvoiceIntentProcessor:
         self._send_full_invoice(invoice, customer_phone, issuer_id)
         return False
 
-    def _send_template_only(self, invoice, customer_phone: str, issuer_id: int) -> None:
-        """Send invoice template with full payment details.
-        
-        Uses 'invoice_with_payment' template if configured (includes bank details),
-        falls back to basic 'invoice_notification' template.
+    def _send_template_only(self, invoice, customer_phone: str, issuer_id: int) -> bool:
+        """Send the invoice template to the customer.
+
+        Returns True when the invoice PDF was delivered inline with the template
+        (document-header template), so the caller can skip the "reply to get your
+        PDF" pending state. Returns False when only a text template was sent.
         """
         customer_name = getattr(invoice.customer, "name", "valued customer") if invoice.customer else "valued customer"
         amount_text = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
         items_text = self._build_items_text(invoice)
-        
+
+        frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+        payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
+
+        # Preferred: short template with a DOCUMENT header. The PDF rides along
+        # with the template (delivered even to first-time customers) and the body
+        # carries no bank number — the customer pays via the link.
+        doc_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_DOC", None)
+        pdf_url = invoice.pdf_url if (invoice.pdf_url or "").startswith("http") else None
+        if doc_template and pdf_url:
+            issuer = self._load_issuer(issuer_id)
+            business_name = (
+                getattr(issuer, "business_name", None)
+                or getattr(issuer, "name", None)
+                or "your business"
+            )
+            if self._send_invoice_doc_template(
+                customer_phone,
+                customer_name,
+                business_name,
+                invoice.invoice_id,
+                amount_text,
+                items_text,
+                payment_link,
+                pdf_url,
+                doc_template,
+            ):
+                logger.info(
+                    "[TEMPLATE] Sent doc template (PDF attached) to %s for invoice %s",
+                    customer_phone,
+                    invoice.invoice_id,
+                )
+                return True
+            logger.warning(
+                "[TEMPLATE] Doc template failed for %s, falling back to text template",
+                customer_phone,
+            )
+
         # Try the full invoice template with payment details first
         template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
         fallback_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
@@ -754,6 +802,58 @@ class InvoiceIntentProcessor:
                 customer_phone,
                 invoice.invoice_id,
             )
+        # A text template was sent (or failed): the PDF is not delivered inline,
+        # so it still waits for the customer's reply.
+        return False
+
+    def _send_invoice_doc_template(
+        self,
+        customer_phone: str,
+        customer_name: str,
+        business_name: str,
+        invoice_id: str,
+        amount_text: str,
+        items_text: str,
+        payment_link: str,
+        pdf_url: str,
+        template_name: str,
+    ) -> bool:
+        """Send the short invoice template with the PDF as a document header.
+
+        Body params (6): customer_name, business_name, invoice_id, amount, items,
+        payment_link. No bank number — the customer pays via the link.
+        """
+        components = [
+            {
+                "type": "header",
+                "parameters": [
+                    {
+                        "type": "document",
+                        "document": {
+                            "link": pdf_url,
+                            "filename": f"Invoice_{invoice_id}.pdf",
+                        },
+                    }
+                ],
+            },
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": customer_name},
+                    {"type": "text", "text": business_name},
+                    {"type": "text", "text": invoice_id},
+                    {"type": "text", "text": amount_text},
+                    {"type": "text", "text": items_text},
+                    {"type": "text", "text": payment_link},
+                ],
+            },
+        ]
+        return self.client.send_template(
+            customer_phone,
+            template_name=template_name,
+            language=getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
+            components=components,
+        )
 
     def _send_full_invoice(self, invoice, customer_phone: str, issuer_id: int) -> None:
         """Send full invoice with payment details to opted-in customers.
