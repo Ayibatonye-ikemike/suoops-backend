@@ -59,6 +59,7 @@ class UserActivity(BaseModel):
     total_customers: int
     has_logo: bool
     has_bank_details: bool
+    wallet_balance_naira: float = 0
     invoice_balance: int
     invoices_used: int
     pack_purchases: list[PackPurchaseItem]
@@ -331,6 +332,7 @@ def get_user_detail(
             "total_customers": total_customers,
             "has_logo": user.logo_url is not None,
             "has_bank_details": user.account_number is not None,
+            "wallet_balance_naira": int(getattr(user, "wallet_balance_kobo", 0) or 0) / 100,
             "invoice_balance": invoice_balance,
             "invoices_used": invoices_used,
             "pack_purchases": pack_purchases
@@ -1256,7 +1258,7 @@ class SMEOnboardPayload(BaseModel):
 class SMEOnboardResult(BaseModel):
     user_id: int
     is_new_user: bool
-    pro_granted: bool
+    wallet_credited: bool
     team_created: bool
     invites_sent: int
     whatsapp_sent: bool
@@ -1273,7 +1275,7 @@ def onboard_sme(
     Concierge onboard an SME business.
 
     1. Creates or finds the business owner's account
-    2. Grants Pro access (pro_override)
+    2. Credits their prepaid invoice wallet (all features are free)
     3. Creates a team and invites staff members
     4. Sends a tailored WhatsApp onboarding message
     """
@@ -1314,21 +1316,14 @@ def onboard_sme(
         if not user.name or user.name == phone:
             user.name = payload.name
 
-    # ── 2. Grant Pro subscription (30 days, like a paid Pro Pack) ──
-    pro_granted = False
-    now = dt.datetime.now(dt.timezone.utc)
-    if user.plan != models.SubscriptionPlan.PRO or (
-        user.subscription_expires_at and user.subscription_expires_at < now
-    ):
-        user.plan = models.SubscriptionPlan.PRO
-        user.subscription_expires_at = now + dt.timedelta(days=30)
-        user.usage_reset_at = now
-        user.invoices_this_month = 0
-        pro_granted = True
-
-    # Also ensure they have at least 10 invoices
-    if user.invoice_balance < 10:
-        user.invoice_balance = 10
+    # ── 2. Credit the prepaid wallet (all features are free) ──
+    # Give concierge-onboarded businesses a starter wallet (₦500) so they can
+    # send invoices right away. Everything else is free under the 3% model.
+    CONCIERGE_WALLET_KOBO = 50000  # ₦500
+    wallet_credited = False
+    if int(getattr(user, "wallet_balance_kobo", 0) or 0) < CONCIERGE_WALLET_KOBO:
+        user.wallet_balance_kobo = CONCIERGE_WALLET_KOBO
+        wallet_credited = True
 
     db.commit()
 
@@ -1429,8 +1424,8 @@ def onboard_sme(
     summary_parts = []
     if is_new:
         summary_parts.append("account created")
-    if pro_granted:
-        summary_parts.append("Pro granted")
+    if wallet_credited:
+        summary_parts.append("wallet credited")
     if team_created:
         summary_parts.append("team created")
     if invites_sent:
@@ -1441,7 +1436,7 @@ def onboard_sme(
     return SMEOnboardResult(
         user_id=user.id,
         is_new_user=is_new,
-        pro_granted=pro_granted,
+        wallet_credited=wallet_credited,
         team_created=team_created,
         invites_sent=invites_sent,
         whatsapp_sent=wa_sent,
@@ -1453,32 +1448,14 @@ def onboard_sme(
 # Platform Metrics
 # ============================================================================
 
-class PaidUserInfo(BaseModel):
-    """Info about a paid user including referral status."""
-    id: int
-    name: str
-    email: str | None
-    phone: str | None
-    plan: str
-    business_name: str | None
-    created_at: dt.datetime
-    subscription_started_at: dt.datetime | None
-    subscription_expires_at: dt.datetime | None
-    was_referred: bool
-    referred_by_name: str | None = None
-    referred_by_id: int | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PackBuyerInfo(BaseModel):
+class TopUpBuyerInfo(BaseModel):
     id: int
     name: str
     email: str | None
     phone: str | None
     business_name: str | None
-    invoice_balance: int
-    total_packs_bought: int
+    wallet_balance_naira: float
+    total_top_ups: int
     last_purchase_date: str | None
 
     model_config = ConfigDict(from_attributes=True)
@@ -1494,10 +1471,12 @@ class PlatformMetrics(BaseModel):
     invoices_today: int
     invoices_this_week: int
     invoices_this_month: int
-    active_subscriptions: dict[str, int]
+    total_users: int
+    online_payments_enabled: int
+    storefronts_enabled: int
+    commission_this_month: float  # Suoops earnings (3% fees) this month, in Naira
     total_customers: int
-    paid_users: list[PaidUserInfo]
-    pack_buyers: list[PackBuyerInfo]
+    top_up_buyers: list[TopUpBuyerInfo]
 
 
 @router.get("/metrics", response_model=PlatformMetrics)
@@ -1507,8 +1486,7 @@ def get_platform_metrics(
 ) -> Any:
     """Get platform-wide metrics for monitoring."""
     from app.models.models import Customer, Invoice
-    from app.models.referral_models import Referral, ReferralStatus
-    
+
     log_audit_event("admin.metrics", user_id=admin_user.id)
     
     now = dt.datetime.now(dt.timezone.utc)
@@ -1536,98 +1514,57 @@ def get_platform_metrics(
     invoices_today = db.query(Invoice).filter(Invoice.created_at >= today_start).count()
     invoices_week = db.query(Invoice).filter(Invoice.created_at >= week_start).count()
     invoices_month = db.query(Invoice).filter(Invoice.created_at >= month_start).count()
-    
-    # Subscriptions by plan
-    plan_counts = db.query(
-        models.User.plan,
-        func.count(models.User.id)
-    ).group_by(models.User.plan).all()
-    
-    active_subs = {str(plan.value): count for plan, count in plan_counts}
-    
+
+    # Users + commission-model adoption
+    total_users = db.query(models.User).count()
+    online_payments_enabled = db.query(models.User).filter(
+        models.User.paystack_subaccount_active.is_(True)
+    ).count()
+    storefronts_enabled = db.query(models.User).filter(
+        models.User.storefront_enabled.is_(True)
+    ).count()
+
+    # Commission earned this month = the flat 3% (min ₦20, cap ₦2,000) charged on
+    # each revenue invoice created this month, recomputed as the wallet is debited.
+    from app.utils.feature_gate import platform_fee_kobo
+    month_revenue_amounts = db.query(Invoice.amount).filter(
+        Invoice.invoice_type == "revenue",
+        Invoice.created_at >= month_start,
+    ).all()
+    commission_this_month = sum(
+        platform_fee_kobo(amount) for (amount,) in month_revenue_amounts
+    ) / 100
+
     # Customers
     total_customers = db.query(Customer).count()
-    
-    # Get invoice pack buyers (FREE users who bought packs)
-    pack_buyer_rows = db.query(
+
+    # Wallet top-up buyers (top-ups still use the legacy INVPACK- reference).
+    top_up_rows = db.query(
         models.User,
-        func.count(PaymentTransaction.id).label("pack_count"),
+        func.count(PaymentTransaction.id).label("topup_count"),
         func.max(PaymentTransaction.created_at).label("last_purchase"),
     ).join(
         PaymentTransaction, PaymentTransaction.user_id == models.User.id
     ).filter(
-        models.User.plan == SubscriptionPlan.FREE,
         PaymentTransaction.reference.like("INVPACK-%"),
         PaymentTransaction.status == PaymentStatus.SUCCESS,
     ).group_by(models.User.id).order_by(
         desc(func.max(PaymentTransaction.created_at))
     ).limit(ADMIN_LIST_CAP).all()
 
-    pack_buyers_list: list[PackBuyerInfo] = []
-    for user, pack_count, last_purchase in pack_buyer_rows:
-        pack_buyers_list.append(PackBuyerInfo(
+    top_up_buyers_list: list[TopUpBuyerInfo] = []
+    for user, topup_count, last_purchase in top_up_rows:
+        top_up_buyers_list.append(TopUpBuyerInfo(
             id=user.id,
             name=user.name,
             email=user.email,
             phone=user.phone,
             business_name=user.business_name,
-            invoice_balance=getattr(user, 'invoice_balance', 0),
-            total_packs_bought=pack_count,
+            wallet_balance_naira=int(getattr(user, "wallet_balance_kobo", 0) or 0) / 100,
+            total_top_ups=topup_count,
             last_purchase_date=last_purchase.isoformat() if last_purchase else None,
         ))
 
-    # Get paying users (Pro only — STARTER removed)
-    # Auto-downgrade expired subscriptions first
-    paid_plans = [SubscriptionPlan.PRO]
-    expired_users = db.query(models.User).filter(
-        models.User.plan.in_(paid_plans),
-        models.User.subscription_expires_at.isnot(None),
-        models.User.subscription_expires_at < now,
-    ).all()
-    for u in expired_users:
-        u.plan = SubscriptionPlan.FREE
-    if expired_users:
-        db.commit()
-        logger.info("Auto-downgraded %d expired PRO users to FREE", len(expired_users))
-
-    paid_users_query = db.query(models.User).filter(
-        models.User.plan.in_(paid_plans)
-    ).order_by(desc(models.User.subscription_started_at)).limit(ADMIN_LIST_CAP).all()
-    
-    # Build paid users list with referral info
-    paid_users_list: list[PaidUserInfo] = []
-    for user in paid_users_query:
-        # Check if this user was referred
-        referral = db.query(Referral).filter(
-            Referral.referred_id == user.id,
-            Referral.status == ReferralStatus.COMPLETED
-        ).first()
-        
-        was_referred = referral is not None
-        referred_by_name = None
-        referred_by_id = None
-        
-        if referral:
-            referrer = db.query(models.User).filter(models.User.id == referral.referrer_id).first()
-            if referrer:
-                referred_by_name = referrer.name
-                referred_by_id = referrer.id
-        
-        paid_users_list.append(PaidUserInfo(
-            id=user.id,
-            name=user.name,
-            email=user.email,
-            phone=user.phone,
-            plan=user.plan.value,
-            business_name=user.business_name,
-            created_at=user.created_at,
-            subscription_started_at=user.subscription_started_at,
-            subscription_expires_at=user.subscription_expires_at,
-            was_referred=was_referred,
-            referred_by_name=referred_by_name,
-            referred_by_id=referred_by_id
-        ))
-    
     return PlatformMetrics(
         total_invoices=total_invoices,
         paid_invoices=paid,
@@ -1638,15 +1575,17 @@ def get_platform_metrics(
         invoices_today=invoices_today,
         invoices_this_week=invoices_week,
         invoices_this_month=invoices_month,
-        active_subscriptions=active_subs,
+        total_users=total_users,
+        online_payments_enabled=online_payments_enabled,
+        storefronts_enabled=storefronts_enabled,
+        commission_this_month=commission_this_month,
         total_customers=total_customers,
-        paid_users=paid_users_list,
-        pack_buyers=pack_buyers_list
+        top_up_buyers=top_up_buyers_list,
     )
 
 
 # =============================================================================
-# GROWTH METRICS — MRR, Churn, Activation, Collection Rate, Trends
+# GROWTH METRICS — Commission, Churn, Activation, Collection Rate, Trends
 # =============================================================================
 
 class MonthlyDataPoint(BaseModel):
@@ -1657,16 +1596,16 @@ class ActivationFunnel(BaseModel):
     total_signups: int
     created_first_invoice: int
     received_first_payment: int
-    upgraded_to_paid: int
+    enabled_online_payments: int
 
 class GrowthMetrics(BaseModel):
-    # Revenue
-    mrr: float  # Monthly recurring revenue from active subscriptions
-    mrr_trend: list[MonthlyDataPoint]  # Last 6 months
-    arr: float  # Annualized
-    # Churn
-    churned_users: int  # Pro expired and not renewed
-    churn_rate: float  # % of paid users who churned this month
+    # Revenue (Suoops commission — the flat 3% earned)
+    commission_month: float  # Commission earned this month, in Naira
+    commission_trend: list[MonthlyDataPoint]  # Last 6 months
+    commission_run_rate: float  # Annualized (this month × 12)
+    # Churn (activity-based: active last month, inactive this month)
+    churned_users: int
+    churn_rate: float  # % of last month's active businesses now inactive
     # Activation
     activation_funnel: ActivationFunnel
     # Collection
@@ -1675,16 +1614,13 @@ class GrowthMetrics(BaseModel):
     # Growth trends
     user_growth: list[MonthlyDataPoint]  # New signups per month
     invoice_growth: list[MonthlyDataPoint]  # Invoices created per month
-    revenue_growth: list[MonthlyDataPoint]  # Paid revenue per month
+    gmv_growth: list[MonthlyDataPoint]  # Paid payment volume per month
     # Engagement
     avg_invoices_per_user: float
     power_users: int  # Users with 10+ invoices this month
     zero_invoice_users: int  # Signed up but never created an invoice
     whatsapp_users: int  # Users with verified WhatsApp phone
     email_only_users: int  # Users without WhatsApp (email only)
-    # Subscription health
-    expired_subscriptions: int  # Pro with expired dates
-    expiring_soon: int  # Expiring within 7 days
 
 
 @router.get("/metrics/growth", response_model=GrowthMetrics)
@@ -1692,8 +1628,9 @@ def get_growth_metrics(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin)
 ) -> Any:
-    """Get business growth metrics — MRR, churn, activation funnel, trends."""
+    """Get business growth metrics — commission, churn, activation funnel, trends."""
     from app.models.models import Invoice
+    from app.utils.feature_gate import platform_fee_kobo
 
     log_audit_event("admin.metrics.growth", user_id=admin_user.id)
 
@@ -1701,51 +1638,56 @@ def get_growth_metrics(
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = today_start.replace(day=1)
 
-    # ── MRR ──
-    # Pro is prepaid (₦2,000 Pro Pack / ₦1,500 Features pass), not recurring.
-    # Approximate active-Pro revenue using the Pro Pack price.
-    PLAN_PRICES = {"pro": 2000}
-    active_pro = db.query(models.User).filter(
-        models.User.plan == SubscriptionPlan.PRO,
-        (models.User.subscription_expires_at.is_(None)) |
-        (models.User.subscription_expires_at >= now)
-    ).count()
-    mrr = active_pro * PLAN_PRICES["pro"]
-    arr = mrr * 12
+    def _month_starts(count: int) -> list[dt.datetime]:
+        """Return the first-of-month datetimes for the last `count` months (oldest first)."""
+        starts: list[dt.datetime] = []
+        cursor = month_start
+        for _ in range(count):
+            starts.append(cursor)
+            cursor = (cursor - dt.timedelta(days=1)).replace(day=1)
+        return list(reversed(starts))
 
-    # ── MRR Trend (last 6 months from payment transactions) ──
-    mrr_trend: list[MonthlyDataPoint] = []
-    for i in range(5, -1, -1):
-        m_start = (month_start - dt.timedelta(days=1)).replace(day=1)
-        for _ in range(i):
-            m_start = (m_start - dt.timedelta(days=1)).replace(day=1)
-        if i == 0:
-            m_start = month_start
+    def _commission_between(start: dt.datetime, end: dt.datetime) -> float:
+        """Commission (Naira) charged on revenue invoices created in [start, end)."""
+        amounts = db.query(Invoice.amount).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.created_at >= start,
+            Invoice.created_at < end,
+        ).all()
+        return sum(platform_fee_kobo(a) for (a,) in amounts) / 100
+
+    # ── Commission (Suoops earnings this month) ──
+    next_month = (month_start + dt.timedelta(days=32)).replace(day=1)
+    commission_month = _commission_between(month_start, next_month)
+    commission_run_rate = commission_month * 12
+
+    # ── Commission Trend (last 6 months) ──
+    commission_trend: list[MonthlyDataPoint] = []
+    for m_start in _month_starts(6):
         m_end = (m_start + dt.timedelta(days=32)).replace(day=1)
-
-        month_revenue = db.query(func.sum(PaymentTransaction.amount)).filter(
-            PaymentTransaction.status == PaymentStatus.SUCCESS,
-            PaymentTransaction.created_at >= m_start,
-            PaymentTransaction.created_at < m_end,
-        ).scalar() or 0
-
-        mrr_trend.append(MonthlyDataPoint(
+        commission_trend.append(MonthlyDataPoint(
             month=m_start.strftime("%Y-%m"),
-            value=float(month_revenue) / 100 if month_revenue > 1000 else float(month_revenue)
+            value=_commission_between(m_start, m_end),
         ))
 
-    # ── Churn ──
-    # Users on paid plans whose subscription expired and didn't renew
-    churned = db.query(models.User).filter(
-        models.User.plan == SubscriptionPlan.PRO,
-        models.User.subscription_expires_at.isnot(None),
-        models.User.subscription_expires_at < now,
-    ).count()
-
-    total_paid = db.query(models.User).filter(
-        models.User.plan == SubscriptionPlan.PRO
-    ).count()
-    churn_rate = (churned / total_paid * 100) if total_paid > 0 else 0
+    # ── Churn (activity-based) ──
+    # Businesses that created a revenue invoice last month but none this month.
+    prev_month_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+    active_prev = {
+        r[0] for r in db.query(func.distinct(Invoice.issuer_id)).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.created_at >= prev_month_start,
+            Invoice.created_at < month_start,
+        ).all()
+    }
+    active_now = {
+        r[0] for r in db.query(func.distinct(Invoice.issuer_id)).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.created_at >= month_start,
+        ).all()
+    }
+    churned = len(active_prev - active_now)
+    churn_rate = (churned / len(active_prev) * 100) if active_prev else 0
 
     # ── Activation Funnel ──
     total_signups = db.query(models.User).count()
@@ -1760,16 +1702,16 @@ def get_growth_metrics(
         func.count(func.distinct(Invoice.issuer_id))
     ).filter(Invoice.status == "paid").scalar() or 0
 
-    # Users who upgraded to a paid plan
-    upgraded = db.query(models.User).filter(
-        models.User.plan == SubscriptionPlan.PRO
+    # Users who turned on online payments (Paystack subaccount active)
+    enabled_online = db.query(models.User).filter(
+        models.User.paystack_subaccount_active.is_(True)
     ).count()
 
     funnel = ActivationFunnel(
         total_signups=total_signups,
         created_first_invoice=users_with_invoice,
         received_first_payment=users_with_payment,
-        upgraded_to_paid=upgraded,
+        enabled_online_payments=enabled_online,
     )
 
     # ── Collection Rate ──
@@ -1799,7 +1741,7 @@ def get_growth_metrics(
     # ── Growth Trends (last 6 months) ──
     user_growth: list[MonthlyDataPoint] = []
     invoice_growth: list[MonthlyDataPoint] = []
-    revenue_growth: list[MonthlyDataPoint] = []
+    gmv_growth: list[MonthlyDataPoint] = []
 
     for i in range(5, -1, -1):
         m_start = (month_start - dt.timedelta(days=1)).replace(day=1)
@@ -1828,7 +1770,7 @@ def get_growth_metrics(
             Invoice.paid_at >= m_start,
             Invoice.paid_at < m_end,
         ).scalar() or 0
-        revenue_growth.append(MonthlyDataPoint(month=label, value=float(month_rev)))
+        gmv_growth.append(MonthlyDataPoint(month=label, value=float(month_rev)))
 
     # ── Engagement ──
     invoice_counts_sq = db.query(
@@ -1856,25 +1798,10 @@ def get_growth_metrics(
     ).count()
     email_only_users = total_signups - whatsapp_users
 
-    # ── Subscription Health ──
-    expired = db.query(models.User).filter(
-        models.User.plan == SubscriptionPlan.PRO,
-        models.User.subscription_expires_at.isnot(None),
-        models.User.subscription_expires_at < now,
-    ).count()
-
-    seven_days = now + dt.timedelta(days=7)
-    expiring = db.query(models.User).filter(
-        models.User.plan == SubscriptionPlan.PRO,
-        models.User.subscription_expires_at.isnot(None),
-        models.User.subscription_expires_at >= now,
-        models.User.subscription_expires_at <= seven_days,
-    ).count()
-
     return GrowthMetrics(
-        mrr=mrr,
-        mrr_trend=mrr_trend,
-        arr=arr,
+        commission_month=commission_month,
+        commission_trend=commission_trend,
+        commission_run_rate=commission_run_rate,
         churned_users=churned,
         churn_rate=round(churn_rate, 1),
         activation_funnel=funnel,
@@ -1882,14 +1809,12 @@ def get_growth_metrics(
         avg_days_to_payment=avg_days_to_payment,
         user_growth=user_growth,
         invoice_growth=invoice_growth,
-        revenue_growth=revenue_growth,
+        gmv_growth=gmv_growth,
         avg_invoices_per_user=avg_invoices_per_user,
         power_users=power_users,
         zero_invoice_users=zero_invoice,
         whatsapp_users=whatsapp_users,
         email_only_users=email_only_users,
-        expired_subscriptions=expired,
-        expiring_soon=expiring,
     )
 
 

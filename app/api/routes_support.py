@@ -577,11 +577,13 @@ def get_dashboard_stats(
     users_this_week = db.query(models.User).filter(models.User.created_at >= week_start).count()
     active_users = db.query(models.User).filter(models.User.last_login >= thirty_days_ago).count()
 
-    plan_counts = db.query(
-        models.User.plan,
-        func.count(models.User.id)
-    ).group_by(models.User.plan).all()
-    users_by_plan = {str(plan.value): count for plan, count in plan_counts}
+    # Adoption of the commission-model features (replaces the retired plan tiers).
+    online_payments_enabled = db.query(models.User).filter(
+        models.User.paystack_subaccount_active.is_(True)
+    ).count()
+    storefronts_enabled = db.query(models.User).filter(
+        models.User.storefront_enabled.is_(True)
+    ).count()
 
     # Ticket stats
     total_tickets = db.query(SupportTicket).count()
@@ -607,11 +609,23 @@ def get_dashboard_stats(
         models.Invoice.status == "paid"
     ).count()
 
-    # Revenue stats (from paid invoices this month)
-    monthly_revenue = db.query(func.sum(models.Invoice.amount)).filter(
+    # Revenue stats.
+    # GMV = gross value paid by customers this month (volume flowing through Suoops).
+    monthly_gmv = db.query(func.sum(models.Invoice.amount)).filter(
         models.Invoice.status == "paid",
         models.Invoice.paid_at >= month_start
     ).scalar() or 0
+
+    # Commission = Suoops' actual earnings: the flat 3% (min ₦20, cap ₦2,000) charged
+    # on each revenue invoice created this month. There is no fee ledger, so we
+    # recompute it exactly as the wallet is debited at creation time.
+    from app.utils.feature_gate import platform_fee_kobo
+
+    revenue_amounts = db.query(models.Invoice.amount).filter(
+        models.Invoice.invoice_type == "revenue",
+        models.Invoice.created_at >= month_start,
+    ).all()
+    commission_kobo = sum(platform_fee_kobo(amount) for (amount,) in revenue_amounts)
 
     return AdminDashboardStats(
         users={
@@ -620,7 +634,8 @@ def get_dashboard_stats(
             "registered_today": users_today,
             "registered_this_week": users_this_week,
             "active_last_30_days": active_users,
-            "by_plan": users_by_plan,
+            "online_payments_enabled": online_payments_enabled,
+            "storefronts_enabled": storefronts_enabled,
         },
         tickets=TicketStats(
             total_tickets=total_tickets,
@@ -639,6 +654,7 @@ def get_dashboard_stats(
             "paid": paid_invoices,
         },
         revenue={
-            "this_month": float(monthly_revenue),
+            "this_month": float(commission_kobo) / 100,
+            "gmv_this_month": float(monthly_gmv),
         },
     )
