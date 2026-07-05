@@ -1,9 +1,12 @@
 """Product endpoints."""
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 
+from app.api.rate_limit import limiter
 from app.models import inventory_schemas as schemas
+from app.storage.s3_client import s3_client
+from app.utils.file_validation import get_safe_extension, validate_file_magic_bytes
 
 from .dependencies import InventoryServiceAdminDep, InventoryServiceDep
 from .helpers import product_to_out
@@ -108,6 +111,41 @@ def update_product(
         return product_to_out(product)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/products/{product_id}/image", response_model=schemas.ProductOut)
+@limiter.limit("10/minute")
+async def upload_product_image(
+    request: Request,
+    product_id: int,
+    service: InventoryServiceAdminDep,
+    file: UploadFile = File(...),
+):
+    """Upload a product image (shown on the storefront)."""
+    product = service.get_product(product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image (PNG, JPG or WEBP).")
+    allowed = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    if file.content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported image type. Use PNG, JPG or WEBP.")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image exceeds the 5MB limit.")
+    if not validate_file_magic_bytes(content, file.content_type):
+        raise HTTPException(status_code=400, detail="File content does not match its type.")
+
+    ext = get_safe_extension(file.filename, file.content_type)
+    key = f"products/product_{product_id}.{ext}"
+    image_url = await s3_client.upload_file(content, key, content_type=file.content_type)
+
+    updated = service.update_product(product_id, schemas.ProductUpdate(image_url=image_url))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product_to_out(updated)
 
 
 @router.delete("/products/{product_id}", status_code=204)
