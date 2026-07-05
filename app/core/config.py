@@ -43,12 +43,10 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_APP_SECRET: str | None = None  # Meta app secret for webhook signature verification
     # WhatsApp Message Templates (set via env vars — names must match Meta Business Manager)
     WHATSAPP_TEMPLATE_INVOICE: str | None = None  # Basic invoice notification
-    WHATSAPP_TEMPLATE_INVOICE_PAYMENT: str | None = None  # Invoice with bank details
-    # Short invoice template with a DOCUMENT header (the invoice PDF rides along
-    # with the template, so first-time customers get it without replying). Body
-    # carries no bank number — customers pay via the link. See docs for the
-    # exact template layout to create in Meta Business Manager.
-    WHATSAPP_TEMPLATE_INVOICE_DOC: str | None = None
+    # invoice_with_payment: the main template. Give it a DOCUMENT header (the
+    # invoice PDF rides along, so first-time customers get it without replying)
+    # and a short body with no bank number — customers pay via the link.
+    WHATSAPP_TEMPLATE_INVOICE_PAYMENT: str | None = None
     WHATSAPP_TEMPLATE_PAYMENT_REMINDER: str | None = None  # Overdue reminder
     WHATSAPP_TEMPLATE_RECEIPT: str | None = None  # Payment receipt
     WHATSAPP_TEMPLATE_DAILY_SUMMARY: str | None = None  # Daily business summary

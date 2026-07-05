@@ -518,7 +518,9 @@ def test_notify_customer_template_configured(db_session):
         pending = proc._notify_customer(
             invoice, {"customer_phone": "08012345678"}, user.id,
         )
-    assert pending is True
+    # invoice_with_payment carries the PDF in a document header, so it's
+    # delivered inline — nothing pending a reply.
+    assert pending is False
     assert client.send_template.called
 
 

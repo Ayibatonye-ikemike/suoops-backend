@@ -87,16 +87,16 @@ class WhatsAppChannel:
                 recipient_phone
             )
 
-            # Preferred: short template with a DOCUMENT header — the PDF rides
-            # along with the template so a first-time customer gets it without
-            # replying, and the body carries no bank number.
-            doc_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_DOC", None)
+            # Preferred: the invoice_with_payment template carries the PDF in a
+            # DOCUMENT header — a first-time customer gets it without replying,
+            # and the body carries no bank number (they pay via the link).
+            payment_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
             doc_pdf = pdf_url if (pdf_url or "").startswith("http") else None
-            if doc_template and doc_pdf and self._send_doc_template(
-                client, invoice, recipient_phone, doc_pdf, doc_template
+            if payment_template and doc_pdf and self._send_doc_template(
+                client, invoice, recipient_phone, doc_pdf, payment_template
             ):
                 logger.info(
-                    "[WHATSAPP] Doc template (PDF attached) sent to %s", recipient_phone
+                    "[WHATSAPP] invoice_with_payment (PDF attached) sent to %s", recipient_phone
                 )
                 return True
 
@@ -178,39 +178,20 @@ class WhatsAppChannel:
         invoice: models.Invoice,
         recipient_phone: str,
     ) -> bool:
-        """Send invoice template with full payment details.
-        
-        Uses 'invoice_with_payment' template if configured (includes bank details),
-        falls back to basic 'invoice_notification' template.
+        """Fallback text template used only when the PDF isn't ready to attach.
+
+        Sends the basic invoice template; the PDF is delivered when the customer
+        replies. (The preferred path is the invoice_with_payment doc-header
+        template in ``send_invoice``.)
         """
-        # Try the full invoice template with payment details first
-        template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
-        fallback_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
-        
-        logger.info(
-            "[WHATSAPP] Template config - INVOICE_PAYMENT='%s', INVOICE='%s'",
-            template_name, fallback_template
-        )
-        
-        if template_name:
-            # Use the full template with bank details
-            logger.info("[WHATSAPP] Using invoice_with_payment template: %s", template_name)
-            return await self._send_invoice_with_payment_template(
-                client, invoice, recipient_phone, template_name
-            )
-        
-        logger.info("[WHATSAPP] INVOICE_PAYMENT not set, falling back to basic template")
-        
-        # Fall back to basic invoice template
-        template_name = fallback_template
-        
+        template_name = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
         if not template_name:
-            logger.warning("[WHATSAPP] No invoice template configured, cannot notify customer")
+            logger.warning("[WHATSAPP] No basic invoice template configured, cannot notify customer")
             return False
-        
+
         customer_name = invoice.customer.name if invoice.customer else "valued customer"
         amount_text = f"₦{invoice.amount:,.2f}"
-        
+
         # Build items text
         items_text = self._build_items_text(invoice)
         items_with_cta = f"{items_text}. Reply 'OK' to receive invoice PDF & payment details"
@@ -241,60 +222,6 @@ class WhatsAppChannel:
             logger.info("[WHATSAPP] Template sent to customer %s, invoice marked pending", recipient_phone)
         else:
             logger.warning("[WHATSAPP] Failed to send template to %s", recipient_phone)
-        
-        return template_sent
-
-    async def _send_invoice_with_payment_template(
-        self,
-        client,
-        invoice: models.Invoice,
-        recipient_phone: str,
-        template_name: str,
-    ) -> bool:
-        """Send invoice template with full bank details and payment link."""
-        customer_name = invoice.customer.name if invoice.customer else "valued customer"
-        amount_text = f"₦{invoice.amount:,.2f}"
-        items_text = self._build_items_text(invoice)
-        
-        # Get issuer's bank details (hidden for online-only invoices)
-        issuer = getattr(invoice, "issuer", None)
-        from app.utils.invoice_delivery import template_bank_params
-        bank_name, account_number, account_name = template_bank_params(
-            issuer, online_only=bool(getattr(issuer, "online_payments_active", False))
-        )
-        
-        # Build payment link
-        frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
-        payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
-        
-        # 8 parameters: customer_name, invoice_id, amount, items, bank, account, account_name, payment_link
-        components = [
-            {
-                "type": "body",
-                "parameters": [
-                    {"type": "text", "text": customer_name},
-                    {"type": "text", "text": invoice.invoice_id},
-                    {"type": "text", "text": amount_text},
-                    {"type": "text", "text": items_text},
-                    {"type": "text", "text": bank_name},
-                    {"type": "text", "text": account_number},
-                    {"type": "text", "text": account_name},
-                    {"type": "text", "text": payment_link},
-                ],
-            }
-        ]
-        
-        template_sent = client.send_template(
-            recipient_phone,
-            template_name=template_name,
-            language=getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
-            components=components,
-        )
-        
-        if template_sent:
-            logger.info("[WHATSAPP] Full invoice template sent to %s with payment details", recipient_phone)
-        else:
-            logger.warning("[WHATSAPP] Failed to send full invoice template to %s", recipient_phone)
         
         return template_sent
 
