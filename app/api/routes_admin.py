@@ -1474,6 +1474,7 @@ class PlatformMetrics(BaseModel):
     total_users: int
     online_payments_enabled: int
     storefronts_enabled: int
+    monetized_users: int  # distinct businesses paying Suoops (online payments or top-ups)
     commission_this_month: float  # Suoops earnings (3% fees) this month, in Naira
     total_customers: int
     top_up_buyers: list[TopUpBuyerInfo]
@@ -1565,6 +1566,22 @@ def get_platform_metrics(
             last_purchase_date=last_purchase.isoformat() if last_purchase else None,
         ))
 
+    # Monetized businesses = distinct users who actually pay Suoops: they either
+    # enabled online payments (commission on each order) OR funded their wallet
+    # via a top-up. Distinct so the two groups aren't double-counted.
+    from sqlalchemy import or_
+    monetized_users = db.query(func.count(func.distinct(models.User.id))).filter(
+        or_(
+            models.User.paystack_subaccount_active.is_(True),
+            models.User.id.in_(
+                db.query(PaymentTransaction.user_id).filter(
+                    PaymentTransaction.reference.like("INVPACK-%"),
+                    PaymentTransaction.status == PaymentStatus.SUCCESS,
+                )
+            ),
+        )
+    ).scalar() or 0
+
     return PlatformMetrics(
         total_invoices=total_invoices,
         paid_invoices=paid,
@@ -1578,6 +1595,7 @@ def get_platform_metrics(
         total_users=total_users,
         online_payments_enabled=online_payments_enabled,
         storefronts_enabled=storefronts_enabled,
+        monetized_users=monetized_users,
         commission_this_month=commission_this_month,
         total_customers=total_customers,
         top_up_buyers=top_up_buyers_list,
