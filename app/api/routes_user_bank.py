@@ -30,6 +30,7 @@ def get_bank_details(
         account_number=user.account_number,
         account_name=user.account_name,
         is_configured=is_configured,
+        online_payments_enabled=bool(getattr(user, "paystack_subaccount_active", False)),
     )
 
 
@@ -64,6 +65,7 @@ def update_bank_details(
         account_number=user.account_number,
         account_name=user.account_name,
         is_configured=is_configured,
+        online_payments_enabled=bool(getattr(user, "paystack_subaccount_active", False)),
     )
 
 

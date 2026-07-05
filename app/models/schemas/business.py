@@ -37,6 +37,10 @@ class BankDetailsOut(BaseModel):
     account_number: str | None = None
     account_name: str | None = None
     is_configured: bool = Field(description="Whether bank details are fully configured")
+    online_payments_enabled: bool = Field(
+        default=False,
+        description="Whether the business has an active Paystack subaccount (online payments on)",
+    )
 
 
 # ----------------- OCR -----------------
