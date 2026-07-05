@@ -1476,6 +1476,8 @@ class PlatformMetrics(BaseModel):
     storefronts_enabled: int
     monetized_users: int  # distinct businesses paying Suoops (online payments or top-ups)
     commission_this_month: float  # Suoops earnings (3% fees) this month, in Naira
+    commission_wallet_this_month: float  # from manual invoicing (wallet debits)
+    commission_online_this_month: float  # from online/Paystack payments
     total_customers: int
     top_up_buyers: list[TopUpBuyerInfo]
 
@@ -1525,29 +1527,35 @@ def get_platform_metrics(
         models.User.storefront_enabled.is_(True)
     ).count()
 
-    # Commission earned this month, from BOTH streams:
-    #  - Manual (wallet): non-storefront revenue invoices are charged the flat 3%
+    # Commission earned this month, split by stream so both are auditable:
+    #  - Wallet (manual): non-storefront revenue invoices are charged the flat 3%
     #    from the wallet at CREATION, so count them by created_at.
-    #  - Online (storefront): the 3% is taken by Paystack when the customer PAYS,
-    #    so count storefront orders by paid_at (paid only).
+    #  - Online: the 3% is taken by Paystack when the customer pays. That charge is
+    #    recorded as an INVPAY- PaymentTransaction, so read it straight from the
+    #    ledger (this captures every online payment, storefront or invoice).
     from sqlalchemy import or_
 
     from app.utils.feature_gate import platform_fee_kobo
-    manual_amounts = db.query(Invoice.amount).filter(
+    wallet_amounts = db.query(Invoice.amount).filter(
         Invoice.invoice_type == "revenue",
         Invoice.created_at >= month_start,
         or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
     ).all()
-    online_amounts = db.query(Invoice.amount).filter(
-        Invoice.invoice_type == "revenue",
-        Invoice.channel == "storefront",
-        Invoice.status == "paid",
-        Invoice.paid_at >= month_start,
+    commission_wallet_kobo = sum(platform_fee_kobo(a) for (a,) in wallet_amounts)
+
+    online_txn_amounts = db.query(PaymentTransaction.amount).filter(
+        PaymentTransaction.reference.like("INVPAY-%"),
+        PaymentTransaction.status == PaymentStatus.SUCCESS,
+        PaymentTransaction.created_at >= month_start,
     ).all()
-    commission_this_month = (
-        sum(platform_fee_kobo(a) for (a,) in manual_amounts)
-        + sum(platform_fee_kobo(a) for (a,) in online_amounts)
-    ) / 100
+    # transaction_charge = min(3% of amount, amount); amount is stored in kobo.
+    commission_online_kobo = sum(
+        min(platform_fee_kobo(amt / 100), amt) for (amt,) in online_txn_amounts
+    )
+
+    commission_wallet_this_month = commission_wallet_kobo / 100
+    commission_online_this_month = commission_online_kobo / 100
+    commission_this_month = commission_wallet_this_month + commission_online_this_month
 
     # Customers
     total_customers = db.query(Customer).count()
@@ -1609,6 +1617,8 @@ def get_platform_metrics(
         storefronts_enabled=storefronts_enabled,
         monetized_users=monetized_users,
         commission_this_month=commission_this_month,
+        commission_wallet_this_month=commission_wallet_this_month,
+        commission_online_this_month=commission_online_this_month,
         total_customers=total_customers,
         top_up_buyers=top_up_buyers_list,
     )
