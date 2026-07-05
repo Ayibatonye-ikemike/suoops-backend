@@ -1528,11 +1528,11 @@ def get_platform_metrics(
     ).count()
 
     # Commission earned this month, split by stream so both are auditable:
-    #  - Wallet (manual): non-storefront revenue invoices are charged the flat 3%
-    #    from the wallet at CREATION, so count them by created_at.
-    #  - Online: the 3% is taken by Paystack when the customer pays. That charge is
-    #    recorded as an INVPAY- PaymentTransaction, so read it straight from the
-    #    ledger (this captures every online payment, storefront or invoice).
+    #  - Wallet: the flat 3% is debited from the prepaid wallet at CREATION for
+    #    every non-storefront revenue invoice (manual invoices AND online-enabled
+    #    businesses' invoices — both charge the wallet). Count by created_at.
+    #  - Online: storefront orders never touch the wallet; Paystack collects the
+    #    3% when the customer PAYS. Count storefront orders by paid_at (paid only).
     from sqlalchemy import or_
 
     from app.utils.feature_gate import platform_fee_kobo
@@ -1543,15 +1543,13 @@ def get_platform_metrics(
     ).all()
     commission_wallet_kobo = sum(platform_fee_kobo(a) for (a,) in wallet_amounts)
 
-    online_txn_amounts = db.query(PaymentTransaction.amount).filter(
-        PaymentTransaction.reference.like("INVPAY-%"),
-        PaymentTransaction.status == PaymentStatus.SUCCESS,
-        PaymentTransaction.created_at >= month_start,
+    online_amounts = db.query(Invoice.amount).filter(
+        Invoice.invoice_type == "revenue",
+        Invoice.channel == "storefront",
+        Invoice.status == "paid",
+        Invoice.paid_at >= month_start,
     ).all()
-    # transaction_charge = min(3% of amount, amount); amount is stored in kobo.
-    commission_online_kobo = sum(
-        min(platform_fee_kobo(amt / 100), amt) for (amt,) in online_txn_amounts
-    )
+    commission_online_kobo = sum(platform_fee_kobo(a) for (a,) in online_amounts)
 
     commission_wallet_this_month = commission_wallet_kobo / 100
     commission_online_this_month = commission_online_kobo / 100

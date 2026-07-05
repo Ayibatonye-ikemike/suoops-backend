@@ -19,13 +19,17 @@ def is_online_only(issuer, *, has_contact: bool, channel: str | None = None) -> 
     """
     True when an invoice must be paid online (bank account hidden from customer).
 
-    Only storefront/online orders (customer-initiated) are online-only: the
-    customer pays as part of ordering, so the platform commission cannot be
-    bypassed. Invoices a business creates for a customer are always offline
-    (manual bank transfer, pack-funded) — that path has no online option, so
-    there is nothing to circumvent.
+    Two cases:
+    - Storefront orders (channel == "storefront"): the customer pays as part of
+      ordering, so commission flows through Paystack.
+    - Any invoice from a business that has enabled online payments: their bank is
+      hidden and the customer pays via the Paystack link. The 3% commission is
+      still charged from the business's prepaid wallet at creation, so Paystack
+      takes no cut and the full amount settles to the business.
     """
-    return channel == "storefront"
+    if channel == "storefront":
+        return True
+    return bool(getattr(issuer, "online_payments_active", False))
 
 
 def template_bank_params(issuer, *, online_only: bool) -> tuple[str, str, str]:

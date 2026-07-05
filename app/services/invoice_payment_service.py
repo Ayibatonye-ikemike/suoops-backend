@@ -55,12 +55,16 @@ async def start_invoice_payment(db: Session, invoice, issuer) -> dict:
     if not settings.PAYSTACK_SECRET:
         raise PaymentInitError("Online payments are not configured", 503)
 
-    # Platform commission: 3% clamped to [₦20, ₦2,000]. Sent to Paystack as a
-    # flat transaction_charge so it overrides the subaccount's percentage split
-    # and stays capped; never exceed the transaction amount.
+    # Platform commission via Paystack's flat transaction_charge (capped ₦20–₦2,000):
+    #  - Storefront orders never touch the wallet, so Paystack collects the 3%.
+    #  - Business invoices already had the 3% debited from the wallet at creation,
+    #    so Paystack takes nothing and the full amount settles to the business.
     from app.utils.feature_gate import platform_fee_kobo
 
-    commission_kobo = min(platform_fee_kobo(amount), int(amount * 100))
+    is_storefront = getattr(invoice, "channel", None) == "storefront"
+    commission_kobo = (
+        min(platform_fee_kobo(amount), int(amount * 100)) if is_storefront else 0
+    )
 
     customer = getattr(invoice, "customer", None)
     customer_email = (

@@ -616,16 +616,27 @@ def get_dashboard_stats(
         models.Invoice.paid_at >= month_start
     ).scalar() or 0
 
-    # Commission = Suoops' actual earnings: the flat 3% (min ₦20, cap ₦2,000) charged
-    # on each revenue invoice created this month. There is no fee ledger, so we
-    # recompute it exactly as the wallet is debited at creation time.
+    # Commission = Suoops' actual earnings (flat 3%, min ₦20, cap ₦2,000):
+    #  - Wallet: charged at CREATION on every non-storefront revenue invoice.
+    #  - Online: storefront orders charged by Paystack when PAID (count by paid_at).
+    from sqlalchemy import or_
+
     from app.utils.feature_gate import platform_fee_kobo
 
-    revenue_amounts = db.query(models.Invoice.amount).filter(
+    wallet_amounts = db.query(models.Invoice.amount).filter(
         models.Invoice.invoice_type == "revenue",
         models.Invoice.created_at >= month_start,
+        or_(models.Invoice.channel != "storefront", models.Invoice.channel.is_(None)),
     ).all()
-    commission_kobo = sum(platform_fee_kobo(amount) for (amount,) in revenue_amounts)
+    online_amounts = db.query(models.Invoice.amount).filter(
+        models.Invoice.invoice_type == "revenue",
+        models.Invoice.channel == "storefront",
+        models.Invoice.status == "paid",
+        models.Invoice.paid_at >= month_start,
+    ).all()
+    commission_kobo = sum(
+        platform_fee_kobo(a) for (a,) in (*wallet_amounts, *online_amounts)
+    )
 
     return AdminDashboardStats(
         users={

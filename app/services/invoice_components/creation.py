@@ -156,12 +156,10 @@ class InvoiceCreationMixin:
         total_amount = sum(float(line.unit_price) * line.quantity for line in invoice.lines)
         metrics.record_invoice_amount(total_amount)
 
-        online_only = is_online_only(
-            user, has_contact=invoice_has_contact(invoice), channel=invoice.channel
-        )
-        if invoice_type == "revenue" and online_only:
-            # No free invoice PDF for online-only invoices — the deliverable
-            # (receipt) is produced on payment (online) or when a pack is used.
+        if invoice_type == "revenue" and invoice.channel == "storefront":
+            # Storefront orders have no pre-payment PDF — the deliverable (receipt)
+            # is produced on payment. Business invoices (even online-only) keep a
+            # PDF; it just hides the bank and shows the pay link instead.
             invoice.pdf_url = None
         elif async_pdf:
             self._queue_pdf_generation(invoice, invoice_type, user)

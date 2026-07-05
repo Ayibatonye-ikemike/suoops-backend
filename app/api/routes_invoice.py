@@ -61,10 +61,12 @@ async def create_invoice(
             detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
         )
 
-    # Business-created invoices are always offline: the business shares their
-    # bank account and confirms payment manually, funded by a pack. Online
-    # (commission) payments happen only through the storefront, where the
-    # customer pays as part of ordering — so there is nothing to bypass here.
+    # The flat 3% commission is charged from the wallet at creation for every
+    # business-created invoice (check_invoice_limit enforces the balance). If the
+    # business has online payments enabled, the customer pays via the Paystack
+    # link instead of bank transfer — but the commission was already taken from
+    # the wallet here, so Paystack collects nothing extra (see
+    # invoice_payment_service.start_invoice_payment).
     check_invoice_limit(db, data_owner_id)
 
     svc = get_invoice_service_for_user(data_owner_id, db)
