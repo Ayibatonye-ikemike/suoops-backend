@@ -3,6 +3,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import AdminUserDep
@@ -13,6 +14,49 @@ from app.models import models, schemas
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
+
+
+class ResolveAccountIn(BaseModel):
+    bank_name: str
+    account_number: str
+
+
+class ResolveAccountOut(BaseModel):
+    account_name: str
+
+
+@router.post("/me/resolve-bank-account", response_model=ResolveAccountOut)
+@limiter.limit("20/minute")
+async def resolve_bank_account(
+    request: Request,
+    data: ResolveAccountIn,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Resolve a bank account holder's name via Paystack for the settings form.
+
+    Lets the frontend auto-fill and verify the account name as the user types,
+    so the saved name always matches the bank exactly.
+    """
+    from app.services.paystack_subaccount_service import (
+        PaystackSubaccountService,
+        SubaccountError,
+    )
+
+    account_number = (data.account_number or "").strip()
+    if len(account_number) != 10 or not account_number.isdigit():
+        raise HTTPException(status_code=400, detail="Enter a valid 10-digit account number.")
+    if not (data.bank_name or "").strip():
+        raise HTTPException(status_code=400, detail="Select a bank first.")
+
+    try:
+        svc = PaystackSubaccountService(db)
+        bank_code = await svc.resolve_bank_code(data.bank_name)
+        name = await svc.resolve_account(account_number, bank_code)
+    except SubaccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ResolveAccountOut(account_name=name)
 
 
 @router.get("/me/bank-details", response_model=schemas.BankDetailsOut)
