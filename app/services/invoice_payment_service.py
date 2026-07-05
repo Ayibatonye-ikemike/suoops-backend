@@ -71,11 +71,18 @@ async def start_invoice_payment(db: Session, invoice, issuer) -> dict:
 
     reference = f"INVPAY-{invoice.invoice_id}-{uuid.uuid4().hex[:8].upper()}"
 
+    # plan_before/plan_after are legacy NOT NULL columns from the old
+    # subscription model. An invoice payment isn't a plan change, so record the
+    # issuer's current plan for both.
+    issuer_plan = getattr(getattr(issuer, "plan", None), "value", None) or "free"
+
     transaction = PaymentTransaction(
         user_id=issuer.id,
         reference=reference,
         amount=int(amount * 100),  # kobo
         currency=getattr(invoice, "currency", "NGN") or "NGN",
+        plan_before=issuer_plan,
+        plan_after=issuer_plan,
         provider=PaymentProvider.PAYSTACK,
         status=PaymentStatus.PENDING,
         customer_email=customer_email,
