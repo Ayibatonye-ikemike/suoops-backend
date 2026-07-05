@@ -753,6 +753,25 @@ def calculate_professionalism_score(db: Session, user_id: int) -> dict:
             "customers can order and pay online."
         )
 
+    # 7. Online payments enabled (customers can pay by card/transfer instantly)
+    checks["has_online_payments"] = bool(
+        getattr(user, "paystack_subaccount_active", False)
+        and getattr(user, "paystack_subaccount_code", None)
+    )
+    if not checks["has_online_payments"]:
+        tips.append(
+            "Turn on online payments so customers can pay you instantly by card "
+            "or transfer — you're paid directly, minus a flat 3%."
+        )
+
+    # 8. Public storefront live (shareable catalog customers order from)
+    checks["has_storefront"] = bool(getattr(user, "storefront_enabled", False))
+    if not checks["has_storefront"]:
+        tips.append(
+            "Turn on your storefront and share the link on WhatsApp, Instagram "
+            "or your bio so customers can order and pay online."
+        )
+
     total_checks = len(checks) or 1
     passed = sum(1 for v in checks.values() if v)
     score = round(passed / total_checks * 100)
