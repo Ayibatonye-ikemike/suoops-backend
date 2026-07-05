@@ -235,8 +235,9 @@ class WhatsAppChannel:
     ) -> bool:
         """Send the short invoice template with the PDF as a document header.
 
-        Body params (6): customer_name, business_name, invoice_id, amount, items,
-        payment_link. No bank number — the customer pays via the link.
+        Body params (5): customer_name, business_name, invoice_id, amount, items.
+        The pay link is a dynamic URL button (suffix = invoice_id) — no bank
+        number in the message.
         """
         customer_name = invoice.customer.name if invoice.customer else "valued customer"
         amount_text = f"₦{invoice.amount:,.2f}"
@@ -247,8 +248,6 @@ class WhatsAppChannel:
             or getattr(issuer, "name", None)
             or "your business"
         )
-        frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
-        payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
 
         components = [
             {
@@ -271,7 +270,14 @@ class WhatsAppChannel:
                     {"type": "text", "text": invoice.invoice_id},
                     {"type": "text", "text": amount_text},
                     {"type": "text", "text": items_text},
-                    {"type": "text", "text": payment_link},
+                ],
+            },
+            {
+                "type": "button",
+                "sub_type": "url",
+                "index": "0",
+                "parameters": [
+                    {"type": "text", "text": invoice.invoice_id},
                 ],
             },
         ]
