@@ -209,7 +209,11 @@ class InvoiceStatusMixin:
                     invoice=invoice,
                     customer_email=customer_email,
                     customer_phone=customer_phone,
-                    pdf_url=invoice.pdf_url,
+                    # Prefer the receipt PDF just generated above. The invoice
+                    # PDF may still be None here (storefront orders generate it
+                    # asynchronously), which would leave the receipt with no
+                    # attachment.
+                    pdf_url=invoice.receipt_pdf_url or invoice.pdf_url,
                 )
 
             results = run_async(_run())
