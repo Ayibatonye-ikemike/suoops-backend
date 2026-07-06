@@ -115,7 +115,7 @@ class InvoiceStatusMixin:
                     .filter(models.Invoice.invoice_id == invoice_id)
                     .one()
                 )
-            self._handle_manual_payment(invoice)
+            self._handle_manual_payment(invoice, via_online=via_online)
 
             # ── First-paid referral nudge: when this paid invoice is the
             #    user's first, queue a one-tap WhatsApp referral card. The
@@ -182,7 +182,7 @@ class InvoiceStatusMixin:
             raise ValueError("Invoice issuer not found")
         return invoice, issuer
 
-    def _handle_manual_payment(self, invoice: models.Invoice) -> None:
+    def _handle_manual_payment(self, invoice: models.Invoice, via_online: bool = False) -> None:
         metrics.invoice_paid()
         
         # Capture invoice_id early to avoid DB access issues after potential errors
@@ -236,9 +236,11 @@ class InvoiceStatusMixin:
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to send receipt notifications for %s: %s", invoice_id, exc)
 
-        # Storefront orders: alert the business of the new paid order so they can
-        # fulfil it (the customer already received the receipt above).
-        if getattr(invoice, "channel", None) == "storefront":
+        # Tell the business their money landed. Fire for any online (Paystack)
+        # payment — storefront orders and business invoices paid via the link —
+        # since the owner didn't mark it themselves. Manual "mark as paid" (the
+        # owner's own action) doesn't need a notification.
+        if via_online or getattr(invoice, "channel", None) == "storefront":
             self._notify_business_of_order(invoice)
 
         # Check for low stock and send alerts (non-critical, done after receipt is sent)
@@ -267,16 +269,28 @@ class InvoiceStatusMixin:
         ) or "• (see dashboard)"
         bank_name = getattr(user, "bank_name", None)
         settle_to = f"your {bank_name} account" if bank_name else "your bank account"
+        is_storefront = getattr(invoice, "channel", None) == "storefront"
+        if is_storefront:
+            header = "🛒 New paid order — payment confirmed ✅"
+            footer = (
+                "📦 No action needed on payment — just prepare and deliver the order.\n"
+                f"🔗 Order details:\n{order_link}"
+            )
+        else:
+            header = "💰 Payment received — invoice paid ✅"
+            footer = (
+                "📦 No action needed — your customer already has the receipt.\n"
+                f"🔗 Invoice details:\n{order_link}"
+            )
         message = (
-            f"🛒 New paid order — payment confirmed ✅\n\n"
+            f"{header}\n\n"
             f"👤 {customer_name}"
             + (f" ({customer_phone})" if customer_phone else "")
             + f"\n💵 ₦{invoice.amount:,.2f} — paid online\n"
             f"💰 Your money (less the 3% fee) settles to {settle_to} by the next "
             "business day — Paystack pays you directly.\n\n"
             f"{items}\n\n"
-            f"📦 No action needed on payment — just prepare and deliver the order.\n"
-            f"🔗 Order details:\n{order_link}"
+            f"{footer}"
         )
 
         try:
