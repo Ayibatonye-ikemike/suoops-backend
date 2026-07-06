@@ -686,9 +686,12 @@ class InvoiceIntentProcessor:
         amount_text = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
         items_text = self._build_items_text(invoice)
 
+        frontend_url = getattr(settings, "FRONTEND_URL", "https://suoops.com")
+        payment_link = f"{frontend_url.rstrip('/')}/pay/{invoice.invoice_id}"
+
         # Preferred: the invoice_with_payment template, which carries the PDF in a
         # DOCUMENT header (delivered even to first-time customers) and a short body
-        # with no bank number — the customer pays via the "Pay now" URL button.
+        # with no bank number — the customer pays via the link.
         payment_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PAYMENT", None)
         pdf_url = invoice.pdf_url if (invoice.pdf_url or "").startswith("http") else None
         if payment_template and pdf_url:
@@ -705,6 +708,7 @@ class InvoiceIntentProcessor:
                 invoice.invoice_id,
                 amount_text,
                 items_text,
+                payment_link,
                 pdf_url,
                 payment_template,
             ):
@@ -769,14 +773,14 @@ class InvoiceIntentProcessor:
         invoice_id: str,
         amount_text: str,
         items_text: str,
+        payment_link: str,
         pdf_url: str,
         template_name: str,
     ) -> bool:
         """Send the short invoice template with the PDF as a document header.
 
-        Body params (5): customer_name, business_name, invoice_id, amount, items.
-        The pay link is a dynamic URL button (suffix = invoice_id) — no bank
-        number in the message.
+        Body params (6): customer_name, business_name, invoice_id, amount, items,
+        payment_link. No bank number — the customer pays via the link.
         """
         components = [
             {
@@ -799,14 +803,7 @@ class InvoiceIntentProcessor:
                     {"type": "text", "text": invoice_id},
                     {"type": "text", "text": amount_text},
                     {"type": "text", "text": items_text},
-                ],
-            },
-            {
-                "type": "button",
-                "sub_type": "url",
-                "index": "0",
-                "parameters": [
-                    {"type": "text", "text": invoice_id},
+                    {"type": "text", "text": payment_link},
                 ],
             },
         ]
