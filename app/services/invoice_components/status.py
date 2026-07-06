@@ -243,6 +243,25 @@ class InvoiceStatusMixin:
         if via_online or getattr(invoice, "channel", None) == "storefront":
             self._notify_business_of_order(invoice)
 
+        # Referral settlement for online/storefront sales: SuoOps collects the
+        # flat 3% via Paystack on a storefront order (the wallet is untouched),
+        # so pay the referrer their share of THAT 3% fee — never the gross sale.
+        if getattr(invoice, "channel", None) == "storefront":
+            try:
+                from app.services.referral_service import ReferralService
+                from app.utils.feature_gate import platform_fee_kobo
+
+                fee_naira = platform_fee_kobo(invoice.amount) // 100
+                if fee_naira > 0:
+                    ReferralService(self.db).process_storefront_commission(
+                        invoice.issuer_id, suoops_fee_naira=fee_naira
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to process storefront referral commission for %s: %s",
+                    invoice_id, exc,
+                )
+
         # Check for low stock and send alerts (non-critical, done after receipt is sent)
         self._check_and_send_low_stock_alerts(invoice)
 

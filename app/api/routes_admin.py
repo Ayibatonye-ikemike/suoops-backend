@@ -646,6 +646,7 @@ def get_referral_payouts(
             "commission",  # legacy first-purchase type
             "commission_recurring",
             "commission_perpetual",
+            "commission_online",  # storefront/online 3%-based commission
         ]),
         ReferralReward.created_at >= start_date,
         ReferralReward.created_at < end_date,
@@ -723,7 +724,7 @@ class InfluencerCreate(BaseModel):
     commission_first: int = 500  # ₦ on first Pro purchase
     commission_recurring: int = 200  # ₦ on purchases 2–3
     commission_months: int = 2  # how many recurring purchases
-    commission_perpetual_pct: int = 5  # % on every purchase after recurring window
+    commission_perpetual_pct: int = 20  # % of SuoOps' 3% commission, on every referred sale
     bonus_invoices: int = 3  # extra free invoices for signups
     notes: str | None = None
 

@@ -371,6 +371,71 @@ class ReferralService:
         )
         return True
 
+    def process_storefront_commission(self, referred_user_id: int, suoops_fee_naira: int) -> bool:
+        """Pay the referrer a share of SuoOps' commission on a referred business's
+        storefront / online sale.
+
+        Unlike wallet top-ups (where the entire top-up is prepaid commission), a
+        storefront order settles the flat 3% to SuoOps via Paystack at the moment
+        of payment and never touches the wallet. The referrer therefore earns
+        ``commission_perpetual_pct``%% of THAT 3% fee — i.e. a slice of what SuoOps
+        actually earns, never the gross sale value or the customer's payment.
+
+        The first commissionable sale also converts the referral to PAID_SIGNUP.
+        Returns True if a commission reward was created.
+        """
+        if suoops_fee_naira <= 0:
+            return False
+
+        referral = self.db.execute(
+            select(Referral)
+            .where(Referral.referred_id == referred_user_id)
+            .where(Referral.status == ReferralStatus.COMPLETED)
+        ).scalar_one_or_none()
+        if not referral:
+            return False
+
+        code_obj = self.db.execute(
+            select(ReferralCode).where(ReferralCode.id == referral.referral_code_id)
+        ).scalar_one_or_none()
+        if not code_obj or not code_obj.is_active:
+            return False
+
+        # First commissionable sale converts the referral to "paid".
+        if referral.referral_type != ReferralType.PAID_SIGNUP:
+            referral.referral_type = ReferralType.PAID_SIGNUP
+
+        pct = max(0, int(code_obj.commission_perpetual_pct or 0))
+        commission_amount = suoops_fee_naira * pct // 100
+        if commission_amount <= 0:
+            self.db.commit()  # persist the conversion even if pct is 0
+            return False
+
+        referred_user = self.db.execute(
+            select(User).where(User.id == referred_user_id)
+        ).scalar_one_or_none()
+        referred_name = referred_user.name if referred_user else "a user"
+
+        reward = ReferralReward(
+            user_id=referral.referrer_id,
+            reward_type="commission_online",
+            reward_description=(
+                f"₦{commission_amount} commission ({pct}% of SuoOps' ₦{suoops_fee_naira:,} "
+                f"3% fee on {referred_name}'s online sale, user #{referred_user_id})"
+            ),
+            free_referrals_count=0,
+            paid_referrals_count=0,
+            status=RewardStatus.PENDING,
+            expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=90),
+        )
+        self.db.add(reward)
+        self.db.commit()
+        logger.info(
+            "Referral online commission ₦%s (%s%% of ₦%s fee) for referrer %s from user %s",
+            commission_amount, pct, suoops_fee_naira, referral.referrer_id, referred_user_id,
+        )
+        return True
+
     # ==================== REWARD MANAGEMENT ====================
 
     def _create_commission_reward(self, referrer_id: int, referred_user_id: int) -> ReferralReward | None:
