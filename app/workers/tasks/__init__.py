@@ -16,6 +16,9 @@ from __future__ import annotations
 from .engagement_tasks import (
     send_engagement_emails,
 )
+from .announcement_tasks import (
+    send_feature_announcement,
+)
 from .morning_insights_tasks import (
     send_morning_insights,
 )
@@ -83,6 +86,8 @@ __all__ = [
     "send_expense_reminders",
     # Engagement tasks
     "send_engagement_emails",
+    # One-time announcements
+    "send_feature_announcement",
     # Morning insights
     "send_morning_insights",
     # Customer engagement

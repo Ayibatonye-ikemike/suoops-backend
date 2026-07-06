@@ -63,6 +63,7 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_TEMPLATE_TAX_REPORT_READY: str | None = None  # Monthly tax report ready
     WHATSAPP_TEMPLATE_MORNING_TIP: str | None = None  # Daily morning business insight
     WHATSAPP_TEMPLATE_DORMANT_CUSTOMER: str | None = None  # Dormant customer "we miss you"
+    WHATSAPP_TEMPLATE_FEATURE_ANNOUNCEMENT: str | None = None  # One-time storefront/online-payments launch
     WHATSAPP_TEMPLATE_REFERRAL_ASK: str | None = None  # Post-payment referral ask
     WHATSAPP_TEMPLATE_FEEDBACK: str | None = None  # Feedback/testimonial request
     WHATSAPP_TEMPLATE_UNPAID_ALERT: str | None = None  # Aggregate unpaid notification

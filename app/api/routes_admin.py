@@ -3311,6 +3311,7 @@ ALLOWED_TASKS = {
     "activation_nudges": "maintenance.nudge_zero_invoice_users",
     "reconcile_brevo": "maintenance.reconcile_brevo_contacts",
     "reconcile_brevo_dry": "maintenance.reconcile_brevo_contacts",
+    "feature_announcement": "announcement.send_feature_announcement",
 }
 
 
