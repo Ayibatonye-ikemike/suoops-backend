@@ -2,8 +2,9 @@
 One-time feature announcement broadcast.
 
 Announces the storefront + online-payments launch (flat 3%, no plans) to
-existing users via email (always) and WhatsApp (best-effort — only if a
-template is configured and within the daily budget).
+existing users via email (always) and WhatsApp. The WhatsApp side reuses the
+already-approved morning-tip template (``WHATSAPP_TEMPLATE_MORNING_TIP`` —
+params: name, headline, body), so no brand-new Meta template is needed.
 
 Idempotent per user via ``UserEmailLog``, so it can be run repeatedly
 (e.g. across several days to respect the WhatsApp budget) without
@@ -48,6 +49,16 @@ _HEADLINE = "Two big new ways to get paid 🎉"
 _CTA_URL = "https://suoops.com/dashboard/settings#online-payments"
 _CTA_LABEL = "Turn it on →"
 
+# WhatsApp copy (reuses the morning-tip template: {{1}} name, {{2}} headline,
+# {{3}} body). Keep the body a single line — Meta rejects params with newlines.
+_WA_HEADLINE = "🎉 New: get paid online + your storefront"
+_WA_BODY = (
+    "Customers can now pay you by card or transfer — it auto-confirms and settles "
+    "to your bank the next business day (flat 3%, no monthly fee). You also get a "
+    "shareable storefront link for all your products. Turn it on in Settings → Business: "
+    "suoops.com/dashboard/settings"
+)
+
 
 def _plain_text(name: str) -> str:
     return (
@@ -87,11 +98,17 @@ def _announce_to_user(db, user, stats: dict[str, int]) -> None:
         else:
             stats["failed"] += 1
 
-    # WhatsApp is best-effort: only if a template is configured (and in budget).
-    wa_template = getattr(settings, "WHATSAPP_TEMPLATE_FEATURE_ANNOUNCEMENT", None)
+    # WhatsApp: reuse the already-approved morning-tip template (name, headline,
+    # body) so no new Meta template is needed. Best-effort + budget-aware.
+    wa_template = getattr(settings, "WHATSAPP_TEMPLATE_MORNING_TIP", None)
     if user.phone and wa_template:
         if _send_wa_template(
-            user.phone, wa_template, [name], ANNOUNCE_WA_TYPE, db, user.id,
+            user.phone,
+            wa_template,
+            [name, _WA_HEADLINE, _WA_BODY],
+            ANNOUNCE_WA_TYPE,
+            db,
+            user.id,
         ):
             stats["whatsapp_sent"] += 1
 
