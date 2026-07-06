@@ -723,11 +723,19 @@ class InvoiceIntentProcessor:
         # the customer replies.
         fallback_template = getattr(settings, "WHATSAPP_TEMPLATE_INVOICE", None)
         if not fallback_template:
-            logger.warning(
-                "[TEMPLATE] No usable template for invoice %s (need PDF + "
-                "WHATSAPP_TEMPLATE_INVOICE_PAYMENT, or WHATSAPP_TEMPLATE_INVOICE).",
+            # No basic template configured: best-effort deliver the details + PDF
+            # directly so the customer isn't left with nothing (this reaches
+            # opted-in / in-window customers; first-timers get it when they reply).
+            logger.info(
+                "[TEMPLATE] No basic template; sending full invoice + PDF directly to %s "
+                "for invoice %s",
+                customer_phone,
                 invoice.invoice_id,
             )
+            try:
+                self._send_full_invoice(invoice, customer_phone, issuer_id)
+            except Exception as exc:  # pragma: no cover - best effort
+                logger.error("[TEMPLATE] Direct full-invoice send failed: %s", exc)
             return False
 
         items_with_cta = f"{items_text}. Reply 'Hi' to get payment details"
