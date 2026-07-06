@@ -97,6 +97,8 @@ def get_profile(
         subscription_expires_at=user.subscription_expires_at,
         subscription_started_at=user.usage_reset_at,  # When current billing cycle started
         is_influencer=_check_is_influencer(db, user.id),
+        online_payments_enabled=bool(getattr(user, "paystack_subaccount_active", False)),
+        storefront_enabled=bool(getattr(user, "storefront_enabled", False)),
     )
 
 

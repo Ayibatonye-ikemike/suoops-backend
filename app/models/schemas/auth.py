@@ -68,6 +68,8 @@ class UserOut(BaseModel):
     subscription_expires_at: dt.datetime | None = None
     subscription_started_at: dt.datetime | None = None
     is_influencer: bool = False
+    online_payments_enabled: bool = False
+    storefront_enabled: bool = False
 
 
 class TokenOut(BaseModel):
