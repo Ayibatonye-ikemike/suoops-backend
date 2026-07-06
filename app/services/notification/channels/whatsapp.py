@@ -344,9 +344,11 @@ class WhatsAppChannel:
         pdf_url: str | None,
     ) -> bool:
         """Send payment receipt to customer via WhatsApp.
-        
-        Uses template message for reliability (works outside 24-hour window),
-        then sends PDF document if available.
+
+        Preferred: the payment_receipt template with the receipt PDF in a
+        DOCUMENT header, so the receipt (and its PDF) is delivered even outside
+        the 24-hour window. Falls back to a text message + document if the
+        template send fails (e.g. before the header version is approved).
         """
         try:
             if not self._service.whatsapp_key or not self._service.whatsapp_phone_number_id:
@@ -361,25 +363,39 @@ class WhatsAppChannel:
             
             # Try to use receipt template first (works outside 24-hour window)
             template_name = getattr(settings, "WHATSAPP_TEMPLATE_RECEIPT", None)
-            
+            has_pdf = bool(pdf_url and pdf_url.startswith("http"))
+
             if template_name:
                 # Use payment_receipt template
                 customer_name = invoice.customer.name if invoice.customer else "valued customer"
                 amount_text = f"₦{invoice.amount:,.2f}"
                 date_text = dt.datetime.now().strftime("%b %d, %Y")
-                
-                components = [
-                    {
-                        "type": "body",
+
+                components: list[dict] = []
+                # DOCUMENT header carries the receipt PDF (delivered outside 24h).
+                if has_pdf:
+                    components.append({
+                        "type": "header",
                         "parameters": [
-                            {"type": "text", "text": customer_name},
-                            {"type": "text", "text": invoice.invoice_id},
-                            {"type": "text", "text": amount_text},
-                            {"type": "text", "text": date_text},
+                            {
+                                "type": "document",
+                                "document": {
+                                    "link": pdf_url,
+                                    "filename": f"Receipt_{invoice.invoice_id}.pdf",
+                                },
+                            }
                         ],
-                    }
-                ]
-                
+                    })
+                components.append({
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": customer_name},
+                        {"type": "text", "text": invoice.invoice_id},
+                        {"type": "text", "text": amount_text},
+                        {"type": "text", "text": date_text},
+                    ],
+                })
+
                 template_sent = client.send_template(
                     recipient_phone,
                     template_name=template_name,
@@ -389,8 +405,9 @@ class WhatsAppChannel:
                 
                 if template_sent:
                     logger.info("[WHATSAPP] Receipt template sent to %s", recipient_phone)
-                    # Now send PDF document (should work since template opened conversation)
-                    if pdf_url and pdf_url.startswith("http"):
+                    # If the template didn't carry the PDF in a header (no pdf at
+                    # send time), try a best-effort document (works inside 24h).
+                    if not has_pdf and pdf_url and pdf_url.startswith("http"):
                         client.send_document(
                             recipient_phone,
                             pdf_url,
