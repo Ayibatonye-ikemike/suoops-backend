@@ -164,10 +164,14 @@ class InvoiceStatusMixin:
         return invoice
 
     def get_public_invoice(self, invoice_id: str) -> tuple[models.Invoice, models.User]:
+        # Invoice IDs are stored uppercase (generate_id ends with .upper()), but a
+        # pay link can arrive lower/mixed case (e.g. WhatsApp URL buttons may
+        # lowercase the suffix), so normalise before the exact-match lookup.
+        normalized_id = (invoice_id or "").strip().upper()
         invoice = (
             self.db.query(models.Invoice)
             .options(selectinload(models.Invoice.customer), selectinload(models.Invoice.lines))
-            .filter(models.Invoice.invoice_id == invoice_id)
+            .filter(models.Invoice.invoice_id == normalized_id)
             .one_or_none()
         )
         if not invoice:
