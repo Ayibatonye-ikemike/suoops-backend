@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -145,3 +146,73 @@ async def initialize_invoice_payment(
         return await start_invoice_payment(db, invoice, issuer)
     except PaymentInitError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@router.post("/{invoice_id}/verify")
+@limiter.limit("15/minute")
+async def verify_invoice_payment(
+    request: Request,
+    invoice_id: str,
+    reference: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Public: verify a Paystack payment on return from checkout and confirm the
+    invoice — a pull-based fallback so a delayed/missed webhook doesn't leave the
+    customer stuck on "pending". Only marks paid when Paystack itself reports
+    success for a reference that belongs to this invoice.
+    """
+    import logging
+
+    from app.core.config import settings
+    from app.models.payment_models import PaymentStatus, PaymentTransaction
+
+    logger = logging.getLogger(__name__)
+
+    svc = build_invoice_service(db)
+    try:
+        invoice, issuer = svc.get_public_invoice(invoice_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if invoice.status == "paid":
+        return {"status": "paid"}
+
+    # The reference must be the one we created for THIS invoice's payment.
+    txn = (
+        db.query(PaymentTransaction)
+        .filter(PaymentTransaction.reference == reference)
+        .one_or_none()
+    )
+    meta_invoice = (txn.payment_metadata or {}).get("invoice_id") if txn else None
+    if not reference.startswith("INVPAY-") or (txn and meta_invoice != invoice.invoice_id):
+        return {"status": invoice.status}
+
+    if not settings.PAYSTACK_SECRET:
+        return {"status": invoice.status}
+
+    # Ask Paystack directly whether this transaction succeeded.
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"https://api.paystack.co/transaction/verify/{reference}",
+                headers={"Authorization": f"Bearer {settings.PAYSTACK_SECRET}"},
+            )
+        body = resp.json() if resp.content else {}
+    except Exception as exc:  # pragma: no cover - network failure
+        logger.warning("Paystack verify failed for %s: %s", reference, exc)
+        return {"status": invoice.status}
+
+    tx = body.get("data") or {}
+    if resp.status_code == 200 and tx.get("status") == "success":
+        try:
+            svc.update_status(issuer.id, invoice.invoice_id, "paid", via_online=True)
+        except Exception:  # pragma: no cover
+            logger.exception("verify: failed to mark invoice %s paid", invoice.invoice_id)
+        if txn:
+            txn.status = PaymentStatus.SUCCESS
+            db.commit()
+        logger.info("✅ Invoice %s confirmed paid via verify-on-return (ref=%s)", invoice.invoice_id, reference)
+        return {"status": "paid"}
+
+    return {"status": invoice.status}
