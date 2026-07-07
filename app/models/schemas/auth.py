@@ -70,6 +70,7 @@ class UserOut(BaseModel):
     is_influencer: bool = False
     online_payments_enabled: bool = False
     storefront_enabled: bool = False
+    has_invoiced: bool = False
 
 
 class TokenOut(BaseModel):

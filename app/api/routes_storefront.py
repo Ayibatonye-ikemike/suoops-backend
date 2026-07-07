@@ -92,6 +92,7 @@ class StorefrontOut(BaseModel):
     slug: str | None
     link: str | None
     description: str | None = None
+    product_count: int = 0
 
 
 class StoreOrderItem(BaseModel):
@@ -107,6 +108,15 @@ class StoreOrderIn(BaseModel):
 
 def _link_for(slug: str | None) -> str | None:
     return f"{settings.FRONTEND_URL}/store/{slug}" if slug else None
+
+
+def _product_count(db: Session, user_id: int) -> int:
+    """Active products in the user's catalog (what the storefront displays)."""
+    return (
+        db.query(func.count(Product.id))
+        .filter(Product.user_id == user_id, Product.is_active.is_(True))
+        .scalar()
+    ) or 0
 
 
 @router.post("/storefront/enable", response_model=StorefrontOut)
@@ -141,6 +151,7 @@ def enable_storefront(
     return StorefrontOut(
         enabled=True, slug=slug, link=_link_for(slug),
         description=user.storefront_description,
+        product_count=_product_count(db, user.id),
     )
 
 
@@ -161,6 +172,7 @@ def update_storefront(
         slug=user.storefront_slug,
         link=_link_for(user.storefront_slug) if user.storefront_enabled else None,
         description=user.storefront_description,
+        product_count=_product_count(db, user.id),
     )
 
 
@@ -178,6 +190,7 @@ def get_storefront(
         slug=user.storefront_slug,
         link=_link_for(user.storefront_slug) if user.storefront_enabled else None,
         description=user.storefront_description,
+        product_count=_product_count(db, user.id),
     )
 
 

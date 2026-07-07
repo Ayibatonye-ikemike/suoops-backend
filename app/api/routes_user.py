@@ -80,6 +80,17 @@ def get_profile(
         if not fresh_logo_url:
             fresh_logo_url = user.logo_url  # fallback to stored URL
 
+    # Has the user ever created a revenue invoice? Drives the dashboard's
+    # first-invoice activation prompt (invoices_this_month is deprecated/0, so
+    # the prompt used to never clear — e.g. after invoicing via WhatsApp).
+    from app.models.models import Invoice
+    has_invoiced = (
+        db.query(Invoice.id)
+        .filter(Invoice.issuer_id == user.id, Invoice.invoice_type == "revenue")
+        .first()
+        is not None
+    )
+
     return schemas.UserOut(
         id=user.id,
         phone=user.phone,
@@ -99,6 +110,7 @@ def get_profile(
         is_influencer=_check_is_influencer(db, user.id),
         online_payments_enabled=bool(getattr(user, "paystack_subaccount_active", False)),
         storefront_enabled=bool(getattr(user, "storefront_enabled", False)),
+        has_invoiced=has_invoiced,
     )
 
 
