@@ -26,19 +26,44 @@ class ProductService(BaseInventoryService):
     Each user has their own product catalog with independent SKUs.
     """
 
+    def _generate_unique_sku(self, name: str) -> str:
+        """Build a short, unique SKU from the product name.
+
+        Used when the user doesn't provide one, so services/freelancers never
+        have to fill in a "SKU" field.
+        """
+        import re
+        import secrets
+
+        base = re.sub(r"[^A-Z0-9]+", "-", (name or "ITEM").upper()).strip("-")[:16] or "ITEM"
+        for _ in range(12):
+            candidate = f"{base}-{secrets.token_hex(2).upper()}"
+            exists = self._db.query(Product.id).filter(
+                Product.user_id == self._user_id,
+                Product.sku == candidate,
+            ).first()
+            if not exists:
+                return candidate
+        return f"{base}-{secrets.token_hex(4).upper()}"
+
     def create_product(self, data: ProductCreate) -> Product:
         """
         Create a new product.
         
         If initial stock is provided, also creates an opening stock movement.
         """
-        # Check for duplicate SKU
-        existing = self._db.query(Product).filter(
-            Product.user_id == self._user_id,
-            Product.sku == data.sku,
-        ).first()
-        if existing:
-            raise ValueError(f"Product with SKU '{data.sku}' already exists")
+        # SKU is optional for the user. When provided it must be unique; when
+        # blank, auto-generate a unique one from the product name.
+        sku = (data.sku or "").strip()
+        if sku:
+            existing = self._db.query(Product).filter(
+                Product.user_id == self._user_id,
+                Product.sku == sku,
+            ).first()
+            if existing:
+                raise ValueError(f"Product with SKU '{sku}' already exists")
+        else:
+            sku = self._generate_unique_sku(data.name)
 
         # Validate category if provided
         if data.category_id:
@@ -51,7 +76,7 @@ class ProductService(BaseInventoryService):
 
         product = Product(
             user_id=self._user_id,
-            sku=data.sku,
+            sku=sku,
             name=data.name,
             description=data.description,
             barcode=data.barcode,

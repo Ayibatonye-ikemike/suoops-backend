@@ -208,6 +208,70 @@ def disable_storefront(
     return StorefrontOut(enabled=False, slug=user.storefront_slug, link=None)
 
 
+class ScanToPayOut(BaseModel):
+    pay_url: str
+    qr_png: str  # data:image/png;base64,... — display, print or share
+    barcode: str
+
+
+def _qr_data_url(data: str) -> str:
+    """Render a URL as a scannable QR PNG (base64 data URL)."""
+    import base64
+    import io
+
+    import qrcode
+
+    qr = qrcode.QRCode(version=1, box_size=10, border=2)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+@router.get("/products/{product_id}/scan-to-pay", response_model=ScanToPayOut)
+def product_scan_to_pay(
+    product_id: int,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ScanToPayOut:
+    """Generate a scan-to-pay QR code for one product.
+
+    Customers scan it to open the product on the business's storefront and pay
+    online. The product's barcode is auto-generated on first use, so the
+    business never has to type one. Requires the storefront to be enabled —
+    that's where the customer actually pays.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    product = (
+        db.query(Product)
+        .filter(Product.id == product_id, Product.user_id == current_user_id)
+        .first()
+    )
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if not (user.storefront_enabled and user.storefront_slug):
+        raise HTTPException(
+            status_code=400,
+            detail="Turn on your storefront first — that's where customers pay after scanning.",
+        )
+
+    # Auto-generate the barcode once, on demand (never manual for the user).
+    if not (product.barcode or "").strip():
+        import secrets
+
+        product.barcode = "".join(secrets.choice("0123456789") for _ in range(12))
+        db.commit()
+
+    pay_url = f"{settings.FRONTEND_URL}/store/{user.storefront_slug}?p={product.id}"
+    return ScanToPayOut(pay_url=pay_url, qr_png=_qr_data_url(pay_url), barcode=product.barcode)
+
+
 @public_router.get("/store/{slug}")
 @limiter.limit("30/minute")
 def get_public_storefront(request: Request, slug: str, db: Annotated[Session, Depends(get_db)]) -> dict:

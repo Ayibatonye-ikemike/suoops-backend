@@ -48,7 +48,9 @@ class ProductCategoryOut(BaseModel):
 
 class ProductCreate(BaseModel):
     """Schema for creating a product."""
-    sku: str = Field(..., min_length=1, max_length=50)
+    # Optional — auto-generated from the name when blank, so non-technical users
+    # (freelancers, services, marketers, etc.) never have to think about a "SKU".
+    sku: str | None = Field(None, max_length=50)
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
     barcode: str | None = Field(None, max_length=50)
