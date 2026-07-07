@@ -206,6 +206,7 @@ class InvoiceQuotaOut(BaseModel):
     NEW BILLING MODEL: Uses invoice_balance (purchased invoices) instead of monthly limits.
     """
     invoice_balance: int = Field(description="Remaining invoices available to create")
+    total_invoices: int = Field(default=0, description="Total revenue invoices the user has created (drives onboarding activation)")
     current_plan: str = Field(description="Current subscription plan code")
     can_create: bool = Field(description="Whether user has invoice balance to create invoices")
     pack_price: int = Field(default=2500, description="Price for an invoice pack in Naira")

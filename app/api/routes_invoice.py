@@ -235,7 +235,19 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
     invoice_balance = getattr(gate.user, "invoice_balance", 0) or 0
     can_create, _ = gate.can_create_invoice()
     purchase_url = "/invoices/purchase-pack" if not can_create else None
-    
+
+    # Count revenue invoices so the onboarding gate knows the user is activated
+    # (e.g. after creating their first invoice via WhatsApp).
+    from app.models.models import Invoice
+    total_invoices = (
+        db.query(Invoice.id)
+        .filter(
+            Invoice.issuer_id == data_owner_id,
+            Invoice.invoice_type == "revenue",
+        )
+        .count()
+    )
+
     return schemas.InvoiceQuotaOut(
         invoice_balance=invoice_balance,
         current_plan=plan.value,
@@ -243,6 +255,7 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
         pack_price=INVOICE_PACK_PRICE,
         pack_size=INVOICE_PACK_SIZE,
         purchase_url=purchase_url,
+        total_invoices=total_invoices,
     )
 
 
