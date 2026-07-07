@@ -333,6 +333,22 @@ class User(Base):
     storefront_slug: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True, unique=True)
     # Short public description of what the shop sells (shown in the directory).
     storefront_description: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # Location — shown on the store page + powers "get directions".
+    storefront_address: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    storefront_city: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    storefront_state: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Weekly opening hours: {"0": {"open": "09:00", "close": "18:00"}, ...} (0=Mon).
+    storefront_hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Single editable promo/announcement banner shown atop the store.
+    storefront_announcement: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Fulfilment options + flat delivery fee (kobo) added to online orders.
+    storefront_delivery_enabled: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
+    storefront_pickup_enabled: Mapped[bool] = mapped_column(default=True, server_default="true", nullable=False)
+    storefront_delivery_fee_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # Discovery analytics — incremented on each public store view.
+    storefront_views: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # Optional custom/vanity domain (routing handled at the edge/host).
+    storefront_custom_domain: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True, unique=True)
     
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -581,3 +597,40 @@ class Testimonial(Base):
     )
 
     user: Mapped[User] = relationship("User")
+
+
+class StorefrontStockNotification(Base):
+    """A "notify me when back in stock" request from a storefront visitor."""
+
+    __tablename__ = "storefront_stock_notification"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), index=True)  # store owner
+    product_id: Mapped[int] = mapped_column(ForeignKey("product.id"), index=True)
+    phone: Mapped[str] = mapped_column(String(20))
+    notified: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
+
+
+class StorefrontReview(Base):
+    """A customer review of a storefront, gated to buyers who actually paid."""
+
+    __tablename__ = "storefront_review"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), index=True)  # store owner
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customer.id"), nullable=True)
+    rating: Mapped[int] = mapped_column(Integer)  # 1-5 stars
+    text: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewer_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    approved: Mapped[bool] = mapped_column(default=True, server_default="true", nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.now(),
+    )
+

@@ -12,6 +12,7 @@ import logging
 import re
 from decimal import Decimal
 from typing import Annotated
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -85,6 +86,16 @@ class StorefrontEnableIn(BaseModel):
 
 class StorefrontUpdateIn(BaseModel):
     description: str | None = Field(default=None, max_length=160)
+    address: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=80)
+    state: str | None = Field(default=None, max_length=80)
+    # {"0": {"open": "09:00", "close": "18:00"}, ...} — 0=Mon; null day = closed.
+    hours: dict | None = None
+    announcement: str | None = Field(default=None, max_length=200)
+    delivery_enabled: bool | None = None
+    pickup_enabled: bool | None = None
+    delivery_fee: float | None = Field(default=None, ge=0, le=1_000_000)  # naira
+    custom_domain: str | None = Field(default=None, max_length=120)
 
 
 class StorefrontOut(BaseModel):
@@ -93,6 +104,37 @@ class StorefrontOut(BaseModel):
     link: str | None
     description: str | None = None
     product_count: int = 0
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    hours: dict | None = None
+    announcement: str | None = None
+    delivery_enabled: bool = False
+    pickup_enabled: bool = True
+    delivery_fee: float = 0.0
+    custom_domain: str | None = None
+    views: int = 0
+
+
+def _storefront_out(db: Session, user) -> StorefrontOut:
+    """Build the owner-facing storefront payload from a user row."""
+    return StorefrontOut(
+        enabled=bool(user.storefront_enabled),
+        slug=user.storefront_slug,
+        link=_link_for(user.storefront_slug) if user.storefront_enabled else None,
+        description=user.storefront_description,
+        product_count=_product_count(db, user.id),
+        address=user.storefront_address,
+        city=user.storefront_city,
+        state=user.storefront_state,
+        hours=user.storefront_hours,
+        announcement=user.storefront_announcement,
+        delivery_enabled=bool(user.storefront_delivery_enabled),
+        pickup_enabled=bool(user.storefront_pickup_enabled),
+        delivery_fee=(user.storefront_delivery_fee_kobo or 0) / 100,
+        custom_domain=user.storefront_custom_domain,
+        views=user.storefront_views or 0,
+    )
 
 
 class StoreOrderItem(BaseModel):
@@ -104,6 +146,8 @@ class StoreOrderIn(BaseModel):
     customer_name: str = Field(min_length=1, max_length=100)
     customer_phone: str = Field(min_length=6, max_length=20)
     items: list[StoreOrderItem] = Field(min_length=1, max_length=20)
+    # "delivery" | "pickup" | None. Delivery adds the store's flat delivery fee.
+    fulfillment: str | None = Field(default=None)
 
 
 def _link_for(slug: str | None) -> str | None:
@@ -117,6 +161,43 @@ def _product_count(db: Session, user_id: int) -> int:
         .filter(Product.user_id == user_id, Product.is_active.is_(True))
         .scalar()
     ) or 0
+
+
+_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+def _clean_hours(hours: dict | None) -> dict | None:
+    """Validate/normalise weekly hours to {"0".."6": {open, close}} (0=Mon)."""
+    if not hours:
+        return None
+    cleaned: dict[str, dict] = {}
+    for day, val in hours.items():
+        key = str(day)
+        if key not in {"0", "1", "2", "3", "4", "5", "6"}:
+            continue
+        if not isinstance(val, dict):
+            continue
+        opn, cls = str(val.get("open", "")), str(val.get("close", ""))
+        if _TIME_RE.match(opn) and _TIME_RE.match(cls):
+            cleaned[key] = {"open": opn, "close": cls}
+    return cleaned or None
+
+
+def _open_now(hours: dict | None) -> tuple[bool, str | None, str | None]:
+    """Return (is_open, today_open, today_close) in Africa/Lagos time."""
+    if not hours:
+        return (False, None, None)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(ZoneInfo("Africa/Lagos"))
+    today = hours.get(str(now.weekday()))
+    if not today:
+        return (False, None, None)
+    opn, cls = today.get("open"), today.get("close")
+    hm = now.strftime("%H:%M")
+    is_open = bool(opn and cls and opn <= hm <= cls)
+    return (is_open, opn, cls)
 
 
 @router.post("/storefront/enable", response_model=StorefrontOut)
@@ -148,11 +229,43 @@ def enable_storefront(
         user.storefront_description = payload.description.strip() or None
     db.commit()
     logger.info("Storefront enabled for user %s -> %s", user.id, slug)
-    return StorefrontOut(
-        enabled=True, slug=slug, link=_link_for(slug),
-        description=user.storefront_description,
-        product_count=_product_count(db, user.id),
-    )
+    return _storefront_out(db, user)
+
+
+def _apply_storefront_profile(db: Session, user, payload: StorefrontUpdateIn) -> None:
+    """Persist the optional storefront profile fields that were provided."""
+    if payload.description is not None:
+        user.storefront_description = payload.description.strip() or None
+    if payload.address is not None:
+        user.storefront_address = payload.address.strip() or None
+    if payload.city is not None:
+        user.storefront_city = payload.city.strip() or None
+    if payload.state is not None:
+        user.storefront_state = payload.state.strip() or None
+    if payload.hours is not None:
+        user.storefront_hours = _clean_hours(payload.hours)
+    if payload.announcement is not None:
+        user.storefront_announcement = payload.announcement.strip() or None
+    if payload.delivery_enabled is not None:
+        user.storefront_delivery_enabled = payload.delivery_enabled
+    if payload.pickup_enabled is not None:
+        user.storefront_pickup_enabled = payload.pickup_enabled
+    if payload.delivery_fee is not None:
+        user.storefront_delivery_fee_kobo = int(round(payload.delivery_fee * 100))
+    if payload.custom_domain is not None:
+        domain = payload.custom_domain.strip().lower().rstrip("/") or None
+        if domain:
+            clash = (
+                db.query(models.User)
+                .filter(
+                    models.User.storefront_custom_domain == domain,
+                    models.User.id != user.id,
+                )
+                .first()
+            )
+            if clash:
+                raise HTTPException(status_code=409, detail="That domain is already in use.")
+        user.storefront_custom_domain = domain
 
 
 @router.patch("/storefront", response_model=StorefrontOut)
@@ -161,19 +274,13 @@ def update_storefront(
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> StorefrontOut:
-    """Update the storefront description (what the shop sells)."""
+    """Update the storefront profile (description, location, hours, delivery…)."""
     user = db.query(models.User).filter(models.User.id == current_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    user.storefront_description = (payload.description or "").strip() or None
+    _apply_storefront_profile(db, user, payload)
     db.commit()
-    return StorefrontOut(
-        enabled=bool(user.storefront_enabled),
-        slug=user.storefront_slug,
-        link=_link_for(user.storefront_slug) if user.storefront_enabled else None,
-        description=user.storefront_description,
-        product_count=_product_count(db, user.id),
-    )
+    return _storefront_out(db, user)
 
 
 @router.get("/storefront", response_model=StorefrontOut)
@@ -185,13 +292,7 @@ def get_storefront(
     user = db.query(models.User).filter(models.User.id == current_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return StorefrontOut(
-        enabled=bool(user.storefront_enabled),
-        slug=user.storefront_slug,
-        link=_link_for(user.storefront_slug) if user.storefront_enabled else None,
-        description=user.storefront_description,
-        product_count=_product_count(db, user.id),
-    )
+    return _storefront_out(db, user)
 
 
 @router.post("/storefront/disable", response_model=StorefrontOut)
@@ -303,6 +404,8 @@ def storefront_qr(
 @limiter.limit("30/minute")
 def get_public_storefront(request: Request, slug: str, db: Annotated[Session, Depends(get_db)]) -> dict:
     """Public: a business's shareable inventory catalog."""
+    from sqlalchemy.orm import joinedload
+
     owner = (
         db.query(models.User)
         .filter(
@@ -314,12 +417,36 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
     if not owner:
         raise HTTPException(status_code=404, detail="Storefront not found")
 
+    # Discovery analytics: count this view (best-effort, never blocks the page).
+    try:
+        owner.storefront_views = (owner.storefront_views or 0) + 1
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     products = (
         db.query(Product)
+        .options(joinedload(Product.category))
         .filter(Product.user_id == owner.id, Product.is_active.is_(True))
         .order_by(Product.name.asc())
         .all()
     )
+
+    is_open, open_from, open_to = _open_now(owner.storefront_hours)
+
+    reviews = (
+        db.query(models.StorefrontReview)
+        .filter(
+            models.StorefrontReview.user_id == owner.id,
+            models.StorefrontReview.approved.is_(True),
+        )
+        .all()
+    )
+    review_count = len(reviews)
+    review_avg = round(sum(r.rating for r in reviews) / review_count, 1) if review_count else None
+
+    address_parts = [owner.storefront_address, owner.storefront_city, owner.storefront_state]
+    full_address = ", ".join(p for p in address_parts if p) or None
 
     return {
         "slug": slug.lower(),
@@ -330,6 +457,28 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
             owner.paystack_subaccount_active and owner.paystack_subaccount_code
         ),
         "whatsapp_url": _wa_url(owner),
+        "announcement": owner.storefront_announcement,
+        "location": {
+            "address": full_address,
+            "city": owner.storefront_city,
+            "state": owner.storefront_state,
+            "maps_url": (
+                f"https://www.google.com/maps/search/?api=1&query="
+                f"{quote_plus(full_address)}"
+                if full_address
+                else None
+            ),
+        },
+        "hours": owner.storefront_hours,
+        "open_now": is_open,
+        "open_from": open_from,
+        "open_to": open_to,
+        "fulfillment": {
+            "delivery": bool(owner.storefront_delivery_enabled),
+            "pickup": bool(owner.storefront_pickup_enabled),
+            "delivery_fee": (owner.storefront_delivery_fee_kobo or 0) / 100,
+        },
+        "reviews": {"count": review_count, "average": review_avg},
         "products": [
             {
                 "id": p.id,
@@ -337,6 +486,7 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
                 "description": p.description,
                 "price": float(p.selling_price) if p.selling_price is not None else None,
                 "unit": p.unit,
+                "category": p.category.name if p.category else None,
                 "image_url": _presign(p.image_url),
                 "in_stock": (not p.track_stock) or (p.quantity_in_stock > 0),
             }
@@ -471,6 +621,21 @@ async def create_store_order(
     if total <= 0:
         raise HTTPException(status_code=400, detail="Order total must be greater than zero.")
 
+    # Delivery fee: added as a line when the customer chose delivery and the
+    # store offers it. Otherwise the order is treated as pickup / not applicable.
+    fulfillment = (payload.fulfillment or "").strip().lower() or None
+    if fulfillment == "delivery":
+        if not owner.storefront_delivery_enabled:
+            raise HTTPException(status_code=400, detail="This store doesn't offer delivery.")
+        fee = Decimal(owner.storefront_delivery_fee_kobo or 0) / 100
+        if fee > 0:
+            lines.append(
+                {"description": "Delivery", "quantity": 1, "unit_price": fee, "product_id": None}
+            )
+            total += fee
+    elif fulfillment == "pickup" and not owner.storefront_pickup_enabled:
+        raise HTTPException(status_code=400, detail="This store doesn't offer pickup.")
+
     from app.services.invoice_payment_service import (
         PaymentInitError,
         start_invoice_payment,
@@ -502,3 +667,226 @@ async def create_store_order(
         invoice.invoice_id, slug, owner.id,
     )
     return {"invoice_id": invoice.invoice_id, **pay}
+
+
+def _lookup_store(db: Session, slug: str):
+    owner = (
+        db.query(models.User)
+        .filter(
+            models.User.storefront_slug == slug.lower(),
+            models.User.storefront_enabled.is_(True),
+        )
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=404, detail="Storefront not found")
+    return owner
+
+
+class StockNotifyIn(BaseModel):
+    product_id: int
+    phone: str = Field(min_length=6, max_length=20)
+
+
+@public_router.post("/store/{slug}/notify")
+@limiter.limit("10/hour")
+def notify_when_in_stock(
+    request: Request,
+    slug: str,
+    payload: StockNotifyIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Public: capture a phone number to alert when a sold-out item returns."""
+    owner = _lookup_store(db, slug)
+    product = (
+        db.query(Product)
+        .filter(
+            Product.id == payload.product_id,
+            Product.user_id == owner.id,
+            Product.is_active.is_(True),
+        )
+        .first()
+    )
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if (not product.track_stock) or (product.quantity_in_stock > 0):
+        return {"ok": True, "message": "Good news — this item is available now."}
+
+    phone = payload.phone.strip()
+    exists = (
+        db.query(models.StorefrontStockNotification)
+        .filter(
+            models.StorefrontStockNotification.product_id == product.id,
+            models.StorefrontStockNotification.phone == phone,
+            models.StorefrontStockNotification.notified.is_(False),
+        )
+        .first()
+    )
+    if not exists:
+        db.add(
+            models.StorefrontStockNotification(
+                user_id=owner.id, product_id=product.id, phone=phone
+            )
+        )
+        db.commit()
+    return {"ok": True, "message": "We'll text you when it's back in stock."}
+
+
+class ReviewIn(BaseModel):
+    phone: str = Field(min_length=6, max_length=20)
+    rating: int = Field(ge=1, le=5)
+    text: str | None = Field(default=None, max_length=500)
+
+
+@public_router.post("/store/{slug}/review")
+@limiter.limit("10/hour")
+def submit_review(
+    request: Request,
+    slug: str,
+    payload: ReviewIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Public: leave a review — gated to customers who actually paid this store."""
+    from app.utils.phone import normalize_phone
+
+    owner = _lookup_store(db, slug)
+    normalized = normalize_phone(payload.phone.strip())
+    candidates = {payload.phone.strip(), normalized}
+
+    paid = (
+        db.query(models.Invoice)
+        .join(models.Customer, models.Invoice.customer_id == models.Customer.id)
+        .filter(
+            models.Invoice.issuer_id == owner.id,
+            models.Invoice.status == "paid",
+            models.Customer.phone.in_(candidates),
+        )
+        .order_by(models.Invoice.id.desc())
+        .first()
+    )
+    if not paid:
+        raise HTTPException(
+            status_code=403,
+            detail="Only customers who've completed a paid order here can leave a review.",
+        )
+
+    customer = paid.customer
+    existing = (
+        db.query(models.StorefrontReview)
+        .filter(
+            models.StorefrontReview.user_id == owner.id,
+            models.StorefrontReview.customer_id == customer.id,
+        )
+        .first()
+    )
+    text = (payload.text or "").strip() or None
+    if existing:
+        existing.rating = payload.rating
+        existing.text = text
+    else:
+        db.add(
+            models.StorefrontReview(
+                user_id=owner.id,
+                customer_id=customer.id,
+                rating=payload.rating,
+                text=text,
+                reviewer_name=(customer.name or "Customer")[:100],
+            )
+        )
+    db.commit()
+    return {"ok": True, "message": "Thanks for your review!"}
+
+
+@public_router.get("/store/{slug}/reviews")
+@limiter.limit("30/minute")
+def list_reviews(
+    request: Request,
+    slug: str,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Public: approved reviews for a storefront."""
+    owner = _lookup_store(db, slug)
+    rows = (
+        db.query(models.StorefrontReview)
+        .filter(
+            models.StorefrontReview.user_id == owner.id,
+            models.StorefrontReview.approved.is_(True),
+        )
+        .order_by(models.StorefrontReview.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    count = len(rows)
+    average = round(sum(r.rating for r in rows) / count, 1) if count else None
+    return {
+        "count": count,
+        "average": average,
+        "reviews": [
+            {
+                "rating": r.rating,
+                "text": r.text,
+                "name": r.reviewer_name or "Customer",
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/storefront/analytics")
+def storefront_analytics(
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Owner: storefront views, orders, revenue, conversion and top products."""
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    views = user.storefront_views or 0
+    base = db.query(models.Invoice).filter(
+        models.Invoice.issuer_id == user.id,
+        models.Invoice.channel == "storefront",
+    )
+    orders = base.count()
+    paid_q = base.filter(models.Invoice.status == "paid")
+    paid_orders = paid_q.count()
+    revenue = float(
+        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
+        .filter(
+            models.Invoice.issuer_id == user.id,
+            models.Invoice.channel == "storefront",
+            models.Invoice.status == "paid",
+        )
+        .scalar()
+        or 0
+    )
+    conversion = round(paid_orders / views * 100, 1) if views else 0.0
+
+    top_rows = (
+        db.query(
+            models.InvoiceLine.description,
+            func.sum(models.InvoiceLine.quantity).label("qty"),
+        )
+        .join(models.Invoice, models.InvoiceLine.invoice_id == models.Invoice.id)
+        .filter(
+            models.Invoice.issuer_id == user.id,
+            models.Invoice.channel == "storefront",
+            models.Invoice.status == "paid",
+        )
+        .group_by(models.InvoiceLine.description)
+        .order_by(func.sum(models.InvoiceLine.quantity).desc())
+        .limit(5)
+        .all()
+    )
+    return {
+        "views": views,
+        "orders": orders,
+        "paid_orders": paid_orders,
+        "revenue": revenue,
+        "conversion_rate": conversion,
+        "top_products": [
+            {"name": name, "quantity": int(qty or 0)} for name, qty in top_rows
+        ],
+    }
