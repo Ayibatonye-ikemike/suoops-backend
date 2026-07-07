@@ -22,6 +22,17 @@ class WhatsAppClient:
             return True
         return bool(os.getenv("PYTEST_CURRENT_TEST"))
 
+    @staticmethod
+    def _is_valid_recipient(to: str | None) -> bool:
+        """True if ``to`` looks like a real phone number Meta will accept.
+
+        Guards against placeholder values (e.g. OAuth signups store
+        "oauth_google_x" in the phone column) that Meta rejects with #131009,
+        wasting an API call and denting the number's quality signals.
+        """
+        digits = (to or "").strip().lstrip("+")
+        return digits.isdigit() and len(digits) >= 10
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.phone_number_id = getattr(settings, "WHATSAPP_PHONE_NUMBER_ID", None)
@@ -72,6 +83,9 @@ class WhatsAppClient:
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP] Not configured, would send to %s: %s", to, body)
             return False
+        if not self._is_valid_recipient(to):
+            logger.warning("[WHATSAPP] Skipping invalid recipient %r (not a phone number)", to)
+            return False
         try:
             payload = {
                 "messaging_product": "whatsapp",
@@ -114,6 +128,9 @@ class WhatsAppClient:
             return True
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP DOC] Not configured, would send to %s: %s", to, filename)
+            return False
+        if not self._is_valid_recipient(to):
+            logger.warning("[WHATSAPP DOC] Skipping invalid recipient %r (not a phone number)", to)
             return False
 
         try:
@@ -269,6 +286,11 @@ class WhatsAppClient:
                 "[WHATSAPP TEMPLATE] Not configured, would send to %s: %s",
                 to,
                 template_name,
+            )
+            return None
+        if not self._is_valid_recipient(to):
+            logger.warning(
+                "[WHATSAPP TEMPLATE] Skipping invalid recipient %r (not a phone number)", to
             )
             return None
 
