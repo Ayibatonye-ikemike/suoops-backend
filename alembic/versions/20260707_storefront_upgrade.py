@@ -46,12 +46,8 @@ def upgrade() -> None:
         "user",
         sa.Column("storefront_views", sa.Integer(), server_default="0", nullable=False),
     )
-    op.add_column("user", sa.Column("storefront_custom_domain", sa.String(length=120), nullable=True))
-    op.create_index(
-        "ix_user_storefront_custom_domain", "user", ["storefront_custom_domain"], unique=True
-    )
 
-    # ── Stock "notify me" waitlist ──
+    # stock "notify me" waitlist
     op.create_table(
         "storefront_stock_notification",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -79,8 +75,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("storefront_review")
     op.drop_table("storefront_stock_notification")
-    op.drop_index("ix_user_storefront_custom_domain", table_name="user")
-    op.drop_column("user", "storefront_custom_domain")
     op.drop_column("user", "storefront_views")
     op.drop_column("user", "storefront_delivery_fee_kobo")
     op.drop_column("user", "storefront_pickup_enabled")

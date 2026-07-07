@@ -590,6 +590,21 @@ async def enable_online_payments(
     }
 
 
+@router.post("/disable-online-payments")
+def disable_online_payments(current_user_id: CurrentUserDep, db: DbDep) -> dict:
+    """Turn off online payments.
+
+    New storefront orders can't be paid online until re-enabled. The Paystack
+    subaccount is kept on file so re-enabling later is instant.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.paystack_subaccount_active = False
+    db.commit()
+    return {"enabled": False, "message": "Online payments turned off."}
+
+
 @router.get("/online-payments-status")
 def online_payments_status(current_user_id: CurrentUserDep, db: DbDep) -> dict:
     """Whether the current business has online payments (Paystack subaccount) enabled."""

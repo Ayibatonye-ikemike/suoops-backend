@@ -71,6 +71,7 @@ class StockMovementService(InventoryServiceBase):
             f"Stock adjusted for {product.name}: {quantity_before} -> {quantity_after} "
             f"(change: {data.quantity}, type: {data.movement_type})"
         )
+        self._maybe_notify_restock(product, quantity_before, quantity_after)
         return movement
 
     # ========================================================================
@@ -168,7 +169,21 @@ class StockMovementService(InventoryServiceBase):
         )
 
         logger.info("Purchase recorded for %s: %s -> %s", product.name, quantity_before, quantity_after)
+        self._maybe_notify_restock(product, quantity_before, quantity_after)
         return movement
+
+    def _maybe_notify_restock(self, product, before: int, after: int) -> None:
+        """Enqueue back-in-stock texts when stock crosses from 0 to positive."""
+        if before <= 0 < after:
+            try:
+                from app.workers.tasks.messaging_tasks import notify_back_in_stock
+
+                # Small delay so the caller's transaction is committed first.
+                notify_back_in_stock.apply_async(args=[product.id], countdown=15)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Failed to enqueue back-in-stock notify for product %s", product.id
+                )
 
     # ========================================================================
     # Invoice Line Processing

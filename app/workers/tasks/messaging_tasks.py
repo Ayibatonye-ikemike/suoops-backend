@@ -59,6 +59,76 @@ def process_whatsapp_inbound(self: Task, payload: dict[str, Any]) -> None:
 
 
 @celery_app.task(
+    name="storefront.notify_back_in_stock",
+    autoretry_for=(Exception,),
+    retry_backoff=30,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=60,
+    time_limit=90,
+)
+def notify_back_in_stock(product_id: int) -> dict[str, Any]:
+    """Text customers who asked to be told when a sold-out product returns.
+
+    Triggered when a product's stock rises above zero. Each waitlist entry is
+    messaged once (marked ``notified``) and capped by the WhatsApp budget.
+    """
+    from app.bot.whatsapp_client import WhatsAppClient
+    from app.models.inventory_models import Product
+    from app.models.models import StorefrontStockNotification, User
+    from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+
+    stats = {"sent": 0, "skipped": 0}
+    with session_scope() as db:
+        product = db.query(Product).filter(Product.id == product_id).one_or_none()
+        if not product or (product.track_stock and product.quantity_in_stock <= 0):
+            return {"success": True, **stats}
+
+        waiters = (
+            db.query(StorefrontStockNotification)
+            .filter(
+                StorefrontStockNotification.product_id == product_id,
+                StorefrontStockNotification.notified.is_(False),
+            )
+            .all()
+        )
+        if not waiters:
+            return {"success": True, **stats}
+
+        owner = db.query(User).filter(User.id == product.user_id).one_or_none()
+        store_name = (owner.business_name or owner.name) if owner else "the store"
+        link = (
+            f"{settings.FRONTEND_URL}/store/{owner.storefront_slug}?p={product.id}"
+            if owner and owner.storefront_slug
+            else None
+        )
+        msg = (
+            f"✅ *Back in stock!*\n\n"
+            f"*{product.name}* is available again at {store_name}."
+            + (f"\n\n👉 Order now: {link}" if link else "")
+        )
+
+        client = WhatsAppClient(settings.WHATSAPP_API_KEY)
+        for w in waiters:
+            if not _is_valid_phone(w.phone):
+                w.notified = True
+                stats["skipped"] += 1
+                continue
+            if not can_send_whatsapp(priority=False):
+                break
+            try:
+                if client.send_text(w.phone, msg):
+                    record_whatsapp_send(priority=False)
+                    stats["sent"] += 1
+                w.notified = True
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Back-in-stock notify failed for %s: %s", w.phone, exc)
+        db.commit()
+
+    logger.info("Back-in-stock notify for product %s: %s", product_id, stats)
+    return {"success": True, **stats}
+
+
+@celery_app.task(
     name="maintenance.send_overdue_reminders",
     autoretry_for=(Exception,),
     retry_backoff=30,

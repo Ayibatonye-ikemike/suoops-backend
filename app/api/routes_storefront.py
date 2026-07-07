@@ -95,7 +95,6 @@ class StorefrontUpdateIn(BaseModel):
     delivery_enabled: bool | None = None
     pickup_enabled: bool | None = None
     delivery_fee: float | None = Field(default=None, ge=0, le=1_000_000)  # naira
-    custom_domain: str | None = Field(default=None, max_length=120)
 
 
 class StorefrontOut(BaseModel):
@@ -112,7 +111,6 @@ class StorefrontOut(BaseModel):
     delivery_enabled: bool = False
     pickup_enabled: bool = True
     delivery_fee: float = 0.0
-    custom_domain: str | None = None
     views: int = 0
 
 
@@ -132,7 +130,6 @@ def _storefront_out(db: Session, user) -> StorefrontOut:
         delivery_enabled=bool(user.storefront_delivery_enabled),
         pickup_enabled=bool(user.storefront_pickup_enabled),
         delivery_fee=(user.storefront_delivery_fee_kobo or 0) / 100,
-        custom_domain=user.storefront_custom_domain,
         views=user.storefront_views or 0,
     )
 
@@ -252,20 +249,6 @@ def _apply_storefront_profile(db: Session, user, payload: StorefrontUpdateIn) ->
         user.storefront_pickup_enabled = payload.pickup_enabled
     if payload.delivery_fee is not None:
         user.storefront_delivery_fee_kobo = int(round(payload.delivery_fee * 100))
-    if payload.custom_domain is not None:
-        domain = payload.custom_domain.strip().lower().rstrip("/") or None
-        if domain:
-            clash = (
-                db.query(models.User)
-                .filter(
-                    models.User.storefront_custom_domain == domain,
-                    models.User.id != user.id,
-                )
-                .first()
-            )
-            if clash:
-                raise HTTPException(status_code=409, detail="That domain is already in use.")
-        user.storefront_custom_domain = domain
 
 
 @router.patch("/storefront", response_model=StorefrontOut)

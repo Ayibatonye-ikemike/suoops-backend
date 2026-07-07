@@ -347,8 +347,6 @@ class User(Base):
     storefront_delivery_fee_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Discovery analytics — incremented on each public store view.
     storefront_views: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    # Optional custom/vanity domain (routing handled at the edge/host).
-    storefront_custom_domain: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True, unique=True)
     
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
