@@ -399,30 +399,40 @@ def send_first_paid_referral_nudge(user_id: int) -> dict:
 
         try:
             from app.core.whatsapp import get_whatsapp_client
-            from app.services.referral_service import ReferralService
-            from app.services.referral_share import build_referral_whatsapp_message
+            from app.services.analytics_service import calculate_professionalism_score
 
-            code_obj = ReferralService(db).get_or_create_referral_code(user_id)
             first_name = (user.name or "there").split()[0]
 
-            intro = (
-                f"🎉 *You just got paid, {first_name}!*\n\n"
-                "Now's the perfect time — friends running businesses will trust "
-                "*your* recommendation. Share SuoOps and earn *₦488* every time "
-                "one of them upgrades to Pro 👇"
-            )
-            body = build_referral_whatsapp_message(user.name or first_name, code_obj.code)
+            score = calculate_professionalism_score(db, user_id)
+            pct = int(score.get("score", 0) or 0)
+            level = score.get("level", "")
+            tips = [t for t in (score.get("tips") or []) if t][:3]
+
+            lines = [
+                f"🎉 *You just got paid, {first_name}!*",
+                "",
+                f"📊 Your *professionalism score* is *{pct}%*"
+                + (f" ({level})" if level else "")
+                + ".",
+                "A complete profile builds trust — businesses that look professional "
+                "get paid faster.",
+            ]
+            if pct < 100 and tips:
+                lines.append("")
+                lines.append("*Quick wins:*")
+                lines.extend(f"• {t}" for t in tips)
+            lines.append("")
+            lines.append("👉 Finish setup: suoops.com/dashboard/settings")
 
             client = get_whatsapp_client()
-            client.send_text(user.phone, intro)
-            client.send_text(user.phone, body)
+            client.send_text(user.phone, "\n".join(lines))
 
             db.add(UserEmailLog(user_id=user_id, email_type=FIRST_PAID_REFERRAL_LOG_TYPE))
             db.flush()
             result["sent"] = True
-            logger.info("First-paid referral nudge sent to user %s", user_id)
+            logger.info("First-paid professionalism nudge sent to user %s", user_id)
         except Exception as e:
-            logger.warning("First-paid referral nudge failed for user %s: %s", user_id, e)
+            logger.warning("First-paid professionalism nudge failed for user %s: %s", user_id, e)
             result["skipped_reason"] = f"error: {e}"
 
     return result

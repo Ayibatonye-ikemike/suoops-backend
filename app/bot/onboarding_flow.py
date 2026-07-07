@@ -319,6 +319,12 @@ def start_guided_invoice(
         session.step = "review"
         _save_session(phone, session)
         _send_review(client, phone, session)
+
+    # Persist the step chosen above (customer_name / amount / phone). The earlier
+    # _save_session ran BEFORE these mutations, so without this the step was lost
+    # and the next reply was handled at the wrong slot — causing a double
+    # "how much?" prompt and breaking the review buttons.
+    _save_session(phone, session)
     return session
 
 

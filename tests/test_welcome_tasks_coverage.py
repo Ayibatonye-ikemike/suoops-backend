@@ -321,24 +321,16 @@ def test_referral_success(monkeypatch, db_session):
     db_session.add(inv)
     db_session.commit()
 
-    class _FakeReferralService:
-        def __init__(self, db):
-            pass
-
-        def get_or_create_referral_code(self, uid):
-            return SimpleNamespace(code="REF123")
-
-    monkeypatch.setattr("app.services.referral_service.ReferralService", _FakeReferralService)
     monkeypatch.setattr(
-        "app.services.referral_share.build_referral_whatsapp_message",
-        lambda name, code: f"share {name} {code}",
+        "app.services.analytics_service.calculate_professionalism_score",
+        lambda db, uid: {"score": 60, "level": "Good", "tips": ["Add your logo", "Add bank details"]},
     )
     client = _FakeClient()
     monkeypatch.setattr("app.core.whatsapp.get_whatsapp_client", lambda: client)
 
     result = welcome_tasks.send_first_paid_referral_nudge(user.id)
     assert result["sent"] is True
-    assert len(client.texts) == 2  # intro + body
+    assert len(client.texts) == 1  # single professionalism-score message
 
 
 def test_referral_exception(monkeypatch, db_session):
@@ -354,11 +346,10 @@ def test_referral_exception(monkeypatch, db_session):
     db_session.add(inv)
     db_session.commit()
 
-    class _BoomReferralService:
-        def __init__(self, db):
-            raise RuntimeError("referral boom")
+    def _boom(db, uid):
+        raise RuntimeError("score boom")
 
-    monkeypatch.setattr("app.services.referral_service.ReferralService", _BoomReferralService)
+    monkeypatch.setattr("app.services.analytics_service.calculate_professionalism_score", _boom)
     result = welcome_tasks.send_first_paid_referral_nudge(user.id)
     assert result["sent"] is False
     assert "error:" in result["skipped_reason"]
