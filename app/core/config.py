@@ -67,6 +67,7 @@ class BaseAppSettings(BaseSettings):
     WHATSAPP_TEMPLATE_FEEDBACK: str | None = None  # Feedback/testimonial request
     WHATSAPP_TEMPLATE_UNPAID_ALERT: str | None = None  # Aggregate unpaid notification
     WHATSAPP_TEMPLATE_PAYMENT_UPSELL: str | None = None  # Payment-triggered growth nudge (3% model)
+    WHATSAPP_TEMPLATE_FEATURE_ANNOUNCEMENT: str | None = None  # One-off product announcement (params: name, body)
     WHATSAPP_TEMPLATE_LANGUAGE: str = "en"
     
     @field_validator("WHATSAPP_PHONE_NUMBER_ID", mode="before")

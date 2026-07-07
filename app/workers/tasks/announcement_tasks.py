@@ -2,9 +2,10 @@
 One-time feature announcement broadcast.
 
 Announces the storefront + online-payments launch (flat 3%, no plans) to
-existing users via email (always) and WhatsApp. The WhatsApp side reuses the
-already-approved morning-tip template (``WHATSAPP_TEMPLATE_MORNING_TIP`` —
-params: name, headline, body), so no brand-new Meta template is needed.
+existing users via email (always) and WhatsApp. The WhatsApp side uses a
+dedicated approved template (``WHATSAPP_TEMPLATE_FEATURE_ANNOUNCEMENT`` —
+one param: {{1}} first name; the announcement copy is fixed in the template
+itself). If that env var is unset, WhatsApp is skipped and email still goes out.
 
 Idempotent per user via ``UserEmailLog``, so it can be run repeatedly
 (e.g. across several days to respect the WhatsApp budget) without
@@ -28,7 +29,6 @@ from app.workers.celery_app import celery_app
 from app.workers.tasks.engagement_tasks import (
     _get_user_name,
     _record_sent,
-    _send_wa_template,
     _was_sent,
 )
 
@@ -49,14 +49,15 @@ _HEADLINE = "Two big new ways to get paid 🎉"
 _CTA_URL = "https://suoops.com/dashboard/settings#online-payments"
 _CTA_LABEL = "Turn it on →"
 
-# WhatsApp copy (reuses the morning-tip template: {{1}} name, {{2}} headline,
-# {{3}} body). Keep the body a single line — Meta rejects params with newlines.
-_WA_HEADLINE = "🎉 New: get paid online + your storefront"
+# Reference copy for the announcement template's FIXED body in Meta. Only the
+# first name {{1}} is a variable — Meta rejects a template that is mostly
+# variables or that ends with one. Kept here for documentation; NOT sent as a
+# param (the wording lives inside the approved template).
 _WA_BODY = (
-    "Customers can now pay you by card or transfer — it auto-confirms and settles "
-    "to your bank the next business day (flat 3%, no monthly fee). You also get a "
-    "shareable storefront link for all your products. Turn it on in Settings → Business: "
-    "suoops.com/dashboard/settings"
+    "🎉 New: get paid online + your own storefront. Customers can now pay you by "
+    "card or transfer — it auto-confirms and settles to your bank the next business "
+    "day (flat 3%, no monthly fee), and you get a shareable link for all your products. "
+    "Turn it on in Settings → Business: suoops.com/dashboard/settings"
 )
 
 
@@ -98,19 +99,50 @@ def _announce_to_user(db, user, stats: dict[str, int]) -> None:
         else:
             stats["failed"] += 1
 
-    # WhatsApp: reuse the already-approved morning-tip template (name, headline,
-    # body) so no new Meta template is needed. Best-effort + budget-aware.
-    wa_template = getattr(settings, "WHATSAPP_TEMPLATE_MORNING_TIP", None)
-    if user.phone and wa_template:
-        if _send_wa_template(
-            user.phone,
-            wa_template,
-            [name, _WA_HEADLINE, _WA_BODY],
-            ANNOUNCE_WA_TYPE,
-            db,
-            user.id,
-        ):
+    # WhatsApp: dedicated approved announcement template.
+    _send_announcement_wa(db, user, name, stats)
+
+
+def _send_announcement_wa(db, user, name: str, stats: dict[str, int]) -> None:
+    """Send the WhatsApp announcement via the dedicated approved template.
+
+    Deliberately BYPASSES the daily marketing budget (this is a one-off,
+    admin-triggered broadcast) and records a clear reason for every non-send so
+    the run log is diagnosable: wa_no_phone / wa_no_template / wa_already /
+    wa_failed.
+    """
+    template = getattr(settings, "WHATSAPP_TEMPLATE_FEATURE_ANNOUNCEMENT", None)
+    if not user.phone:
+        stats["wa_no_phone"] += 1
+        return
+    if not template:
+        stats["wa_no_template"] += 1
+        return
+    if _was_sent(db, user.id, ANNOUNCE_WA_TYPE):
+        stats["wa_already"] += 1
+        return
+    try:
+        from app.core.whatsapp import get_whatsapp_client
+
+        client = get_whatsapp_client()
+        lang = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "en") or "en"
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": name},
+                ],
+            }
+        ]
+        ok = client.send_template(user.phone, template, lang, components)
+        if ok:
+            _record_sent(db, user.id, ANNOUNCE_WA_TYPE)
             stats["whatsapp_sent"] += 1
+        else:
+            stats["wa_failed"] += 1
+    except Exception as e:
+        logger.warning("Announcement WhatsApp failed for user %s: %s", user.id, e)
+        stats["wa_failed"] += 1
 
 
 @celery_app.task(
@@ -138,6 +170,11 @@ def send_feature_announcement(limit: int | None = None) -> dict[str, Any]:
         "whatsapp_sent": 0,
         "skipped": 0,
         "failed": 0,
+        # WhatsApp diagnostics (why a message wasn't sent)
+        "wa_no_phone": 0,
+        "wa_no_template": 0,
+        "wa_already": 0,
+        "wa_failed": 0,
     }
 
     BATCH_SIZE = 50
@@ -176,11 +213,16 @@ def send_feature_announcement(limit: int | None = None) -> dict[str, Any]:
                 offset += BATCH_SIZE
 
         logger.info(
-            "Feature announcement complete: email=%d whatsapp=%d skipped=%d failed=%d",
+            "Feature announcement complete: email=%d whatsapp=%d skipped=%d failed=%d "
+            "| wa_no_phone=%d wa_no_template=%d wa_already=%d wa_failed=%d",
             stats["email_sent"],
             stats["whatsapp_sent"],
             stats["skipped"],
             stats["failed"],
+            stats["wa_no_phone"],
+            stats["wa_no_template"],
+            stats["wa_already"],
+            stats["wa_failed"],
         )
         return {"success": True, **stats}
 
