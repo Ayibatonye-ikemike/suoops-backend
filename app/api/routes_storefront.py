@@ -272,6 +272,33 @@ def product_scan_to_pay(
     return ScanToPayOut(pay_url=pay_url, qr_png=_qr_data_url(pay_url), barcode=product.barcode)
 
 
+class StorefrontQrOut(BaseModel):
+    link: str
+    qr_png: str  # data:image/png;base64,... — print, display or share
+
+
+@router.get("/storefront/qr", response_model=StorefrontQrOut)
+def storefront_qr(
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StorefrontQrOut:
+    """Shareable QR code that opens the whole storefront when scanned.
+
+    Anyone who scans it lands on the business's public catalog and can browse
+    and order. Requires the storefront to be enabled.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not (user.storefront_enabled and user.storefront_slug):
+        raise HTTPException(
+            status_code=400,
+            detail="Turn on your storefront first to get a shareable QR code.",
+        )
+    link = _link_for(user.storefront_slug)
+    return StorefrontQrOut(link=link, qr_png=_qr_data_url(link))
+
+
 @public_router.get("/store/{slug}")
 @limiter.limit("30/minute")
 def get_public_storefront(request: Request, slug: str, db: Annotated[Session, Depends(get_db)]) -> dict:
