@@ -32,18 +32,6 @@ def upgrade() -> None:
     op.add_column("user", sa.Column("storefront_announcement", sa.String(length=200), nullable=True))
     op.add_column(
         "user",
-        sa.Column("storefront_delivery_enabled", sa.Boolean(), server_default="false", nullable=False),
-    )
-    op.add_column(
-        "user",
-        sa.Column("storefront_pickup_enabled", sa.Boolean(), server_default="true", nullable=False),
-    )
-    op.add_column(
-        "user",
-        sa.Column("storefront_delivery_fee_kobo", sa.Integer(), server_default="0", nullable=False),
-    )
-    op.add_column(
-        "user",
         sa.Column("storefront_views", sa.Integer(), server_default="0", nullable=False),
     )
 
@@ -76,9 +64,6 @@ def downgrade() -> None:
     op.drop_table("storefront_review")
     op.drop_table("storefront_stock_notification")
     op.drop_column("user", "storefront_views")
-    op.drop_column("user", "storefront_delivery_fee_kobo")
-    op.drop_column("user", "storefront_pickup_enabled")
-    op.drop_column("user", "storefront_delivery_enabled")
     op.drop_column("user", "storefront_announcement")
     op.drop_column("user", "storefront_hours")
     op.drop_column("user", "storefront_state")

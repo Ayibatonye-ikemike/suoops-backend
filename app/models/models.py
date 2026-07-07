@@ -341,10 +341,6 @@ class User(Base):
     storefront_hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Single editable promo/announcement banner shown atop the store.
     storefront_announcement: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    # Fulfilment options + flat delivery fee (kobo) added to online orders.
-    storefront_delivery_enabled: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
-    storefront_pickup_enabled: Mapped[bool] = mapped_column(default=True, server_default="true", nullable=False)
-    storefront_delivery_fee_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Discovery analytics — incremented on each public store view.
     storefront_views: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     

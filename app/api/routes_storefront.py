@@ -92,9 +92,6 @@ class StorefrontUpdateIn(BaseModel):
     # {"0": {"open": "09:00", "close": "18:00"}, ...} — 0=Mon; null day = closed.
     hours: dict | None = None
     announcement: str | None = Field(default=None, max_length=200)
-    delivery_enabled: bool | None = None
-    pickup_enabled: bool | None = None
-    delivery_fee: float | None = Field(default=None, ge=0, le=1_000_000)  # naira
 
 
 class StorefrontOut(BaseModel):
@@ -108,9 +105,6 @@ class StorefrontOut(BaseModel):
     state: str | None = None
     hours: dict | None = None
     announcement: str | None = None
-    delivery_enabled: bool = False
-    pickup_enabled: bool = True
-    delivery_fee: float = 0.0
     views: int = 0
 
 
@@ -127,9 +121,6 @@ def _storefront_out(db: Session, user) -> StorefrontOut:
         state=user.storefront_state,
         hours=user.storefront_hours,
         announcement=user.storefront_announcement,
-        delivery_enabled=bool(user.storefront_delivery_enabled),
-        pickup_enabled=bool(user.storefront_pickup_enabled),
-        delivery_fee=(user.storefront_delivery_fee_kobo or 0) / 100,
         views=user.storefront_views or 0,
     )
 
@@ -143,8 +134,6 @@ class StoreOrderIn(BaseModel):
     customer_name: str = Field(min_length=1, max_length=100)
     customer_phone: str = Field(min_length=6, max_length=20)
     items: list[StoreOrderItem] = Field(min_length=1, max_length=20)
-    # "delivery" | "pickup" | None. Delivery adds the store's flat delivery fee.
-    fulfillment: str | None = Field(default=None)
 
 
 def _link_for(slug: str | None) -> str | None:
@@ -243,12 +232,6 @@ def _apply_storefront_profile(db: Session, user, payload: StorefrontUpdateIn) ->
         user.storefront_hours = _clean_hours(payload.hours)
     if payload.announcement is not None:
         user.storefront_announcement = payload.announcement.strip() or None
-    if payload.delivery_enabled is not None:
-        user.storefront_delivery_enabled = payload.delivery_enabled
-    if payload.pickup_enabled is not None:
-        user.storefront_pickup_enabled = payload.pickup_enabled
-    if payload.delivery_fee is not None:
-        user.storefront_delivery_fee_kobo = int(round(payload.delivery_fee * 100))
 
 
 @router.patch("/storefront", response_model=StorefrontOut)
@@ -456,11 +439,6 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
         "open_now": is_open,
         "open_from": open_from,
         "open_to": open_to,
-        "fulfillment": {
-            "delivery": bool(owner.storefront_delivery_enabled),
-            "pickup": bool(owner.storefront_pickup_enabled),
-            "delivery_fee": (owner.storefront_delivery_fee_kobo or 0) / 100,
-        },
         "reviews": {"count": review_count, "average": review_avg},
         "products": [
             {
@@ -485,14 +463,23 @@ def list_public_stores(
     db: Annotated[Session, Depends(get_db)],
     page: int = 1,
     page_size: int = 24,
+    q: str | None = None,
 ) -> dict:
-    """Public directory of eligible storefronts (for the landing page).
+    """Public marketplace directory + global search across ALL stores.
 
     Trust gate: only businesses that opted in AND have a logo AND verified bank
     (active Paystack subaccount) AND at least one active product are listed.
+    When ``q`` is given it searches business name, description, city/state and
+    product names + categories across every store, so a shopper can find an item
+    and pick which store to buy it from.
     """
+    from sqlalchemy import or_
+
+    from app.models.inventory_models import ProductCategory
+
     page = max(1, page)
     page_size = min(max(1, page_size), 48)
+    term = (q or "").strip()
 
     # Owners with at least one active product.
     product_owner_ids = (
@@ -513,6 +500,29 @@ def list_public_stores(
         )
     )
 
+    if term:
+        like = f"%{term}%"
+        product_match_ids = (
+            db.query(Product.user_id)
+            .outerjoin(ProductCategory, Product.category_id == ProductCategory.id)
+            .filter(
+                Product.is_active.is_(True),
+                or_(Product.name.ilike(like), ProductCategory.name.ilike(like)),
+            )
+            .distinct()
+            .subquery()
+        )
+        base = base.filter(
+            or_(
+                models.User.business_name.ilike(like),
+                models.User.name.ilike(like),
+                models.User.storefront_description.ilike(like),
+                models.User.storefront_city.ilike(like),
+                models.User.storefront_state.ilike(like),
+                models.User.id.in_(db.query(product_match_ids)),
+            )
+        )
+
     total = base.with_entities(func.count(models.User.id)).scalar() or 0
     owners = (
         base.order_by(models.User.storefront_slug.asc())
@@ -521,16 +531,41 @@ def list_public_stores(
         .all()
     )
 
+    # For search results, surface up to 3 matching product names per store.
+    matched: dict[int, list[str]] = {}
+    if term and owners:
+        like = f"%{term}%"
+        rows = (
+            db.query(Product.user_id, Product.name)
+            .outerjoin(ProductCategory, Product.category_id == ProductCategory.id)
+            .filter(
+                Product.user_id.in_([o.id for o in owners]),
+                Product.is_active.is_(True),
+                or_(Product.name.ilike(like), ProductCategory.name.ilike(like)),
+            )
+            .all()
+        )
+        for uid, pname in rows:
+            lst = matched.setdefault(uid, [])
+            if len(lst) < 3 and pname not in lst:
+                lst.append(pname)
+
     return {
         "page": page,
         "page_size": page_size,
         "total": total,
+        "query": term or None,
         "stores": [
             {
                 "slug": o.storefront_slug,
                 "business_name": o.business_name or o.name,
                 "logo_url": _presign(o.logo_url),
                 "description": o.storefront_description,
+                "location": ", ".join(
+                    p for p in [o.storefront_city, o.storefront_state] if p
+                )
+                or None,
+                "matched_products": matched.get(o.id, []),
             }
             for o in owners
         ],
@@ -603,21 +638,6 @@ async def create_store_order(
 
     if total <= 0:
         raise HTTPException(status_code=400, detail="Order total must be greater than zero.")
-
-    # Delivery fee: added as a line when the customer chose delivery and the
-    # store offers it. Otherwise the order is treated as pickup / not applicable.
-    fulfillment = (payload.fulfillment or "").strip().lower() or None
-    if fulfillment == "delivery":
-        if not owner.storefront_delivery_enabled:
-            raise HTTPException(status_code=400, detail="This store doesn't offer delivery.")
-        fee = Decimal(owner.storefront_delivery_fee_kobo or 0) / 100
-        if fee > 0:
-            lines.append(
-                {"description": "Delivery", "quantity": 1, "unit_price": fee, "product_id": None}
-            )
-            total += fee
-    elif fulfillment == "pickup" and not owner.storefront_pickup_enabled:
-        raise HTTPException(status_code=400, detail="This store doesn't offer pickup.")
 
     from app.services.invoice_payment_service import (
         PaymentInitError,
@@ -813,63 +833,5 @@ def list_reviews(
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in rows
-        ],
-    }
-
-
-@router.get("/storefront/analytics")
-def storefront_analytics(
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
-    db: Annotated[Session, Depends(get_db)],
-) -> dict:
-    """Owner: storefront views, orders, revenue, conversion and top products."""
-    user = db.query(models.User).filter(models.User.id == current_user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    views = user.storefront_views or 0
-    base = db.query(models.Invoice).filter(
-        models.Invoice.issuer_id == user.id,
-        models.Invoice.channel == "storefront",
-    )
-    orders = base.count()
-    paid_q = base.filter(models.Invoice.status == "paid")
-    paid_orders = paid_q.count()
-    revenue = float(
-        db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
-        .filter(
-            models.Invoice.issuer_id == user.id,
-            models.Invoice.channel == "storefront",
-            models.Invoice.status == "paid",
-        )
-        .scalar()
-        or 0
-    )
-    conversion = round(paid_orders / views * 100, 1) if views else 0.0
-
-    top_rows = (
-        db.query(
-            models.InvoiceLine.description,
-            func.sum(models.InvoiceLine.quantity).label("qty"),
-        )
-        .join(models.Invoice, models.InvoiceLine.invoice_id == models.Invoice.id)
-        .filter(
-            models.Invoice.issuer_id == user.id,
-            models.Invoice.channel == "storefront",
-            models.Invoice.status == "paid",
-        )
-        .group_by(models.InvoiceLine.description)
-        .order_by(func.sum(models.InvoiceLine.quantity).desc())
-        .limit(5)
-        .all()
-    )
-    return {
-        "views": views,
-        "orders": orders,
-        "paid_orders": paid_orders,
-        "revenue": revenue,
-        "conversion_rate": conversion,
-        "top_products": [
-            {"name": name, "quantity": int(qty or 0)} for name, qty in top_rows
         ],
     }
