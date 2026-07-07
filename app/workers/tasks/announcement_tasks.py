@@ -112,7 +112,12 @@ def _send_announcement_wa(db, user, name: str, stats: dict[str, int]) -> None:
     wa_failed.
     """
     template = getattr(settings, "WHATSAPP_TEMPLATE_FEATURE_ANNOUNCEMENT", None)
-    if not user.phone:
+    # Skip placeholder / non-phone values. OAuth signups without a real number
+    # store things like "oauth_google_xxx" in the phone column, which Meta
+    # rejects with #131009 (malformed). Require a plausible E.164-ish number.
+    phone = (user.phone or "").strip()
+    digits = phone.lstrip("+")
+    if not digits.isdigit() or len(digits) < 10:
         stats["wa_no_phone"] += 1
         return
     if not template:
