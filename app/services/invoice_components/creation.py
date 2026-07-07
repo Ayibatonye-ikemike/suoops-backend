@@ -164,7 +164,26 @@ class InvoiceCreationMixin:
         elif async_pdf:
             self._queue_pdf_generation(invoice, invoice_type, user)
         else:
-            invoice.pdf_url = self._generate_pdf(invoice, invoice_type, user)
+            # PDF generation must never block invoice creation — the invoice row
+            # is already committed above. If synchronous generation fails (e.g.
+            # logo/S3 or renderer hiccup) fall back to async so the business still
+            # gets a created invoice instead of a 500.
+            try:
+                invoice.pdf_url = self._generate_pdf(invoice, invoice_type, user)
+            except Exception:
+                logger.exception(
+                    "Synchronous PDF generation failed for invoice %s; "
+                    "falling back to async generation",
+                    invoice.invoice_id,
+                )
+                try:
+                    self._queue_pdf_generation(invoice, invoice_type, user)
+                except Exception:
+                    logger.exception(
+                        "Async PDF fallback also failed to enqueue for invoice %s",
+                        invoice.invoice_id,
+                    )
+                    invoice.pdf_url = None
 
         # Deduct from invoice_balance for revenue invoices (new billing model).
         # Storefront / online-commission orders pass consume_balance=False so the
