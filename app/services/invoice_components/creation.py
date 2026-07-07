@@ -199,6 +199,21 @@ class InvoiceCreationMixin:
             )
             metrics.invoice_created()
 
+            # Once-a-day WhatsApp professionalism-score nudge for the business
+            # owner when they create a manual invoice (deduped inside the task).
+            # Skip storefront orders — those are placed by the customer.
+            if invoice.channel != "storefront":
+                try:
+                    from app.workers.tasks.welcome_tasks import (
+                        send_daily_professionalism_score,
+                    )
+
+                    send_daily_professionalism_score.delay(issuer_id)
+                except Exception:
+                    logger.exception(
+                        "Failed to enqueue professionalism-score nudge for %s", issuer_id
+                    )
+
         if self.cache:
             self.cache.invalidate_user_invoices(issuer_id)
 

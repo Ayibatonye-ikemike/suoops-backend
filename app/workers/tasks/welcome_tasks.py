@@ -337,6 +337,118 @@ def send_activation_followup(user_id: int) -> dict:
 # transitions to "paid". We only actually message the user when this is
 # their FIRST paid invoice — that's the moment of peak motivation
 # ("SuoOps got me paid!") so the referral ask lands well.
+def _valid_wa_phone(phone: str | None) -> bool:
+    digits = (phone or "").strip().lstrip("+")
+    return digits.isdigit() and len(digits) >= 10
+
+
+def _professionalism_score_message(db, user_id: int, first_name: str, *, paid: bool) -> str:
+    """Build the WhatsApp professionalism-score nudge."""
+    from app.services.analytics_service import calculate_professionalism_score
+
+    score = calculate_professionalism_score(db, user_id)
+    pct = int(score.get("score", 0) or 0)
+    level = score.get("level", "")
+    tips = [t for t in (score.get("tips") or []) if t][:3]
+
+    header = (
+        f"🎉 *You just got paid, {first_name}!*"
+        if paid
+        else f"🧾 *Nice — invoice created, {first_name}!*"
+    )
+    lines = [
+        header,
+        "",
+        f"📊 Your *professionalism score* is *{pct}%*"
+        + (f" ({level})" if level else "")
+        + ".",
+        "A complete profile builds trust — businesses that look professional "
+        "get paid faster.",
+    ]
+    if pct < 100 and tips:
+        lines.append("")
+        lines.append("*Quick wins:*")
+        lines.extend(f"• {t}" for t in tips)
+    lines.append("")
+    lines.append("👉 Finish setup: suoops.com/dashboard/settings")
+    return "\n".join(lines)
+
+
+def _score_sent_today(db, user_id: int) -> bool:
+    from datetime import datetime, timezone
+
+    from app.models.models import UserEmailLog
+
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return (
+        db.query(UserEmailLog.id)
+        .filter(
+            UserEmailLog.user_id == user_id,
+            UserEmailLog.email_type == f"wa_proscore_{today}",
+        )
+        .first()
+        is not None
+    )
+
+
+def _record_score_today(db, user_id: int) -> None:
+    from datetime import datetime, timezone
+
+    from app.models.models import UserEmailLog
+
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    db.add(UserEmailLog(user_id=user_id, email_type=f"wa_proscore_{today}"))
+    db.flush()
+
+
+@celery_app.task(
+    name="engagement.send_daily_professionalism_score",
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=30,
+    time_limit=45,
+)
+def send_daily_professionalism_score(user_id: int) -> dict:
+    """WhatsApp professionalism-score nudge, at most once per calendar day.
+
+    Dispatched whenever a business creates a revenue invoice. Deduped to once a
+    day per user and capped by the daily WhatsApp marketing budget.
+    """
+    from app.models.models import User
+
+    result: dict = {"sent": False, "skipped_reason": None}
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id).one_or_none()
+        if not user or not _valid_wa_phone(user.phone):
+            result["skipped_reason"] = "no_user_or_phone"
+            return result
+        if _score_sent_today(db, user.id):
+            result["skipped_reason"] = "already_today"
+            return result
+
+        from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+
+        if not can_send_whatsapp():
+            result["skipped_reason"] = "budget"
+            return result
+
+        try:
+            from app.core.whatsapp import get_whatsapp_client
+
+            first_name = (user.name or "there").split()[0]
+            msg = _professionalism_score_message(db, user.id, first_name, paid=False)
+            get_whatsapp_client().send_text(user.phone, msg)
+            record_whatsapp_send()
+            _record_score_today(db, user.id)
+            result["sent"] = True
+            logger.info("Daily professionalism nudge sent to user %s", user_id)
+        except Exception as e:
+            logger.warning("Daily professionalism nudge failed for user %s: %s", user_id, e)
+            result["skipped_reason"] = f"error: {e}"
+    return result
+
+
 FIRST_PAID_REFERRAL_LOG_TYPE = "first_paid_referral_nudge"
 
 
@@ -399,34 +511,15 @@ def send_first_paid_referral_nudge(user_id: int) -> dict:
 
         try:
             from app.core.whatsapp import get_whatsapp_client
-            from app.services.analytics_service import calculate_professionalism_score
 
             first_name = (user.name or "there").split()[0]
+            msg = _professionalism_score_message(db, user_id, first_name, paid=True)
 
-            score = calculate_professionalism_score(db, user_id)
-            pct = int(score.get("score", 0) or 0)
-            level = score.get("level", "")
-            tips = [t for t in (score.get("tips") or []) if t][:3]
+            get_whatsapp_client().send_text(user.phone, msg)
 
-            lines = [
-                f"🎉 *You just got paid, {first_name}!*",
-                "",
-                f"📊 Your *professionalism score* is *{pct}%*"
-                + (f" ({level})" if level else "")
-                + ".",
-                "A complete profile builds trust — businesses that look professional "
-                "get paid faster.",
-            ]
-            if pct < 100 and tips:
-                lines.append("")
-                lines.append("*Quick wins:*")
-                lines.extend(f"• {t}" for t in tips)
-            lines.append("")
-            lines.append("👉 Finish setup: suoops.com/dashboard/settings")
-
-            client = get_whatsapp_client()
-            client.send_text(user.phone, "\n".join(lines))
-
+            # Also mark the daily key so the creation-triggered nudge doesn't
+            # double up on the same day.
+            _record_score_today(db, user_id)
             db.add(UserEmailLog(user_id=user_id, email_type=FIRST_PAID_REFERRAL_LOG_TYPE))
             db.flush()
             result["sent"] = True
