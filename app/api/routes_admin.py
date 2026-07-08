@@ -721,10 +721,13 @@ class InfluencerCreate(BaseModel):
     influencer_name: str
     influencer_contact: str | None = None
     custom_slug: str  # vanity URL slug — letters, numbers, hyphens only
-    commission_first: int = 500  # ₦ on first Pro purchase
-    commission_recurring: int = 200  # ₦ on purchases 2–3
-    commission_months: int = 2  # how many recurring purchases
-    commission_perpetual_pct: int = 20  # % of SuoOps' 3% commission, on every referred sale
+    # Current model: influencers earn a flat share of SuoOps' 3% fee on every
+    # referred transaction, for life while active. The old fixed-₦ first/recurring
+    # tiers are retired (Pro-pack era) and default to 0 — perpetual_pct drives it.
+    commission_first: int = 0  # retired: ₦ on first purchase
+    commission_recurring: int = 0  # retired: ₦ on purchases 2–N
+    commission_months: int = 0  # retired: recurring window length
+    commission_perpetual_pct: int = 20  # % of SuoOps' 3% commission, every referred sale, forever
     bonus_invoices: int = 3  # extra free invoices for signups
     notes: str | None = None
 
