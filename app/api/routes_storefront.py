@@ -933,3 +933,75 @@ def list_reviews(
             for r in rows
         ],
     }
+
+
+class OrderReceivedIn(BaseModel):
+    phone: str = Field(min_length=6, max_length=20)
+    invoice_id: str | None = Field(default=None, max_length=40)
+
+
+@public_router.post("/store/{slug}/order-received")
+@limiter.limit("20/hour")
+def confirm_order_received(
+    request: Request,
+    slug: str,
+    payload: OrderReceivedIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Public: the buyer confirms they got their order → release the held funds
+    to the seller immediately (skips the remaining protection window).
+
+    Gated by the buyer's phone number matching the held order, so a random
+    invoice id alone can't trigger an early release.
+    """
+    import datetime as dt
+
+    from app.services.escrow_service import EscrowError, release_escrow
+    from app.utils.phone import normalize_phone
+
+    owner = _lookup_store(db, slug)
+    normalized = normalize_phone(payload.phone.strip())
+    candidates = {payload.phone.strip(), normalized}
+
+    q = (
+        db.query(models.StorefrontOrderEscrow)
+        .join(models.Invoice, models.StorefrontOrderEscrow.invoice_id == models.Invoice.id)
+        .join(models.Customer, models.Invoice.customer_id == models.Customer.id)
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == owner.id,
+            models.Customer.phone.in_(candidates),
+        )
+    )
+    if payload.invoice_id:
+        q = q.filter(models.Invoice.invoice_id == payload.invoice_id.strip())
+    escrow = q.order_by(models.StorefrontOrderEscrow.id.desc()).first()
+
+    if not escrow:
+        raise HTTPException(
+            status_code=404,
+            detail="We couldn't find a held order for that phone number.",
+        )
+
+    if escrow.status == "released":
+        return {"ok": True, "message": "This order was already completed — thank you!"}
+    if escrow.status != "held":
+        raise HTTPException(
+            status_code=409,
+            detail="This order can't be confirmed right now.",
+        )
+
+    escrow.confirmed_at = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+
+    try:
+        release_escrow(db, escrow, reason="customer confirmed receipt")
+    except EscrowError:
+        # Payout hiccup (e.g. Paystack timeout) — not fatal to the buyer. The
+        # auto-release worker will retry; confirmation is already recorded.
+        logger.exception("Immediate release failed for escrow %s", escrow.id)
+        return {
+            "ok": True,
+            "message": "Thanks for confirming! We're releasing your order to the seller.",
+        }
+
+    return {"ok": True, "message": "Thank you for confirming! The seller has been paid."}
