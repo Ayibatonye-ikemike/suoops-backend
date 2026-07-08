@@ -735,30 +735,36 @@ async def create_store_order(
         consume_balance=False,
     )
 
+    # Decide hold vs normal settlement BEFORE payment init. When escrow is on
+    # and the seller isn't trusted, funds are held (collected to the SuoOps
+    # balance) and released to the seller after the buyer-protection window.
+    from app.services.escrow_service import create_order_escrow, is_trusted_seller
+
+    held = settings.ESCROW_ENABLED and not is_trusted_seller(db, owner)
+
     try:
-        pay = await start_invoice_payment(db, invoice, owner)
+        pay = await start_invoice_payment(db, invoice, owner, hold=held)
     except PaymentInitError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
-    # Create the buyer-protection hold for this order (pending until payment is
-    # confirmed). Never let escrow bookkeeping break the order/pay flow.
-    try:
-        from app.services.escrow_service import create_order_escrow
-
-        create_order_escrow(
-            db,
-            invoice=invoice,
-            seller=owner,
-            gross_naira=total,
-            customer_lat=payload.customer_lat,
-            customer_lng=payload.customer_lng,
-        )
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to create escrow hold for order %s", invoice.invoice_id)
+    # Only held orders get an escrow row (trusted sellers settle normally via
+    # the subaccount split). Never let escrow bookkeeping break the order flow.
+    if held:
+        try:
+            create_order_escrow(
+                db,
+                invoice=invoice,
+                seller=owner,
+                gross_naira=total,
+                customer_lat=payload.customer_lat,
+                customer_lng=payload.customer_lng,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to create escrow hold for order %s", invoice.invoice_id)
 
     logger.info(
-        "Storefront order %s created for store %s (user %s)",
-        invoice.invoice_id, slug, owner.id,
+        "Storefront order %s created for store %s (user %s, held=%s)",
+        invoice.invoice_id, slug, owner.id, held,
     )
     return {"invoice_id": invoice.invoice_id, **pay}
 

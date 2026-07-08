@@ -144,6 +144,39 @@ def create_order_escrow(
     return escrow
 
 
+def activate_escrow_on_payment(db: Session, invoice: "models.Invoice") -> None:
+    """Activate a pending storefront-order hold once payment is confirmed.
+
+    Flips ``pending -> held`` and sets ``release_due_at = paid_at + window`` (12h
+    same-state, else 3 days; unknown state → the safer cross-state window).
+    Idempotent — only acts on a pending row. No money moves here.
+    """
+    escrow = (
+        db.query(models.StorefrontOrderEscrow)
+        .filter(
+            models.StorefrontOrderEscrow.invoice_id == invoice.id,
+            models.StorefrontOrderEscrow.status == "pending",
+        )
+        .first()
+    )
+    if not escrow:
+        return
+
+    paid_at = getattr(invoice, "paid_at", None) or dt.datetime.now(dt.timezone.utc)
+    if paid_at.tzinfo is None:
+        paid_at = paid_at.replace(tzinfo=dt.timezone.utc)
+
+    # Unknown same/different state → treat as cross-state (longer, safer window).
+    same = bool(escrow.same_state) if escrow.same_state is not None else False
+    escrow.status = "held"
+    escrow.release_due_at = paid_at + hold_window(same)
+    db.commit()
+    logger.info(
+        "Escrow held for order invoice=%s (same_state=%s, release_due_at=%s)",
+        invoice.id, escrow.same_state, escrow.release_due_at,
+    )
+
+
 # ── Seller payout setup (Paystack Transfer Recipient) ──────────────────
 
 def _headers() -> dict[str, str]:

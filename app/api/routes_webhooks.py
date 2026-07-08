@@ -597,6 +597,15 @@ def _handle_paystack_invoice_payment(payload: dict, db: Session, signature: str 
         except Exception:
             logger.exception("INVPAY: failed to mark invoice %s paid", invoice_id)
 
+    # Activate the buyer-protection hold (pending -> held) for storefront orders.
+    # Idempotent + best-effort; never break payment confirmation.
+    try:
+        from app.services.escrow_service import activate_escrow_on_payment
+
+        activate_escrow_on_payment(db, invoice)
+    except Exception:
+        logger.exception("INVPAY: failed to activate escrow for invoice %s", invoice_id)
+
     if transaction:
         transaction.status = PaymentStatus.SUCCESS
 

@@ -32,9 +32,15 @@ class PaymentInitError(Exception):
         self.status_code = status_code
 
 
-async def start_invoice_payment(db: Session, invoice, issuer) -> dict:
+async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False) -> dict:
     """
     Initialize a Paystack payment for ``invoice`` via ``issuer``'s subaccount.
+
+    When ``hold`` is True (storefront escrow for an untrusted seller), the payment
+    is collected to the SuoOps balance WITHOUT the subaccount split, so the
+    seller's share is held until the buyer-protection window releases it (paid
+    out later via a Transfer, minus commission). Otherwise it splits to the
+    seller's subaccount and settles normally.
 
     Returns ``{authorization_url, reference, amount}``. Raises PaymentInitError
     with a user-safe message + HTTP status on any failure.
@@ -102,26 +108,37 @@ async def start_invoice_payment(db: Session, invoice, issuer) -> dict:
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
+            init_payload = {
+                "email": customer_email,
+                "amount": int(amount * 100),
+                "reference": reference,
+                "callback_url": f"{settings.FRONTEND_URL}/pay/{invoice.invoice_id}?ref={reference}",
+                "metadata": {
+                    "payment_type": "invoice_payment",
+                    "invoice_id": invoice.invoice_id,
+                    "issuer_id": issuer.id,
+                    "escrow_hold": hold,
+                },
+            }
+            if not hold:
+                # Normal path: split to the seller's subaccount, they bear the
+                # Paystack fee, SuoOps keeps the commission via transaction_charge.
+                init_payload.update(
+                    {
+                        "subaccount": issuer.paystack_subaccount_code,
+                        "bearer": "subaccount",
+                        "transaction_charge": commission_kobo,
+                    }
+                )
+            # Held path: no subaccount → full amount collected to SuoOps balance;
+            # the seller is paid out (minus commission) when the hold releases.
             resp = await client.post(
                 "https://api.paystack.co/transaction/initialize",
                 headers={
                     "Authorization": f"Bearer {settings.PAYSTACK_SECRET}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "email": customer_email,
-                    "amount": int(amount * 100),
-                    "reference": reference,
-                    "subaccount": issuer.paystack_subaccount_code,
-                    "bearer": "subaccount",  # business absorbs the Paystack fee
-                    "transaction_charge": commission_kobo,  # platform 3%, min ₦20, tiered cap (₦2,000 per ₦500k)
-                    "callback_url": f"{settings.FRONTEND_URL}/pay/{invoice.invoice_id}?ref={reference}",
-                    "metadata": {
-                        "payment_type": "invoice_payment",
-                        "invoice_id": invoice.invoice_id,
-                        "issuer_id": issuer.id,
-                    },
-                },
+                json=init_payload,
             )
             resp.raise_for_status()
             data = resp.json()
