@@ -22,6 +22,7 @@ class SignupStart(BaseModel):
     email: str | None = None
     name: str
     business_name: str = Field(..., min_length=2, max_length=255, description="Business or brand name (required)")
+    accept_terms: bool = Field(False, description="Whether the business accepted the Terms & Conditions (incl. buyer-protection/escrow policy). Must be true to sign up.")
     referral_code: str | None = Field(None, min_length=3, max_length=50, description="Referral code or influencer vanity slug from another user")
     signup_source: str | None = Field(None, max_length=50, description="Attribution source: google_ads, instagram, whatsapp_ad, social_media, referral, google_oauth, organic")
     device_fingerprint: str | None = Field(None, max_length=64, description="Client-generated device fingerprint (anti-fraud; hashed on the client)")

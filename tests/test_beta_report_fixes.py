@@ -21,7 +21,7 @@ client = TestClient(app)
 def _signup_and_get_token(phone: str) -> str:
     r = client.post(
         "/auth/signup/request",
-        json={"phone": phone, "name": "FixUser", "business_name": "Fix Biz"},
+        json={"phone": phone, "name": "FixUser", "business_name": "Fix Biz", "accept_terms": True},
     )
     assert r.status_code == 200, r.text
 

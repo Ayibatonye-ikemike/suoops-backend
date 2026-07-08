@@ -325,6 +325,12 @@ class User(Base):
     # business's payout/bank details; reused for every storefront-order release.
     paystack_recipient_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # When the business accepted the Terms & Conditions (incl. buyer-protection /
+    # escrow policy) at signup. NULL = legacy account created before T&C gating.
+    terms_accepted_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Paystack subaccount for online payments / marketplace splits. Created from
     # the business's bank details; each sale settles to their bank minus the
     # platform commission. `active` is True once the subaccount is verified.

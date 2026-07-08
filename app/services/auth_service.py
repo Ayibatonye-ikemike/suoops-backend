@@ -55,6 +55,12 @@ class AuthService:
         from app.services.fraud_service import evaluate_signup, is_disposable_email
 
         identifier = self._normalize_phone(payload.phone)
+        # Terms & Conditions (incl. buyer-protection/escrow policy) must be
+        # accepted before we send an OTP or create anything.
+        if not payload.accept_terms:
+            raise ValueError(
+                "Please accept the Terms & Conditions to create your account."
+            )
         # Check if phone already registered
         existing = (
             self.db.query(models.User)
@@ -141,6 +147,8 @@ class AuthService:
             "bank_name": payload.bank_name,
             "account_number": payload.account_number,
             "account_name": payload.account_name,
+            # T&C were accepted at signup start (start_signup enforces it).
+            "terms_accepted_at": datetime.now(timezone.utc),
         }
 
         # ── Anti-fraud: persist signals captured at signup start ──

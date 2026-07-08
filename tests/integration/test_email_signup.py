@@ -18,7 +18,8 @@ def test_email_signup_flow():
         json={
             "email": "test@example.com",
             "name": "Test User",
-            "business_name": "Test Business"
+            "business_name": "Test Business",
+            "accept_terms": True,
         }
     )
     print(f"Status Code: {response.status_code}")

@@ -142,6 +142,9 @@ class StoreOrderIn(BaseModel):
     # the API layer for backward-compat; the storefront UI captures it via GPS.
     customer_lat: float | None = Field(default=None, ge=-90, le=90)
     customer_lng: float | None = Field(default=None, ge=-180, le=180)
+    # Optional landmark / delivery instructions the buyer can add so the
+    # business can find them (the GPS pin is the primary delivery detail).
+    delivery_note: str | None = Field(default=None, max_length=200)
 
 
 def _link_for(slug: str | None) -> str | None:
@@ -439,7 +442,17 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
     products = (
         db.query(Product)
         .options(joinedload(Product.category))
-        .filter(Product.user_id == owner.id, Product.is_active.is_(True))
+        .filter(
+            Product.user_id == owner.id,
+            Product.is_active.is_(True),
+            # Buyer protection: only list items that show a description AND a
+            # photo, so buyers (and dispute reviews) can see exactly what was
+            # ordered. Incomplete items are hidden until both are added.
+            Product.description.isnot(None),
+            Product.description != "",
+            Product.image_url.isnot(None),
+            Product.image_url != "",
+        )
         .order_by(Product.name.asc())
         .all()
     )
@@ -684,6 +697,11 @@ async def create_store_order(
             Product.user_id == owner.id,
             Product.id.in_(ids),
             Product.is_active.is_(True),
+            # Only complete (described + photographed) items are orderable.
+            Product.description.isnot(None),
+            Product.description != "",
+            Product.image_url.isnot(None),
+            Product.image_url != "",
         )
         .all()
     )
@@ -734,6 +752,22 @@ async def create_store_order(
         async_pdf=True,
         consume_balance=False,
     )
+
+    # Surface delivery details to the business on the order/invoice. The GPS pin
+    # (a Google Maps link) is the primary "where to deliver"; the buyer can add
+    # an optional landmark/instructions note.
+    delivery_lines: list[str] = []
+    if payload.customer_lat is not None and payload.customer_lng is not None:
+        delivery_lines.append(
+            f"📍 Delivery location: https://www.google.com/maps?q="
+            f"{payload.customer_lat},{payload.customer_lng}"
+        )
+    note = (payload.delivery_note or "").strip()
+    if note:
+        delivery_lines.append(f"Landmark/note: {note}")
+    if delivery_lines:
+        invoice.notes = "Storefront delivery\n" + "\n".join(delivery_lines)
+        db.commit()
 
     # Decide hold vs normal settlement BEFORE payment init. When escrow is on
     # and the seller isn't trusted, funds are held (collected to the SuoOps

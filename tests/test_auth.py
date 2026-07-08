@@ -15,6 +15,18 @@ def _extract_otp(phone: str, purpose: str) -> str:
     return data["code"]
 
 
+def test_signup_requires_terms_acceptance():
+    """Signup is rejected until the business accepts the Terms & Conditions."""
+    client = TestClient(app)
+    phone = "+234" + secrets.token_hex(4)
+    resp = client.post(
+        "/auth/signup/request",
+        json={"phone": phone, "name": "NoTerms", "business_name": "No Terms Biz"},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "terms" in resp.text.lower()
+
+
 def test_signup_and_login_with_otp():
     client = TestClient(app)
     phone = "+234" + secrets.token_hex(4)
@@ -22,7 +34,7 @@ def test_signup_and_login_with_otp():
     # Step 1: request signup OTP
     reg = client.post(
         "/auth/signup/request",
-        json={"phone": phone, "name": "UserA", "business_name": "User A Biz"},
+        json={"phone": phone, "name": "UserA", "business_name": "User A Biz", "accept_terms": True},
     )
     assert reg.status_code == 200, reg.text
 
