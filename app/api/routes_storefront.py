@@ -138,6 +138,10 @@ class StoreOrderIn(BaseModel):
     customer_name: str = Field(min_length=1, max_length=100)
     customer_phone: str = Field(min_length=6, max_length=20)
     items: list[StoreOrderItem] = Field(min_length=1, max_length=20)
+    # Customer's GPS location (drives the buyer-protection window). Optional at
+    # the API layer for backward-compat; the storefront UI captures it via GPS.
+    customer_lat: float | None = Field(default=None, ge=-90, le=90)
+    customer_lng: float | None = Field(default=None, ge=-180, le=180)
 
 
 def _link_for(slug: str | None) -> str | None:
@@ -735,6 +739,22 @@ async def create_store_order(
         pay = await start_invoice_payment(db, invoice, owner)
     except PaymentInitError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    # Create the buyer-protection hold for this order (pending until payment is
+    # confirmed). Never let escrow bookkeeping break the order/pay flow.
+    try:
+        from app.services.escrow_service import create_order_escrow
+
+        create_order_escrow(
+            db,
+            invoice=invoice,
+            seller=owner,
+            gross_naira=total,
+            customer_lat=payload.customer_lat,
+            customer_lng=payload.customer_lng,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to create escrow hold for order %s", invoice.invoice_id)
 
     logger.info(
         "Storefront order %s created for store %s (user %s)",

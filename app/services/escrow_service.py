@@ -81,6 +81,69 @@ def hold_window(same_state: bool) -> dt.timedelta:
     return dt.timedelta(days=settings.ESCROW_CROSS_STATE_HOLD_DAYS)
 
 
+def _norm_state(value: str | None) -> str | None:
+    """Normalize a state name for comparison (lowercase, strip a trailing
+    'state', drop non-alphanumerics). e.g. 'Lagos State' == 'lagos'."""
+    if not value:
+        return None
+    s = "".join(ch for ch in value.lower() if ch.isalnum() or ch == " ").strip()
+    if s.endswith(" state"):
+        s = s[: -len(" state")].strip()
+    s = s.replace(" ", "")
+    return s or None
+
+
+def create_order_escrow(
+    db: Session,
+    *,
+    invoice: "models.Invoice",
+    seller: "models.User",
+    gross_naira,
+    customer_lat: float | None,
+    customer_lng: float | None,
+) -> "models.StorefrontOrderEscrow":
+    """Create the PENDING escrow hold for a fresh storefront order.
+
+    Captures the customer's GPS-derived state (server-side) and whether it
+    matches the seller's state (drives the 12h vs 3-day window). The hold is
+    activated (status 'held', release_due_at set) when payment is confirmed.
+    """
+    from decimal import Decimal
+
+    from app.services.geocode_service import reverse_geocode
+    from app.utils.feature_gate import platform_fee_kobo
+
+    customer_state = None
+    if customer_lat is not None and customer_lng is not None:
+        customer_state, _city = reverse_geocode(customer_lat, customer_lng)
+
+    business_state = seller.storefront_state
+    bs, cs = _norm_state(business_state), _norm_state(customer_state)
+    same_state: bool | None = (bs == cs) if (bs and cs) else None
+
+    gross_kobo = int(Decimal(str(gross_naira)) * 100)
+    fee_kobo = platform_fee_kobo(gross_naira)
+    payout_kobo = max(0, gross_kobo - fee_kobo)
+
+    escrow = models.StorefrontOrderEscrow(
+        invoice_id=invoice.id,
+        seller_id=seller.id,
+        status="pending",  # -> 'held' on payment confirmation
+        same_state=same_state,
+        gross_kobo=gross_kobo,
+        fee_kobo=fee_kobo,
+        payout_kobo=payout_kobo,
+        business_state=business_state,
+        customer_state=customer_state,
+        customer_lat=customer_lat,
+        customer_lng=customer_lng,
+    )
+    db.add(escrow)
+    db.commit()
+    db.refresh(escrow)
+    return escrow
+
+
 # ── Seller payout setup (Paystack Transfer Recipient) ──────────────────
 
 def _headers() -> dict[str, str]:
