@@ -344,6 +344,11 @@ class User(Base):
     # Discovery analytics — incremented on each public store view.
     storefront_views: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
+    # Precise business location (GPS-captured at storefront setup). Powers the
+    # escrow same/different-state window and future delivery pickup point.
+    storefront_lat: Mapped[float | None] = mapped_column(nullable=True)
+    storefront_lng: Mapped[float | None] = mapped_column(nullable=True)
+
     # ── Storefront moderation (Trust & Safety) ──
     # Lifecycle of the public store as seen by admins/customers:
     #   active     — normal; store is discoverable & reachable.
@@ -667,5 +672,69 @@ class StorefrontReview(Base):
         DateTime(timezone=True),
         default=utcnow,
         server_default=func.now(),
+    )
+
+
+class StorefrontOrderEscrow(Base):
+    """Buyer-protection hold for a storefront order (channel='storefront').
+
+    The customer's payment is collected to the SuoOps Paystack balance and HELD.
+    The seller is paid out (via Paystack Transfer, minus commission) only when
+    the buyer confirms receipt OR the dispute window elapses with no report.
+    On a valid non-delivery dispute the buyer is refunded and the seller is not
+    paid. One row per storefront order (invoice).
+
+    Window: 12h when customer & business are in the same state, else 3 days.
+    """
+
+    __tablename__ = "storefront_order_escrow"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # The storefront order this hold belongs to (one-to-one with the invoice).
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("invoice.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    seller_id: Mapped[int] = mapped_column(ForeignKey("user.id"), index=True)  # the business
+
+    # held | released | refunded | disputed | canceled
+    status: Mapped[str] = mapped_column(
+        String(20), default="held", server_default="held", nullable=False, index=True
+    )
+
+    # ── Release window ──
+    same_state: Mapped[bool | None] = mapped_column(nullable=True)
+    # When the seller becomes eligible for auto-payout (paid_at + 12h/3d).
+    release_due_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    # ── Amounts (kobo) ──
+    gross_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    fee_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)  # SuoOps 3%
+    payout_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)  # to seller
+
+    # ── Location snapshots (drive the window + audit; server-derived state) ──
+    business_state: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    customer_state: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    customer_lat: Mapped[float | None] = mapped_column(nullable=True)
+    customer_lng: Mapped[float | None] = mapped_column(nullable=True)
+
+    # ── Lifecycle timestamps ──
+    confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # buyer "received"
+    released_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    refunded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disputed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dispute_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # ── Paystack payout / refund tracking ──
+    transfer_recipient_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    transfer_reference: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    refund_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=utcnow, nullable=True
     )
 
