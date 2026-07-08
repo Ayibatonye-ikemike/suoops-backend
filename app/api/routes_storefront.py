@@ -457,6 +457,33 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
     }
 
 
+def live_storefronts_query(db: Session):
+    """Query for storefronts that are actually LIVE in the public directory.
+
+    "Live" means a shopper can find the store via the global marketplace search:
+    it must be opted-in, not suspended/delisted, have a logo, accept online
+    payments (active Paystack subaccount) AND list at least one active product.
+    This is the SAME trust gate used by ``list_public_stores`` — keep them in
+    sync so admin metrics never disagree with what customers can see.
+    """
+    product_owner_ids = (
+        db.query(Product.user_id).filter(Product.is_active.is_(True)).distinct().subquery()
+    )
+    return db.query(models.User).filter(
+        models.User.storefront_enabled.is_(True),
+        models.User.store_status == "active",
+        models.User.storefront_slug.isnot(None),
+        models.User.logo_url.isnot(None),
+        models.User.paystack_subaccount_active.is_(True),
+        models.User.id.in_(db.query(product_owner_ids)),
+    )
+
+
+def count_live_storefronts(db: Session) -> int:
+    """Number of storefronts visible in the public marketplace/global search."""
+    return live_storefronts_query(db).with_entities(func.count(models.User.id)).scalar() or 0
+
+
 @public_router.get("/stores")
 @limiter.limit("30/minute")
 def list_public_stores(

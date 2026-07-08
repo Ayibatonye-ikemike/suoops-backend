@@ -584,6 +584,10 @@ def get_dashboard_stats(
     storefronts_enabled = db.query(models.User).filter(
         models.User.storefront_enabled.is_(True)
     ).count()
+    # "Live" = actually discoverable in the public marketplace/global search
+    # (same trust gate: active status + logo + online payments + active product).
+    from app.api.routes_storefront import count_live_storefronts
+    storefronts_live = count_live_storefronts(db)
 
     # Ticket stats
     total_tickets = db.query(SupportTicket).count()
@@ -647,6 +651,7 @@ def get_dashboard_stats(
             "active_last_30_days": active_users,
             "online_payments_enabled": online_payments_enabled,
             "storefronts_enabled": storefronts_enabled,
+            "storefronts_live": storefronts_live,
         },
         tickets=TicketStats(
             total_tickets=total_tickets,

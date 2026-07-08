@@ -1475,6 +1475,7 @@ class PlatformMetrics(BaseModel):
     total_users: int
     online_payments_enabled: int
     storefronts_enabled: int
+    storefronts_live: int  # actually visible in the public global-search directory
     monetized_users: int  # distinct businesses paying Suoops (online payments or top-ups)
     commission_this_month: float  # Suoops earnings (3% fees) this month, in Naira
     commission_wallet_this_month: float  # from manual invoicing (wallet debits)
@@ -1527,6 +1528,11 @@ def get_platform_metrics(
     storefronts_enabled = db.query(models.User).filter(
         models.User.storefront_enabled.is_(True)
     ).count()
+    # "Live" = passes the same trust gate as the public marketplace (logo +
+    # online payments + active product + not suspended), i.e. shoppers can
+    # actually find it in global search — not merely toggled on.
+    from app.api.routes_storefront import count_live_storefronts
+    storefronts_live = count_live_storefronts(db)
 
     # Commission earned this month, split by stream so both are auditable:
     #  - Wallet: the flat 3% is debited from the prepaid wallet at CREATION for
@@ -1614,6 +1620,7 @@ def get_platform_metrics(
         total_users=total_users,
         online_payments_enabled=online_payments_enabled,
         storefronts_enabled=storefronts_enabled,
+        storefronts_live=storefronts_live,
         monetized_users=monetized_users,
         commission_this_month=commission_this_month,
         commission_wallet_this_month=commission_wallet_this_month,
@@ -4176,6 +4183,15 @@ def list_storefronts(
         "suspended": sum(1 for i in items if i.store_status == "suspended"),
         "delisted": sum(1 for i in items if i.store_status == "delisted"),
         "low_quality": sum(1 for i in items if i.quality_score < 40),
+        # Live = discoverable in public global search (same gate as the marketplace).
+        "live": sum(
+            1
+            for i in items
+            if i.store_status == "active"
+            and i.has_logo
+            and i.online_payments_enabled
+            and i.products_active >= 1
+        ),
     }
 
     if criteria:
