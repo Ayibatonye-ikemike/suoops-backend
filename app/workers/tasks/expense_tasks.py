@@ -43,7 +43,7 @@ def send_expense_summary(
     Returns:
         Summary statistics
     """
-    from app.models.expense import Expense
+    from app.models.models import Invoice
     from app.services.tax_reporting_service import (
         compute_actual_profit_by_date_range,
         compute_revenue_by_date_range,
@@ -57,10 +57,15 @@ def send_expense_summary(
 
         start_date, end_date = _calculate_period_range(period)
 
-        expenses = db.query(Expense).filter(
-            Expense.user_id == user_id,
-            Expense.date >= start_date,
-            Expense.date <= end_date,
+        # Expenses are unified invoices (invoice_type='expense'); filter on the
+        # expense date (due_date) falling back to created_at, matching the app.
+        expense_date_col = func.coalesce(Invoice.due_date, Invoice.created_at)
+        expenses = db.query(Invoice).filter(
+            Invoice.issuer_id == user_id,
+            Invoice.invoice_type == "expense",
+            Invoice.status == "paid",
+            func.date(expense_date_col) >= start_date,
+            func.date(expense_date_col) <= end_date,
         ).all()
 
         by_category, total_expenses = _aggregate_expenses(expenses)
@@ -103,16 +108,18 @@ def send_expense_reminders(self: Task) -> dict[str, Any]:
         Statistics on reminders sent
     """
     from app.core.whatsapp import get_whatsapp_client
-    from app.models.expense import Expense
+    from app.models.models import Invoice
 
     with session_scope() as db:
         seven_days_ago = date.today() - timedelta(days=7)
 
+        expense_date_col = func.coalesce(Invoice.due_date, Invoice.created_at)
         users_with_old_expenses = (
             db.query(User.id)
-            .join(Expense)
+            .join(Invoice, Invoice.issuer_id == User.id)
+            .filter(Invoice.invoice_type == "expense")
             .group_by(User.id)
-            .having(func.max(Expense.date) < seven_days_ago)
+            .having(func.max(func.date(expense_date_col)) < seven_days_ago)
         ).subquery()
 
         users = db.query(User).filter(User.id.in_(users_with_old_expenses)).all()

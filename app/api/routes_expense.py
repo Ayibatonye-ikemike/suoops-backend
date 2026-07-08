@@ -9,13 +9,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import get_data_owner_id
 from app.api.rate_limit import limiter
 from app.api.routes_auth import get_current_user_id
 from app.db.session import get_db
-from app.models.expense import Expense
+from app.models.models import Invoice
 from app.models.expense_schemas import (
     ExpenseCreate,
     ExpenseOut,
@@ -23,6 +23,7 @@ from app.models.expense_schemas import (
     ExpenseSummary,
     ExpenseUpdate,
 )
+from app.services.expense_service import expense_invoice_to_out, record_expense_invoice
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -103,24 +104,21 @@ def create_expense(
     For WhatsApp/email expenses, use the bot message handler.
     Expense is created under the data owner (team admin for members).
     """
-    expense = Expense(
+    invoice = record_expense_invoice(
+        db,
         user_id=data_owner_id,
         amount=data.amount,
-        date=data.expense_date,
         category=data.category,
         description=data.description,
         merchant=data.merchant,
-        notes=data.notes,
+        expense_date=data.expense_date,
         input_method="manual",
         channel="dashboard",
         verified=True,  # Manual entries are auto-verified
+        notes=data.notes,
+        created_by_user_id=current_user_id,
     )
-    
-    db.add(expense)
-    db.commit()
-    db.refresh(expense)
-    
-    return expense
+    return expense_invoice_to_out(invoice)
 
 
 @router.get("/", response_model=list[ExpenseOut])
@@ -140,19 +138,27 @@ def list_expenses(
     Returns expenses sorted by date (most recent first).
     For team members, returns the team admin's expenses.
     """
-    q = db.query(Expense).filter(Expense.user_id == data_owner_id)
-    
+    date_col = func.coalesce(Invoice.due_date, Invoice.created_at)
+    q = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.lines))
+        .filter(
+            Invoice.issuer_id == data_owner_id,
+            Invoice.invoice_type == "expense",
+        )
+    )
+
     if start_date:
-        q = q.filter(Expense.date >= start_date)
+        q = q.filter(func.date(date_col) >= start_date)
     if end_date:
-        q = q.filter(Expense.date <= end_date)
+        q = q.filter(func.date(date_col) <= end_date)
     if category:
-        q = q.filter(Expense.category == category)
-    
-    q = q.order_by(Expense.date.desc(), Expense.created_at.desc())
+        q = q.filter(Invoice.category == category)
+
+    q = q.order_by(date_col.desc(), Invoice.created_at.desc())
     q = q.limit(limit).offset(offset)
-    
-    return q.all()
+
+    return [expense_invoice_to_out(inv) for inv in q.all()]
 
 
 @router.get("/{expense_id}", response_model=ExpenseOut)
@@ -163,15 +169,21 @@ def get_expense(
     db: DbDep,
 ):
     """Get a specific expense by ID"""
-    expense = db.query(Expense).filter(
-        Expense.id == expense_id,
-        Expense.user_id == data_owner_id,
-    ).first()
-    
-    if not expense:
+    invoice = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.lines))
+        .filter(
+            Invoice.id == expense_id,
+            Invoice.issuer_id == data_owner_id,
+            Invoice.invoice_type == "expense",
+        )
+        .first()
+    )
+
+    if not invoice:
         raise HTTPException(status_code=404, detail="Expense not found")
-    
-    return expense
+
+    return expense_invoice_to_out(invoice)
 
 
 @router.put("/{expense_id}", response_model=ExpenseOut)
@@ -183,25 +195,52 @@ def update_expense(
     db: DbDep,
 ):
     """Update an existing expense"""
-    expense = db.query(Expense).filter(
-        Expense.id == expense_id,
-        Expense.user_id == data_owner_id,
-    ).first()
-    
-    if not expense:
+    invoice = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.lines))
+        .filter(
+            Invoice.id == expense_id,
+            Invoice.issuer_id == data_owner_id,
+            Invoice.invoice_type == "expense",
+        )
+        .first()
+    )
+
+    if not invoice:
         raise HTTPException(status_code=404, detail="Expense not found")
-    
-    # Update fields
+
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(expense, field, value)
-    
-    expense.updated_at = datetime.now(timezone.utc)
-    
+    first_line = invoice.lines[0] if invoice.lines else None
+
+    if update_data.get("amount") is not None:
+        invoice.amount = update_data["amount"]
+        if first_line is not None:
+            first_line.unit_price = update_data["amount"]
+            first_line.quantity = 1
+    if update_data.get("expense_date") is not None:
+        ed = update_data["expense_date"]
+        invoice.due_date = (
+            ed if isinstance(ed, datetime)
+            else datetime.combine(ed, datetime.min.time(), tzinfo=timezone.utc)
+        )
+    if "category" in update_data:
+        invoice.category = update_data["category"]
+    if "description" in update_data and first_line is not None:
+        first_line.description = update_data["description"]
+    if "merchant" in update_data:
+        invoice.merchant = update_data["merchant"]
+        invoice.vendor_name = update_data["merchant"]
+    if "verified" in update_data:
+        invoice.verified = update_data["verified"]
+    if "notes" in update_data:
+        invoice.notes = update_data["notes"]
+
+    invoice.status_updated_at = datetime.now(timezone.utc)
+
     db.commit()
-    db.refresh(expense)
-    
-    return expense
+    db.refresh(invoice)
+
+    return expense_invoice_to_out(invoice)
 
 
 @router.delete("/{expense_id}", status_code=204)
@@ -212,17 +251,18 @@ def delete_expense(
     db: DbDep,
 ):
     """Delete an expense"""
-    expense = db.query(Expense).filter(
-        Expense.id == expense_id,
-        Expense.user_id == data_owner_id,
+    invoice = db.query(Invoice).filter(
+        Invoice.id == expense_id,
+        Invoice.issuer_id == data_owner_id,
+        Invoice.invoice_type == "expense",
     ).first()
-    
-    if not expense:
+
+    if not invoice:
         raise HTTPException(status_code=404, detail="Expense not found")
-    
-    db.delete(expense)
+
+    db.delete(invoice)
     db.commit()
-    
+
     return None
 
 
@@ -250,23 +290,26 @@ def expense_summary(
     # Calculate date range
     start_date, end_date = _calculate_period_range(period_type, year, month, day, week)
     
-    # SQL aggregation instead of loading all expenses into memory
+    # SQL aggregation over unified expense-invoices (invoice_type='expense').
+    date_col = func.coalesce(Invoice.due_date, Invoice.created_at)
     rows = (
         db.query(
-            Expense.category,
-            func.sum(Expense.amount).label("total"),
-            func.count(Expense.id).label("cnt"),
+            Invoice.category,
+            func.sum(Invoice.amount).label("total"),
+            func.count(Invoice.id).label("cnt"),
         )
         .filter(
-            Expense.user_id == data_owner_id,
-            Expense.date >= start_date,
-            Expense.date <= end_date,
+            Invoice.issuer_id == data_owner_id,
+            Invoice.invoice_type == "expense",
+            Invoice.status == "paid",
+            func.date(date_col) >= start_date,
+            func.date(date_col) <= end_date,
         )
-        .group_by(Expense.category)
+        .group_by(Invoice.category)
         .all()
     )
     
-    by_category = {row.category: float(row.total) for row in rows}
+    by_category = {(row.category or "other"): float(row.total) for row in rows}
     total = sum(row.total for row in rows)
     count = sum(row.cnt for row in rows)
     

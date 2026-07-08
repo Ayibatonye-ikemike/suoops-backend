@@ -148,3 +148,63 @@ def test_positive_unit_price_accepted():
         headers=headers,
     )
     assert resp.status_code == 200, resp.text
+
+
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
+def test_whatsapp_style_expense_shows_on_dashboard():
+    """An expense recorded via the shared helper (as WhatsApp/OCR do) must be
+    visible on the dashboard invoice list + expense stats — no more data split."""
+    import datetime as dt
+
+    from app.db.session import SessionLocal
+    from app.models import models as _m
+    from app.services.expense_service import record_expense_invoice
+
+    phone = "+2349990002223"
+    token = _signup_and_get_token(phone)
+    headers = _headers(token)
+
+    s = SessionLocal()
+    try:
+        user = s.query(_m.User).filter(_m.User.phone == phone).first()
+        assert user is not None
+        record_expense_invoice(
+            s,
+            user_id=user.id,
+            amount=4200,
+            category="transport",
+            description="fuel",
+            merchant="Total",
+            expense_date=dt.date.today(),
+            input_method="text",
+            channel="whatsapp",
+        )
+    finally:
+        s.close()
+
+    today = dt.date.today()
+    lst = client.get(
+        "/invoices/",
+        params={
+            "invoice_type": "expense",
+            "start_date": today.replace(day=1).isoformat(),
+            "end_date": today.isoformat(),
+        },
+        headers=headers,
+    )
+    assert lst.status_code == 200, lst.text
+    amounts = [float(i["amount"]) for i in lst.json()["items"]]
+    assert 4200.0 in amounts, amounts
+
+    stats = client.get(
+        "/expenses/stats/overview",
+        params={"period_type": "month", "year": today.year, "month": today.month},
+        headers=headers,
+    )
+    assert stats.status_code == 200, stats.text
+    assert float(stats.json()["total_expenses"]) == 4200.0, stats.json()
+
+    # The legacy /expenses CRUD list now reads the same unified data too.
+    legacy_list = client.get("/expenses/", headers=headers)
+    assert legacy_list.status_code == 200, legacy_list.text
+    assert any(float(e["amount"]) == 4200.0 for e in legacy_list.json())

@@ -11,8 +11,9 @@ from typing import TypedDict
 
 from sqlalchemy.orm import Session
 
-from app.models.expense import Expense
+from app.models import models
 from app.services.expense_nlp_service import ExpenseNLPService
+from app.services.expense_service import record_expense_invoice
 from app.services.ocr_service import OCRService
 from app.storage.s3_client import S3Client
 
@@ -44,23 +45,23 @@ class ExpenseOCRService:
         user_id: int,
         image_bytes: bytes,
         channel: str = "whatsapp",
-    ) -> Expense:
+    ) -> "models.Invoice":
         """
-        Process receipt photo and create expense record.
-        
+        Process receipt photo and create an expense invoice.
+
         Steps:
         1. Upload receipt image to S3
         2. OCR extraction
         3. Parse and categorize
-        4. Create expense record
-        
+        4. Record the expense (as a unified expense-invoice)
+
         Args:
             user_id: User ID
             image_bytes: Receipt image bytes
             channel: Input channel (whatsapp, email)
-            
+
         Returns:
-            Created Expense record
+            Created expense Invoice record
         """
         # 1. Upload receipt to S3
         receipt_url = await self._upload_receipt(user_id, image_bytes)
@@ -82,27 +83,24 @@ class ExpenseOCRService:
         
         # 3. Parse receipt data
         receipt_data = self._parse_ocr_result(ocr_result)
-        
-        # 4. Create expense record
-        expense = Expense(
-            user_id=user_id,
-            amount=receipt_data["amount"],
-            date=receipt_data["date"] or date.today(),
-            category=receipt_data["category"],
-            description=receipt_data["description"],
-            merchant=receipt_data["merchant"],
-            input_method="photo",
-            channel=channel,
-            receipt_url=receipt_url,
-            receipt_text=receipt_data["raw_text"],
-            verified=receipt_data["confidence"] == "high",  # Auto-verify high-confidence
-            notes=f"OCR confidence: {receipt_data['confidence']}",
-        )
-        
+
+        # 4. Record the expense as a unified expense-invoice.
         try:
-            self.db.add(expense)
-            self.db.commit()
-            self.db.refresh(expense)
+            invoice = record_expense_invoice(
+                self.db,
+                user_id=user_id,
+                amount=receipt_data["amount"],
+                category=receipt_data["category"],
+                description=receipt_data["description"],
+                merchant=receipt_data["merchant"],
+                expense_date=receipt_data["date"] or date.today(),
+                input_method="photo",
+                channel=channel,
+                receipt_url=receipt_url,
+                receipt_text=receipt_data["raw_text"],
+                verified=receipt_data["confidence"] == "high",  # Auto-verify high-confidence
+                notes=f"OCR confidence: {receipt_data['confidence']}",
+            )
         except Exception:
             self.db.rollback()
             # Clean up orphaned S3 file
@@ -111,15 +109,15 @@ class ExpenseOCRService:
             except Exception:
                 logger.warning("Failed to clean up S3 file %s after DB failure", receipt_url)
             raise
-        
+
         logger.info(
             "Created expense from receipt for user %s: ₦%s, category=%s",
             user_id,
-            expense.amount,
-            expense.category,
+            invoice.amount,
+            invoice.category,
         )
-        
-        return expense
+
+        return invoice
     
     async def _upload_receipt(self, user_id: int, image_bytes: bytes) -> str:
         """
@@ -203,31 +201,32 @@ class ExpenseOCRService:
         self,
         expense_id: int,
         user_id: int,
-    ) -> Expense:
+    ) -> "models.Invoice":
         """
         Reprocess an existing receipt (e.g., after OCR improvements).
-        
+
         Args:
-            expense_id: Expense ID
+            expense_id: Expense-invoice ID
             user_id: User ID (for verification)
-            
+
         Returns:
-            Updated Expense record
+            The expense Invoice record
         """
-        expense = self.db.query(Expense).filter(
-            Expense.id == expense_id,
-            Expense.user_id == user_id,
+        expense = self.db.query(models.Invoice).filter(
+            models.Invoice.id == expense_id,
+            models.Invoice.issuer_id == user_id,
+            models.Invoice.invoice_type == "expense",
         ).first()
-        
+
         if not expense:
             raise ValueError("Expense not found")
-        
+
         if not expense.receipt_url:
             raise ValueError("No receipt image to reprocess")
-        
+
         # Download receipt from S3
         # (Would need S3Client.download_file method)
         # For now, just log
         logger.info("Would reprocess receipt for expense %s", expense_id)
-        
+
         return expense

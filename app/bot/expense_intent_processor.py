@@ -9,9 +9,10 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.bot.whatsapp_client import WhatsAppClient
-from app.models.expense import Expense
+from app.models import models
 from app.services.expense_nlp_service import ExpenseNLPService
 from app.services.expense_ocr_service import ExpenseOCRService
+from app.services.expense_service import record_expense_invoice
 from app.utils.currency_fmt import fmt_money, get_user_currency
 
 logger = logging.getLogger(__name__)
@@ -217,26 +218,23 @@ class ExpenseIntentProcessor:
         # Ensure date is never None (database constraint)
         from datetime import date as date_type
         expense_date = expense_data["date"] or date_type.today()
-        
-        # Create expense record
-        expense = Expense(
+
+        # Record as a unified expense-invoice so it shows on the dashboard too.
+        invoice = record_expense_invoice(
+            self.db,
             user_id=user_id,
             amount=expense_data["amount"],
-            date=expense_date,
             category=expense_data["category"],
             description=expense_data["description"],
             merchant=expense_data["merchant"],
+            expense_date=expense_date,
             input_method="text",
             channel="whatsapp",
             verified=False,  # User should review
         )
-        
-        self.db.add(expense)
-        self.db.commit()
-        self.db.refresh(expense)
-        
+
         # Send confirmation
-        await self._send_confirmation(sender, expense)
+        await self._send_confirmation(sender, invoice)
     
     async def _handle_photo_receipt(
         self,
@@ -308,19 +306,28 @@ class ExpenseIntentProcessor:
     async def _send_confirmation(
         self,
         sender: str,
-        expense: Expense,
+        expense: "models.Invoice",
         is_photo: bool = False,
     ) -> None:
-        """Send expense confirmation to user"""
-        
-        # Format date
-        date_str = expense.date.strftime("%b %d, %Y") if expense.date else "Today"
-        
+        """Send expense confirmation to user (expense stored as an Invoice)."""
+
+        # Expense date is stored as the invoice due_date; fall back to created_at.
+        when = expense.due_date or expense.created_at
+        date_str = when.strftime("%b %d, %Y") if when else "Today"
+
         # Format category
-        category_display = expense.category.replace("_", " ").title()
-        
+        category_display = (expense.category or "other").replace("_", " ").title()
+
+        # Description lives on the first line item.
+        description = None
+        try:
+            if expense.lines:
+                description = expense.lines[0].description
+        except Exception:  # noqa: BLE001
+            description = None
+
         # Resolve user's preferred display currency
-        currency = get_user_currency(self.db, expense.user_id)
+        currency = get_user_currency(self.db, expense.issuer_id)
         
         # Build message
         icon = "📸" if is_photo else "✅"
@@ -331,8 +338,8 @@ class ExpenseIntentProcessor:
             f"📂 Category: {category_display}\n"
         )
         
-        if expense.description:
-            message += f"📝 Description: {expense.description}\n"
+        if description:
+            message += f"📝 Description: {description}\n"
         
         if expense.merchant:
             message += f"🏪 Merchant: {expense.merchant}\n"
