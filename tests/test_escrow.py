@@ -9,6 +9,22 @@ def test_hold_window_same_vs_cross_state():
     assert es.hold_window(False) == dt.timedelta(days=3)
 
 
+def test_release_escrow_status_guards():
+    """release_escrow short-circuits (no Paystack) for non-releasable states."""
+    from types import SimpleNamespace
+
+    from app.db.session import SessionLocal
+
+    s = SessionLocal()
+    try:
+        assert es.release_escrow(s, SimpleNamespace(status="released")) is True
+        assert es.release_escrow(s, SimpleNamespace(status="pending")) is False
+        assert es.release_escrow(s, SimpleNamespace(status="disputed")) is False
+        assert es.release_escrow(s, SimpleNamespace(status="refunded")) is False
+    finally:
+        s.close()
+
+
 def test_fresh_seller_is_not_trusted():
     """A brand-new seller (young account, no paid invoices) must NOT be trusted,
     so their storefront orders are always held."""

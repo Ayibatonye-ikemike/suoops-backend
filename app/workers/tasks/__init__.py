@@ -48,6 +48,9 @@ from .expense_tasks import (
     send_expense_reminders,
     send_expense_summary,
 )
+from .escrow_tasks import (
+    release_due_escrow_orders,
+)
 from .messaging_tasks import (
     ocr_parse_image,
     process_whatsapp_inbound,

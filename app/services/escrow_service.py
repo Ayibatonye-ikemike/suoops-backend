@@ -261,3 +261,78 @@ def ensure_transfer_recipient(db: Session, user: models.User) -> str:
     db.commit()
     logger.info("Created Paystack transfer recipient for seller %s", user.id)
     return code
+
+
+# ── Release (pay the seller) ───────────────────────────────────────────
+
+def _transfer_exists(reference: str) -> bool:
+    """Whether a Paystack transfer with this reference already exists."""
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(
+                f"{_PAYSTACK_BASE}/transfer/verify/{reference}", headers=_headers()
+            )
+        return bool(resp.json().get("status"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason: str = "auto") -> bool:
+    """Pay held funds out to the seller (gross − commission) via a Paystack
+    Transfer. Idempotent (deterministic reference; Paystack rejects duplicates).
+
+    Returns True if released (or already released). Raises EscrowError on a
+    genuine failure so the caller can retry later (the row stays 'held').
+    """
+    if escrow.status == "released":
+        return True
+    if escrow.status != "held":
+        return False  # pending / disputed / refunded — not releasable
+
+    if escrow.payout_kobo <= 0:
+        # Nothing to pay out (shouldn't happen) — close it cleanly.
+        escrow.status = "released"
+        escrow.released_at = dt.datetime.now(dt.timezone.utc)
+        db.commit()
+        return True
+
+    seller = db.query(models.User).filter(models.User.id == escrow.seller_id).first()
+    if not seller:
+        raise EscrowError(f"Seller {escrow.seller_id} not found for escrow {escrow.id}")
+
+    recipient = ensure_transfer_recipient(db, seller)
+    reference = f"ESCROWREL-{escrow.id}"
+
+    # Record intent before calling Paystack so a crash mid-flight is recoverable.
+    if escrow.transfer_reference != reference:
+        escrow.transfer_reference = reference
+        db.commit()
+
+    try:
+        with httpx.Client(timeout=20) as client:
+            resp = client.post(
+                f"{_PAYSTACK_BASE}/transfer",
+                headers=_headers(),
+                json={
+                    "source": "balance",
+                    "amount": int(escrow.payout_kobo),
+                    "recipient": recipient,
+                    "reason": f"Storefront order payout ({reason}) — invoice {escrow.invoice_id}",
+                    "reference": reference,
+                },
+            )
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001 — network/timeout → retry later
+        raise EscrowError(f"Transfer request failed: {exc}") from exc
+
+    if data.get("status") or _transfer_exists(reference):
+        escrow.status = "released"
+        escrow.released_at = dt.datetime.now(dt.timezone.utc)
+        db.commit()
+        logger.info(
+            "Escrow %s released — transferred %s kobo to seller %s (ref=%s)",
+            escrow.id, escrow.payout_kobo, seller.id, reference,
+        )
+        return True
+
+    raise EscrowError(f"Transfer failed for escrow {escrow.id}: {data.get('message')}")

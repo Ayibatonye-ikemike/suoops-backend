@@ -44,6 +44,10 @@ def _create_celery() -> Celery:
     # Beat schedule (only active outside test env)
     if settings.ENV.lower() not in {"test"}:
         celery.conf.beat_schedule = {
+            "escrow-release-due-orders": {
+                "task": "escrow.release_due_orders",
+                "schedule": crontab(minute="*/15"),  # every 15 min — pay out elapsed holds
+            },
             "monthly-tax-reports": {
                 "task": "tax.generate_previous_month_reports",
                 "schedule": crontab(minute=0, hour=2, day_of_month=1),  # 02:00 UTC first day
