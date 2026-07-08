@@ -377,6 +377,7 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
         .filter(
             models.User.storefront_slug == slug.lower(),
             models.User.storefront_enabled.is_(True),
+            models.User.store_status == "active",
         )
         .first()
     )
@@ -493,6 +494,7 @@ def list_public_stores(
         db.query(models.User)
         .filter(
             models.User.storefront_enabled.is_(True),
+            models.User.store_status == "active",
             models.User.storefront_slug.isnot(None),
             models.User.logo_url.isnot(None),
             models.User.paystack_subaccount_active.is_(True),
@@ -591,6 +593,7 @@ async def create_store_order(
         .filter(
             models.User.storefront_slug == slug.lower(),
             models.User.storefront_enabled.is_(True),
+            models.User.store_status == "active",
         )
         .first()
     )
@@ -678,6 +681,7 @@ def _lookup_store(db: Session, slug: str):
         .filter(
             models.User.storefront_slug == slug.lower(),
             models.User.storefront_enabled.is_(True),
+            models.User.store_status == "active",
         )
         .first()
     )

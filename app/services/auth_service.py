@@ -37,13 +37,23 @@ class AuthService:
 
     # ----------------------------- Signup -----------------------------
 
-    def start_signup(self, payload: schemas.SignupStart) -> None:
+    def start_signup(
+        self,
+        payload: schemas.SignupStart,
+        *,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
         """Start signup with WhatsApp phone number.
 
         Phone is required — OTP is always sent via WhatsApp.
         Email is stored as optional profile data but never used for OTP.
+
+        Captures anti-fraud context (IP, user-agent, device fingerprint) and
+        hard-blocks clearly abusive signups before an OTP is ever sent.
         """
-        
+        from app.services.fraud_service import evaluate_signup, is_disposable_email
+
         identifier = self._normalize_phone(payload.phone)
         # Check if phone already registered
         existing = (
@@ -53,14 +63,44 @@ class AuthService:
         )
         if existing:
             raise ValueError("An account with this identifier already exists")
-        
+
+        # ── Anti-fraud gate ──
+        # Disposable email is an unambiguous fake-account signal → reject early
+        # with an actionable message (legitimate SMEs never use these domains).
+        if is_disposable_email(payload.email):
+            raise ValueError(
+                "Please sign up with a real email address (temporary/disposable "
+                "email providers are not allowed)."
+            )
+        # Extreme velocity from one IP/device → refuse without tipping off the
+        # abuser about which control fired.
+        assessment = evaluate_signup(
+            self.db,
+            ip=ip,
+            device_id=payload.device_fingerprint,
+            email=payload.email,
+            user_agent=user_agent,
+        )
+        if assessment.block:
+            logger.warning(
+                "Blocked signup attempt phone=%s ip=%s reason=%s signals=%s",
+                identifier, ip, assessment.block_reason, assessment.signals,
+            )
+            raise ValueError(
+                "We couldn't complete your signup right now. If you believe this "
+                "is a mistake, please contact support@suoops.com."
+            )
+
         data = payload.model_dump()
         logger.info(f"start_signup: payload data keys={list(data.keys())}, referral_code={data.get('referral_code')}")
         data["phone"] = identifier
         # Store email too if provided (but phone is the OTP identifier)
         if payload.email:
             data["email"] = payload.email.lower().strip()
-            
+        # Stash anti-fraud context so it survives until OTP verification.
+        data["_signup_ip"] = ip
+        data["_signup_user_agent"] = user_agent
+
         self.otp.request_signup(identifier, data)
 
     def complete_signup(self, payload: schemas.SignupVerify) -> TokenBundle:
@@ -102,7 +142,35 @@ class AuthService:
             "account_number": payload.account_number,
             "account_name": payload.account_name,
         }
-        
+
+        # ── Anti-fraud: persist signals captured at signup start ──
+        signup_ip = stored_data.get("_signup_ip")
+        signup_ua = stored_data.get("_signup_user_agent")
+        device_id = stored_data.get("device_fingerprint")
+        try:
+            from app.services.fraud_service import evaluate_signup
+
+            assessment = evaluate_signup(
+                self.db,
+                ip=signup_ip,
+                device_id=device_id,
+                email=stored_data.get("email"),
+                user_agent=signup_ua,
+            )
+            user_data["signup_ip"] = signup_ip
+            user_data["signup_device_id"] = device_id
+            user_data["signup_user_agent"] = (signup_ua or "")[:400] or None
+            user_data["risk_score"] = assessment.score
+            user_data["risk_signals"] = assessment.signals or None
+            user_data["flagged_for_review"] = assessment.flagged
+            if assessment.flagged:
+                logger.warning(
+                    "Signup flagged for review phone=%s score=%d signals=%s",
+                    identifier, assessment.score, assessment.signals,
+                )
+        except Exception as e:  # noqa: BLE001 — risk scoring must never block signup
+            logger.warning("Risk evaluation failed for %s: %s", identifier, e)
+
         # Store email if provided (optional profile data)
         email_value = stored_data.get("email")
         if email_value:

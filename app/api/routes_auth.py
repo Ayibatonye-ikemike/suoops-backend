@@ -32,8 +32,14 @@ def request_signup(request: Request, payload: schemas.SignupStart, svc: AuthServ
     Phone is required — OTP is always sent to WhatsApp.
     Email can be provided as optional profile data.
     """
+    from app.core.admin_security import get_client_ip
+
     try:
-        svc.start_signup(payload)
+        svc.start_signup(
+            payload,
+            ip=get_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
         metrics.otp_signup_requested()
         return schemas.MessageOut(detail="OTP sent to WhatsApp")
 

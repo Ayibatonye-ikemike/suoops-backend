@@ -6,6 +6,8 @@ services:
     region: oregon
     plan: starter
     buildCommand: pip install -r requirements.txt
+    # Run database migrations after build, before the new version goes live.
+    preDeployCommand: bash release.sh
     startCommand: gunicorn app.api.main:app -k uvicorn.workers.UvicornWorker -w 1 --threads 2 --timeout 60 --bind 0.0.0.0:$PORT
     healthCheckPath: /ready
     envVars:

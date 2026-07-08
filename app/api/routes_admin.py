@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, desc, func
 from sqlalchemy.orm import Session
 
@@ -3925,4 +3925,569 @@ def send_testimonial_requests(
     except Exception:
         raise HTTPException(status_code=503, detail="Worker unavailable, try again later")
     return {"message": "Feedback request emails queued"}
+
+
+# =============================================================================
+# STOREFRONT MODERATION & METRICS (Trust & Safety)
+# =============================================================================
+
+STORE_STATUSES = {"active", "suspended", "delisted"}
+
+
+class StorefrontMetricItem(BaseModel):
+    id: int
+    name: str
+    business_name: str | None
+    slug: str | None
+    storefront_enabled: bool
+    store_status: str
+    store_status_reason: str | None
+    store_status_at: str | None
+
+    # Discovery / catalog
+    views: int
+    products_total: int
+    products_active: int
+    has_logo: bool
+    has_description: bool
+    has_location: bool
+    online_payments_enabled: bool
+
+    # Reputation
+    reviews_count: int
+    reviews_avg: float | None
+
+    # Commercial
+    sales_count: int
+    gmv: float
+    last_sale_at: str | None
+    days_since_last_sale: int | None
+    created_at: str
+
+    # Owner trust (link to anti-fraud)
+    owner_flagged: bool
+    owner_risk_score: int
+
+    # Derived
+    quality_score: int  # 0-100
+    risk_flags: list[str]
+
+
+class StorefrontListResponse(BaseModel):
+    storefronts: list[StorefrontMetricItem]
+    total: int
+    page: int
+    page_size: int
+    # Aggregate counts for the dashboard header
+    counts: dict[str, int]
+
+
+@router.get("/storefronts", response_model=StorefrontListResponse)
+def list_storefronts(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=5, le=100),
+    status_filter: str = Query("all", pattern="^(all|active|suspended|delisted)$"),
+    criteria: str | None = Query(
+        None,
+        pattern="^(no_products|no_logo|no_online_payments|no_sales|low_rating|thin_profile|flagged_owner)$",
+    ),
+    sort_by: str = Query(
+        "quality_score",
+        pattern="^(quality_score|views|gmv|sales_count|products_active|reviews_count|created_at|name)$",
+    ),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$"),
+    search: str | None = Query(None, max_length=100),
+    _admin: Any = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Per-storefront metrics + moderation intelligence.
+
+    Surfaces catalog, reputation and sales metrics for every business that has
+    opted into a public storefront, plus auto risk-flags for stores that fail our
+    quality/trust criteria so an admin can decide whether to suspend or delist.
+    """
+    from app.models.inventory_models import Product
+    from app.models.models import Invoice
+
+    now = dt.datetime.now(dt.timezone.utc)
+
+    # Base: anyone who has ever turned on a storefront (regardless of status, so
+    # suspended/delisted stores remain visible to admins).
+    q = db.query(models.User).filter(models.User.storefront_slug.isnot(None))
+
+    if status_filter != "all":
+        q = q.filter(models.User.store_status == status_filter)
+
+    if search:
+        term = f"%{search.strip()}%"
+        q = q.filter(
+            (models.User.name.ilike(term))
+            | (models.User.business_name.ilike(term))
+            | (models.User.storefront_slug.ilike(term))
+        )
+
+    owners = q.limit(ADMIN_LIST_CAP).all()
+    owner_ids = [u.id for u in owners]
+
+    # ── Aggregate products per owner ──
+    prod_map: dict[int, Any] = {}
+    review_map: dict[int, Any] = {}
+    sales_map: dict[int, Any] = {}
+    if owner_ids:
+        prod_rows = (
+            db.query(
+                Product.user_id,
+                func.count(Product.id).label("total"),
+                func.count(case((Product.is_active.is_(True), 1))).label("active"),
+            )
+            .filter(Product.user_id.in_(owner_ids))
+            .group_by(Product.user_id)
+            .all()
+        )
+        prod_map = {r.user_id: r for r in prod_rows}
+
+        review_rows = (
+            db.query(
+                models.StorefrontReview.user_id,
+                func.count(models.StorefrontReview.id).label("cnt"),
+                func.avg(models.StorefrontReview.rating).label("avg"),
+            )
+            .filter(
+                models.StorefrontReview.user_id.in_(owner_ids),
+                models.StorefrontReview.approved.is_(True),
+            )
+            .group_by(models.StorefrontReview.user_id)
+            .all()
+        )
+        review_map = {r.user_id: r for r in review_rows}
+
+        # Sales proxy: paid revenue invoices (this is how a store makes money).
+        sales_rows = (
+            db.query(
+                Invoice.issuer_id,
+                func.count(Invoice.id).label("cnt"),
+                func.sum(Invoice.amount).label("gmv"),
+                func.max(Invoice.created_at).label("last_sale"),
+            )
+            .filter(
+                Invoice.issuer_id.in_(owner_ids),
+                Invoice.invoice_type == "revenue",
+                Invoice.status == "paid",
+            )
+            .group_by(Invoice.issuer_id)
+            .all()
+        )
+        sales_map = {r.issuer_id: r for r in sales_rows}
+
+    items: list[StorefrontMetricItem] = []
+    for u in owners:
+        p = prod_map.get(u.id)
+        r = review_map.get(u.id)
+        s = sales_map.get(u.id)
+
+        products_total = int(p.total) if p else 0
+        products_active = int(p.active) if p else 0
+        reviews_count = int(r.cnt) if r else 0
+        reviews_avg = round(float(r.avg), 1) if r and r.avg is not None else None
+        sales_count = int(s.cnt) if s else 0
+        gmv = round(float(s.gmv or 0), 2) if s else 0.0
+        last_sale = s.last_sale if s else None
+        if last_sale is not None and getattr(last_sale, "tzinfo", None) is None:
+            last_sale = last_sale.replace(tzinfo=dt.timezone.utc)
+        days_since_sale = (now - last_sale).days if last_sale else None
+
+        has_logo = bool(u.logo_url)
+        has_description = bool(u.storefront_description)
+        has_location = bool(u.storefront_address or u.storefront_city)
+        online = bool(u.paystack_subaccount_active and u.paystack_subaccount_code)
+
+        # ── Risk flags (delisting criteria) ──
+        flags: list[str] = []
+        if products_active == 0:
+            flags.append("no_products")
+        if not has_logo:
+            flags.append("no_logo")
+        if not online:
+            flags.append("no_online_payments")
+        if sales_count == 0:
+            flags.append("no_sales")
+        if reviews_count >= 3 and reviews_avg is not None and reviews_avg < 2.5:
+            flags.append("low_rating")
+        if not has_description and not has_location:
+            flags.append("thin_profile")
+        if u.flagged_for_review:
+            flags.append("flagged_owner")
+
+        # ── Quality score (0-100) ──
+        score = 50
+        score += 15 if products_active >= 3 else (5 if products_active >= 1 else -20)
+        score += 10 if has_logo else -10
+        score += 10 if online else -15
+        score += 15 if sales_count >= 5 else (8 if sales_count >= 1 else -10)
+        if reviews_count >= 3:
+            if reviews_avg and reviews_avg >= 4:
+                score += 10
+            elif reviews_avg and reviews_avg < 2.5:
+                score -= 15
+        score += 5 if (u.storefront_views or 0) >= 20 else 0
+        if has_description or has_location:
+            score += 5
+        if u.flagged_for_review:
+            score -= 20
+        if u.store_status != "active":
+            score -= 15
+        score = max(0, min(100, score))
+
+        items.append(
+            StorefrontMetricItem(
+                id=u.id,
+                name=u.name,
+                business_name=u.business_name,
+                slug=u.storefront_slug,
+                storefront_enabled=bool(u.storefront_enabled),
+                store_status=u.store_status,
+                store_status_reason=u.store_status_reason,
+                store_status_at=u.store_status_at.isoformat() if u.store_status_at else None,
+                views=u.storefront_views or 0,
+                products_total=products_total,
+                products_active=products_active,
+                has_logo=has_logo,
+                has_description=has_description,
+                has_location=has_location,
+                online_payments_enabled=online,
+                reviews_count=reviews_count,
+                reviews_avg=reviews_avg,
+                sales_count=sales_count,
+                gmv=gmv,
+                last_sale_at=last_sale.isoformat() if last_sale else None,
+                days_since_last_sale=days_since_sale,
+                created_at=u.created_at.isoformat(),
+                owner_flagged=bool(u.flagged_for_review),
+                owner_risk_score=int(u.risk_score or 0),
+                quality_score=score,
+                risk_flags=flags,
+            )
+        )
+
+    # Aggregate status counts across the (unpaginated) matched set.
+    counts = {
+        "total": len(items),
+        "active": sum(1 for i in items if i.store_status == "active"),
+        "suspended": sum(1 for i in items if i.store_status == "suspended"),
+        "delisted": sum(1 for i in items if i.store_status == "delisted"),
+        "low_quality": sum(1 for i in items if i.quality_score < 40),
+    }
+
+    if criteria:
+        items = [i for i in items if criteria in i.risk_flags]
+
+    reverse = sort_order == "desc"
+    key_map = {
+        "quality_score": lambda x: x.quality_score,
+        "views": lambda x: x.views,
+        "gmv": lambda x: x.gmv,
+        "sales_count": lambda x: x.sales_count,
+        "products_active": lambda x: x.products_active,
+        "reviews_count": lambda x: x.reviews_count,
+        "created_at": lambda x: x.created_at,
+        "name": lambda x: (x.business_name or x.name).lower(),
+    }
+    items.sort(key=key_map[sort_by], reverse=reverse)
+
+    total = len(items)
+    start = (page - 1) * page_size
+    page_items = items[start : start + page_size]
+
+    return StorefrontListResponse(
+        storefronts=page_items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        counts=counts,
+    )
+
+
+class StorefrontStatusUpdate(BaseModel):
+    status: str = Field(..., pattern="^(active|suspended|delisted)$")
+    reason: str | None = Field(None, max_length=255)
+
+
+@router.post("/storefronts/{user_id}/status")
+def set_storefront_status(
+    user_id: int,
+    payload: StorefrontStatusUpdate,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Suspend, delist or reinstate a business's public storefront.
+
+    - ``suspended`` / ``delisted`` immediately remove the store from the public
+      directory and make its store page + ordering return 404.
+    - ``active`` reinstates it.
+
+    The owner's account, invoices and data are untouched — this only controls the
+    public storefront's visibility.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    old_status = user.store_status
+    user.store_status = payload.status
+    user.store_status_reason = (payload.reason or None) if payload.status != "active" else None
+    user.store_status_at = dt.datetime.now(dt.timezone.utc)
+    user.store_status_by_id = admin_user.id
+    db.commit()
+
+    log_audit_event(
+        "admin.storefronts.status",
+        user_id=admin_user.id,
+        target_user_id=user_id,
+        old_status=old_status,
+        new_status=payload.status,
+        reason=payload.reason,
+    )
+    logger.info(
+        "Admin %s changed storefront status for user %s: %s -> %s (%s)",
+        admin_user.id, user_id, old_status, payload.status, payload.reason,
+    )
+
+    return {
+        "user_id": user_id,
+        "store_status": user.store_status,
+        "store_status_reason": user.store_status_reason,
+        "message": f"Storefront {payload.status}",
+    }
+
+
+# =============================================================================
+# TRUST & SAFETY — ANTI-FRAUD REVIEW
+# =============================================================================
+
+class RiskUserItem(BaseModel):
+    id: int
+    name: str
+    business_name: str | None
+    phone: str | None
+    email: str | None
+    created_at: str
+    signup_source: str | None
+    signup_ip: str | None
+    signup_device_id: str | None
+    signup_user_agent: str | None
+    risk_score: int
+    risk_signals: list[str]
+    flagged_for_review: bool
+    store_status: str
+    storefront_slug: str | None
+    linked_account_count: int
+
+
+class RiskListResponse(BaseModel):
+    users: list[RiskUserItem]
+    total: int
+    page: int
+    page_size: int
+    counts: dict[str, int]
+
+
+@router.get("/fraud/flagged", response_model=RiskListResponse)
+def list_flagged_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=5, le=100),
+    view: str = Query("flagged", pattern="^(flagged|risky|all)$"),
+    min_score: int = Query(0, ge=0, le=100),
+    search: str | None = Query(None, max_length=100),
+    _admin: Any = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """List accounts that need Trust & Safety attention.
+
+    ``view=flagged`` (default) shows accounts flagged at signup; ``risky`` shows
+    any account with a non-trivial risk score; ``all`` ignores the risk gate and
+    is mostly useful with a search term. Each row includes how many other
+    accounts share the same IP or device fingerprint (duplicate-account cluster).
+    """
+    from app.services.fraud_service import FLAG_SCORE
+
+    q = db.query(models.User)
+    if view == "flagged":
+        q = q.filter(models.User.flagged_for_review.is_(True))
+    elif view == "risky":
+        q = q.filter(models.User.risk_score >= max(min_score, 1))
+    if min_score:
+        q = q.filter(models.User.risk_score >= min_score)
+
+    if search:
+        term = f"%{search.strip()}%"
+        q = q.filter(
+            (models.User.name.ilike(term))
+            | (models.User.business_name.ilike(term))
+            | (models.User.phone.ilike(term))
+            | (models.User.email.ilike(term))
+            | (models.User.signup_ip.ilike(term))
+            | (models.User.signup_device_id.ilike(term))
+        )
+
+    rows = q.order_by(desc(models.User.risk_score), desc(models.User.created_at)).limit(ADMIN_LIST_CAP).all()
+
+    # Pre-compute linked-account counts for the visible page only (cheaper).
+    total = len(rows)
+    start = (page - 1) * page_size
+    page_rows = rows[start : start + page_size]
+
+    # Count accounts sharing IP / device across the whole table for each row.
+    def _linked_count(u: models.User) -> int:
+        from sqlalchemy import or_
+
+        conds = []
+        if u.signup_ip:
+            conds.append(models.User.signup_ip == u.signup_ip)
+        if u.signup_device_id:
+            conds.append(models.User.signup_device_id == u.signup_device_id)
+        if not conds:
+            return 0
+        return (
+            db.query(func.count(models.User.id))
+            .filter(or_(*conds), models.User.id != u.id)
+            .scalar()
+        ) or 0
+
+    users = [
+        RiskUserItem(
+            id=u.id,
+            name=u.name,
+            business_name=u.business_name,
+            phone=u.phone,
+            email=u.email,
+            created_at=u.created_at.isoformat(),
+            signup_source=u.signup_source,
+            signup_ip=u.signup_ip,
+            signup_device_id=u.signup_device_id,
+            signup_user_agent=u.signup_user_agent,
+            risk_score=int(u.risk_score or 0),
+            risk_signals=list(u.risk_signals or []),
+            flagged_for_review=bool(u.flagged_for_review),
+            store_status=u.store_status,
+            storefront_slug=u.storefront_slug,
+            linked_account_count=_linked_count(u),
+        )
+        for u in page_rows
+    ]
+
+    counts = {
+        "flagged": db.query(func.count(models.User.id))
+        .filter(models.User.flagged_for_review.is_(True))
+        .scalar()
+        or 0,
+        "high_risk": db.query(func.count(models.User.id))
+        .filter(models.User.risk_score >= FLAG_SCORE)
+        .scalar()
+        or 0,
+    }
+
+    return RiskListResponse(
+        users=users,
+        total=total,
+        page=page,
+        page_size=page_size,
+        counts=counts,
+    )
+
+
+@router.get("/fraud/{user_id}/linked")
+def get_linked_accounts(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _admin: Any = Depends(get_current_admin),
+) -> dict:
+    """List other accounts that share this user's IP or device fingerprint."""
+    from app.services.fraud_service import linked_account_ids
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    ids = linked_account_ids(db, user)
+    linked = (
+        db.query(models.User).filter(models.User.id.in_(ids)).all() if ids else []
+    )
+    return {
+        "user_id": user_id,
+        "shared_ip": user.signup_ip,
+        "shared_device_id": user.signup_device_id,
+        "linked": [
+            {
+                "id": lu.id,
+                "name": lu.name,
+                "business_name": lu.business_name,
+                "phone": lu.phone,
+                "email": lu.email,
+                "created_at": lu.created_at.isoformat(),
+                "risk_score": int(lu.risk_score or 0),
+                "flagged_for_review": bool(lu.flagged_for_review),
+                "store_status": lu.store_status,
+                "same_ip": bool(user.signup_ip and lu.signup_ip == user.signup_ip),
+                "same_device": bool(
+                    user.signup_device_id and lu.signup_device_id == user.signup_device_id
+                ),
+            }
+            for lu in linked
+        ],
+    }
+
+
+class RiskReviewAction(BaseModel):
+    action: str = Field(..., pattern="^(clear|flag|ban)$")
+    reason: str | None = Field(None, max_length=255)
+
+
+@router.post("/fraud/{user_id}/review")
+def review_flagged_user(
+    user_id: int,
+    payload: RiskReviewAction,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Resolve a Trust & Safety review for an account.
+
+    - ``clear`` — mark the account as legitimate (unflag).
+    - ``flag``  — flag the account for review.
+    - ``ban``   — flag the account AND delist its public storefront.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if payload.action == "clear":
+        user.flagged_for_review = False
+    elif payload.action == "flag":
+        user.flagged_for_review = True
+    elif payload.action == "ban":
+        user.flagged_for_review = True
+        user.store_status = "delisted"
+        user.store_status_reason = payload.reason or "Trust & Safety: banned"
+        user.store_status_at = dt.datetime.now(dt.timezone.utc)
+        user.store_status_by_id = admin_user.id
+
+    db.commit()
+
+    log_audit_event(
+        "admin.fraud.review",
+        user_id=admin_user.id,
+        target_user_id=user_id,
+        action=payload.action,
+        reason=payload.reason,
+    )
+    logger.info(
+        "Admin %s ran fraud review '%s' on user %s (%s)",
+        admin_user.id, payload.action, user_id, user.email or user.phone,
+    )
+
+    return {
+        "user_id": user_id,
+        "flagged_for_review": user.flagged_for_review,
+        "store_status": user.store_status,
+        "message": f"Review action '{payload.action}' applied",
+    }
 

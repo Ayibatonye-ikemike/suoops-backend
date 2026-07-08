@@ -343,7 +343,40 @@ class User(Base):
     storefront_announcement: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Discovery analytics — incremented on each public store view.
     storefront_views: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    
+
+    # ── Storefront moderation (Trust & Safety) ──
+    # Lifecycle of the public store as seen by admins/customers:
+    #   active     — normal; store is discoverable & reachable.
+    #   suspended  — temporarily hidden (policy warning / under review). Reversible.
+    #   delisted   — removed from the marketplace for failing our criteria. Reversible
+    #                by an admin but treated as a hard takedown for the customer.
+    # Enforced on the public storefront + directory routes.
+    store_status: Mapped[str] = mapped_column(
+        String(20), default="active", server_default="active", nullable=False, index=True
+    )
+    store_status_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    store_status_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # AdminUser.id that last changed the store status (nullable; no hard FK to keep
+    # the admin schema decoupled from the core user table).
+    store_status_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # ── Anti-fraud / duplicate-account signals (captured at signup) ──
+    signup_ip: Mapped[str | None] = mapped_column(String(45), nullable=True, index=True)
+    # Client-supplied device fingerprint (hashed on the client). Used to link
+    # multiple accounts created from the same browser/device.
+    signup_device_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    signup_user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    # Heuristic 0-100 risk score computed at signup (higher = riskier).
+    risk_score: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # List of triggered risk signal codes, e.g. ["ip_velocity", "device_reuse"].
+    risk_signals: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # True when the account needs manual Trust & Safety review.
+    flagged_for_review: Mapped[bool] = mapped_column(
+        default=False, server_default="false", nullable=False, index=True
+    )
+
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Role-based access control (RBAC) role; defaults to 'user'.
@@ -385,6 +418,14 @@ class User(Base):
         hidden from customers so payments flow through Paystack (commission).
         """
         return bool(self.paystack_subaccount_active and self.paystack_subaccount_code)
+
+    @property
+    def storefront_visible(self) -> bool:
+        """True when the public storefront should be discoverable & reachable.
+
+        A store must be opted-in AND not suspended/delisted by Trust & Safety.
+        """
+        return bool(self.storefront_enabled and self.store_status == "active")
 
     # Tax and compliance relationships
     tax_profile: Mapped[TaxProfile | None] = relationship(
