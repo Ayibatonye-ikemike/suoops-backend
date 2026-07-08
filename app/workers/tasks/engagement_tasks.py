@@ -637,7 +637,7 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
                 "Quick note on pricing — it's refreshingly simple:\n\n"
                 "Every feature is free. We only take a flat 3% per invoice:\n"
                 "✅ Storefront orders — 3% when your customer pays online (nothing upfront)\n"
-                "✅ Manual invoices — 3% (₦20–₦2,000) from your prepaid wallet\n\n"
+                "✅ Manual invoices — 3% (min ₦20, ₦2,000 cap up to ₦500k) from your prepaid wallet\n\n"
                 "So custom branding, tax reports, inventory, team, voice notes,\n"
                 "daily summaries and insights are all included — no plan to buy.\n\n"
                 "Top up your wallet anytime (₦1,250 / ₦5,000 / ₦20,000), or just share\n"
@@ -694,7 +694,7 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         body = (
             f"You've sent {invoice_count} invoices — that's great progress! "
             "Your invoice wallet is now empty. Top up to keep creating manual "
-            "invoices (just 3% each, ₦20–₦2,000) — or share your storefront so "
+            "invoices (just 3% each, min ₦20, ₦2,000 cap up to ₦500k) — or share your storefront so "
             "customers order and pay you online, no wallet needed."
         )
         tip = "Top up ₦1,250, ₦5,000 or ₦20,000 in Settings → Billing."

@@ -55,7 +55,7 @@ async def start_invoice_payment(db: Session, invoice, issuer) -> dict:
     if not settings.PAYSTACK_SECRET:
         raise PaymentInitError("Online payments are not configured", 503)
 
-    # Platform commission via Paystack's flat transaction_charge (capped ₦20–₦2,000):
+    # Platform commission via Paystack's flat transaction_charge (3%, min ₦20, tiered ₦2,000-per-₦500k cap):
     #  - Storefront orders never touch the wallet, so Paystack collects the 3%.
     #  - Business invoices already had the 3% debited from the wallet at creation,
     #    so Paystack takes nothing and the full amount settles to the business.

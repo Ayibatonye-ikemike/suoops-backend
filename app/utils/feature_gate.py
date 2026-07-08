@@ -154,7 +154,7 @@ class FeatureGate:
         """
         Check if the wallet can cover at least the minimum manual-invoice fee.
 
-        The precise per-invoice fee (3%, ₦20–₦2,000) is charged at creation; this
+        The precise per-invoice fee (3%, min ₦20, tiered ₦2,000-per-₦500k cap) is charged at creation; this
         is a cheap pre-gate so we fail fast when the wallet is effectively empty.
 
         Returns:
