@@ -92,6 +92,10 @@ def update_bank_details(
     update_data = data.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="At least one field must be provided")
+    # Snapshot the current payout-critical values so we can detect a real change
+    # to an EXISTING account (first-time setup should not freeze payouts).
+    had_bank = bool(user.bank_name and user.account_number)
+    old_bank = (user.bank_name, user.account_number)
     if data.business_name is not None:
         user.business_name = data.business_name
     if data.bank_name is not None:
@@ -102,6 +106,13 @@ def update_bank_details(
         user.account_name = data.account_name
     db.commit()
     db.refresh(user)
+
+    # Bank details drive escrow payouts — a change to an existing account is a
+    # takeover risk, so invalidate the recipient, freeze payouts + alert the owner.
+    if had_bank and (user.bank_name, user.account_number) != old_bank:
+        from app.services.escrow_service import on_payout_details_changed
+
+        on_payout_details_changed(db, user)
     is_configured = bool(user.bank_name and user.account_number and user.account_name)
     return schemas.BankDetailsOut(
         business_name=user.business_name,

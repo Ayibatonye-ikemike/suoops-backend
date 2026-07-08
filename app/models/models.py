@@ -324,6 +324,11 @@ class User(Base):
     # Paystack Transfer Recipient (RCP_...) for escrow payouts — created from the
     # business's payout/bank details; reused for every storefront-order release.
     paystack_recipient_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Escrow payouts are frozen until this time after a payout/bank-details change
+    # (anti-account-takeover). NULL = not frozen.
+    payout_frozen_until: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # When the business accepted the Terms & Conditions (incl. buyer-protection /
     # escrow policy) at signup. NULL = legacy account created before T&C gating.
@@ -741,6 +746,15 @@ class StorefrontOrderEscrow(Base):
     refund_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # The original Paystack charge reference (INVPAY-…) — needed to refund the buyer.
     charge_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Delivery confirmation code shown ONLY to the buyer (never the seller) — an
+    # early release requires it, so a hijacked store can't self-confirm delivery.
+    confirmation_code: Mapped[str | None] = mapped_column(String(12), nullable=True, index=True)
+    # Anti-fraud hold: collusion/anomaly-flagged orders never auto-release; they
+    # wait for an admin decision in the disputes queue.
+    held_for_review: Mapped[bool] = mapped_column(
+        default=False, server_default="false", nullable=False
+    )
+    review_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

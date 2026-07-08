@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
+import secrets
 
 import httpx
 from sqlalchemy import func
@@ -62,6 +64,32 @@ def is_trusted_seller(db: Session, user: models.User) -> bool:
     if paid_invoices < settings.ESCROW_TRUST_MIN_PAID_INVOICES:
         return False
 
+    # Breadth, not just volume: trust requires many DISTINCT paying customers so
+    # a seller can't self-deal (pay their own invoices) into trusted status.
+    distinct_customers = (
+        db.query(func.count(func.distinct(models.Invoice.customer_id)))
+        .filter(
+            models.Invoice.issuer_id == user.id,
+            models.Invoice.invoice_type == "revenue",
+            models.Invoice.status == "paid",
+        )
+        .scalar()
+    ) or 0
+    if distinct_customers < settings.ESCROW_TRUST_MIN_DISTINCT_CUSTOMERS:
+        return False
+
+    # A track record of actually-completed storefront deliveries (released holds).
+    deliveries = (
+        db.query(func.count(models.StorefrontOrderEscrow.id))
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == user.id,
+            models.StorefrontOrderEscrow.status == "released",
+        )
+        .scalar()
+    ) or 0
+    if deliveries < settings.ESCROW_TRUST_MIN_DELIVERIES:
+        return False
+
     # Any disputed/refunded storefront order permanently blocks trust.
     disputes = (
         db.query(func.count(models.StorefrontOrderEscrow.id))
@@ -72,6 +100,47 @@ def is_trusted_seller(db: Session, user: models.User) -> bool:
         .scalar()
     ) or 0
     return disputes == 0
+
+
+def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance in metres between two lat/lng points."""
+    r = 6_371_000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def detect_order_collusion(
+    seller: "models.User",
+    *,
+    buyer_ip: str | None,
+    customer_lat: float | None,
+    customer_lng: float | None,
+) -> str | None:
+    """Return a short reason string if a storefront order looks like the seller
+    ordering from themselves (trust-farming / laundering), else None.
+
+    Signals: buyer shares the seller's signup IP, or the buyer's GPS pin sits on
+    top of the seller's own store location.
+    """
+    reasons: list[str] = []
+    if buyer_ip and seller.signup_ip and buyer_ip == seller.signup_ip:
+        reasons.append("shared IP")
+    if (
+        customer_lat is not None
+        and customer_lng is not None
+        and seller.storefront_lat is not None
+        and seller.storefront_lng is not None
+    ):
+        try:
+            if _haversine_m(customer_lat, customer_lng, seller.storefront_lat, seller.storefront_lng) < 75:
+                reasons.append("buyer at seller location")
+        except (ValueError, TypeError):
+            pass
+    return ", ".join(reasons) or None
+
 
 
 def hold_window(same_state: bool) -> dt.timedelta:
@@ -101,12 +170,15 @@ def create_order_escrow(
     gross_naira,
     customer_lat: float | None,
     customer_lng: float | None,
+    review_reason: str | None = None,
 ) -> "models.StorefrontOrderEscrow":
     """Create the PENDING escrow hold for a fresh storefront order.
 
     Captures the customer's GPS-derived state (server-side) and whether it
-    matches the seller's state (drives the 12h vs 3-day window). The hold is
-    activated (status 'held', release_due_at set) when payment is confirmed.
+    matches the seller's state (drives the 12h vs 3-day window). Generates the
+    buyer-only delivery code and flags the order for review if it looks like
+    self-dealing. The hold is activated (status 'held', release_due_at set) when
+    payment is confirmed.
     """
     from decimal import Decimal
 
@@ -137,10 +209,19 @@ def create_order_escrow(
         customer_state=customer_state,
         customer_lat=customer_lat,
         customer_lng=customer_lng,
+        # 6-digit buyer-only delivery code (never shown to the seller).
+        confirmation_code=f"{secrets.randbelow(900000) + 100000}",
+        held_for_review=bool(review_reason),
+        review_reason=review_reason,
     )
     db.add(escrow)
     db.commit()
     db.refresh(escrow)
+    if review_reason:
+        logger.warning(
+            "Storefront order %s flagged for review (seller %s): %s",
+            invoice.id, seller.id, review_reason,
+        )
     return escrow
 
 
@@ -180,6 +261,19 @@ def activate_escrow_on_payment(
         "Escrow held for order invoice=%s (same_state=%s, release_due_at=%s)",
         invoice.id, escrow.same_state, escrow.release_due_at,
     )
+
+    # Best-effort: send the buyer their delivery code so they can release the
+    # payment on arrival. It's shown to the buyer at checkout too.
+    try:
+        customer = getattr(invoice, "customer", None)
+        seller = db.query(models.User).filter(models.User.id == escrow.seller_id).first()
+        send_delivery_code(
+            getattr(customer, "phone", None),
+            escrow.confirmation_code or "",
+            getattr(seller, "business_name", None) if seller else None,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to dispatch delivery code for invoice %s", invoice.id)
 
 
 # ── Seller payout setup (Paystack Transfer Recipient) ──────────────────
@@ -294,6 +388,10 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
     if escrow.status != "held":
         return False  # pending / disputed / refunded — not releasable
 
+    # Collusion/anomaly-flagged orders never auto-pay — an admin must decide.
+    if escrow.held_for_review:
+        raise EscrowError(f"Escrow {escrow.id} held for review — not auto-releasable")
+
     if escrow.payout_kobo <= 0:
         # Nothing to pay out (shouldn't happen) — close it cleanly.
         escrow.status = "released"
@@ -304,6 +402,16 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
     seller = db.query(models.User).filter(models.User.id == escrow.seller_id).first()
     if not seller:
         raise EscrowError(f"Seller {escrow.seller_id} not found for escrow {escrow.id}")
+
+    # Payouts are frozen for a cooldown after a bank/payout change (anti-takeover).
+    frozen = seller.payout_frozen_until
+    if frozen is not None:
+        if frozen.tzinfo is None:
+            frozen = frozen.replace(tzinfo=dt.timezone.utc)
+        if frozen > dt.datetime.now(dt.timezone.utc):
+            raise EscrowError(
+                f"Payouts frozen for seller {seller.id} until {frozen.isoformat()}"
+            )
 
     recipient = ensure_transfer_recipient(db, seller)
     reference = f"ESCROWREL-{escrow.id}"
@@ -389,3 +497,59 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
         return True
 
     raise EscrowError(f"Refund failed for escrow {escrow.id}: {data.get('message')}")
+
+
+# ── Payout security (account-takeover protection) ──────────────────────
+
+def on_payout_details_changed(db: Session, user: "models.User") -> None:
+    """Handle a change to a seller's payout/bank details defensively.
+
+    A hijacked account's first move is to reroute payouts, so on any change we:
+    invalidate the cached Paystack recipient (forces re-create from the new
+    details), freeze escrow payouts for a cooldown, and alert the owner. This
+    never blocks the (legitimate) update itself.
+    """
+    user.paystack_recipient_code = None
+    user.payout_frozen_until = dt.datetime.now(dt.timezone.utc) + dt.timedelta(
+        hours=settings.ESCROW_PAYOUT_FREEZE_HOURS_ON_BANK_CHANGE
+    )
+    db.commit()
+    logger.info(
+        "Payout details changed for user %s — payouts frozen until %s",
+        user.id, user.payout_frozen_until,
+    )
+
+    # Best-effort owner alert on WhatsApp — never let a messaging hiccup break the flow.
+    try:
+        if user.phone:
+            from app.bot.whatsapp_client import WhatsAppClient
+
+            hours = settings.ESCROW_PAYOUT_FREEZE_HOURS_ON_BANK_CHANGE
+            msg = (
+                "🔒 SuoOps security alert\n\n"
+                "Your payout bank details were just changed. For your safety, "
+                f"storefront payouts are paused for {hours} hours.\n\n"
+                "If this was NOT you, contact support@suoops.com immediately — "
+                "your account may be compromised."
+            )
+            WhatsAppClient(settings.WHATSAPP_API_KEY).send_text(user.phone, msg)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to send payout-change alert to user %s", user.id)
+
+
+def send_delivery_code(user_phone: str | None, code: str, business_name: str | None) -> None:
+    """Best-effort WhatsApp delivery of the buyer-only confirmation code."""
+    if not (user_phone and code):
+        return
+    try:
+        from app.bot.whatsapp_client import WhatsAppClient
+
+        shop = business_name or "the store"
+        msg = (
+            f"🛡️ Your SuoOps delivery code for your order from {shop} is: {code}\n\n"
+            "Give this code to the seller ONLY when your order arrives — it "
+            "releases your payment. Your money is safely held until then."
+        )
+        WhatsAppClient(settings.WHATSAPP_API_KEY).send_text(user_phone, msg)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to send delivery code to buyer")

@@ -742,6 +742,43 @@ async def create_store_order(
     if total <= 0:
         raise HTTPException(status_code=400, detail="Order total must be greater than zero.")
 
+    from app.core.admin_security import get_client_ip
+    from app.services.escrow_service import (
+        create_order_escrow,
+        detect_order_collusion,
+        is_trusted_seller,
+    )
+
+    # Decide hold vs normal settlement up front (drives caps + payment init).
+    held = settings.ESCROW_ENABLED and not is_trusted_seller(db, owner)
+
+    # Blast-radius caps for UNTRUSTED sellers: cap per-order value and the total
+    # value held in-flight, so a scam/hijacked store can only ever touch so much.
+    if held:
+        order_kobo = int(total * 100)
+        if order_kobo > settings.ESCROW_MAX_ORDER_NAIRA_UNTRUSTED * 100:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"This store can't accept orders above ₦"
+                    f"{settings.ESCROW_MAX_ORDER_NAIRA_UNTRUSTED:,} yet. "
+                    "Please contact them directly for large orders."
+                ),
+            )
+        inflight_kobo = (
+            db.query(func.coalesce(func.sum(models.StorefrontOrderEscrow.gross_kobo), 0))
+            .filter(
+                models.StorefrontOrderEscrow.seller_id == owner.id,
+                models.StorefrontOrderEscrow.status.in_(["pending", "held"]),
+            )
+            .scalar()
+        ) or 0
+        if inflight_kobo + order_kobo > settings.ESCROW_MAX_INFLIGHT_NAIRA_UNTRUSTED * 100:
+            raise HTTPException(
+                status_code=409,
+                detail="This store has too many pending orders right now — please try again later.",
+            )
+
     from app.services.invoice_payment_service import (
         PaymentInitError,
         start_invoice_payment,
@@ -779,13 +816,6 @@ async def create_store_order(
         invoice.notes = "Storefront delivery\n" + "\n".join(delivery_lines)
         db.commit()
 
-    # Decide hold vs normal settlement BEFORE payment init. When escrow is on
-    # and the seller isn't trusted, funds are held (collected to the SuoOps
-    # balance) and released to the seller after the buyer-protection window.
-    from app.services.escrow_service import create_order_escrow, is_trusted_seller
-
-    held = settings.ESCROW_ENABLED and not is_trusted_seller(db, owner)
-
     try:
         pay = await start_invoice_payment(db, invoice, owner, hold=held)
     except PaymentInitError as exc:
@@ -793,16 +823,30 @@ async def create_store_order(
 
     # Only held orders get an escrow row (trusted sellers settle normally via
     # the subaccount split). Never let escrow bookkeeping break the order flow.
+    delivery_code: str | None = None
     if held:
         try:
-            create_order_escrow(
+            # Self-dealing detection: buyer sharing the seller's IP / sitting on
+            # the seller's own location → hold for admin review, never auto-release.
+            review_reason = detect_order_collusion(
+                owner,
+                buyer_ip=get_client_ip(request),
+                customer_lat=payload.customer_lat,
+                customer_lng=payload.customer_lng,
+            )
+            escrow = create_order_escrow(
                 db,
                 invoice=invoice,
                 seller=owner,
                 gross_naira=total,
                 customer_lat=payload.customer_lat,
                 customer_lng=payload.customer_lng,
+                review_reason=review_reason,
             )
+            delivery_code = escrow.confirmation_code
+            if review_reason:
+                owner.flagged_for_review = True
+                db.commit()
         except Exception:  # noqa: BLE001
             logger.exception("Failed to create escrow hold for order %s", invoice.invoice_id)
 
@@ -810,7 +854,10 @@ async def create_store_order(
         "Storefront order %s created for store %s (user %s, held=%s)",
         invoice.invoice_id, slug, owner.id, held,
     )
-    return {"invoice_id": invoice.invoice_id, **pay}
+    resp = {"invoice_id": invoice.invoice_id, **pay}
+    if delivery_code:
+        resp["delivery_code"] = delivery_code
+    return resp
 
 
 def _lookup_store(db: Session, slug: str):
@@ -979,69 +1026,70 @@ def list_reviews(
     }
 
 
-class OrderReceivedIn(BaseModel):
-    phone: str = Field(min_length=6, max_length=20)
-    invoice_id: str | None = Field(default=None, max_length=40)
+class ConfirmDeliveryIn(BaseModel):
+    # The buyer-only delivery code (sent to the buyer, shown at checkout). Only
+    # someone who physically received the order should know it — so a hijacked
+    # store can't self-confirm delivery to release funds early.
+    code: str = Field(min_length=4, max_length=12)
 
 
-@public_router.post("/store/{slug}/order-received")
+@public_router.post("/store/{slug}/confirm-delivery")
 @limiter.limit("20/hour")
-def confirm_order_received(
+def confirm_delivery(
     request: Request,
     slug: str,
-    payload: OrderReceivedIn,
+    payload: ConfirmDeliveryIn,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
-    """Public: the buyer confirms they got their order → release the held funds
-    to the seller immediately (skips the remaining protection window).
+    """Public: confirm delivery with the buyer's delivery code → release the held
+    funds to the seller immediately (skips the remaining protection window).
 
-    Gated by the buyer's phone number matching the held order, so a random
-    invoice id alone can't trigger an early release.
+    The code is only ever shown to the buyer, so the seller can't self-release.
     """
     import datetime as dt
 
     from app.services.escrow_service import EscrowError, release_escrow
-    from app.utils.phone import normalize_phone
 
     owner = _lookup_store(db, slug)
-    normalized = normalize_phone(payload.phone.strip())
-    candidates = {payload.phone.strip(), normalized}
+    code = payload.code.strip()
 
-    q = (
+    escrow = (
         db.query(models.StorefrontOrderEscrow)
-        .join(models.Invoice, models.StorefrontOrderEscrow.invoice_id == models.Invoice.id)
-        .join(models.Customer, models.Invoice.customer_id == models.Customer.id)
         .filter(
             models.StorefrontOrderEscrow.seller_id == owner.id,
-            models.Customer.phone.in_(candidates),
+            models.StorefrontOrderEscrow.confirmation_code == code,
         )
+        .order_by(models.StorefrontOrderEscrow.id.desc())
+        .first()
     )
-    if payload.invoice_id:
-        q = q.filter(models.Invoice.invoice_id == payload.invoice_id.strip())
-    escrow = q.order_by(models.StorefrontOrderEscrow.id.desc()).first()
 
     if not escrow:
-        raise HTTPException(
-            status_code=404,
-            detail="We couldn't find a held order for that phone number.",
-        )
+        raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
 
     if escrow.status == "released":
         return {"ok": True, "message": "This order was already completed — thank you!"}
+    if escrow.status == "refunded":
+        return {"ok": True, "message": "You've already been refunded for this order."}
     if escrow.status != "held":
         raise HTTPException(
             status_code=409,
             detail="This order can't be confirmed right now.",
+        )
+    if escrow.held_for_review:
+        # A flagged order shouldn't release on a code — it's under review.
+        raise HTTPException(
+            status_code=409,
+            detail="This order is under review. Our team will be in touch.",
         )
 
     escrow.confirmed_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
 
     try:
-        release_escrow(db, escrow, reason="customer confirmed receipt")
+        release_escrow(db, escrow, reason="buyer confirmed delivery with code")
     except EscrowError:
-        # Payout hiccup (e.g. Paystack timeout) — not fatal to the buyer. The
-        # auto-release worker will retry; confirmation is already recorded.
+        # Payout hiccup (e.g. Paystack timeout / freeze) — not fatal to the buyer.
+        # The auto-release worker will retry; confirmation is already recorded.
         logger.exception("Immediate release failed for escrow %s", escrow.id)
         return {
             "ok": True,

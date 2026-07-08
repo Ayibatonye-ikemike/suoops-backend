@@ -281,12 +281,21 @@ def update_payout_bank_details(
             select(User).where(User.id == user_id)
         ).scalar_one()
         
+        had_payout = bool(user.payout_bank_name and user.payout_account_number)
+        old_payout = (user.payout_bank_name, user.payout_account_number)
         user.payout_bank_name = request.bank_name
         user.payout_account_number = request.account_number
         user.payout_account_name = request.account_name
         
         db.commit()
         db.refresh(user)
+
+        # A change to an existing payout account is a takeover risk — invalidate
+        # the escrow recipient, freeze payouts + alert the owner.
+        if had_payout and (user.payout_bank_name, user.payout_account_number) != old_payout:
+            from app.services.escrow_service import on_payout_details_changed
+
+            on_payout_details_changed(db, user)
         
         return PayoutBankDetailsResponse(
             bank_name=user.payout_bank_name,

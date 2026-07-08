@@ -97,6 +97,16 @@ class BaseAppSettings(BaseSettings):
     # flagged/suspended AND zero unresolved disputes AND the thresholds below.
     ESCROW_TRUST_MIN_PAID_INVOICES: int = 100
     ESCROW_TRUST_MIN_ACCOUNT_AGE_DAYS: int = 90
+    # Anti self-dealing: trust also needs breadth (many DISTINCT paying customers)
+    # and a track record of actually-completed storefront deliveries.
+    ESCROW_TRUST_MIN_DISTINCT_CUSTOMERS: int = 20
+    ESCROW_TRUST_MIN_DELIVERIES: int = 20  # released storefront orders
+    # Exposure caps for UNTRUSTED sellers (blast-radius limits, in Naira).
+    ESCROW_MAX_ORDER_NAIRA_UNTRUSTED: int = 200_000  # per-order ceiling
+    ESCROW_MAX_INFLIGHT_NAIRA_UNTRUSTED: int = 500_000  # total held at once
+    # When a seller changes payout/bank details, freeze payouts this long so a
+    # hijacked account can't instantly reroute money (owner is alerted).
+    ESCROW_PAYOUT_FREEZE_HOURS_ON_BANK_CHANGE: int = 48
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SSL_CERT_REQS: str | None = "required"

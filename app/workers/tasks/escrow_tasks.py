@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 )
 def release_due_escrow_orders(self: Task) -> dict[str, Any]:
     """Release all 'held' escrow orders whose window has elapsed."""
-    from app.models.models import StorefrontOrderEscrow
+    from app.models.models import StorefrontOrderEscrow, User
     from app.services.escrow_service import release_escrow
 
     released = failed = 0
@@ -36,10 +36,15 @@ def release_due_escrow_orders(self: Task) -> dict[str, Any]:
         now = dt.datetime.now(dt.timezone.utc)
         due = (
             db.query(StorefrontOrderEscrow)
+            .join(User, StorefrontOrderEscrow.seller_id == User.id)
             .filter(
                 StorefrontOrderEscrow.status == "held",
                 StorefrontOrderEscrow.release_due_at.isnot(None),
                 StorefrontOrderEscrow.release_due_at <= now,
+                # Never auto-release collusion/anomaly-flagged orders.
+                StorefrontOrderEscrow.held_for_review.is_(False),
+                # Skip sellers whose payouts are frozen (post bank-change cooldown).
+                (User.payout_frozen_until.is_(None)) | (User.payout_frozen_until <= now),
             )
             .limit(200)
             .all()

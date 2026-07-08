@@ -4542,6 +4542,8 @@ class DisputeItem(BaseModel):
     gross_naira: float
     payout_naira: float
     dispute_reason: str | None = None
+    held_for_review: bool = False
+    review_reason: str | None = None
     disputed_at: dt.datetime | None = None
     created_at: dt.datetime | None = None
 
@@ -4555,12 +4557,13 @@ class DisputeListResponse(BaseModel):
 def list_disputes(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
-    status_filter: str = Query("disputed", pattern="^(disputed|held|refunded|released|all)$"),
+    status_filter: str = Query("disputed", pattern="^(disputed|held|refunded|released|review|all)$"),
     limit: int = Query(200, ge=1, le=ADMIN_LIST_CAP),
 ) -> DisputeListResponse:
     """List storefront escrow orders for the Trust & Safety review queue.
 
-    Defaults to open disputes; ``status_filter=all`` shows every escrow.
+    Defaults to open disputes; ``status_filter=review`` shows collusion/anomaly
+    holds; ``status_filter=all`` shows every escrow.
     """
     q = (
         db.query(models.StorefrontOrderEscrow, models.User, models.Invoice, models.Customer)
@@ -4568,7 +4571,9 @@ def list_disputes(
         .join(models.Invoice, models.StorefrontOrderEscrow.invoice_id == models.Invoice.id)
         .outerjoin(models.Customer, models.Invoice.customer_id == models.Customer.id)
     )
-    if status_filter != "all":
+    if status_filter == "review":
+        q = q.filter(models.StorefrontOrderEscrow.held_for_review.is_(True))
+    elif status_filter != "all":
         q = q.filter(models.StorefrontOrderEscrow.status == status_filter)
 
     total = q.count()
@@ -4595,6 +4600,8 @@ def list_disputes(
             gross_naira=round((e.gross_kobo or 0) / 100, 2),
             payout_naira=round((e.payout_kobo or 0) / 100, 2),
             dispute_reason=e.dispute_reason,
+            held_for_review=bool(e.held_for_review),
+            review_reason=e.review_reason,
             disputed_at=e.disputed_at,
             created_at=e.created_at,
         )
@@ -4636,6 +4643,12 @@ def resolve_dispute(
         raise HTTPException(
             status_code=409, detail=f"This order is already {escrow.status}."
         )
+
+    # An admin decision clears any anti-fraud review hold so the action can go
+    # through (release_escrow refuses to pay a held_for_review order otherwise).
+    if escrow.held_for_review:
+        escrow.held_for_review = False
+        db.commit()
 
     if payload.action == "refund":
         # refund_escrow only refunds held/disputed rows; nudge to disputed first.

@@ -9,6 +9,80 @@ def test_hold_window_same_vs_cross_state():
     assert es.hold_window(False) == dt.timedelta(days=3)
 
 
+def test_detect_order_collusion():
+    """Self-dealing signals: buyer shares the seller's IP or sits on the store."""
+    from types import SimpleNamespace
+
+    seller = SimpleNamespace(
+        signup_ip="102.89.1.1",
+        storefront_lat=6.5000,
+        storefront_lng=3.3000,
+    )
+    # Shared IP → flagged.
+    assert es.detect_order_collusion(
+        seller, buyer_ip="102.89.1.1", customer_lat=None, customer_lng=None
+    ) == "shared IP"
+    # Buyer GPS on top of the store (~15m) → flagged.
+    assert "seller location" in (
+        es.detect_order_collusion(
+            seller, buyer_ip="10.0.0.9", customer_lat=6.5001, customer_lng=3.3001
+        )
+        or ""
+    )
+    # Different IP + far location → clean.
+    assert es.detect_order_collusion(
+        seller, buyer_ip="10.0.0.9", customer_lat=7.4, customer_lng=4.1
+    ) is None
+
+
+def test_release_blocked_when_held_for_review():
+    """A collusion/anomaly-flagged order never auto-releases."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    from app.db.session import SessionLocal
+
+    s = SessionLocal()
+    try:
+        with pytest.raises(es.EscrowError):
+            es.release_escrow(
+                s, SimpleNamespace(id=99, status="held", held_for_review=True)
+            )
+    finally:
+        s.close()
+
+
+def test_release_blocked_when_payout_frozen():
+    """Payouts are refused while a seller's post-bank-change freeze is active."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    from app.db.session import SessionLocal
+    from app.models import models
+
+    s = SessionLocal()
+    try:
+        seller = models.User(name="Frozen Seller", phone="+2349995551212")
+        seller.payout_frozen_until = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=5)
+        s.add(seller)
+        s.commit()
+        s.refresh(seller)
+        escrow = SimpleNamespace(
+            id=123,
+            status="held",
+            held_for_review=False,
+            payout_kobo=50000,
+            seller_id=seller.id,
+        )
+        with pytest.raises(es.EscrowError):
+            es.release_escrow(s, escrow)
+    finally:
+        s.rollback()
+        s.close()
+
+
 def test_release_escrow_status_guards():
     """release_escrow short-circuits (no Paystack) for non-releasable states."""
     from types import SimpleNamespace
