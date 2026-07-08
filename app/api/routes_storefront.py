@@ -103,6 +103,8 @@ class StorefrontOut(BaseModel):
     address: str | None = None
     city: str | None = None
     state: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     hours: dict | None = None
     announcement: str | None = None
     views: int = 0
@@ -119,6 +121,8 @@ def _storefront_out(db: Session, user) -> StorefrontOut:
         address=user.storefront_address,
         city=user.storefront_city,
         state=user.storefront_state,
+        lat=user.storefront_lat,
+        lng=user.storefront_lng,
         hours=user.storefront_hours,
         announcement=user.storefront_announcement,
         views=user.storefront_views or 0,
@@ -260,6 +264,43 @@ def get_storefront(
         raise HTTPException(status_code=404, detail="User not found")
     return _storefront_out(db, user)
 
+
+class StorefrontLocationIn(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    accuracy: float | None = None  # metres, from the GPS fix (informational)
+
+
+@router.post("/storefront/location", response_model=StorefrontOut)
+def set_storefront_location(
+    payload: StorefrontLocationIn,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StorefrontOut:
+    """Save the business's GPS location and derive its state on the SERVER.
+
+    The client sends raw GPS coordinates; we reverse-geocode them ourselves so
+    the state used for the escrow same/different-state window is trustworthy and
+    can't be spoofed by the client.
+    """
+    from app.services.geocode_service import reverse_geocode
+
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    state, city = reverse_geocode(payload.lat, payload.lng)
+    user.storefront_lat = payload.lat
+    user.storefront_lng = payload.lng
+    if state:
+        user.storefront_state = state
+    if city:
+        user.storefront_city = city
+    db.commit()
+    logger.info(
+        "Storefront location set for user %s (state=%s, city=%s)", user.id, state, city
+    )
+    return _storefront_out(db, user)
 
 @router.post("/storefront/disable", response_model=StorefrontOut)
 def disable_storefront(
