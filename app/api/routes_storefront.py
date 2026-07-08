@@ -164,9 +164,17 @@ _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 
 
 def _clean_hours(hours: dict | None) -> dict | None:
-    """Validate/normalise weekly hours to {"0".."6": {open, close}} (0=Mon)."""
+    """Validate/normalise weekly hours to {"0".."6": {open, close}} (0=Mon).
+
+    Storefronts may only open between 07:00 and 18:00 — times outside that range
+    are clamped, and days where open is not before close are dropped.
+    """
     if not hours:
         return None
+
+    def _clamp(v: str) -> str:
+        return "07:00" if v < "07:00" else "18:00" if v > "18:00" else v
+
     cleaned: dict[str, dict] = {}
     for day, val in hours.items():
         key = str(day)
@@ -176,7 +184,9 @@ def _clean_hours(hours: dict | None) -> dict | None:
             continue
         opn, cls = str(val.get("open", "")), str(val.get("close", ""))
         if _TIME_RE.match(opn) and _TIME_RE.match(cls):
-            cleaned[key] = {"open": opn, "close": cls}
+            opn, cls = _clamp(opn), _clamp(cls)
+            if opn < cls:  # ignore zero/negative-length days
+                cleaned[key] = {"open": opn, "close": cls}
     return cleaned or None
 
 
