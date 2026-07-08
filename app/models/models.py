@@ -733,6 +733,8 @@ class StorefrontOrderEscrow(Base):
     transfer_recipient_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     transfer_reference: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     refund_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # The original Paystack charge reference (INVPAY-…) — needed to refund the buyer.
+    charge_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

@@ -144,12 +144,15 @@ def create_order_escrow(
     return escrow
 
 
-def activate_escrow_on_payment(db: Session, invoice: "models.Invoice") -> None:
+def activate_escrow_on_payment(
+    db: Session, invoice: "models.Invoice", *, charge_reference: str | None = None
+) -> None:
     """Activate a pending storefront-order hold once payment is confirmed.
 
     Flips ``pending -> held`` and sets ``release_due_at = paid_at + window`` (12h
     same-state, else 3 days; unknown state → the safer cross-state window).
-    Idempotent — only acts on a pending row. No money moves here.
+    Captures the Paystack charge reference so the buyer can be refunded on a
+    dispute. Idempotent — only acts on a pending row. No money moves here.
     """
     escrow = (
         db.query(models.StorefrontOrderEscrow)
@@ -170,6 +173,8 @@ def activate_escrow_on_payment(db: Session, invoice: "models.Invoice") -> None:
     same = bool(escrow.same_state) if escrow.same_state is not None else False
     escrow.status = "held"
     escrow.release_due_at = paid_at + hold_window(same)
+    if charge_reference:
+        escrow.charge_reference = charge_reference
     db.commit()
     logger.info(
         "Escrow held for order invoice=%s (same_state=%s, release_due_at=%s)",
@@ -336,3 +341,51 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
         return True
 
     raise EscrowError(f"Transfer failed for escrow {escrow.id}: {data.get('message')}")
+
+
+# ── Refund (return money to the buyer) ─────────────────────────────────
+
+def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason: str = "dispute") -> bool:
+    """Refund the buyer for a held/disputed order via the Paystack Refund API.
+
+    The full gross amount is refunded against the original charge (funds are
+    still in the SuoOps balance, never transferred to the seller). Idempotent:
+    once ``refunded`` it is a no-op. Raises EscrowError on a genuine failure so
+    the caller can retry (row stays in its current state).
+    """
+    if escrow.status == "refunded":
+        return True
+    if escrow.status == "released":
+        raise EscrowError(f"Escrow {escrow.id} already paid out — cannot refund")
+
+    if not escrow.charge_reference:
+        raise EscrowError(f"Escrow {escrow.id} has no charge reference to refund")
+
+    try:
+        with httpx.Client(timeout=20) as client:
+            resp = client.post(
+                f"{_PAYSTACK_BASE}/refund",
+                headers=_headers(),
+                json={
+                    "transaction": escrow.charge_reference,
+                    "amount": int(escrow.gross_kobo),
+                    "merchant_note": f"Storefront buyer protection ({reason}) — invoice {escrow.invoice_id}",
+                },
+            )
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001 — network/timeout → retry later
+        raise EscrowError(f"Refund request failed: {exc}") from exc
+
+    if data.get("status"):
+        refund = data.get("data") or {}
+        escrow.status = "refunded"
+        escrow.refunded_at = dt.datetime.now(dt.timezone.utc)
+        escrow.refund_reference = str(refund.get("id") or escrow.charge_reference)[:100]
+        db.commit()
+        logger.info(
+            "Escrow %s refunded — %s kobo returned to buyer (charge=%s)",
+            escrow.id, escrow.gross_kobo, escrow.charge_reference,
+        )
+        return True
+
+    raise EscrowError(f"Refund failed for escrow {escrow.id}: {data.get('message')}")

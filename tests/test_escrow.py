@@ -25,6 +25,25 @@ def test_release_escrow_status_guards():
         s.close()
 
 
+def test_refund_escrow_status_guards():
+    """refund_escrow is idempotent and refuses to refund an already-paid order."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    from app.db.session import SessionLocal
+
+    s = SessionLocal()
+    try:
+        assert es.refund_escrow(s, SimpleNamespace(status="refunded")) is True
+        with pytest.raises(es.EscrowError):
+            es.refund_escrow(s, SimpleNamespace(id=1, status="released"))
+        with pytest.raises(es.EscrowError):
+            es.refund_escrow(s, SimpleNamespace(id=2, status="disputed", charge_reference=None))
+    finally:
+        s.close()
+
+
 def test_fresh_seller_is_not_trusted():
     """A brand-new seller (young account, no paid invoices) must NOT be trusted,
     so their storefront orders are always held."""

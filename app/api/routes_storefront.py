@@ -1005,3 +1005,78 @@ def confirm_order_received(
         }
 
     return {"ok": True, "message": "Thank you for confirming! The seller has been paid."}
+
+
+class OrderProblemIn(BaseModel):
+    phone: str = Field(min_length=6, max_length=20)
+    reason: str = Field(min_length=3, max_length=255)
+    invoice_id: str | None = Field(default=None, max_length=40)
+
+
+@public_router.post("/store/{slug}/report-problem")
+@limiter.limit("10/hour")
+def report_order_problem(
+    request: Request,
+    slug: str,
+    payload: OrderProblemIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Public: the buyer reports a problem with a held order (e.g. never
+    delivered, wrong item). Puts the hold into ``disputed`` so no auto-payout
+    happens, and flags the seller for a Trust & Safety review. Gated by the
+    buyer's phone number.
+    """
+    import datetime as dt
+
+    from app.utils.phone import normalize_phone
+
+    owner = _lookup_store(db, slug)
+    normalized = normalize_phone(payload.phone.strip())
+    candidates = {payload.phone.strip(), normalized}
+
+    q = (
+        db.query(models.StorefrontOrderEscrow)
+        .join(models.Invoice, models.StorefrontOrderEscrow.invoice_id == models.Invoice.id)
+        .join(models.Customer, models.Invoice.customer_id == models.Customer.id)
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == owner.id,
+            models.Customer.phone.in_(candidates),
+        )
+    )
+    if payload.invoice_id:
+        q = q.filter(models.Invoice.invoice_id == payload.invoice_id.strip())
+    escrow = q.order_by(models.StorefrontOrderEscrow.id.desc()).first()
+
+    if not escrow:
+        raise HTTPException(
+            status_code=404,
+            detail="We couldn't find a held order for that phone number.",
+        )
+
+    if escrow.status == "refunded":
+        return {"ok": True, "message": "You've already been refunded for this order."}
+    if escrow.status == "released":
+        raise HTTPException(
+            status_code=409,
+            detail="This order was already completed. Please contact support@suoops.com.",
+        )
+    if escrow.status == "disputed":
+        return {"ok": True, "message": "We've already got your report — our team is on it."}
+    if escrow.status != "held":
+        raise HTTPException(status_code=409, detail="This order can't be reported right now.")
+
+    escrow.status = "disputed"
+    escrow.disputed_at = dt.datetime.now(dt.timezone.utc)
+    escrow.dispute_reason = payload.reason.strip()[:255]
+    # Flag the seller so it surfaces in the Trust & Safety review queue.
+    owner.flagged_for_review = True
+    db.commit()
+
+    logger.info(
+        "Escrow %s disputed by buyer for store %s (seller %s)",
+        escrow.id, slug, owner.id,
+    )
+    return {
+        "ok": True,
+        "message": "Thanks for letting us know. Your payment is safe and our team will review this.",
+    }

@@ -4525,3 +4525,166 @@ def review_flagged_user(
         "message": f"Review action '{payload.action}' applied",
     }
 
+
+# ── Escrow disputes (buyer protection) ─────────────────────────────────
+
+class DisputeItem(BaseModel):
+    escrow_id: int
+    invoice_id: int
+    invoice_public_id: str | None = None
+    status: str
+    seller_id: int
+    seller_name: str | None = None
+    seller_business: str | None = None
+    seller_store_status: str | None = None
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    gross_naira: float
+    payout_naira: float
+    dispute_reason: str | None = None
+    disputed_at: dt.datetime | None = None
+    created_at: dt.datetime | None = None
+
+
+class DisputeListResponse(BaseModel):
+    disputes: list[DisputeItem]
+    total: int
+
+
+@router.get("/disputes", response_model=DisputeListResponse)
+def list_disputes(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    status_filter: str = Query("disputed", pattern="^(disputed|held|refunded|released|all)$"),
+    limit: int = Query(200, ge=1, le=ADMIN_LIST_CAP),
+) -> DisputeListResponse:
+    """List storefront escrow orders for the Trust & Safety review queue.
+
+    Defaults to open disputes; ``status_filter=all`` shows every escrow.
+    """
+    q = (
+        db.query(models.StorefrontOrderEscrow, models.User, models.Invoice, models.Customer)
+        .join(models.User, models.StorefrontOrderEscrow.seller_id == models.User.id)
+        .join(models.Invoice, models.StorefrontOrderEscrow.invoice_id == models.Invoice.id)
+        .outerjoin(models.Customer, models.Invoice.customer_id == models.Customer.id)
+    )
+    if status_filter != "all":
+        q = q.filter(models.StorefrontOrderEscrow.status == status_filter)
+
+    total = q.count()
+    rows = (
+        q.order_by(desc(models.StorefrontOrderEscrow.disputed_at), desc(models.StorefrontOrderEscrow.id))
+        .limit(limit)
+        .all()
+    )
+
+    log_audit_event("admin.disputes.list", user_id=admin_user.id, status_filter=status_filter)
+
+    disputes = [
+        DisputeItem(
+            escrow_id=e.id,
+            invoice_id=e.invoice_id,
+            invoice_public_id=getattr(inv, "invoice_id", None),
+            status=e.status,
+            seller_id=seller.id,
+            seller_name=seller.name,
+            seller_business=seller.business_name,
+            seller_store_status=seller.store_status,
+            customer_name=cust.name if cust else None,
+            customer_phone=cust.phone if cust else None,
+            gross_naira=round((e.gross_kobo or 0) / 100, 2),
+            payout_naira=round((e.payout_kobo or 0) / 100, 2),
+            dispute_reason=e.dispute_reason,
+            disputed_at=e.disputed_at,
+            created_at=e.created_at,
+        )
+        for (e, seller, inv, cust) in rows
+    ]
+    return DisputeListResponse(disputes=disputes, total=total)
+
+
+class DisputeResolveAction(BaseModel):
+    action: str = Field(..., pattern="^(refund|release)$")
+    suspend_seller: bool = False
+    reason: str | None = Field(None, max_length=255)
+
+
+@router.post("/disputes/{escrow_id}/resolve")
+def resolve_dispute(
+    escrow_id: int,
+    payload: DisputeResolveAction,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Resolve an escrow dispute.
+
+    - ``refund``  — return the money to the buyer (Paystack Refund). Optionally
+      suspend the seller's storefront (``suspend_seller``).
+    - ``release`` — side with the seller and pay them out (Paystack Transfer).
+    """
+    from app.services.escrow_service import EscrowError, refund_escrow, release_escrow
+
+    escrow = (
+        db.query(models.StorefrontOrderEscrow)
+        .filter(models.StorefrontOrderEscrow.id == escrow_id)
+        .first()
+    )
+    if not escrow:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+
+    if escrow.status in ("refunded", "released"):
+        raise HTTPException(
+            status_code=409, detail=f"This order is already {escrow.status}."
+        )
+
+    if payload.action == "refund":
+        # refund_escrow only refunds held/disputed rows; nudge to disputed first.
+        try:
+            refund_escrow(db, escrow, reason=payload.reason or "admin dispute resolution")
+        except EscrowError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        if payload.suspend_seller:
+            seller = (
+                db.query(models.User)
+                .filter(models.User.id == escrow.seller_id)
+                .first()
+            )
+            if seller:
+                seller.flagged_for_review = True
+                seller.store_status = "delisted"
+                seller.store_status_reason = (
+                    payload.reason or "Trust & Safety: buyer-protection dispute"
+                )
+                seller.store_status_at = dt.datetime.now(dt.timezone.utc)
+                seller.store_status_by_id = admin_user.id
+                db.commit()
+        result_status = "refunded"
+    else:  # release
+        # Releasing requires a 'held' row; a disputed row is flipped back first.
+        if escrow.status == "disputed":
+            escrow.status = "held"
+            db.commit()
+        try:
+            release_escrow(db, escrow, reason=payload.reason or "admin dispute resolution")
+        except EscrowError as exc:
+            # Restore disputed state so it stays in the queue for a retry.
+            escrow.status = "disputed"
+            db.commit()
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        result_status = "released"
+
+    log_audit_event(
+        "admin.disputes.resolve",
+        user_id=admin_user.id,
+        escrow_id=escrow_id,
+        action=payload.action,
+        suspend_seller=payload.suspend_seller,
+        reason=payload.reason,
+    )
+    logger.info(
+        "Admin %s resolved dispute %s -> %s (suspend=%s)",
+        admin_user.id, escrow_id, result_status, payload.suspend_seller,
+    )
+    return {"escrow_id": escrow_id, "status": result_status, "action": payload.action}
+

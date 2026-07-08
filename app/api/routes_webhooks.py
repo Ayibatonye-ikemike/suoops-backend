@@ -602,7 +602,7 @@ def _handle_paystack_invoice_payment(payload: dict, db: Session, signature: str 
     try:
         from app.services.escrow_service import activate_escrow_on_payment
 
-        activate_escrow_on_payment(db, invoice)
+        activate_escrow_on_payment(db, invoice, charge_reference=reference)
     except Exception:
         logger.exception("INVPAY: failed to activate escrow for invoice %s", invoice_id)
 
