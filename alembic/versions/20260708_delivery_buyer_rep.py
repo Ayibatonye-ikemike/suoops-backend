@@ -1,6 +1,6 @@
 """seller delivery proof + buyer reputation
 
-Revision ID: 20260708_delivery_proof_buyer_rep
+Revision ID: 20260708_delivery_buyer_rep
 Revises: 20260708_escrow_antifraud
 Create Date: 2026-07-08
 
@@ -15,7 +15,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = "20260708_delivery_proof_buyer_rep"
+revision = "20260708_delivery_buyer_rep"
 down_revision = "20260708_escrow_antifraud"
 branch_labels = None
 depends_on = None
