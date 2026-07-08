@@ -321,6 +321,9 @@ class User(Base):
     # Paystack subscription tracking (for auto-recurring billing)
     paystack_subscription_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     paystack_customer_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Paystack Transfer Recipient (RCP_...) for escrow payouts — created from the
+    # business's payout/bank details; reused for every storefront-order release.
+    paystack_recipient_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Paystack subaccount for online payments / marketplace splits. Created from
     # the business's bank details; each sale settles to their bank minus the

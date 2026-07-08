@@ -1,0 +1,167 @@
+"""Storefront order escrow — trust rules, hold windows, and seller payout setup.
+
+This module holds the pure/decision logic + the seller Paystack Transfer
+Recipient onboarding. It does NOT move money — the actual hold/release/refund
+flow (payment webhook, auto-release worker, refunds) lands in later steps and
+uses these helpers.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import logging
+
+import httpx
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.models import models
+
+logger = logging.getLogger(__name__)
+
+_PAYSTACK_BASE = "https://api.paystack.co"
+
+# Cached Paystack bank list (normalized name -> code); rarely changes.
+_bank_cache: dict[str, str] = {}
+_bank_cache_at: float = 0.0
+_BANK_CACHE_TTL = 24 * 60 * 60  # 24h
+
+
+class EscrowError(Exception):
+    """Raised when an escrow payout/recipient operation can't be completed."""
+
+
+# ── Trust rules ────────────────────────────────────────────────────────
+
+def is_trusted_seller(db: Session, user: models.User) -> bool:
+    """Whether a seller may skip the escrow hold (normal/instant settlement).
+
+    ALL must hold: active store, not fraud-flagged, ZERO unresolved disputes,
+    and the configured tenure + paid-invoice thresholds. Computed per order so
+    trust is automatically revoked if a seller starts getting disputes.
+    """
+    if user.store_status != "active" or user.flagged_for_review:
+        return False
+
+    now = dt.datetime.now(dt.timezone.utc)
+    created = user.created_at
+    if created is not None and created.tzinfo is None:
+        created = created.replace(tzinfo=dt.timezone.utc)
+    if created is None or (now - created).days < settings.ESCROW_TRUST_MIN_ACCOUNT_AGE_DAYS:
+        return False
+
+    paid_invoices = (
+        db.query(func.count(models.Invoice.id))
+        .filter(
+            models.Invoice.issuer_id == user.id,
+            models.Invoice.invoice_type == "revenue",
+            models.Invoice.status == "paid",
+        )
+        .scalar()
+    ) or 0
+    if paid_invoices < settings.ESCROW_TRUST_MIN_PAID_INVOICES:
+        return False
+
+    # Any disputed/refunded storefront order permanently blocks trust.
+    disputes = (
+        db.query(func.count(models.StorefrontOrderEscrow.id))
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == user.id,
+            models.StorefrontOrderEscrow.status.in_(["disputed", "refunded"]),
+        )
+        .scalar()
+    ) or 0
+    return disputes == 0
+
+
+def hold_window(same_state: bool) -> dt.timedelta:
+    """Dispute/hold window: 12h when buyer & seller share a state, else 3 days."""
+    if same_state:
+        return dt.timedelta(hours=settings.ESCROW_SAME_STATE_HOLD_HOURS)
+    return dt.timedelta(days=settings.ESCROW_CROSS_STATE_HOLD_DAYS)
+
+
+# ── Seller payout setup (Paystack Transfer Recipient) ──────────────────
+
+def _headers() -> dict[str, str]:
+    if not settings.PAYSTACK_SECRET:
+        raise EscrowError("PAYSTACK_SECRET is not configured")
+    return {
+        "Authorization": f"Bearer {settings.PAYSTACK_SECRET}",
+        "Content-Type": "application/json",
+    }
+
+
+def _normalize_bank_name(name: str) -> str:
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+def _resolve_bank_code(bank_name: str) -> str:
+    global _bank_cache, _bank_cache_at
+    import time
+
+    now = time.time()
+    if not _bank_cache or (now - _bank_cache_at) > _BANK_CACHE_TTL:
+        with httpx.Client(timeout=20) as client:
+            resp = client.get(
+                f"{_PAYSTACK_BASE}/bank",
+                headers=_headers(),
+                params={"currency": "NGN", "perPage": 100},
+            )
+        data = resp.json()
+        if not data.get("status"):
+            raise EscrowError(f"Could not load bank list: {data.get('message')}")
+        _bank_cache = {
+            _normalize_bank_name(b["name"]): b["code"] for b in data.get("data", [])
+        }
+        _bank_cache_at = now
+
+    code = _bank_cache.get(_normalize_bank_name(bank_name))
+    if not code:
+        raise EscrowError(f"Unknown bank: {bank_name!r}")
+    return code
+
+
+def ensure_transfer_recipient(db: Session, user: models.User) -> str:
+    """Return the seller's Paystack Transfer Recipient code, creating it once.
+
+    Uses the seller's payout bank details (falls back to their business bank).
+    Cached on ``user.paystack_recipient_code`` and reused for every payout.
+    """
+    if user.paystack_recipient_code:
+        return user.paystack_recipient_code
+
+    account_number = user.payout_account_number or user.account_number
+    bank_name = user.payout_bank_name or user.bank_name
+    account_name = (
+        user.payout_account_name or user.account_name or user.business_name or user.name
+    )
+    if not (account_number and bank_name):
+        raise EscrowError("Seller has no bank details set for payouts")
+
+    bank_code = _resolve_bank_code(bank_name)
+
+    with httpx.Client(timeout=20) as client:
+        resp = client.post(
+            f"{_PAYSTACK_BASE}/transferrecipient",
+            headers=_headers(),
+            json={
+                "type": "nuban",
+                "name": account_name,
+                "account_number": account_number,
+                "bank_code": bank_code,
+                "currency": "NGN",
+            },
+        )
+    data = resp.json()
+    if not data.get("status"):
+        raise EscrowError(f"Could not create transfer recipient: {data.get('message')}")
+
+    code = (data.get("data") or {}).get("recipient_code")
+    if not code:
+        raise EscrowError("Paystack did not return a recipient code")
+
+    user.paystack_recipient_code = code
+    db.commit()
+    logger.info("Created Paystack transfer recipient for seller %s", user.id)
+    return code

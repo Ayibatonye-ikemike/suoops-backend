@@ -85,6 +85,18 @@ class BaseAppSettings(BaseSettings):
     # payments settled through a business's Paystack subaccount. The business
     # receives (100 - this) percent, settled directly to their bank by Paystack.
     PAYSTACK_PLATFORM_COMMISSION_PERCENT: float = 3.0
+    # Mapbox token for server-side reverse-geocoding (lat/lng -> state) used by the
+    # storefront escrow window. Public pk. token is fine; keep it as MAPBOX_TOKEN on
+    # the backend (the frontend uses NEXT_PUBLIC_MAPBOX_TOKEN).
+    MAPBOX_TOKEN: str | None = None
+    # ── Storefront order escrow (buyer protection) ──
+    ESCROW_ENABLED: bool = True  # master switch for the hold-&-release flow
+    ESCROW_SAME_STATE_HOLD_HOURS: int = 12  # dispute window when buyer & seller share a state
+    ESCROW_CROSS_STATE_HOLD_DAYS: int = 3  # dispute window across states
+    # Trusted sellers skip the hold (normal settlement). ALL must hold: not
+    # flagged/suspended AND zero unresolved disputes AND the thresholds below.
+    ESCROW_TRUST_MIN_PAID_INVOICES: int = 100
+    ESCROW_TRUST_MIN_ACCOUNT_AGE_DAYS: int = 90
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SSL_CERT_REQS: str | None = "required"
