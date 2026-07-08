@@ -9,6 +9,31 @@ def test_hold_window_same_vs_cross_state():
     assert es.hold_window(False) == dt.timedelta(days=3)
 
 
+def test_buyer_reputation_tracks_and_flags():
+    """Disputes accumulate; enough false disputes flags the buyer."""
+    import secrets
+
+    from app.core.config import settings
+    from app.db.session import SessionLocal
+
+    phone = "+23480" + "".join(secrets.choice("0123456789") for _ in range(7))
+    s = SessionLocal()
+    try:
+        es.record_buyer_dispute(s, phone)
+        rep = es.get_buyer_reputation(s, phone)
+        assert rep is not None and rep.disputes == 1 and rep.false_disputes == 0
+        assert rep.flagged is False
+        # Cross the false-dispute threshold → flagged.
+        for _ in range(settings.ESCROW_BUYER_ABUSE_FLAG_AT):
+            es.record_buyer_false_dispute(s, phone)
+        rep = es.get_buyer_reputation(s, phone)
+        assert rep.false_disputes >= settings.ESCROW_BUYER_ABUSE_FLAG_AT
+        assert rep.flagged is True
+    finally:
+        s.rollback()
+        s.close()
+
+
 def test_detect_order_collusion():
     """Self-dealing signals: buyer shares the seller's IP or sits on the store."""
     from types import SimpleNamespace

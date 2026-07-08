@@ -4544,6 +4544,14 @@ class DisputeItem(BaseModel):
     dispute_reason: str | None = None
     held_for_review: bool = False
     review_reason: str | None = None
+    # Seller-submitted delivery proof (defends against false non-delivery claims).
+    delivered_at: dt.datetime | None = None
+    delivery_proof_note: str | None = None
+    delivery_proof_url: str | None = None
+    # Buyer reputation (global, by phone) — spot serial false-disputers.
+    buyer_disputes: int = 0
+    buyer_false_disputes: int = 0
+    buyer_flagged: bool = False
     disputed_at: dt.datetime | None = None
     created_at: dt.datetime | None = None
 
@@ -4585,28 +4593,38 @@ def list_disputes(
 
     log_audit_event("admin.disputes.list", user_id=admin_user.id, status_filter=status_filter)
 
-    disputes = [
-        DisputeItem(
-            escrow_id=e.id,
-            invoice_id=e.invoice_id,
-            invoice_public_id=getattr(inv, "invoice_id", None),
-            status=e.status,
-            seller_id=seller.id,
-            seller_name=seller.name,
-            seller_business=seller.business_name,
-            seller_store_status=seller.store_status,
-            customer_name=cust.name if cust else None,
-            customer_phone=cust.phone if cust else None,
-            gross_naira=round((e.gross_kobo or 0) / 100, 2),
-            payout_naira=round((e.payout_kobo or 0) / 100, 2),
-            dispute_reason=e.dispute_reason,
-            held_for_review=bool(e.held_for_review),
-            review_reason=e.review_reason,
-            disputed_at=e.disputed_at,
-            created_at=e.created_at,
+    from app.services.escrow_service import get_buyer_reputation
+
+    disputes = []
+    for (e, seller, inv, cust) in rows:
+        rep = get_buyer_reputation(db, cust.phone) if cust else None
+        disputes.append(
+            DisputeItem(
+                escrow_id=e.id,
+                invoice_id=e.invoice_id,
+                invoice_public_id=getattr(inv, "invoice_id", None),
+                status=e.status,
+                seller_id=seller.id,
+                seller_name=seller.name,
+                seller_business=seller.business_name,
+                seller_store_status=seller.store_status,
+                customer_name=cust.name if cust else None,
+                customer_phone=cust.phone if cust else None,
+                gross_naira=round((e.gross_kobo or 0) / 100, 2),
+                payout_naira=round((e.payout_kobo or 0) / 100, 2),
+                dispute_reason=e.dispute_reason,
+                held_for_review=bool(e.held_for_review),
+                review_reason=e.review_reason,
+                delivered_at=e.seller_marked_delivered_at,
+                delivery_proof_note=e.delivery_proof_note,
+                delivery_proof_url=e.delivery_proof_url,
+                buyer_disputes=rep.disputes if rep else 0,
+                buyer_false_disputes=rep.false_disputes if rep else 0,
+                buyer_flagged=bool(rep.flagged) if rep else False,
+                disputed_at=e.disputed_at,
+                created_at=e.created_at,
+            )
         )
-        for (e, seller, inv, cust) in rows
-    ]
     return DisputeListResponse(disputes=disputes, total=total)
 
 
@@ -4675,6 +4693,7 @@ def resolve_dispute(
         result_status = "refunded"
     else:  # release
         # Releasing requires a 'held' row; a disputed row is flipped back first.
+        was_disputed = escrow.status == "disputed"
         if escrow.status == "disputed":
             escrow.status = "held"
             db.commit()
@@ -4686,6 +4705,22 @@ def resolve_dispute(
             db.commit()
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         result_status = "released"
+
+        # Releasing a DISPUTED order = admin sided with the seller → the buyer's
+        # "not delivered" claim was false. Count it against the buyer.
+        if was_disputed:
+            try:
+                from app.services.escrow_service import record_buyer_false_dispute
+
+                buyer = (
+                    db.query(models.Customer)
+                    .join(models.Invoice, models.Invoice.customer_id == models.Customer.id)
+                    .filter(models.Invoice.id == escrow.invoice_id)
+                    .first()
+                )
+                record_buyer_false_dispute(db, buyer.phone if buyer else None)
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to record false dispute for escrow %s", escrow_id)
 
     log_audit_event(
         "admin.disputes.resolve",

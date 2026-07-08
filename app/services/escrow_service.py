@@ -553,3 +553,64 @@ def send_delivery_code(user_phone: str | None, code: str, business_name: str | N
         WhatsAppClient(settings.WHATSAPP_API_KEY).send_text(user_phone, msg)
     except Exception:  # noqa: BLE001
         logger.exception("Failed to send delivery code to buyer")
+
+
+# ── Buyer reputation (deter false "not delivered" claims) ──────────────
+
+def _norm_phone(phone: str | None) -> str | None:
+    if not phone:
+        return None
+    try:
+        from app.utils.phone import normalize_phone
+
+        return normalize_phone(phone.strip())
+    except Exception:  # noqa: BLE001
+        return phone.strip()
+
+
+def _buyer_rep_row(db: Session, phone: str) -> "models.BuyerReputation":
+    rep = (
+        db.query(models.BuyerReputation)
+        .filter(models.BuyerReputation.phone == phone)
+        .first()
+    )
+    if not rep:
+        rep = models.BuyerReputation(phone=phone)
+        db.add(rep)
+    return rep
+
+
+def record_buyer_dispute(db: Session, phone: str | None) -> None:
+    """Count that this buyer filed a dispute (any report)."""
+    p = _norm_phone(phone)
+    if not p:
+        return
+    rep = _buyer_rep_row(db, p)
+    rep.disputes = (rep.disputes or 0) + 1
+    db.commit()
+
+
+def record_buyer_false_dispute(db: Session, phone: str | None) -> None:
+    """Count a dispute an admin ruled against the buyer (released to seller).
+
+    Flags the buyer once they cross the abuse threshold.
+    """
+    p = _norm_phone(phone)
+    if not p:
+        return
+    rep = _buyer_rep_row(db, p)
+    rep.false_disputes = (rep.false_disputes or 0) + 1
+    if rep.false_disputes >= settings.ESCROW_BUYER_ABUSE_FLAG_AT:
+        rep.flagged = True
+    db.commit()
+
+
+def get_buyer_reputation(db: Session, phone: str | None) -> "models.BuyerReputation | None":
+    p = _norm_phone(phone)
+    if not p:
+        return None
+    return (
+        db.query(models.BuyerReputation)
+        .filter(models.BuyerReputation.phone == p)
+        .first()
+    )

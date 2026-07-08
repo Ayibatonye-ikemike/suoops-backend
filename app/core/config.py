@@ -107,6 +107,9 @@ class BaseAppSettings(BaseSettings):
     # When a seller changes payout/bank details, freeze payouts this long so a
     # hijacked account can't instantly reroute money (owner is alerted).
     ESCROW_PAYOUT_FREEZE_HOURS_ON_BANK_CHANGE: int = 48
+    # Flag a buyer after this many disputes an admin ruled against them (false
+    # "not delivered" claims) so future reports get extra scrutiny.
+    ESCROW_BUYER_ABUSE_FLAG_AT: int = 2
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SSL_CERT_REQS: str | None = "required"

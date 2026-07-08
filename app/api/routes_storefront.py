@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Annotated
 from urllib.parse import quote_plus
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -422,6 +422,108 @@ def storefront_qr(
         )
     link = _link_for(user.storefront_slug)
     return StorefrontQrOut(link=link, qr_png=_qr_data_url(link))
+
+
+# ── Business-facing storefront order (escrow) status + delivery proof ──
+
+def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Customer | None") -> dict:
+    """Business-safe escrow summary. NEVER includes the buyer-only delivery code."""
+    return {
+        "status": escrow.status,
+        "held": escrow.status == "held",
+        "release_due_at": escrow.release_due_at.isoformat() if escrow.release_due_at else None,
+        "confirmed_at": escrow.confirmed_at.isoformat() if escrow.confirmed_at else None,
+        "delivered_at": (
+            escrow.seller_marked_delivered_at.isoformat()
+            if escrow.seller_marked_delivered_at
+            else None
+        ),
+        "delivery_proof_note": escrow.delivery_proof_note,
+        "delivery_proof_url": _presign(escrow.delivery_proof_url),
+        "held_for_review": bool(escrow.held_for_review),
+        "gross_naira": round((escrow.gross_kobo or 0) / 100, 2),
+        "payout_naira": round((escrow.payout_kobo or 0) / 100, 2),
+        "customer_name": buyer.name if buyer else None,
+        "customer_phone": buyer.phone if buyer else None,
+    }
+
+
+def _load_owner_escrow(db: Session, user_id: int, invoice_public_id: str):
+    """Return (escrow, buyer) for a storefront order owned by this user, or None."""
+    row = (
+        db.query(models.StorefrontOrderEscrow, models.Customer)
+        .join(models.Invoice, models.StorefrontOrderEscrow.invoice_id == models.Invoice.id)
+        .outerjoin(models.Customer, models.Invoice.customer_id == models.Customer.id)
+        .filter(
+            models.Invoice.invoice_id == invoice_public_id,
+            models.StorefrontOrderEscrow.seller_id == user_id,
+        )
+        .first()
+    )
+    return row  # (escrow, customer) or None
+
+
+@router.get("/storefront/orders/{invoice_id}")
+def get_order_escrow(
+    invoice_id: str,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Business: buyer-protection status for one of your storefront orders."""
+    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    if not row:
+        return {"escrow": None}
+    escrow, buyer = row
+    return {"escrow": _escrow_summary(escrow, buyer)}
+
+
+@router.post("/storefront/orders/{invoice_id}/mark-delivered")
+@limiter.limit("30/minute")
+async def mark_order_delivered(
+    request: Request,
+    invoice_id: str,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    note: Annotated[str | None, Form()] = None,
+    file: Annotated[UploadFile | None, File()] = None,
+) -> dict:
+    """Business: mark a storefront order delivered, with an optional proof photo.
+
+    This is your evidence if the buyer later falsely claims non-delivery — it
+    does NOT release funds (only the buyer's code or the window does that).
+    """
+    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    escrow, buyer = row
+
+    import datetime as dt
+
+    proof_url = escrow.delivery_proof_url
+    if file is not None and file.filename:
+        from app.storage.s3_client import s3_client
+        from app.utils.file_validation import get_safe_extension, validate_file_magic_bytes
+
+        allowed = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+        if not file.content_type or file.content_type not in allowed:
+            raise HTTPException(status_code=400, detail="Proof must be a PNG, JPG or WEBP image.")
+        content = await file.read()
+        if len(content) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Image exceeds the 5MB limit.")
+        if not validate_file_magic_bytes(content, file.content_type):
+            raise HTTPException(status_code=400, detail="File content does not match its type.")
+        ext = get_safe_extension(file.filename, file.content_type)
+        key = f"delivery-proof/escrow_{escrow.id}.{ext}"
+        proof_url = await s3_client.upload_file(content, key, content_type=file.content_type)
+
+    escrow.seller_marked_delivered_at = dt.datetime.now(dt.timezone.utc)
+    if note is not None:
+        escrow.delivery_proof_note = note.strip()[:255] or None
+    escrow.delivery_proof_url = proof_url
+    db.commit()
+    db.refresh(escrow)
+    logger.info("Seller %s marked order %s delivered", current_user_id, invoice_id)
+    return {"escrow": _escrow_summary(escrow, buyer)}
 
 
 @public_router.get("/store/{slug}")
@@ -1163,6 +1265,14 @@ def report_order_problem(
     # Flag the seller so it surfaces in the Trust & Safety review queue.
     owner.flagged_for_review = True
     db.commit()
+
+    # Track the buyer's dispute history (deters serial false "not delivered" claims).
+    try:
+        from app.services.escrow_service import record_buyer_dispute
+
+        record_buyer_dispute(db, payload.phone)
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to record buyer dispute for %s", slug)
 
     logger.info(
         "Escrow %s disputed by buyer for store %s (seller %s)",

@@ -756,6 +756,41 @@ class StorefrontOrderEscrow(Base):
     )
     review_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
+    # ── Seller-side delivery proof (defends against false "not delivered" claims) ──
+    seller_marked_delivered_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    delivery_proof_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delivery_proof_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=utcnow, nullable=True
+    )
+
+
+class BuyerReputation(Base):
+    """Global (cross-business) reputation for a storefront buyer, keyed by phone.
+
+    Deters buyers who receive goods then falsely claim non-delivery: every
+    dispute is counted, and disputes an admin rules against the buyer (releases
+    to the seller) are counted as ``false_disputes``. A buyer over the abuse
+    threshold is flagged so their future reports get extra scrutiny.
+    """
+
+    __tablename__ = "buyer_reputation"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    phone: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    disputes: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    false_disputes: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    flagged: Mapped[bool] = mapped_column(
+        default=False, server_default="false", nullable=False
+    )
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
