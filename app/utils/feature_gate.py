@@ -38,14 +38,41 @@ PRO_FEATURES_PRICE = 1500  # ₦1,500/month (legacy recurring plan, not sold)
 # it as a Paystack commission when the customer pays online.
 PLATFORM_FEE_PERCENT = 3
 MANUAL_INVOICE_MIN_FEE_KOBO = 2000  # ₦20 floor per manual invoice
-MANUAL_INVOICE_MAX_FEE_KOBO = 200000  # ₦2,000 cap per manual invoice
+# Tiered fee cap. The cap starts at ₦2,000 for transactions up to ₦500,000, then
+# steps up by ₦2,000 for every additional ₦500,000 of transaction value:
+#   ≤ ₦500,000        → ₦2,000 cap
+#   ₦500,000–₦1,000,000 → ₦4,000 cap   (once it CROSSES ₦500,000)
+#   ₦1,000,000–₦1,500,000 → ₦6,000 cap (once it CROSSES ₦1,000,000)
+#   …and so on (₦2,000 more per ₦500,000 band).
+FEE_CAP_BASE_KOBO = 200000  # ₦2,000 cap for the first ₦500,000 band
+FEE_CAP_TIER_NAIRA = 500000  # transaction value per cap tier (₦500,000)
+# Kept for backward compatibility (base cap for the first tier).
+MANUAL_INVOICE_MAX_FEE_KOBO = FEE_CAP_BASE_KOBO
 
 # Wallet top-up tiers (Naira) sold to fund manual invoicing.
 WALLET_TOPUP_TIERS = [1250, 5000, 20000]
 
 
+def fee_cap_kobo(amount) -> int:
+    """Tiered fee cap in kobo for a transaction of ``amount`` Naira.
+
+    ₦2,000 for the first ₦500,000, then +₦2,000 for every additional ₦500,000
+    band the amount CROSSES into (exact multiples stay in the lower band).
+    """
+    from decimal import Decimal
+    from math import ceil
+
+    amt = Decimal(str(amount or 0))
+    if amt <= 0:
+        tiers = 1
+    else:
+        tiers = max(1, ceil(amt / Decimal(FEE_CAP_TIER_NAIRA)))
+    return FEE_CAP_BASE_KOBO * tiers
+
+
 def platform_fee_kobo(amount) -> int:
-    """Platform commission in kobo: 3% of the amount, clamped to [₦20, ₦2,000].
+    """Platform commission in kobo: 3% of the amount, floored at ₦20 and capped
+    by a tiered ceiling (₦2,000 per ₦500,000 of transaction value).
 
     Used for both the manual-invoice wallet fee (charged at creation) and the
     storefront/online commission (passed to Paystack as a flat transaction
@@ -57,7 +84,7 @@ def platform_fee_kobo(amount) -> int:
     fee_kobo = (amt * PLATFORM_FEE_PERCENT).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     return min(
         max(int(fee_kobo), MANUAL_INVOICE_MIN_FEE_KOBO),
-        MANUAL_INVOICE_MAX_FEE_KOBO,
+        fee_cap_kobo(amount),
     )
 
 

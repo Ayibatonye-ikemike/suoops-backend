@@ -114,7 +114,7 @@ async def start_invoice_payment(db: Session, invoice, issuer) -> dict:
                     "reference": reference,
                     "subaccount": issuer.paystack_subaccount_code,
                     "bearer": "subaccount",  # business absorbs the Paystack fee
-                    "transaction_charge": commission_kobo,  # platform 3%, capped ₦20–₦2,000
+                    "transaction_charge": commission_kobo,  # platform 3%, min ₦20, tiered cap (₦2,000 per ₦500k)
                     "callback_url": f"{settings.FRONTEND_URL}/pay/{invoice.invoice_id}?ref={reference}",
                     "metadata": {
                         "payment_type": "invoice_payment",

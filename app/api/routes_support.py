@@ -620,7 +620,7 @@ def get_dashboard_stats(
         models.Invoice.paid_at >= month_start
     ).scalar() or 0
 
-    # Commission = Suoops' actual earnings (flat 3%, min ₦20, cap ₦2,000):
+    # Commission = Suoops' actual earnings (flat 3%, min ₦20, tiered cap ₦2,000 per ₦500k):
     #  - Wallet: charged at CREATION on every non-storefront revenue invoice.
     #  - Online: storefront orders charged by Paystack when PAID (count by paid_at).
     from sqlalchemy import or_
