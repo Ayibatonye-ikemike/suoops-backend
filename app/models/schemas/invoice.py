@@ -14,8 +14,8 @@ T = TypeVar("T")
 
 class InvoiceLineIn(BaseModel):
     description: str
-    quantity: int = 1
-    unit_price: Decimal
+    quantity: int = Field(default=1, ge=1, description="Quantity must be at least 1")
+    unit_price: Decimal = Field(..., gt=0, description="Unit price must be greater than 0")
     product_id: int | None = None  # Link to inventory product for automatic stock tracking
 
 

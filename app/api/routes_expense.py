@@ -302,41 +302,46 @@ def expense_stats(
     - Top expense categories
     """
     from app.services.tax_reporting_service import compute_revenue_by_date_range
-    
+    from app.models.models import Invoice
+
     # Calculate date range
     start_date, end_date = _calculate_period_range(period_type, year, month, day, week)
-    
-    # SQL aggregation instead of loading all expenses into memory
+
+    # Expenses are stored as unified invoices (invoice_type='expense'), NOT the
+    # legacy Expense table. Aggregate them the SAME way the Expense list page
+    # does — by coalesce(due_date, created_at) so backdated expenses land in the
+    # right period — and only count paid ones (expenses are created as paid).
+    expense_date_col = func.coalesce(Invoice.due_date, Invoice.created_at)
+    expense_filters = (
+        Invoice.issuer_id == data_owner_id,
+        Invoice.invoice_type == "expense",
+        Invoice.status == "paid",
+        func.date(expense_date_col) >= start_date,
+        func.date(expense_date_col) <= end_date,
+    )
+
     stats_row = (
         db.query(
-            func.coalesce(func.sum(Expense.amount), 0).label("total"),
+            func.coalesce(func.sum(Invoice.amount), 0).label("total"),
         )
-        .filter(
-            Expense.user_id == data_owner_id,
-            Expense.date >= start_date,
-            Expense.date <= end_date,
-        )
+        .filter(*expense_filters)
         .first()
     )
     total_expenses = Decimal(str(stats_row.total))
-    
+
     # Top categories via SQL
     category_rows = (
         db.query(
-            Expense.category,
-            func.sum(Expense.amount).label("total"),
+            Invoice.category,
+            func.sum(Invoice.amount).label("total"),
         )
-        .filter(
-            Expense.user_id == data_owner_id,
-            Expense.date >= start_date,
-            Expense.date <= end_date,
-        )
-        .group_by(Expense.category)
-        .order_by(func.sum(Expense.amount).desc())
+        .filter(*expense_filters)
+        .group_by(Invoice.category)
+        .order_by(func.sum(Invoice.amount).desc())
         .limit(5)
         .all()
     )
-    top_categories = [{row.category: float(row.total)} for row in category_rows]
+    top_categories = [{(row.category or "other"): float(row.total)} for row in category_rows]
     
     # Get revenue from invoices (use data_owner_id for team context)
     total_revenue = compute_revenue_by_date_range(

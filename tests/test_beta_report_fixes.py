@@ -1,0 +1,150 @@
+"""Regression tests for beta-report fixes.
+
+Covers:
+  * Expenses created as unified invoices (invoice_type='expense') show up in
+    BOTH the invoice list AND the /expenses/stats/overview totals — the earlier
+    bug where the stats endpoint queried the dead legacy Expense table (₦0).
+  * Invoice line items with a non-positive unit price are rejected (422) instead
+    of silently accepted.
+"""
+import datetime as dt
+import json
+from unittest.mock import MagicMock, patch
+
+from fastapi.testclient import TestClient
+
+from app.api.main import app
+
+client = TestClient(app)
+
+
+def _signup_and_get_token(phone: str) -> str:
+    r = client.post(
+        "/auth/signup/request",
+        json={"phone": phone, "name": "FixUser", "business_name": "Fix Biz"},
+    )
+    assert r.status_code == 200, r.text
+
+    from app.services.otp_service import OTPService
+
+    svc = OTPService()
+    raw = svc._store.get(f"otp:signup:{phone}")  # type: ignore[attr-defined]
+    assert raw is not None
+    code = json.loads(raw)["code"]
+
+    v = client.post(
+        "/auth/signup/verify",
+        json={
+            "phone": phone,
+            "otp": code,
+            "bank_name": "SuoOps Bank",
+            "account_number": "0001234567",
+            "account_name": "Fix Biz",
+        },
+    )
+    assert v.status_code == 200, v.text
+    token = v.json()["access_token"]
+
+    # Fund the wallet so revenue-invoice fee checks don't get in the way.
+    from app.db.session import SessionLocal
+    from app.models import models as _m
+
+    s = SessionLocal()
+    try:
+        u = s.query(_m.User).filter(_m.User.phone == phone).first()
+        if u is not None:
+            u.wallet_balance_kobo = 10_000_000
+            s.commit()
+    finally:
+        s.close()
+    return token
+
+
+def _headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
+def test_expense_appears_in_list_and_stats():
+    token = _signup_and_get_token("+2349990002220")
+    headers = _headers(token)
+
+    today = dt.date.today()
+    date_str = today.isoformat()
+
+    # Create two expenses exactly like the dashboard Expenses page does.
+    for amount in (1500, 2222):
+        resp = client.post(
+            "/invoices/",
+            json={
+                "invoice_type": "expense",
+                "amount": amount,
+                "due_date": date_str,
+                "category": "supplies",
+                "vendor_name": "Test Vendor",
+                "lines": [
+                    {"description": "supplies", "quantity": 1, "unit_price": amount}
+                ],
+                "status": "paid",
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+
+    # 1) The Expenses list (unified invoice endpoint) must return them as items.
+    start = today.replace(day=1).isoformat()
+    end = today.isoformat()
+    lst = client.get(
+        "/invoices/",
+        params={"invoice_type": "expense", "start_date": start, "end_date": end},
+        headers=headers,
+    )
+    assert lst.status_code == 200, lst.text
+    body = lst.json()
+    assert "items" in body, "list endpoint must return a paginated envelope"
+    amounts = sorted(float(i["amount"]) for i in body["items"])
+    assert amounts == [1500.0, 2222.0], amounts
+
+    # 2) The stats endpoint must total them (regression: used to read the dead
+    #    legacy Expense table and return ₦0).
+    stats = client.get(
+        "/expenses/stats/overview",
+        params={"period_type": "month", "year": today.year, "month": today.month},
+        headers=headers,
+    )
+    assert stats.status_code == 200, stats.text
+    assert float(stats.json()["total_expenses"]) == 3722.0, stats.json()
+
+
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
+def test_zero_unit_price_rejected():
+    token = _signup_and_get_token("+2349990002221")
+    headers = _headers(token)
+
+    resp = client.post(
+        "/invoices/",
+        json={
+            "customer_name": "Zero Priced",
+            "amount": 0,
+            "lines": [{"description": "Freebie", "quantity": 1, "unit_price": 0}],
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
+def test_positive_unit_price_accepted():
+    token = _signup_and_get_token("+2349990002222")
+    headers = _headers(token)
+
+    resp = client.post(
+        "/invoices/",
+        json={
+            "customer_name": "Valid Line",
+            "amount": 2500,
+            "lines": [{"description": "Service", "quantity": 1, "unit_price": 2500}],
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
