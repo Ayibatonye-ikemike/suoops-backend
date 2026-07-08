@@ -26,6 +26,12 @@ class BankDetailsUpdate(BaseModel):
     account_name: str | None = Field(
         None, min_length=1, max_length=255, description="Account holder name"
     )
+    otp: str | None = Field(
+        None,
+        min_length=4,
+        max_length=8,
+        description="One-time code (required only when changing an EXISTING bank account)",
+    )
 
 
 class BankDetailsOut(BaseModel):

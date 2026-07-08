@@ -78,6 +78,38 @@ def get_bank_details(
     )
 
 
+@router.post("/me/bank-details/request-otp", response_model=schemas.MessageOut)
+@limiter.limit("5/minute")
+def request_bank_change_otp(
+    request: Request,
+    current_user_id: AdminUserDep,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Send a one-time code to confirm a change of bank details (step-up auth).
+
+    Required before changing an EXISTING payout account — protects against an
+    attacker who has a hijacked session rerouting the business's money.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    identifier = user.phone or user.email
+    if not identifier:
+        raise HTTPException(status_code=400, detail="No phone or email on file to send a code to.")
+
+    from app.services.otp_service import OTPService
+
+    try:
+        OTPService().send_code(identifier, purpose="bank_change")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to send bank-change OTP for user %s", current_user_id)
+        raise HTTPException(
+            status_code=502, detail="Could not send your confirmation code. Please try again."
+        ) from exc
+    channel = "email" if (user.email and not user.phone) else "WhatsApp"
+    return schemas.MessageOut(detail=f"Confirmation code sent to your {channel}.")
+
+
 @router.patch("/me/bank-details", response_model=schemas.BankDetailsOut)
 @limiter.limit("10/minute")
 def update_bank_details(
@@ -96,6 +128,25 @@ def update_bank_details(
     # to an EXISTING account (first-time setup should not freeze payouts).
     had_bank = bool(user.bank_name and user.account_number)
     old_bank = (user.bank_name, user.account_number)
+    intended_bank = (
+        data.bank_name if data.bank_name is not None else user.bank_name,
+        data.account_number if data.account_number is not None else user.account_number,
+    )
+    is_change = had_bank and intended_bank != old_bank
+
+    # Step-up auth: changing an EXISTING bank account requires a fresh OTP.
+    if is_change:
+        identifier = user.phone or user.email
+        from app.services.otp_service import OTPService
+
+        if not data.otp or not identifier or not OTPService().verify_otp(
+            identifier, data.otp, purpose="bank_change"
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="A valid confirmation code is required to change your bank details.",
+            )
+
     if data.business_name is not None:
         user.business_name = data.business_name
     if data.bank_name is not None:
@@ -109,7 +160,7 @@ def update_bank_details(
 
     # Bank details drive escrow payouts — a change to an existing account is a
     # takeover risk, so invalidate the recipient, freeze payouts + alert the owner.
-    if had_bank and (user.bank_name, user.account_number) != old_bank:
+    if is_change:
         from app.services.escrow_service import on_payout_details_changed
 
         on_payout_details_changed(db, user)
