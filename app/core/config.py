@@ -110,6 +110,14 @@ class BaseAppSettings(BaseSettings):
     # Flag a buyer after this many disputes an admin ruled against them (false
     # "not delivered" claims) so future reports get extra scrutiny.
     ESCROW_BUYER_ABUSE_FLAG_AT: int = 2
+    # Which provider pays sellers out of the held balance: "paystack" (default)
+    # or "flutterwave". Refunds always use the collector (Paystack). Switch this
+    # to move payouts to another rail without touching the escrow logic.
+    ESCROW_PAYOUT_PROVIDER: str = "paystack"
+    # Flutterwave (alternative payout rail). Off unless the secret is set AND
+    # ESCROW_PAYOUT_PROVIDER="flutterwave".
+    FLUTTERWAVE_SECRET: str | None = None
+    FLUTTERWAVE_BASE: str = "https://api.flutterwave.com"
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SSL_CERT_REQS: str | None = "required"

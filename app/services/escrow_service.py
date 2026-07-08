@@ -12,7 +12,6 @@ import logging
 import math
 import secrets
 
-import httpx
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -20,13 +19,6 @@ from app.core.config import settings
 from app.models import models
 
 logger = logging.getLogger(__name__)
-
-_PAYSTACK_BASE = "https://api.paystack.co"
-
-# Cached Paystack bank list (normalized name -> code); rarely changes.
-_bank_cache: dict[str, str] = {}
-_bank_cache_at: float = 0.0
-_BANK_CACHE_TTL = 24 * 60 * 60  # 24h
 
 
 class EscrowError(Exception):
@@ -276,105 +268,7 @@ def activate_escrow_on_payment(
         logger.exception("Failed to dispatch delivery code for invoice %s", invoice.id)
 
 
-# ── Seller payout setup (Paystack Transfer Recipient) ──────────────────
-
-def _headers() -> dict[str, str]:
-    if not settings.PAYSTACK_SECRET:
-        raise EscrowError("PAYSTACK_SECRET is not configured")
-    return {
-        "Authorization": f"Bearer {settings.PAYSTACK_SECRET}",
-        "Content-Type": "application/json",
-    }
-
-
-def _normalize_bank_name(name: str) -> str:
-    return "".join(ch for ch in name.lower() if ch.isalnum())
-
-
-def _resolve_bank_code(bank_name: str) -> str:
-    global _bank_cache, _bank_cache_at
-    import time
-
-    now = time.time()
-    if not _bank_cache or (now - _bank_cache_at) > _BANK_CACHE_TTL:
-        with httpx.Client(timeout=20) as client:
-            resp = client.get(
-                f"{_PAYSTACK_BASE}/bank",
-                headers=_headers(),
-                params={"currency": "NGN", "perPage": 100},
-            )
-        data = resp.json()
-        if not data.get("status"):
-            raise EscrowError(f"Could not load bank list: {data.get('message')}")
-        _bank_cache = {
-            _normalize_bank_name(b["name"]): b["code"] for b in data.get("data", [])
-        }
-        _bank_cache_at = now
-
-    code = _bank_cache.get(_normalize_bank_name(bank_name))
-    if not code:
-        raise EscrowError(f"Unknown bank: {bank_name!r}")
-    return code
-
-
-def ensure_transfer_recipient(db: Session, user: models.User) -> str:
-    """Return the seller's Paystack Transfer Recipient code, creating it once.
-
-    Uses the seller's payout bank details (falls back to their business bank).
-    Cached on ``user.paystack_recipient_code`` and reused for every payout.
-    """
-    if user.paystack_recipient_code:
-        return user.paystack_recipient_code
-
-    account_number = user.payout_account_number or user.account_number
-    bank_name = user.payout_bank_name or user.bank_name
-    account_name = (
-        user.payout_account_name or user.account_name or user.business_name or user.name
-    )
-    if not (account_number and bank_name):
-        raise EscrowError("Seller has no bank details set for payouts")
-
-    bank_code = _resolve_bank_code(bank_name)
-
-    with httpx.Client(timeout=20) as client:
-        resp = client.post(
-            f"{_PAYSTACK_BASE}/transferrecipient",
-            headers=_headers(),
-            json={
-                "type": "nuban",
-                "name": account_name,
-                "account_number": account_number,
-                "bank_code": bank_code,
-                "currency": "NGN",
-            },
-        )
-    data = resp.json()
-    if not data.get("status"):
-        raise EscrowError(f"Could not create transfer recipient: {data.get('message')}")
-
-    code = (data.get("data") or {}).get("recipient_code")
-    if not code:
-        raise EscrowError("Paystack did not return a recipient code")
-
-    user.paystack_recipient_code = code
-    db.commit()
-    logger.info("Created Paystack transfer recipient for seller %s", user.id)
-    return code
-
-
 # ── Release (pay the seller) ───────────────────────────────────────────
-
-def _transfer_exists(reference: str) -> bool:
-    """Whether a Paystack transfer with this reference already exists."""
-    try:
-        with httpx.Client(timeout=15) as client:
-            resp = client.get(
-                f"{_PAYSTACK_BASE}/transfer/verify/{reference}", headers=_headers()
-            )
-        return bool(resp.json().get("status"))
-    except Exception:  # noqa: BLE001
-        return False
-
 
 def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason: str = "auto") -> bool:
     """Pay held funds out to the seller (gross − commission) via a Paystack
@@ -413,42 +307,40 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
                 f"Payouts frozen for seller {seller.id} until {frozen.isoformat()}"
             )
 
-    recipient = ensure_transfer_recipient(db, seller)
+    payout_reason = f"Storefront order payout ({reason}) — invoice {escrow.invoice_id}"
     reference = f"ESCROWREL-{escrow.id}"
 
-    # Record intent before calling Paystack so a crash mid-flight is recoverable.
+    from app.services.payouts import PayoutError, get_payout_provider
+
+    provider = get_payout_provider()
+
+    # Record intent before calling the provider so a crash mid-flight is recoverable.
     if escrow.transfer_reference != reference:
         escrow.transfer_reference = reference
         db.commit()
 
     try:
-        with httpx.Client(timeout=20) as client:
-            resp = client.post(
-                f"{_PAYSTACK_BASE}/transfer",
-                headers=_headers(),
-                json={
-                    "source": "balance",
-                    "amount": int(escrow.payout_kobo),
-                    "recipient": recipient,
-                    "reason": f"Storefront order payout ({reason}) — invoice {escrow.invoice_id}",
-                    "reference": reference,
-                },
-            )
-        data = resp.json()
-    except Exception as exc:  # noqa: BLE001 — network/timeout → retry later
+        result = provider.transfer(
+            db,
+            seller=seller,
+            amount_kobo=int(escrow.payout_kobo),
+            reference=reference,
+            reason=payout_reason,
+        )
+    except PayoutError as exc:  # network/transport failure → retry later
         raise EscrowError(f"Transfer request failed: {exc}") from exc
 
-    if data.get("status") or _transfer_exists(reference):
+    if result.ok or provider.transfer_exists(reference):
         escrow.status = "released"
         escrow.released_at = dt.datetime.now(dt.timezone.utc)
         db.commit()
         logger.info(
-            "Escrow %s released — transferred %s kobo to seller %s (ref=%s)",
-            escrow.id, escrow.payout_kobo, seller.id, reference,
+            "Escrow %s released via %s — %s kobo to seller %s (ref=%s)",
+            escrow.id, provider.name, escrow.payout_kobo, seller.id, reference,
         )
         return True
 
-    raise EscrowError(f"Transfer failed for escrow {escrow.id}: {data.get('message')}")
+    raise EscrowError(f"Transfer failed for escrow {escrow.id}: {result.message}")
 
 
 # ── Refund (return money to the buyer) ─────────────────────────────────
@@ -469,34 +361,28 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
     if not escrow.charge_reference:
         raise EscrowError(f"Escrow {escrow.id} has no charge reference to refund")
 
+    from app.services.payouts import PayoutError
+    from app.services.payouts.paystack import paystack_refund
+
     try:
-        with httpx.Client(timeout=20) as client:
-            resp = client.post(
-                f"{_PAYSTACK_BASE}/refund",
-                headers=_headers(),
-                json={
-                    "transaction": escrow.charge_reference,
-                    "amount": int(escrow.gross_kobo),
-                    "merchant_note": f"Storefront buyer protection ({reason}) — invoice {escrow.invoice_id}",
-                },
-            )
-        data = resp.json()
-    except Exception as exc:  # noqa: BLE001 — network/timeout → retry later
-        raise EscrowError(f"Refund request failed: {exc}") from exc
-
-    if data.get("status"):
-        refund = data.get("data") or {}
-        escrow.status = "refunded"
-        escrow.refunded_at = dt.datetime.now(dt.timezone.utc)
-        escrow.refund_reference = str(refund.get("id") or escrow.charge_reference)[:100]
-        db.commit()
-        logger.info(
-            "Escrow %s refunded — %s kobo returned to buyer (charge=%s)",
-            escrow.id, escrow.gross_kobo, escrow.charge_reference,
+        data = paystack_refund(
+            charge_reference=escrow.charge_reference,
+            amount_kobo=int(escrow.gross_kobo),
+            note=f"Storefront buyer protection ({reason}) — invoice {escrow.invoice_id}",
         )
-        return True
+    except PayoutError as exc:  # noqa: BLE001 — network/timeout → retry later
+        raise EscrowError(str(exc)) from exc
 
-    raise EscrowError(f"Refund failed for escrow {escrow.id}: {data.get('message')}")
+    refund = data.get("data") or {}
+    escrow.status = "refunded"
+    escrow.refunded_at = dt.datetime.now(dt.timezone.utc)
+    escrow.refund_reference = str(refund.get("id") or escrow.charge_reference)[:100]
+    db.commit()
+    logger.info(
+        "Escrow %s refunded — %s kobo returned to buyer (charge=%s)",
+        escrow.id, escrow.gross_kobo, escrow.charge_reference,
+    )
+    return True
 
 
 # ── Payout security (account-takeover protection) ──────────────────────
