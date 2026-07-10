@@ -37,6 +37,18 @@ def _normalize_bank_name(name: str) -> str:
     return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
+def _normalize_transfer_status(raw_status: str | None) -> str:
+    """Map a Flutterwave transfer state to our normalized status."""
+    s = (raw_status or "").strip().upper()
+    if s == "SUCCESSFUL":
+        return "successful"
+    if s in {"FAILED", "CANCELLED", "CANCELED"}:
+        return "failed"
+    if s in {"NEW", "PENDING", "INITIATED", "PROCESSING", "QUEUED"}:
+        return "pending"
+    return "unknown"
+
+
 class FlutterwavePayoutProvider(PayoutProvider):
     """Pays sellers via the Flutterwave v3 Transfers API."""
 
@@ -75,6 +87,27 @@ class FlutterwavePayoutProvider(PayoutProvider):
             raise PayoutError(f"Unknown bank: {bank_name!r}")
         return code
 
+    def _available_balance_naira(self) -> float | None:
+        """Available NGN payout-wallet balance in Naira, or None if unreadable."""
+        try:
+            with httpx.Client(timeout=15) as client:
+                resp = client.get(
+                    f"{self._base()}/v3/balances/NGN", headers=self._headers()
+                )
+            data = resp.json()
+        except Exception:  # noqa: BLE001 — transport error → skip the guard
+            return None
+        if data.get("status") != "success":
+            return None
+        bal = data.get("data") or {}
+        if not isinstance(bal, dict):
+            return None
+        avail = bal.get("available_balance")
+        try:
+            return float(avail)
+        except (TypeError, ValueError):
+            return None
+
     def transfer(
         self,
         db: Session,
@@ -90,6 +123,18 @@ class FlutterwavePayoutProvider(PayoutProvider):
             raise PayoutError("Seller has no bank details set for payouts")
 
         bank_code = self._resolve_bank_code(bank_name)
+        amount_naira = round(amount_kobo / 100, 2)
+
+        # Pre-transfer float guard: FW transfers debit the payout balance. Fail
+        # fast with a clear error (so the escrow stays 'held' to retry) instead of
+        # queuing an under-funded transfer. Skipped when the balance is unreadable.
+        available = self._available_balance_naira()
+        if available is not None and available < amount_naira:
+            raise PayoutError(
+                f"Flutterwave payout balance too low: have ₦{available:.2f}, "
+                f"need ₦{amount_naira:.2f}"
+            )
+
         try:
             with httpx.Client(timeout=20) as client:
                 resp = client.post(
@@ -98,7 +143,7 @@ class FlutterwavePayoutProvider(PayoutProvider):
                     json={
                         "account_bank": bank_code,
                         "account_number": account_number,
-                        "amount": round(amount_kobo / 100, 2),  # Naira (major unit)
+                        "amount": amount_naira,  # Naira (major unit)
                         "narration": reason,
                         "currency": "NGN",
                         "debit_currency": "NGN",
@@ -114,22 +159,28 @@ class FlutterwavePayoutProvider(PayoutProvider):
             reference=reference,
             provider=self.name,
             message=data.get("message"),
+            status=_normalize_transfer_status((data.get("data") or {}).get("status")),
             raw=data,
         )
 
-    def transfer_exists(self, reference: str) -> bool:
-        # Best-effort: scan recent transfers for a matching (non-failed) reference.
+    def transfer_status(self, reference: str) -> str:
+        """Normalized disbursement status. FW v3 has no get-by-reference, so scan
+        the first pages of recent transfers for a matching reference."""
         try:
             with httpx.Client(timeout=15) as client:
-                resp = client.get(
-                    f"{self._base()}/v3/transfers",
-                    headers=self._headers(),
-                    params={"page": 1},
-                )
-            data = resp.json()
-            for t in data.get("data", []) or []:
-                if t.get("reference") == reference and str(t.get("status", "")).upper() != "FAILED":
-                    return True
-        except Exception:  # noqa: BLE001
-            return False
-        return False
+                for page in (1, 2, 3):
+                    resp = client.get(
+                        f"{self._base()}/v3/transfers",
+                        headers=self._headers(),
+                        params={"page": page},
+                    )
+                    data = resp.json()
+                    rows = data.get("data") or []
+                    for t in rows:
+                        if t.get("reference") == reference:
+                            return _normalize_transfer_status(t.get("status"))
+                    if not rows:
+                        break
+        except Exception:  # noqa: BLE001 — transport error → indeterminate
+            return "unknown"
+        return "unknown"

@@ -271,11 +271,25 @@ def activate_escrow_on_payment(
 # ── Release (pay the seller) ───────────────────────────────────────────
 
 def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason: str = "auto") -> bool:
-    """Pay held funds out to the seller (gross − commission) via a Paystack
-    Transfer. Idempotent (deterministic reference; Paystack rejects duplicates).
+    """Pay held funds out to the seller (gross − commission) via the configured
+    payout provider.
 
-    Returns True if released (or already released). Raises EscrowError on a
-    genuine failure so the caller can retry later (the row stays 'held').
+    Transfers are ASYNCHRONOUS on both rails — a queued transfer is not yet
+    disbursed — so this is an idempotent state machine, not a fire-and-forget:
+
+    * If a transfer was already initiated (``transfer_reference`` set), reconcile
+      its outcome FIRST and never re-send while it's in flight:
+        - ``successful`` → mark released.
+        - ``pending`` / ``unknown`` → leave 'held', return False (wait for a later
+          run to confirm). ``unknown`` is treated as "wait" so a transport blip
+          never triggers a double-payment.
+        - ``failed`` → retry with a FRESH reference (the old one is burned).
+    * A freshly queued transfer is only finalized once confirmed ``successful``;
+      otherwise the row stays 'held' and the worker retries.
+
+    Returns True once released (or already released). Returns False when a payout
+    is in flight / not yet confirmed. Raises EscrowError on a genuine failure so
+    the caller can retry later (the row stays 'held').
     """
     if escrow.status == "released":
         return True
@@ -307,12 +321,38 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
                 f"Payouts frozen for seller {seller.id} until {frozen.isoformat()}"
             )
 
-    payout_reason = f"Storefront order payout ({reason}) — invoice {escrow.invoice_id}"
-    reference = f"ESCROWREL-{escrow.id}"
-
     from app.services.payouts import PayoutError, get_payout_provider
 
     provider = get_payout_provider()
+
+    def _finalize(ref: str) -> bool:
+        escrow.status = "released"
+        escrow.released_at = dt.datetime.now(dt.timezone.utc)
+        db.commit()
+        logger.info(
+            "Escrow %s released via %s — %s kobo to seller %s (ref=%s)",
+            escrow.id, provider.name, escrow.payout_kobo, seller.id, ref,
+        )
+        return True
+
+    # Reconcile an already-initiated transfer before sending anything new.
+    if escrow.transfer_reference:
+        prior = provider.transfer_status(escrow.transfer_reference)
+        if prior == "successful":
+            return _finalize(escrow.transfer_reference)
+        if prior in ("pending", "unknown"):
+            # In flight or indeterminate — do NOT re-send; a later run confirms.
+            return False
+        # prior == "failed" → the reference is burned; retry with a fresh one below.
+
+    # First-ever attempt keeps the clean deterministic reference; a retry after a
+    # confirmed-failed transfer gets a fresh (unburned) reference.
+    if not escrow.transfer_reference:
+        reference = f"ESCROWREL-{escrow.id}"
+    else:
+        reference = f"ESCROWREL-{escrow.id}-{int(dt.datetime.now(dt.timezone.utc).timestamp())}"
+
+    payout_reason = f"Storefront order payout ({reason}) — invoice {escrow.invoice_id}"
 
     # Record intent before calling the provider so a crash mid-flight is recoverable.
     if escrow.transfer_reference != reference:
@@ -330,16 +370,14 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
     except PayoutError as exc:  # network/transport failure → retry later
         raise EscrowError(f"Transfer request failed: {exc}") from exc
 
-    if result.ok or provider.transfer_exists(reference):
-        escrow.status = "released"
-        escrow.released_at = dt.datetime.now(dt.timezone.utc)
-        db.commit()
-        logger.info(
-            "Escrow %s released via %s — %s kobo to seller %s (ref=%s)",
-            escrow.id, provider.name, escrow.payout_kobo, seller.id, reference,
-        )
-        return True
-
+    status = (result.status or "").lower()
+    # Only finalize on confirmed disbursement. A confirmed-successful response (or
+    # verify call) releases; an accepted/queued transfer stays 'held' until a
+    # later run confirms it (avoids marking released before the money moves).
+    if status == "successful" or provider.transfer_exists(reference):
+        return _finalize(reference)
+    if result.ok or status in ("pending", "queued", "new"):
+        return False  # accepted/in-flight — confirm on the next run, do NOT re-send
     raise EscrowError(f"Transfer failed for escrow {escrow.id}: {result.message}")
 
 

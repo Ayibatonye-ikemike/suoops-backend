@@ -38,6 +38,18 @@ def _normalize_bank_name(name: str) -> str:
     return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
+def _normalize_transfer_status(raw_status: str | None) -> str:
+    """Map a Paystack transfer state to our normalized status."""
+    s = (raw_status or "").strip().lower()
+    if s == "success":
+        return "successful"
+    if s in {"failed", "reversed", "abandoned"}:
+        return "failed"
+    if s in {"pending", "otp", "processing", "received", "queued"}:
+        return "pending"
+    return "unknown"
+
+
 def _resolve_bank_code(bank_name: str) -> str:
     global _bank_cache, _bank_cache_at
 
@@ -140,18 +152,23 @@ class PaystackPayoutProvider(PayoutProvider):
             reference=reference,
             provider=self.name,
             message=data.get("message"),
+            status=_normalize_transfer_status((data.get("data") or {}).get("status")),
             raw=data,
         )
 
-    def transfer_exists(self, reference: str) -> bool:
+    def transfer_status(self, reference: str) -> str:
+        """Normalized disbursement status via Paystack's verify-by-reference."""
         try:
             with httpx.Client(timeout=15) as client:
                 resp = client.get(
                     f"{_PAYSTACK_BASE}/transfer/verify/{reference}", headers=_headers()
                 )
-            return bool(resp.json().get("status"))
-        except Exception:  # noqa: BLE001
-            return False
+            data = resp.json()
+        except Exception:  # noqa: BLE001 — transport error → indeterminate
+            return "unknown"
+        if not data.get("status"):
+            return "unknown"
+        return _normalize_transfer_status((data.get("data") or {}).get("status"))
 
 
 def paystack_refund(*, charge_reference: str, amount_kobo: int, note: str) -> dict:

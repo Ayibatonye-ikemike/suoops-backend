@@ -114,3 +114,91 @@ def test_flutterwave_transfer_converts_amount_and_resolves_bank(monkeypatch):
     assert posts["body"]["account_bank"] == "058"
     assert posts["body"]["account_number"] == "0123456789"
     assert posts["body"]["reference"] == "REF2"
+
+
+def test_paystack_transfer_status_maps(monkeypatch):
+    """verify-by-reference maps to normalized status; exists = successful only."""
+    from app.core.config import settings
+    import app.services.payouts.paystack as ps
+
+    monkeypatch.setattr(settings, "PAYSTACK_SECRET", "sk_test_x")
+    prov = ps.PaystackPayoutProvider()
+
+    def use(payload):
+        monkeypatch.setattr(
+            ps.httpx, "Client", lambda *a, **k: _FakeClient(lambda m, u, b: _Resp(payload))
+        )
+
+    use({"status": True, "data": {"status": "success"}})
+    assert prov.transfer_status("R") == "successful"
+    assert prov.transfer_exists("R") is True
+
+    use({"status": True, "data": {"status": "pending"}})
+    assert prov.transfer_status("R") == "pending"
+    assert prov.transfer_exists("R") is False  # queued != disbursed
+
+    use({"status": True, "data": {"status": "failed"}})
+    assert prov.transfer_status("R") == "failed"
+
+    use({"status": False})  # verify itself failed -> indeterminate
+    assert prov.transfer_status("R") == "unknown"
+
+
+def test_flutterwave_transfer_status_scans(monkeypatch):
+    """Scans recent transfers by reference; exists = SUCCESSFUL only."""
+    from app.core.config import settings
+    import app.services.payouts.flutterwave as fw
+
+    monkeypatch.setattr(settings, "FLUTTERWAVE_SECRET", "FLWSECK_test")
+
+    def handler(method, url, body):
+        return _Resp(
+            {
+                "status": "success",
+                "data": [
+                    {"reference": "OTHER", "status": "FAILED"},
+                    {"reference": "REFX", "status": "SUCCESSFUL"},
+                ],
+            }
+        )
+
+    monkeypatch.setattr(fw.httpx, "Client", lambda *a, **k: _FakeClient(handler))
+    prov = fw.FlutterwavePayoutProvider()
+    assert prov.transfer_status("REFX") == "successful"
+    assert prov.transfer_exists("REFX") is True
+    assert prov.transfer_status("OTHER") == "failed"
+    assert prov.transfer_status("NOPE") == "unknown"
+
+
+def test_flutterwave_balance_guard_blocks_underfunded(monkeypatch):
+    """A payout larger than the FW payout balance raises before queuing."""
+    import pytest
+
+    from app.core.config import settings
+    import app.services.payouts.flutterwave as fw
+    from app.services.payouts.base import PayoutError
+
+    monkeypatch.setattr(settings, "FLUTTERWAVE_SECRET", "FLWSECK_test")
+    monkeypatch.setattr(fw, "_fw_bank_cache", {})
+    monkeypatch.setattr(fw, "_fw_bank_cache_at", 0.0)
+
+    def handler(method, url, body):
+        if url.endswith("/v3/banks/NG"):
+            return _Resp({"status": "success", "data": [{"code": "058", "name": "GTBank"}]})
+        if "/v3/balances/NGN" in url:
+            return _Resp({"status": "success", "data": {"available_balance": 100}})
+        return _Resp({"status": "success", "message": "Transfer Queued"})
+
+    monkeypatch.setattr(fw.httpx, "Client", lambda *a, **k: _FakeClient(handler))
+    seller = SimpleNamespace(
+        id=3,
+        payout_account_number=None,
+        payout_bank_name=None,
+        account_number="0123456789",
+        bank_name="GTBank",
+    )
+    db = SimpleNamespace(commit=lambda: None)
+    with pytest.raises(PayoutError):
+        fw.FlutterwavePayoutProvider().transfer(
+            db, seller=seller, amount_kobo=50000, reference="R", reason="r"  # ₦500 > ₦100
+        )

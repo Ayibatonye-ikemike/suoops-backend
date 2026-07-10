@@ -23,12 +23,20 @@ class PayoutError(Exception):
 
 @dataclasses.dataclass
 class PayoutResult:
-    """Outcome of a transfer attempt."""
+    """Outcome of a transfer attempt.
+
+    ``ok`` reflects only that the provider ACCEPTED the request — for both rails a
+    transfer is disbursed asynchronously, so ``ok`` does NOT mean the money
+    landed. ``status`` carries the normalized disbursement state when known
+    (``successful`` | ``pending`` | ``failed`` | ``unknown``); money has moved
+    only on ``successful``.
+    """
 
     ok: bool
     reference: str
     provider: str
     message: str | None = None
+    status: str | None = None
     raw: dict | None = None
 
 
@@ -51,10 +59,21 @@ class PayoutProvider(abc.ABC):
 
         Must raise :class:`PayoutError` on a network/transport failure (so the
         caller retries) and return a :class:`PayoutResult` with ``ok`` reflecting
-        the provider's API response otherwise. Implementations should be
-        idempotent on ``reference`` (providers reject duplicates).
+        that the provider ACCEPTED the request (queued), not that it disbursed.
+        Implementations should be idempotent on ``reference`` (providers reject
+        duplicates).
         """
 
     @abc.abstractmethod
+    def transfer_status(self, reference: str) -> str:
+        """Normalized disbursement status for ``reference``.
+
+        Returns ``successful`` | ``pending`` | ``failed`` | ``unknown``. Money has
+        moved ONLY on ``successful``. On a transport error or an indeterminate
+        response, return ``unknown`` (never guess ``failed``) so callers do not
+        re-send an in-flight transfer.
+        """
+
     def transfer_exists(self, reference: str) -> bool:
-        """Whether a transfer with this ``reference`` already exists (idempotency)."""
+        """True only when the transfer actually DISBURSED (status successful)."""
+        return self.transfer_status(reference) == "successful"

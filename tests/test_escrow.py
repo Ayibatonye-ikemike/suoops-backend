@@ -124,6 +124,152 @@ def test_release_escrow_status_guards():
         s.close()
 
 
+def _fake_provider_class():
+    """A PayoutProvider whose transfer() queues (pending) and whose
+    transfer_status() is script-controlled per reference."""
+    from app.services.payouts.base import PayoutProvider, PayoutResult
+
+    class FakeProvider(PayoutProvider):
+        name = "fake"
+
+        def __init__(self):
+            self.sent = []
+            self.status_map = {}
+
+        def transfer(self, db, *, seller, amount_kobo, reference, reason):
+            self.sent.append(reference)
+            self.status_map.setdefault(reference, "pending")
+            return PayoutResult(
+                ok=True, reference=reference, provider=self.name, status="pending"
+            )
+
+        def transfer_status(self, reference):
+            return self.status_map.get(reference, "unknown")
+
+    return FakeProvider
+
+
+def _held_escrow(seller_id):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=555,
+        status="held",
+        held_for_review=False,
+        payout_kobo=50000,
+        seller_id=seller_id,
+        invoice_id=1,
+        transfer_reference=None,
+        released_at=None,
+    )
+
+
+def test_release_waits_for_confirmation_then_releases(monkeypatch):
+    """A queued (pending) transfer stays 'held'; a later 'successful' releases it
+    WITHOUT re-sending."""
+    import app.services.payouts as payouts
+    from app.db.session import SessionLocal
+    from app.models import models
+
+    fake = _fake_provider_class()()
+    monkeypatch.setattr(payouts, "get_payout_provider", lambda: fake)
+
+    s = SessionLocal()
+    try:
+        seller = models.User(
+            name="Payout Seller", phone="+2348000000001",
+            account_number="0123456789", bank_name="GTBank",
+        )
+        s.add(seller)
+        s.commit()
+        s.refresh(seller)
+        escrow = _held_escrow(seller.id)
+
+        # Run 1: queued → in flight → stays held, not released.
+        assert es.release_escrow(s, escrow) is False
+        assert escrow.status == "held"
+        assert escrow.transfer_reference == "ESCROWREL-555"
+        assert fake.sent == ["ESCROWREL-555"]
+
+        # Run 2: provider now confirms success → released, no second transfer.
+        fake.status_map["ESCROWREL-555"] = "successful"
+        assert es.release_escrow(s, escrow) is True
+        assert escrow.status == "released"
+        assert fake.sent == ["ESCROWREL-555"]  # never re-sent
+    finally:
+        s.rollback()
+        s.close()
+
+
+def test_release_retries_failed_transfer_with_fresh_reference(monkeypatch):
+    """A confirmed-failed transfer is retried with a NEW (unburned) reference."""
+    import app.services.payouts as payouts
+    from app.db.session import SessionLocal
+    from app.models import models
+
+    fake = _fake_provider_class()()
+    monkeypatch.setattr(payouts, "get_payout_provider", lambda: fake)
+
+    s = SessionLocal()
+    try:
+        seller = models.User(
+            name="Retry Seller", phone="+2348000000002",
+            account_number="0123456789", bank_name="GTBank",
+        )
+        s.add(seller)
+        s.commit()
+        s.refresh(seller)
+        escrow = _held_escrow(seller.id)
+
+        # Run 1: send deterministic ref, stays pending.
+        assert es.release_escrow(s, escrow) is False
+        assert fake.sent == ["ESCROWREL-555"]
+
+        # The first transfer failed → next run must use a fresh reference.
+        fake.status_map["ESCROWREL-555"] = "failed"
+        assert es.release_escrow(s, escrow) is False
+        assert len(fake.sent) == 2
+        assert fake.sent[1] != fake.sent[0]
+        assert fake.sent[1].startswith("ESCROWREL-555-")
+        assert escrow.status == "held"
+    finally:
+        s.rollback()
+        s.close()
+
+
+def test_release_does_not_resend_on_unknown_status(monkeypatch):
+    """An indeterminate ('unknown') prior status never triggers a re-send."""
+    import app.services.payouts as payouts
+    from app.db.session import SessionLocal
+    from app.models import models
+
+    fake = _fake_provider_class()()
+    monkeypatch.setattr(payouts, "get_payout_provider", lambda: fake)
+
+    s = SessionLocal()
+    try:
+        seller = models.User(
+            name="Unknown Seller", phone="+2348000000003",
+            account_number="0123456789", bank_name="GTBank",
+        )
+        s.add(seller)
+        s.commit()
+        s.refresh(seller)
+        escrow = _held_escrow(seller.id)
+
+        assert es.release_escrow(s, escrow) is False
+        assert fake.sent == ["ESCROWREL-555"]
+
+        # Status can't be determined → must WAIT, not re-send (no double pay).
+        fake.status_map["ESCROWREL-555"] = "unknown"
+        assert es.release_escrow(s, escrow) is False
+        assert fake.sent == ["ESCROWREL-555"]  # still only one transfer
+        assert escrow.status == "held"
+    finally:
+        s.rollback()
+        s.close()
+
+
 def test_refund_escrow_status_guards():
     """refund_escrow is idempotent and refuses to refund an already-paid order."""
     from types import SimpleNamespace
