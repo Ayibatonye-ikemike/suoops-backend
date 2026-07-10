@@ -440,6 +440,14 @@ def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Custo
         ),
         "delivery_proof_note": escrow.delivery_proof_note,
         "delivery_proof_url": _presign(escrow.delivery_proof_url),
+        "dispatched_at": (
+            escrow.seller_dispatched_at.isoformat()
+            if escrow.seller_dispatched_at
+            else None
+        ),
+        "dispatch_tracking": escrow.dispatch_tracking,
+        "dispatch_note": escrow.dispatch_note,
+        "dispatch_proof_url": _presign(escrow.dispatch_proof_url),
         "held_for_review": bool(escrow.held_for_review),
         "gross_naira": round((escrow.gross_kobo or 0) / 100, 2),
         "payout_naira": round((escrow.payout_kobo or 0) / 100, 2),
@@ -489,6 +497,28 @@ def get_order_escrow(
     return {"escrow": summary}
 
 
+async def _save_proof_photo(escrow: "models.StorefrontOrderEscrow", file: "UploadFile", *, prefix: str) -> str:
+    """Validate + store a seller proof photo (delivery or dispatch) to S3.
+
+    Shared by the mark-delivered and mark-sent endpoints: enforces image type,
+    5MB cap and magic-byte check, then uploads under ``{prefix}/escrow_{id}.{ext}``.
+    """
+    from app.storage.s3_client import s3_client
+    from app.utils.file_validation import get_safe_extension, validate_file_magic_bytes
+
+    allowed = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    if not file.content_type or file.content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Proof must be a PNG, JPG or WEBP image.")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image exceeds the 5MB limit.")
+    if not validate_file_magic_bytes(content, file.content_type):
+        raise HTTPException(status_code=400, detail="File content does not match its type.")
+    ext = get_safe_extension(file.filename, file.content_type)
+    key = f"{prefix}/escrow_{escrow.id}.{ext}"
+    return await s3_client.upload_file(content, key, content_type=file.content_type)
+
+
 @router.post("/storefront/orders/{invoice_id}/mark-delivered")
 @limiter.limit("30/minute")
 async def mark_order_delivered(
@@ -513,20 +543,7 @@ async def mark_order_delivered(
 
     proof_url = escrow.delivery_proof_url
     if file is not None and file.filename:
-        from app.storage.s3_client import s3_client
-        from app.utils.file_validation import get_safe_extension, validate_file_magic_bytes
-
-        allowed = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
-        if not file.content_type or file.content_type not in allowed:
-            raise HTTPException(status_code=400, detail="Proof must be a PNG, JPG or WEBP image.")
-        content = await file.read()
-        if len(content) > 5 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="Image exceeds the 5MB limit.")
-        if not validate_file_magic_bytes(content, file.content_type):
-            raise HTTPException(status_code=400, detail="File content does not match its type.")
-        ext = get_safe_extension(file.filename, file.content_type)
-        key = f"delivery-proof/escrow_{escrow.id}.{ext}"
-        proof_url = await s3_client.upload_file(content, key, content_type=file.content_type)
+        proof_url = await _save_proof_photo(escrow, file, prefix="delivery-proof")
 
     escrow.seller_marked_delivered_at = dt.datetime.now(dt.timezone.utc)
     if note is not None:
@@ -535,6 +552,57 @@ async def mark_order_delivered(
     db.commit()
     db.refresh(escrow)
     logger.info("Seller %s marked order %s delivered", current_user_id, invoice_id)
+    return {"escrow": _escrow_summary(escrow, buyer)}
+
+
+@router.post("/storefront/orders/{invoice_id}/mark-sent")
+@limiter.limit("30/minute")
+async def mark_order_sent(
+    request: Request,
+    invoice_id: str,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    tracking: Annotated[str | None, Form()] = None,
+    note: Annotated[str | None, Form()] = None,
+    file: Annotated[UploadFile | None, File()] = None,
+) -> dict:
+    """Business: mark a storefront order SENT OUT (dispatched), with an optional
+    courier/waybill tracking code and a photo of the packaged item.
+
+    This is seller protection: timestamped proof you shipped a quality item,
+    before the buyer confirms delivery. It also tells the buyer their order is
+    on the way. It does NOT release funds.
+    """
+    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    escrow, buyer = row
+
+    import datetime as dt
+
+    proof_url = escrow.dispatch_proof_url
+    if file is not None and file.filename:
+        proof_url = await _save_proof_photo(escrow, file, prefix="dispatch-proof")
+
+    escrow.seller_dispatched_at = dt.datetime.now(dt.timezone.utc)
+    if tracking is not None:
+        escrow.dispatch_tracking = tracking.strip()[:120] or None
+    if note is not None:
+        escrow.dispatch_note = note.strip()[:255] or None
+    escrow.dispatch_proof_url = proof_url
+    db.commit()
+    db.refresh(escrow)
+
+    # Tell the buyer their order is on the way (system notice in the thread).
+    try:
+        parts = ["📦 Your order has been sent out."]
+        if escrow.dispatch_tracking:
+            parts.append(f"Tracking: {escrow.dispatch_tracking}.")
+        _store_system_message(db, escrow, " ".join(parts))
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to post dispatch notice for order %s", invoice_id)
+
+    logger.info("Seller %s marked order %s sent out", current_user_id, invoice_id)
     return {"escrow": _escrow_summary(escrow, buyer)}
 
 
@@ -1347,6 +1415,27 @@ def _msg_out(m: "models.OrderMessage", viewer_role: str) -> dict:
     }
 
 
+def _buyer_order_view(escrow: "models.StorefrontOrderEscrow") -> dict:
+    """Buyer-safe order status for the thread modal (dispatch/delivery updates).
+
+    Lets the buyer see 'sent out' with the courier tracking + packaged-item
+    photo, so they know their order is on the way.
+    """
+    return {
+        "status": escrow.status,
+        "dispatched_at": (
+            escrow.seller_dispatched_at.isoformat() if escrow.seller_dispatched_at else None
+        ),
+        "dispatch_tracking": escrow.dispatch_tracking,
+        "dispatch_proof_url": _presign(escrow.dispatch_proof_url),
+        "delivered_at": (
+            escrow.seller_marked_delivered_at.isoformat()
+            if escrow.seller_marked_delivered_at
+            else None
+        ),
+    }
+
+
 def _thread(db: Session, escrow_id: int) -> list["models.OrderMessage"]:
     return (
         db.query(models.OrderMessage)
@@ -1392,6 +1481,28 @@ def _store_message(db: Session, escrow, *, sender_role: str, sender_user_id: int
     db.commit()
     db.refresh(m)
     return m, result
+
+
+def _store_system_message(db: Session, escrow, body: str):
+    """Insert a system notice into the order thread (never guard-redacted).
+
+    Used for platform-generated updates (e.g. "order sent out") so tracking codes
+    and links aren't masked the way buyer/seller messages are.
+    """
+    m = models.OrderMessage(
+        escrow_id=escrow.id,
+        sender_role="system",
+        sender_user_id=None,
+        body_raw=body,
+        body_redacted=body,
+        flagged=False,
+        flag_reasons=None,
+        blocked=False,
+    )
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return m
 
 
 @public_router.post("/store/{slug}/messages")
@@ -1441,7 +1552,10 @@ def buyer_list_messages(
         logger.warning("Invalid delivery-code attempt (thread) on store %s", slug)
         raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
     _mark_read(db, escrow.id, "seller")  # buyer has now seen the seller's messages
-    return {"messages": [_msg_out(m, "buyer") for m in _thread(db, escrow.id)]}
+    return {
+        "messages": [_msg_out(m, "buyer") for m in _thread(db, escrow.id)],
+        "order": _buyer_order_view(escrow),
+    }
 
 
 @router.get("/storefront/orders/{invoice_id}/messages")

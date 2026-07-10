@@ -768,6 +768,18 @@ class StorefrontOrderEscrow(Base):
     delivery_proof_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     delivery_proof_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # ── Seller-side DISPATCH proof (recorded at send-out, before delivery) ──
+    # Symmetric to buyer protection: the seller logs when they sent the package,
+    # the courier/waybill tracking code, and a photo of the packaged item. This
+    # is an auditable handoff step (dispatch → delivery → release) and lets the
+    # buyer see their order is on the way.
+    seller_dispatched_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    dispatch_tracking: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    dispatch_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dispatch_proof_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
