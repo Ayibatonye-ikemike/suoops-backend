@@ -22,6 +22,7 @@ from app import metrics
 from app.bot.whatsapp_client import WhatsAppClient
 from app.core.config import settings
 from app.core.redis_utils import get_ca_cert_path, map_cert_reqs, prepare_redis_url
+from app.utils.pii import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -360,7 +361,7 @@ Powered by SuoOps
                 server.login(smtp_user, smtp_password)
                 server.send_message(msg)
             
-            logger.info("Successfully sent email OTP to %s", email)
+            logger.info("Successfully sent email OTP to %s", mask_email(email))
             
         except smtplib.SMTPAuthenticationError as e:
             logger.error("SMTP authentication failed for %s: %s", smtp_user, e)

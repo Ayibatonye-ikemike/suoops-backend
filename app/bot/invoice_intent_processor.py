@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.exceptions import InvoiceBalanceExhaustedError, MissingBankDetailsError
 from app.services.invoice_service import build_invoice_service
 from app.utils.currency_fmt import fmt_money, fmt_money_full, get_user_currency
+from app.utils.pii import mask_phone
 
 logger = logging.getLogger(__name__)
 
@@ -622,7 +623,7 @@ class InvoiceIntentProcessor:
         Returns True when a template was sent, False otherwise.
         """
         customer_phone = data.get("customer_phone")
-        logger.info("[NOTIFY] customer_phone from data: %s, invoice: %s", customer_phone, invoice.invoice_id)
+        logger.info("[NOTIFY] customer_phone from data: %s, invoice: %s", mask_phone(customer_phone), invoice.invoice_id)
         if not customer_phone:
             logger.warning("No customer phone for invoice %s", invoice.invoice_id)
             return False
@@ -824,7 +825,7 @@ class InvoiceIntentProcessor:
         issuer = self._load_issuer(issuer_id)
         amount_text = fmt_money_full(invoice.amount, getattr(invoice, "currency", "NGN") or "NGN", convert=False)
 
-        logger.info("[NOTIFY] Sending full invoice to %s for invoice %s", customer_phone, invoice.invoice_id)
+        logger.info("[NOTIFY] Sending full invoice to %s for invoice %s", mask_phone(customer_phone), invoice.invoice_id)
         
         # Message 1: Payment link with bank details
         payment_link = self._build_payment_link_message(invoice, issuer)
@@ -869,7 +870,7 @@ class InvoiceIntentProcessor:
         )
         
         if not customers:
-            logger.info("[OPTIN] No customer found for phone %s", customer_phone)
+            logger.info("[OPTIN] No customer found for phone %s", mask_phone(customer_phone))
             return False
         
         # Get all customer IDs
@@ -918,7 +919,7 @@ class InvoiceIntentProcessor:
         )
         
         if not recent_invoices:
-            logger.info("[OPTIN] No recent unpaid invoices for customer %s", customer_phone)
+            logger.info("[OPTIN] No recent unpaid invoices for customer %s", mask_phone(customer_phone))
             
             # issuer_id already resolved above
             if issuer_id is not None:
@@ -1019,7 +1020,7 @@ class InvoiceIntentProcessor:
         )
         
         if not customers:
-            logger.info("[PAID] No customer found for phone %s", customer_phone)
+            logger.info("[PAID] No customer found for phone %s", mask_phone(customer_phone))
             # Send helpful message and return True to prevent other processors
             self.client.send_text(
                 customer_phone,

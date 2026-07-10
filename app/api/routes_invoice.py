@@ -15,6 +15,7 @@ from app.models import models, schemas
 from app.services.invoice_service import InvoiceService, build_invoice_service
 from app.storage.s3_client import S3Client
 from app.utils.feature_gate import FeatureGate, check_invoice_limit
+from app.utils.pii import mask_email, mask_phone
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -97,8 +98,8 @@ async def create_invoice(
         logger.info(
             "[INVOICE CREATE] invoice_type=%s, customer_email=%s, customer_phone=%s, invoice_id=%s",
             invoice.invoice_type,
-            data.customer_email,
-            data.customer_phone,
+            mask_email(data.customer_email),
+            mask_phone(data.customer_phone),
             invoice.invoice_id,
         )
         if invoice.invoice_type == "revenue" and (data.customer_email or data.customer_phone):
@@ -108,8 +109,8 @@ async def create_invoice(
             logger.info(
                 "[INVOICE NOTIFY] Sending notification for %s to email=%s, phone=%s",
                 invoice.invoice_id,
-                data.customer_email,
-                data.customer_phone,
+                mask_email(data.customer_email),
+                mask_phone(data.customer_phone),
             )
 
             results = await notification_service.send_invoice_notification(

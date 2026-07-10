@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
 from app.queue import whatsapp_queue
+from app.utils.pii import mask_email
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -191,7 +192,7 @@ def _handle_subscription_created(data: dict, db: Session) -> dict:
     ).first()
     
     if not user:
-        logger.error("Subscription created but user not found: %s", customer_email)
+        logger.error("Subscription created but user not found: %s", mask_email(customer_email))
         db.commit()
         return {"status": "error", "message": "User not found"}
     
@@ -792,6 +793,8 @@ async def flutterwave_webhook(
     reference = data.get("tx_ref") or ""
 
     if reference.startswith("INVPAY-"):
-        return _handle_flutterwave_invoice_payment(payload, db, signature)
+        # NOTE: do NOT pass the verif-hash onward — it IS the static webhook secret;
+        # storing it (WebhookEvent.signature) would persist the secret at rest.
+        return _handle_flutterwave_invoice_payment(payload, db, None)
     logger.info("Flutterwave webhook event %s (ref=%s) not handled", event_type, reference)
     return {"status": "ignored", "event": event_type}
