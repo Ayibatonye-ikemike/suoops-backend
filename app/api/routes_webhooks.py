@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.rate_limit import RATE_LIMITS, limiter
@@ -122,6 +123,13 @@ def _record_webhook(db: Session, provider: str, external_id: str, signature: str
         return True
     event = models.WebhookEvent(provider=provider, external_id=external_id, signature=signature)
     db.add(event)
+    try:
+        # Flush now so the (provider, external_id) UNIQUE constraint decides the
+        # race atomically: two concurrent identical events can't both proceed.
+        db.flush()
+    except IntegrityError:
+        db.rollback()  # another worker recorded it first → treat as duplicate
+        return True
     return False
 
 
@@ -604,13 +612,9 @@ def _handle_paystack_invoice_payment(payload: dict, db: Session, signature: str 
     if not reference or not reference.startswith("INVPAY-"):
         return {"status": "ignored", "reason": "not invoice payment"}
 
-    duplicate = _record_webhook(db, "paystack:invoice_payment", reference, signature)
-    if duplicate:
-        logger.info("Paystack invoice payment webhook duplicate for %s", reference)
-        return {"status": "duplicate", "reference": reference}
-
+    # Only a successful charge is actionable. Don't burn the dedup key on other
+    # events (a failed attempt can be retried on the same reference).
     if event_type != "charge.success":
-        db.commit()
         return {"status": "ignored", "event": event_type}
 
     transaction = (
@@ -624,8 +628,36 @@ def _handle_paystack_invoice_payment(payload: dict, db: Session, signature: str 
     )
     if not invoice_id:
         logger.error("INVPAY webhook missing invoice_id (ref=%s): %s", reference, metadata)
-        db.commit()
         return {"status": "error", "message": "Missing invoice_id"}
+
+    # Re-verify with Paystack and confirm the amount matches what we expected —
+    # anti-tamper: even a webhook with a leaked/forged signature can't credit an
+    # invoice for LESS than was actually paid. Done BEFORE recording dedup so a
+    # transient verify failure is safely retried by Paystack.
+    from app.services.collections import get_collection_provider_named
+
+    try:
+        status = get_collection_provider_named("paystack").verify_charge(reference)
+    except Exception:  # noqa: BLE001 — transient → let Paystack retry
+        logger.exception("Paystack verify failed (ref=%s)", reference)
+        return {"status": "error", "message": "verify failed"}
+    if status.status != "successful":
+        return {"status": "ignored", "reason": "charge not successful on verify"}
+    if (
+        transaction is not None
+        and status.amount_kobo is not None
+        and int(status.amount_kobo) < int(transaction.amount)
+    ):
+        logger.error(
+            "Paystack webhook amount mismatch ref=%s verify=%s expected=%s",
+            reference, status.amount_kobo, transaction.amount,
+        )
+        return {"status": "error", "message": "amount mismatch"}
+
+    # Confirmed genuine — record dedup (only now) then finalize.
+    if _record_webhook(db, "paystack:invoice_payment", reference, signature):
+        logger.info("Paystack invoice payment webhook duplicate for %s", reference)
+        return {"status": "duplicate", "reference": reference}
 
     return _finalize_invoice_payment(
         db,

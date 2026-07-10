@@ -326,6 +326,21 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
     is in flight / not yet confirmed. Raises EscrowError on a genuine failure so
     the caller can retry later (the row stays 'held').
     """
+    # Serialize concurrent releases (auto-worker vs admin action vs retries) to
+    # prevent a DOUBLE PAYOUT: take a row lock and re-read status under it. The
+    # loser of the race then sees 'released' and returns without sending again.
+    # (with_for_update is a harmless no-op on SQLite used in tests.)
+    _eid = getattr(escrow, "id", None)
+    if _eid is not None:
+        locked = (
+            db.query(models.StorefrontOrderEscrow)
+            .filter(models.StorefrontOrderEscrow.id == _eid)
+            .with_for_update()
+            .first()
+        )
+        if locked is not None:
+            escrow = locked
+
     if escrow.status == "released":
         return True
     if escrow.status != "held":
@@ -476,6 +491,19 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
     Idempotent: once ``refunded`` it is a no-op. Raises EscrowError on a genuine
     failure so the caller can retry (row stays in its current state).
     """
+    # Lock the row so a refund can't race a release (money out twice) — the loser
+    # sees the terminal state and stops. No-op on SQLite (tests).
+    _eid = getattr(escrow, "id", None)
+    if _eid is not None:
+        locked = (
+            db.query(models.StorefrontOrderEscrow)
+            .filter(models.StorefrontOrderEscrow.id == _eid)
+            .with_for_update()
+            .first()
+        )
+        if locked is not None:
+            escrow = locked
+
     if escrow.status == "refunded":
         return True
     if escrow.status == "released":
