@@ -1015,6 +1015,7 @@ async def create_store_order(
                 buyer_ip=get_client_ip(request),
                 customer_lat=payload.customer_lat,
                 customer_lng=payload.customer_lng,
+                buyer_phone=payload.customer_phone,
             )
             escrow = create_order_escrow(
                 db,

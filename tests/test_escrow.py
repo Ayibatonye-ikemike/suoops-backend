@@ -37,7 +37,6 @@ def test_buyer_reputation_tracks_and_flags():
 def test_detect_order_collusion():
     """Self-dealing signals: buyer shares the seller's IP or sits on the store."""
     from types import SimpleNamespace
-
     seller = SimpleNamespace(
         signup_ip="102.89.1.1",
         storefront_lat=6.5000,
@@ -58,6 +57,47 @@ def test_detect_order_collusion():
     assert es.detect_order_collusion(
         seller, buyer_ip="10.0.0.9", customer_lat=7.4, customer_lng=4.1
     ) is None
+
+
+def test_collusion_flags_buyer_using_sellers_own_number():
+    """Ordering to your own phone number is a self-dealing tell."""
+    from types import SimpleNamespace
+
+    seller = SimpleNamespace(
+        signup_ip=None, phone="+2348011112222",
+        storefront_lat=None, storefront_lng=None,
+    )
+    reason = es.detect_order_collusion(
+        seller, buyer_ip=None, customer_lat=None, customer_lng=None,
+        buyer_phone="+2348011112222",
+    )
+    assert reason is not None and "number" in reason
+
+
+def test_buyer_flag_decays_after_quiet_window():
+    """An abuse flag clears after the decay window with no new false dispute."""
+    import secrets
+
+    from app.core.config import settings
+    from app.db.session import SessionLocal
+
+    phone = "+23480" + "".join(secrets.choice("0123456789") for _ in range(7))
+    s = SessionLocal()
+    try:
+        for _ in range(settings.ESCROW_BUYER_ABUSE_FLAG_AT):
+            es.record_buyer_false_dispute(s, phone)
+        rep = es.get_buyer_reputation(s, phone)
+        assert rep is not None and rep.flagged is True
+
+        # Backdate the last false dispute beyond the decay window → decays on read.
+        rep.last_false_dispute_at = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+            days=settings.ESCROW_BUYER_ABUSE_DECAY_DAYS + 1
+        )
+        s.commit()
+        assert es.get_buyer_reputation(s, phone).flagged is False
+    finally:
+        s.rollback()
+        s.close()
 
 
 def test_release_blocked_when_held_for_review():

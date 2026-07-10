@@ -110,16 +110,23 @@ def detect_order_collusion(
     buyer_ip: str | None,
     customer_lat: float | None,
     customer_lng: float | None,
+    buyer_phone: str | None = None,
 ) -> str | None:
     """Return a short reason string if a storefront order looks like the seller
     ordering from themselves (trust-farming / laundering), else None.
 
-    Signals: buyer shares the seller's signup IP, or the buyer's GPS pin sits on
-    top of the seller's own store location.
+    Signals: buyer shares the seller's signup IP, the buyer's GPS pin sits on top
+    of the seller's own store location, or the buyer's phone is the seller's own
+    number.
     """
     reasons: list[str] = []
     if buyer_ip and seller.signup_ip and buyer_ip == seller.signup_ip:
         reasons.append("shared IP")
+    # Self-dealing tell: ordering to your own phone number.
+    seller_phone = _norm_phone(getattr(seller, "phone", None))
+    bphone = _norm_phone(buyer_phone)
+    if seller_phone and bphone and seller_phone == bphone:
+        reasons.append("buyer is the seller's own number")
     if (
         customer_lat is not None
         and customer_lng is not None
@@ -127,7 +134,10 @@ def detect_order_collusion(
         and seller.storefront_lng is not None
     ):
         try:
-            if _haversine_m(customer_lat, customer_lng, seller.storefront_lat, seller.storefront_lng) < 75:
+            if (
+                _haversine_m(customer_lat, customer_lng, seller.storefront_lat, seller.storefront_lng)
+                < settings.ESCROW_COLLUSION_RADIUS_M
+            ):
                 reasons.append("buyer at seller location")
         except (ValueError, TypeError):
             pass
@@ -600,20 +610,39 @@ def record_buyer_false_dispute(db: Session, phone: str | None) -> None:
         return
     rep = _buyer_rep_row(db, p)
     rep.false_disputes = (rep.false_disputes or 0) + 1
+    rep.last_false_dispute_at = dt.datetime.now(dt.timezone.utc)
     if rep.false_disputes >= settings.ESCROW_BUYER_ABUSE_FLAG_AT:
         rep.flagged = True
     db.commit()
+
+
+def _decay_buyer_flag(db: Session, rep: "models.BuyerReputation") -> None:
+    """Clear a stale abuse flag: an honest buyer with no false dispute in the
+    decay window is un-flagged (their old losses stop haunting them)."""
+    if not rep or not rep.flagged:
+        return
+    last = rep.last_false_dispute_at
+    if last is None:
+        return
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=dt.timezone.utc)
+    window = dt.timedelta(days=settings.ESCROW_BUYER_ABUSE_DECAY_DAYS)
+    if dt.datetime.now(dt.timezone.utc) - last > window:
+        rep.flagged = False
+        db.commit()
 
 
 def get_buyer_reputation(db: Session, phone: str | None) -> "models.BuyerReputation | None":
     p = _norm_phone(phone)
     if not p:
         return None
-    return (
+    rep = (
         db.query(models.BuyerReputation)
         .filter(models.BuyerReputation.phone == p)
         .first()
     )
+    _decay_buyer_flag(db, rep)
+    return rep
 
 
 def record_seller_circumvention(db: Session, seller: "models.User") -> None:

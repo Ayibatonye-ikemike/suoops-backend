@@ -121,10 +121,19 @@ class BaseAppSettings(BaseSettings):
     ESCROW_PAYOUT_FREEZE_HOURS_ON_BANK_CHANGE: int = 48
     # Flag a buyer after this many disputes an admin ruled against them (false
     # "not delivered" claims) so future reports get extra scrutiny.
-    ESCROW_BUYER_ABUSE_FLAG_AT: int = 2
+    ESCROW_BUYER_ABUSE_FLAG_AT: int = 4
+    # A buyer's abuse flag decays after this many days with no new false dispute —
+    # so an honest buyer isn't punished forever for old losses.
+    ESCROW_BUYER_ABUSE_DECAY_DAYS: int = 90
     # Flag a SELLER for review after this many order-messaging attempts to move a
     # deal off-platform (share contact/account or push a direct transfer).
     ESCROW_SELLER_CIRCUMVENTION_FLAG_AT: int = 3
+    # Self-dealing GPS radius: a buyer pin within this many metres of the store is
+    # flagged as "buyer at seller location" (held for review).
+    ESCROW_COLLUSION_RADIUS_M: int = 50
+    # Admin refund/release above this Naira amount requires a fresh step-up OTP
+    # (defends against a stolen admin session moving large sums).
+    ESCROW_ADMIN_STEPUP_NAIRA: int = 100_000
     # Which provider pays sellers out of the held balance: "paystack" (default)
     # or "flutterwave". Refunds always use the collector (Paystack). Switch this
     # to move payouts to another rail without touching the escrow logic.

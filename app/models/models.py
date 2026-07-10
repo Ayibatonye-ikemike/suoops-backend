@@ -818,6 +818,11 @@ class BuyerReputation(Base):
     false_disputes: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
+    # When the most recent false dispute was recorded — drives flag decay so an
+    # honest buyer isn't punished forever for old losses.
+    last_false_dispute_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     flagged: Mapped[bool] = mapped_column(
         default=False, server_default="false", nullable=False
     )

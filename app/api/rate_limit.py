@@ -133,10 +133,21 @@ class ResilientStorage(MemoryStorage):
         if now - self._last_fallback_log < self._log_throttle_interval:
             return
         self._last_fallback_log = now
-        logger.warning(
-            "Rate limiter Redis %s failed (%s); falling back to in-memory for this call.",
+        # ERROR (not just warning) so it surfaces in alerting: in production this
+        # means rate limits degrade to per-worker, weakening brute-force defenses.
+        logger.error(
+            "Rate limiter Redis %s failed (%s); falling back to in-memory — "
+            "rate limits are now PER-WORKER until Redis recovers.",
             op, exc,
         )
+        try:  # best-effort external alert
+            import sentry_sdk
+
+            sentry_sdk.capture_message(
+                f"Rate limiter Redis fallback active ({op}): {exc}", level="error"
+            )
+        except Exception:  # noqa: BLE001 — never let alerting break the request
+            pass
         # Drop reference so next call retries init on the schedule.
         self._redis_storage = None
 

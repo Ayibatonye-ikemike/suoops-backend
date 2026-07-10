@@ -29,7 +29,7 @@ def _admin(db):
     return admin
 
 
-def _order(db, *, status="held", transfer_reference=None, charge_reference=None):
+def _order(db, *, status="held", transfer_reference=None, charge_reference=None, gross_kobo=300000):
     seller = models.User(name="Payout Seller", phone="+2349555000111")
     db.add(seller)
     db.commit()
@@ -39,7 +39,7 @@ def _order(db, *, status="held", transfer_reference=None, charge_reference=None)
     db.commit()
     db.refresh(customer)
     inv = models.Invoice(
-        invoice_id=f"INV-PAYOUT-{status}-{transfer_reference or 'x'}",
+        invoice_id=f"INV-PAYOUT-{status}-{transfer_reference or 'x'}-{gross_kobo}",
         issuer_id=seller.id,
         customer_id=customer.id,
         amount=Decimal("3000"),
@@ -54,9 +54,9 @@ def _order(db, *, status="held", transfer_reference=None, charge_reference=None)
         invoice_id=inv.id,
         seller_id=seller.id,
         status=status,
-        gross_kobo=300000,
+        gross_kobo=gross_kobo,
         fee_kobo=9000,
-        payout_kobo=291000,
+        payout_kobo=int(gross_kobo * 0.97),
         transfer_reference=transfer_reference,
         charge_reference=charge_reference,
     )
@@ -118,6 +118,26 @@ def test_payout_status_live_poll_normalizes_successful(monkeypatch):
         body = r.json()
         assert body["state"] == "paid"  # 'successful' normalized to 'paid'
         assert body["reference"] == "ESCROWREL-42"
+    finally:
+        app.dependency_overrides.pop(get_current_admin, None)
+        db.close()
+
+
+def test_high_value_resolve_requires_stepup_otp():
+    """A refund/release above the step-up threshold is rejected without an OTP."""
+    client = TestClient(app)
+    db = next(get_db())
+    admin = _admin(db)
+    esc = _order(db, status="held", gross_kobo=20_000_000)  # ₦200k > threshold
+    app.dependency_overrides[get_current_admin] = lambda: admin
+    try:
+        r = client.post(
+            f"/admin/disputes/{esc.id}/resolve",
+            json={"action": "release"},
+            headers={"Authorization": "Bearer test"},
+        )
+        assert r.status_code == 401, r.text
+        assert "code" in r.json()["detail"].lower()
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
         db.close()

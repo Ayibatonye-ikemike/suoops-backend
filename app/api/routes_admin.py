@@ -2,7 +2,7 @@ import datetime as dt
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, desc, func
 from sqlalchemy.orm import Session
@@ -4713,6 +4713,57 @@ class DisputeResolveAction(BaseModel):
     action: str = Field(..., pattern="^(refund|release)$")
     suspend_seller: bool = False
     reason: str | None = Field(None, max_length=255)
+    otp: str | None = Field(None, max_length=12)  # step-up code for high-value actions
+
+
+class RetryPayoutIn(BaseModel):
+    otp: str | None = Field(None, max_length=12)  # step-up code for high-value payouts
+
+
+_ADMIN_MONEY_OTP_PURPOSE = "admin_money_action"
+
+
+def _require_money_stepup(admin_user, amount_naira: float, otp: str | None) -> None:
+    """Require a fresh step-up OTP for money moves above the configured threshold.
+
+    Defends against a stolen admin session/cookie moving large sums: even with a
+    valid session, a big refund/release needs a code sent to the admin's email.
+    """
+    from app.core.config import settings
+
+    if amount_naira < settings.ESCROW_ADMIN_STEPUP_NAIRA:
+        return
+    email = getattr(admin_user, "email", None)
+    from app.services.otp_service import OTPService
+
+    if not otp or not email or not OTPService().verify_otp(
+        email, otp, purpose=_ADMIN_MONEY_OTP_PURPOSE
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                f"This action moves ₦{amount_naira:,.0f}. Request a confirmation "
+                "code (step-up) and include it to proceed."
+            ),
+        )
+
+
+@router.post("/disputes/{escrow_id}/step-up-otp")
+def request_dispute_stepup_otp(
+    escrow_id: int,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Send a step-up confirmation code to the admin's email for a high-value
+    refund/release on this order."""
+    email = getattr(admin_user, "email", None)
+    if not email:
+        raise HTTPException(status_code=400, detail="Admin has no email for step-up.")
+    from app.services.otp_service import OTPService
+
+    OTPService().send_code(email, purpose=_ADMIN_MONEY_OTP_PURPOSE)
+    log_audit_event("admin.disputes.stepup_requested", user_id=admin_user.id, escrow_id=escrow_id)
+    return {"ok": True, "detail": "Confirmation code sent to your admin email."}
 
 
 @router.post("/disputes/{escrow_id}/resolve")
@@ -4742,6 +4793,9 @@ def resolve_dispute(
         raise HTTPException(
             status_code=409, detail=f"This order is already {escrow.status}."
         )
+
+    # High-value money move → require a fresh step-up OTP (stolen-session defense).
+    _require_money_stepup(admin_user, round((escrow.gross_kobo or 0) / 100, 2), payload.otp)
 
     # An admin decision clears any anti-fraud review hold so the action can go
     # through (release_escrow refuses to pay a held_for_review order otherwise).
@@ -4909,6 +4963,7 @@ def dispute_payout_status(
 @router.post("/disputes/{escrow_id}/retry-payout")
 def retry_dispute_payout(
     escrow_id: int,
+    payload: RetryPayoutIn | None = Body(default=None),
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
 ) -> dict:
@@ -4936,6 +4991,13 @@ def retry_dispute_payout(
         raise HTTPException(status_code=409, detail="Only a held order can be retried.")
     if escrow.held_for_review:
         raise HTTPException(status_code=409, detail="Order is under review — resolve that first.")
+
+    # High-value payout → require a fresh step-up OTP (stolen-session defense).
+    _require_money_stepup(
+        admin_user,
+        round((escrow.payout_kobo or 0) / 100, 2),
+        payload.otp if payload else None,
+    )
 
     if escrow.charge_reference:
         provider = get_payout_provider_named(_collector_for_charge(db, escrow.charge_reference))
