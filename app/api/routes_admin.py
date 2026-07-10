@@ -4761,13 +4761,18 @@ def resolve_dispute(
             escrow.status = "held"
             db.commit()
         try:
-            release_escrow(db, escrow, reason=payload.reason or "admin dispute resolution")
+            released_now = release_escrow(
+                db, escrow, reason=payload.reason or "admin dispute resolution"
+            )
         except EscrowError as exc:
             # Restore disputed state so it stays in the queue for a retry.
             escrow.status = "disputed"
             db.commit()
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        result_status = "released"
+        # A Flutterwave payout is often accepted as 'queued' and confirmed
+        # asynchronously — the row stays 'held' until the reconcile worker
+        # confirms it, so report the real state instead of a premature "released".
+        result_status = "released" if released_now else "release_pending"
 
         # Releasing a DISPUTED order = admin sided with the seller → the buyer's
         # "not delivered" claim was false. Count it against the buyer.
@@ -4797,5 +4802,16 @@ def resolve_dispute(
         "Admin %s resolved dispute %s -> %s (suspend=%s)",
         admin_user.id, escrow_id, result_status, payload.suspend_seller,
     )
-    return {"escrow_id": escrow_id, "status": result_status, "action": payload.action}
+    message = None
+    if result_status == "release_pending":
+        message = (
+            "Payout accepted and processing — it confirms automatically (usually "
+            "within 15 minutes) and the order then moves to Released."
+        )
+    return {
+        "escrow_id": escrow_id,
+        "status": result_status,
+        "action": payload.action,
+        "message": message,
+    }
 

@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 )
 def release_due_escrow_orders(self: Task) -> dict[str, Any]:
     """Release all 'held' escrow orders whose window has elapsed."""
+    from sqlalchemy import and_, or_
+
     from app.models.models import StorefrontOrderEscrow, User
     from app.services.escrow_service import release_escrow
 
@@ -39,12 +41,21 @@ def release_due_escrow_orders(self: Task) -> dict[str, Any]:
             .join(User, StorefrontOrderEscrow.seller_id == User.id)
             .filter(
                 StorefrontOrderEscrow.status == "held",
-                StorefrontOrderEscrow.release_due_at.isnot(None),
-                StorefrontOrderEscrow.release_due_at <= now,
                 # Never auto-release collusion/anomaly-flagged orders.
                 StorefrontOrderEscrow.held_for_review.is_(False),
                 # Skip sellers whose payouts are frozen (post bank-change cooldown).
                 (User.payout_frozen_until.is_(None)) | (User.payout_frozen_until <= now),
+                or_(
+                    # Window elapsed → time to pay the seller out.
+                    and_(
+                        StorefrontOrderEscrow.release_due_at.isnot(None),
+                        StorefrontOrderEscrow.release_due_at <= now,
+                    ),
+                    # OR a payout was already initiated (e.g. an admin release) and
+                    # is in flight — reconcile/confirm it now, don't wait for the
+                    # window to elapse.
+                    StorefrontOrderEscrow.transfer_reference.isnot(None),
+                ),
             )
             .limit(200)
             .all()
