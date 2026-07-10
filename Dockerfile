@@ -17,6 +17,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Drop root: run as a non-privileged user (defense-in-depth vs container escape).
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
 CMD ["gunicorn", "app.api.main:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "2", "--bind", "0.0.0.0:8000"]
