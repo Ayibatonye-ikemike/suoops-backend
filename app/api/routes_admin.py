@@ -2,11 +2,12 @@ import datetime as dt
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, desc, func
 from sqlalchemy.orm import Session
 
+from app.api.rate_limit import limiter
 from app.api.routes_admin_auth import get_current_admin
 from app.core.audit import log_audit_event
 from app.core.cache import cached
@@ -4782,7 +4783,9 @@ def request_dispute_stepup_otp(
 
 
 @router.post("/disputes/{escrow_id}/resolve")
+@limiter.limit("20/minute")
 def resolve_dispute(
+    request: Request,
     escrow_id: int,
     payload: DisputeResolveAction,
     db: Session = Depends(get_db),
@@ -4809,8 +4812,20 @@ def resolve_dispute(
             status_code=409, detail=f"This order is already {escrow.status}."
         )
 
-    # High-value money move → require a fresh step-up OTP (stolen-session defense).
-    _require_money_stepup(admin_user, round((escrow.gross_kobo or 0) / 100, 2), payload.otp)
+    amount_naira = round((escrow.gross_kobo or 0) / 100, 2)
+
+    # Step-up gate. For refunds we also fold in the admin's rolling 24h refund
+    # total: even a small refund needs a fresh OTP once cumulative refunds cross
+    # the threshold — stops a hijacked session scripting many sub-threshold
+    # refunds to drain funds.
+    stepup_amount = amount_naira
+    if payload.action == "refund":
+        from app.services.admin_refund_guard import refund_total_24h
+
+        stepup_amount = max(
+            amount_naira, refund_total_24h(admin_user.id) + amount_naira
+        )
+    _require_money_stepup(admin_user, stepup_amount, payload.otp)
 
     # An admin decision clears any anti-fraud review hold so the action can go
     # through (release_escrow refuses to pay a held_for_review order otherwise).
@@ -4852,6 +4867,10 @@ def resolve_dispute(
                 )
             except Exception:  # noqa: BLE001
                 logger.exception("Failed to block card for escrow %s", escrow_id)
+        # Count this refund toward the admin's rolling 24h step-up window.
+        from app.services.admin_refund_guard import record_refund
+
+        record_refund(admin_user.id, amount_naira)
         result_status = "refunded"
     else:  # release
         # Releasing requires a 'held' row; a disputed row is flipped back first.
