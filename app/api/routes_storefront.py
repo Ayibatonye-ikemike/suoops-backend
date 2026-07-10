@@ -929,6 +929,7 @@ async def create_store_order(
         create_order_escrow,
         detect_order_collusion,
         is_trusted_seller,
+        seller_velocity_hold_reason,
     )
 
     # Decide hold vs normal settlement up front (drives caps + payment init).
@@ -1017,6 +1018,14 @@ async def create_store_order(
                 customer_lng=payload.customer_lng,
                 buyer_phone=payload.customer_phone,
             )
+            # Velocity guard: recent settled volume / dispute rate also holds for
+            # review (catches laundering spread across days).
+            velocity_reason = seller_velocity_hold_reason(db, owner, total)
+            review_reason = ", ".join(
+                r for r in (review_reason, velocity_reason) if r
+            ) or None
+            if review_reason:
+                review_reason = review_reason[:120]
             escrow = create_order_escrow(
                 db,
                 invoice=invoice,

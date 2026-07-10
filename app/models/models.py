@@ -744,6 +744,9 @@ class StorefrontOrderEscrow(Base):
     customer_state: Mapped[str | None] = mapped_column(String(80), nullable=True)
     customer_lat: Mapped[float | None] = mapped_column(nullable=True)
     customer_lng: Mapped[float | None] = mapped_column(nullable=True)
+    # Stable per-card fingerprint of the funding card (provider signature/token) —
+    # used to spot one card funding many orders and to enforce a card blocklist.
+    card_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     # ── Lifecycle timestamps ──
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # buyer "received"
@@ -831,6 +834,28 @@ class BuyerReputation(Base):
     )
     updated_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=utcnow, nullable=True
+    )
+
+
+class BlockedCard(Base):
+    """A funding card blocked from placing storefront orders for a period.
+
+    Keyed by a stable per-card fingerprint (provider signature/token). Orders
+    paid with a blocked card are held for admin review instead of auto-releasing
+    — mitigates card-fraud laundering (pay with a stolen card, then charge back).
+    """
+
+    __tablename__ = "blocked_card"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    blocked_until: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
 
 

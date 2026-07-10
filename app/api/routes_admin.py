@@ -4714,6 +4714,7 @@ class DisputeResolveAction(BaseModel):
     suspend_seller: bool = False
     reason: str | None = Field(None, max_length=255)
     otp: str | None = Field(None, max_length=12)  # step-up code for high-value actions
+    block_card: bool = False  # on refund: block the funding card (card-fraud)
 
 
 class RetryPayoutIn(BaseModel):
@@ -4825,6 +4826,18 @@ def resolve_dispute(
                 seller.store_status_at = dt.datetime.now(dt.timezone.utc)
                 seller.store_status_by_id = admin_user.id
                 db.commit()
+        # Card-fraud: block the funding card from new orders for a period.
+        if payload.block_card and getattr(escrow, "card_fingerprint", None):
+            try:
+                from app.services.card_risk import block_card
+
+                block_card(
+                    db,
+                    escrow.card_fingerprint,
+                    reason=payload.reason or "admin refund: card fraud",
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to block card for escrow %s", escrow_id)
         result_status = "refunded"
     else:  # release
         # Releasing requires a 'held' row; a disputed row is flipped back first.

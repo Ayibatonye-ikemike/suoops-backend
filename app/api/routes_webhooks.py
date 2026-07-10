@@ -564,6 +564,7 @@ def _finalize_invoice_payment(
     invoice_id,
     transaction,
     provider_label: str,
+    card_fingerprint: str | None = None,
 ) -> dict:
     """Mark an invoice paid + activate its escrow hold. Shared by the Paystack and
     Flutterwave collection webhooks (provider-agnostic)."""
@@ -584,12 +585,28 @@ def _finalize_invoice_payment(
         except Exception:
             logger.exception("%s: failed to mark invoice %s paid", provider_label, invoice_id)
 
+    # Card-fraud gate: a blocked or over-velocity funding card holds the order for
+    # review (never auto-releases) instead of paying the seller.
+    review_reason = None
+    try:
+        from app.services.card_risk import card_hold_reason
+
+        review_reason = card_hold_reason(db, card_fingerprint)
+    except Exception:  # noqa: BLE001 — risk scoring must never block a payment
+        logger.exception("Card risk check failed (ref=%s)", reference)
+
     # Activate the buyer-protection hold (pending -> held) for storefront orders.
     # Idempotent + best-effort; never break payment confirmation.
     try:
         from app.services.escrow_service import activate_escrow_on_payment
 
-        activate_escrow_on_payment(db, invoice, charge_reference=reference)
+        activate_escrow_on_payment(
+            db,
+            invoice,
+            charge_reference=reference,
+            card_fingerprint=card_fingerprint,
+            review_reason=review_reason,
+        )
     except Exception:
         logger.exception("%s: failed to activate escrow for invoice %s", provider_label, invoice_id)
 
@@ -659,12 +676,15 @@ def _handle_paystack_invoice_payment(payload: dict, db: Session, signature: str 
         logger.info("Paystack invoice payment webhook duplicate for %s", reference)
         return {"status": "duplicate", "reference": reference}
 
+    from app.services.card_risk import extract_fingerprint
+
     return _finalize_invoice_payment(
         db,
         reference=reference,
         invoice_id=invoice_id,
         transaction=transaction,
         provider_label="Paystack",
+        card_fingerprint=extract_fingerprint("paystack", status.raw),
     )
 
 
@@ -728,12 +748,15 @@ def _handle_flutterwave_invoice_payment(payload: dict, db: Session, signature: s
         logger.info("Flutterwave invoice payment webhook duplicate for %s", reference)
         return {"status": "duplicate", "reference": reference}
 
+    from app.services.card_risk import extract_fingerprint
+
     return _finalize_invoice_payment(
         db,
         reference=reference,
         invoice_id=invoice_id,
         transaction=transaction,
         provider_label="Flutterwave",
+        card_fingerprint=extract_fingerprint("flutterwave", status.raw),
     )
 
 

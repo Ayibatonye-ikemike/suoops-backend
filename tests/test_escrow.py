@@ -100,6 +100,47 @@ def test_buyer_flag_decays_after_quiet_window():
         s.close()
 
 
+def test_seller_velocity_hold_reason():
+    """A seller over the rolling settled-volume cap has new orders held."""
+    from app.core.config import settings
+    from app.db.session import SessionLocal
+    from app.models import models
+
+    s = SessionLocal()
+    seller = None
+    try:
+        seller = models.User(name="Velo Seller", phone="+2348012345699")
+        s.add(seller)
+        s.commit()
+        s.refresh(seller)
+
+        # No recent settled volume → clean.
+        assert es.seller_velocity_hold_reason(s, seller, 1000) is None
+
+        # A released order at the cap → new orders trip "high recent payout volume".
+        cap_kobo = settings.ESCROW_SELLER_MAX_SETTLED_NAIRA_UNTRUSTED * 100
+        s.add(
+            models.StorefrontOrderEscrow(
+                invoice_id=880777,
+                seller_id=seller.id,
+                status="released",
+                payout_kobo=cap_kobo,
+                released_at=dt.datetime.now(dt.timezone.utc),
+            )
+        )
+        s.commit()
+        reason = es.seller_velocity_hold_reason(s, seller, 1000)
+        assert reason is not None and "volume" in reason
+    finally:
+        if seller is not None:
+            s.query(models.StorefrontOrderEscrow).filter(
+                models.StorefrontOrderEscrow.seller_id == seller.id
+            ).delete()
+            s.query(models.User).filter(models.User.id == seller.id).delete()
+            s.commit()
+        s.close()
+
+
 def test_release_blocked_when_held_for_review():
     """A collusion/anomaly-flagged order never auto-releases."""
     from types import SimpleNamespace

@@ -144,6 +144,54 @@ def detect_order_collusion(
     return ", ".join(reasons) or None
 
 
+def seller_velocity_hold_reason(
+    db: Session, seller: "models.User", order_naira
+) -> str | None:
+    """Hold-for-review reasons from a seller's recent money velocity.
+
+    The in-flight cap resets the moment an order releases, so a bad actor could
+    launder small amounts across many days without ever tripping it. This looks
+    at the ROLLING window: total settled (released) payout volume and the number
+    of recent disputes/refunds. Exceeding either holds NEW orders for admin
+    review instead of letting them auto-release.
+    """
+    reasons: list[str] = []
+    window_start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+        days=settings.ESCROW_SELLER_VELOCITY_WINDOW_DAYS
+    )
+    try:
+        from decimal import Decimal
+
+        order_kobo = int(Decimal(str(order_naira)) * 100)
+    except Exception:  # noqa: BLE001
+        order_kobo = 0
+
+    settled_kobo = (
+        db.query(func.coalesce(func.sum(models.StorefrontOrderEscrow.payout_kobo), 0))
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == seller.id,
+            models.StorefrontOrderEscrow.status == "released",
+            models.StorefrontOrderEscrow.released_at >= window_start,
+        )
+        .scalar()
+    ) or 0
+    if settled_kobo + order_kobo > settings.ESCROW_SELLER_MAX_SETTLED_NAIRA_UNTRUSTED * 100:
+        reasons.append("high recent payout volume")
+
+    recent_disputes = (
+        db.query(func.count(models.StorefrontOrderEscrow.id))
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == seller.id,
+            models.StorefrontOrderEscrow.status.in_(["disputed", "refunded"]),
+            models.StorefrontOrderEscrow.created_at >= window_start,
+        )
+        .scalar()
+    ) or 0
+    if recent_disputes >= settings.ESCROW_SELLER_DISPUTE_HOLD_AT:
+        reasons.append(f"{recent_disputes} recent disputes")
+
+    return ", ".join(reasons) or None
+
 
 def hold_window(same_state: bool) -> dt.timedelta:
     """Dispute/hold window: 12h when buyer & seller share a state, else 3 days."""
@@ -251,14 +299,21 @@ def create_order_escrow(
 
 
 def activate_escrow_on_payment(
-    db: Session, invoice: "models.Invoice", *, charge_reference: str | None = None
+    db: Session,
+    invoice: "models.Invoice",
+    *,
+    charge_reference: str | None = None,
+    card_fingerprint: str | None = None,
+    review_reason: str | None = None,
 ) -> None:
     """Activate a pending storefront-order hold once payment is confirmed.
 
     Flips ``pending -> held`` and sets ``release_due_at = paid_at + window`` (12h
     same-state, else 3 days; unknown state → the safer cross-state window).
-    Captures the Paystack charge reference so the buyer can be refunded on a
-    dispute. Idempotent — only acts on a pending row. No money moves here.
+    Captures the charge reference (for refunds) and the funding-card fingerprint.
+    If ``review_reason`` is given (e.g. a blocked/over-velocity card) the order is
+    held for admin review and never auto-releases. Idempotent — only acts on a
+    pending row. No money moves here.
     """
     escrow = (
         db.query(models.StorefrontOrderEscrow)
@@ -283,6 +338,13 @@ def activate_escrow_on_payment(
     escrow.settle_at = next_settlement_after(paid_at)
     if charge_reference:
         escrow.charge_reference = charge_reference
+    if card_fingerprint:
+        escrow.card_fingerprint = card_fingerprint
+    # A blocked/over-velocity card (or any supplied reason) → hold for review so
+    # a card-fraud order can never auto-release to the seller.
+    if review_reason:
+        escrow.held_for_review = True
+        escrow.review_reason = (review_reason or "")[:120]
     db.commit()
     logger.info(
         "Escrow held for order invoice=%s (same_state=%s, release_due_at=%s, settle_at=%s)",

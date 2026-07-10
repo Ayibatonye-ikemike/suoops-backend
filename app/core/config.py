@@ -116,6 +116,13 @@ class BaseAppSettings(BaseSettings):
     # Exposure caps for UNTRUSTED sellers (blast-radius limits, in Naira).
     ESCROW_MAX_ORDER_NAIRA_UNTRUSTED: int = 200_000  # per-order ceiling
     ESCROW_MAX_INFLIGHT_NAIRA_UNTRUSTED: int = 500_000  # total held at once
+    # Velocity guard: the in-flight cap resets when an order releases, so a bad
+    # actor could launder small amounts across many days. These cap the ROLLING
+    # settled payout volume and dispute rate — an untrusted seller who exceeds
+    # either has NEW orders held for admin review (not auto-released).
+    ESCROW_SELLER_VELOCITY_WINDOW_DAYS: int = 7
+    ESCROW_SELLER_MAX_SETTLED_NAIRA_UNTRUSTED: int = 2_000_000  # released per window
+    ESCROW_SELLER_DISPUTE_HOLD_AT: int = 3  # disputes/refunds in window → review
     # When a seller changes payout/bank details, freeze payouts this long so a
     # hijacked account can't instantly reroute money (owner is alerted).
     ESCROW_PAYOUT_FREEZE_HOURS_ON_BANK_CHANGE: int = 48
@@ -134,6 +141,11 @@ class BaseAppSettings(BaseSettings):
     # Admin refund/release above this Naira amount requires a fresh step-up OTP
     # (defends against a stolen admin session moving large sums).
     ESCROW_ADMIN_STEPUP_NAIRA: int = 100_000
+    # Card-fraud mitigation: a card that funded a refunded/charged-back order is
+    # blocked from new orders for this long; and one card funding more than N
+    # orders in 24h has new orders held for review.
+    CARD_BLOCK_DAYS_ON_REFUND: int = 60
+    CARD_MAX_ORDERS_PER_DAY: int = 6
     # Which provider pays sellers out of the held balance: "paystack" (default)
     # or "flutterwave". Refunds always use the collector (Paystack). Switch this
     # to move payouts to another rail without touching the escrow logic.
