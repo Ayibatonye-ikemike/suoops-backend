@@ -98,6 +98,13 @@ class BaseAppSettings(BaseSettings):
     # after Flutterwave's own T+1 settlement lands — so payouts come from settled
     # collections, not float. 7 UTC = 8am WAT.
     ESCROW_SETTLEMENT_HOUR_UTC: int = 7
+    # Anti-brute-force on the buyer delivery code: cap total FAILED code attempts
+    # per store within the window (IP-independent — stops distributed guessing via
+    # rotated IPs). Legit buyers never hit this; a store that trips it has code
+    # entry blocked until the window resets (ordering/payment stay open, and
+    # auto-release never needs the code).
+    ESCROW_CODE_MAX_FAILURES: int = 30
+    ESCROW_CODE_FAILURE_WINDOW_SECONDS: int = 3600
     # Trusted sellers skip the hold (normal settlement). ALL must hold: not
     # flagged/suspended AND zero unresolved disputes AND the thresholds below.
     ESCROW_TRUST_MIN_PAID_INVOICES: int = 100

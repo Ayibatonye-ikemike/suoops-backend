@@ -1231,7 +1231,18 @@ def confirm_delivery(
     """
     import datetime as dt
 
+    from app.services.escrow_code_guard import (
+        clear_code_failures,
+        is_code_locked,
+        register_code_failure,
+    )
+
     owner = _lookup_store(db, slug)
+    if is_code_locked(owner.id):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts on this store. Please try again later.",
+        )
     code = payload.code.strip()
 
     escrow = (
@@ -1245,8 +1256,10 @@ def confirm_delivery(
     )
 
     if not escrow:
+        register_code_failure(owner.id)
         logger.warning("Invalid delivery-code attempt on store %s", slug)
         raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
+    clear_code_failures(owner.id)
 
     if escrow.status == "released":
         return {"ok": True, "message": "This order was already completed — thank you!"}
@@ -1509,11 +1522,24 @@ def buyer_send_message(
 ) -> dict:
     """Public: buyer sends a message on their order, authenticated by the
     buyer-only delivery code."""
+    from app.services.escrow_code_guard import (
+        clear_code_failures,
+        is_code_locked,
+        register_code_failure,
+    )
+
     owner = _lookup_store(db, slug)
+    if is_code_locked(owner.id):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts on this store. Please try again later.",
+        )
     escrow = _escrow_by_code(db, owner.id, payload.code.strip())
     if not escrow:
+        register_code_failure(owner.id)
         logger.warning("Invalid delivery-code attempt (message) on store %s", slug)
         raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
+    clear_code_failures(owner.id)
     if not _messaging_open(escrow):
         raise HTTPException(status_code=409, detail="Messaging is closed for this order.")
 
@@ -1540,11 +1566,24 @@ def buyer_list_messages(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Public: buyer reads their order thread (delivery code = access)."""
+    from app.services.escrow_code_guard import (
+        clear_code_failures,
+        is_code_locked,
+        register_code_failure,
+    )
+
     owner = _lookup_store(db, slug)
+    if is_code_locked(owner.id):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts on this store. Please try again later.",
+        )
     escrow = _escrow_by_code(db, owner.id, payload.code.strip())
     if not escrow:
+        register_code_failure(owner.id)
         logger.warning("Invalid delivery-code attempt (thread) on store %s", slug)
         raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
+    clear_code_failures(owner.id)
     _mark_read(db, escrow.id, "seller")  # buyer has now seen the seller's messages
     return {
         "messages": [_msg_out(m, "buyer") for m in _thread(db, escrow.id)],
