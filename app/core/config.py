@@ -146,6 +146,11 @@ class BaseAppSettings(BaseSettings):
     # orders in 24h has new orders held for review.
     CARD_BLOCK_DAYS_ON_REFUND: int = 60
     CARD_MAX_ORDERS_PER_DAY: int = 6
+    # Strongest card-fraud defense: collect HELD (buyer-protection) orders by BANK
+    # TRANSFER ONLY. Nigerian NIP transfers are irreversible, so there are no
+    # chargebacks to launder. Trusted sellers' normal (non-hold) orders are
+    # unaffected. Set False to also allow cards on held orders.
+    ESCROW_HOLD_BANK_TRANSFER_ONLY: bool = True
     # Which provider pays sellers out of the held balance: "paystack" (default)
     # or "flutterwave". Refunds always use the collector (Paystack). Switch this
     # to move payouts to another rail without touching the escrow logic.

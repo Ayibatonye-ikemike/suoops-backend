@@ -67,6 +67,11 @@ class FlutterwaveCollectionProvider(CollectionProvider):
             "customizations": {"title": "SuoOps", "description": narration},
             "meta": metadata,
         }
+        # Buyer-protection holds are collected by BANK TRANSFER ONLY — NIP transfers
+        # are irreversible, so a fraudster can't pay with a stolen card then charge
+        # back. (payment_options "banktransfer" = pay to a temporary virtual account.)
+        if settings.ESCROW_HOLD_BANK_TRANSFER_ONLY:
+            payload["payment_options"] = "banktransfer"
         try:
             with httpx.Client(timeout=15) as client:
                 resp = client.post(

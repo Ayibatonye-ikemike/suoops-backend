@@ -54,16 +54,21 @@ class PaystackCollectionProvider(CollectionProvider):
     ) -> ChargeInit:
         try:
             with httpx.Client(timeout=15) as client:
+                init_body = {
+                    "email": customer_email,
+                    "amount": int(amount_kobo),  # kobo
+                    "reference": reference,
+                    "callback_url": callback_url,
+                    "metadata": metadata,
+                }
+                # Buyer-protection holds: BANK TRANSFER ONLY (irreversible NIP) so a
+                # stolen-card payment can't later be charged back.
+                if settings.ESCROW_HOLD_BANK_TRANSFER_ONLY:
+                    init_body["channels"] = ["bank_transfer"]
                 resp = client.post(
                     f"{_PAYSTACK_BASE}/transaction/initialize",
                     headers=_headers(),
-                    json={
-                        "email": customer_email,
-                        "amount": int(amount_kobo),  # kobo
-                        "reference": reference,
-                        "callback_url": callback_url,
-                        "metadata": metadata,
-                    },
+                    json=init_body,
                 )
             data = resp.json()
         except Exception as exc:  # noqa: BLE001 — network/timeout
