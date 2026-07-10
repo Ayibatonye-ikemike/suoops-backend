@@ -474,7 +474,19 @@ def get_order_escrow(
     if not row:
         return {"escrow": None}
     escrow, buyer = row
-    return {"escrow": _escrow_summary(escrow, buyer)}
+    summary = _escrow_summary(escrow, buyer)
+    # Buyer/system messages the seller hasn't opened yet (for the unread badge).
+    summary["unread_messages"] = (
+        db.query(func.count(models.OrderMessage.id))
+        .filter(
+            models.OrderMessage.escrow_id == escrow.id,
+            models.OrderMessage.sender_role != "seller",
+            models.OrderMessage.blocked.is_(False),
+            models.OrderMessage.read_at.is_(None),
+        )
+        .scalar()
+    ) or 0
+    return {"escrow": summary}
 
 
 @router.post("/storefront/orders/{invoice_id}/mark-delivered")

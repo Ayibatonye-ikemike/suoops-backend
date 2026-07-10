@@ -4552,6 +4552,8 @@ class DisputeItem(BaseModel):
     buyer_disputes: int = 0
     buyer_false_disputes: int = 0
     buyer_flagged: bool = False
+    # Seller off-platform-messaging attempts (contact/account leak or payment push).
+    seller_circumvention_attempts: int = 0
     disputed_at: dt.datetime | None = None
     created_at: dt.datetime | None = None
 
@@ -4681,6 +4683,7 @@ def list_disputes(
                 buyer_disputes=rep.disputes if rep else 0,
                 buyer_false_disputes=rep.false_disputes if rep else 0,
                 buyer_flagged=bool(rep.flagged) if rep else False,
+                seller_circumvention_attempts=seller.circumvention_attempts or 0,
                 disputed_at=e.disputed_at,
                 created_at=e.created_at,
             )
