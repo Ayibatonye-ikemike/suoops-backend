@@ -46,14 +46,25 @@ def release_due_escrow_orders(self: Task) -> dict[str, Any]:
                 # Skip sellers whose payouts are frozen (post bank-change cooldown).
                 (User.payout_frozen_until.is_(None)) | (User.payout_frozen_until <= now),
                 or_(
-                    # Window elapsed → time to pay the seller out.
+                    # Cleared (protection window elapsed OR buyer confirmed early)
+                    # AND settled (T+1 cadence) → pay the seller out. The settle_at
+                    # gate keeps payouts on a next-morning settlement, never same
+                    # day, funded by settled collections rather than float.
                     and_(
-                        StorefrontOrderEscrow.release_due_at.isnot(None),
-                        StorefrontOrderEscrow.release_due_at <= now,
+                        or_(
+                            and_(
+                                StorefrontOrderEscrow.release_due_at.isnot(None),
+                                StorefrontOrderEscrow.release_due_at <= now,
+                            ),
+                            StorefrontOrderEscrow.confirmed_at.isnot(None),
+                        ),
+                        or_(
+                            StorefrontOrderEscrow.settle_at.is_(None),  # legacy rows
+                            StorefrontOrderEscrow.settle_at <= now,
+                        ),
                     ),
                     # OR a payout was already initiated (e.g. an admin release) and
-                    # is in flight — reconcile/confirm it now, don't wait for the
-                    # window to elapse.
+                    # is in flight — reconcile/confirm it now, don't wait.
                     StorefrontOrderEscrow.transfer_reference.isnot(None),
                 ),
             )

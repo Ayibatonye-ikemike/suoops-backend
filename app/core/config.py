@@ -93,6 +93,11 @@ class BaseAppSettings(BaseSettings):
     ESCROW_ENABLED: bool = True  # master switch for the hold-&-release flow
     ESCROW_SAME_STATE_HOLD_HOURS: int = 12  # dispute window when buyer & seller share a state
     ESCROW_CROSS_STATE_HOLD_DAYS: int = 3  # dispute window across states
+    # Sellers settle on a T+1 cadence (never same-day): once buyer protection ends,
+    # the payout waits for the daily settlement run at this UTC hour, which fires
+    # after Flutterwave's own T+1 settlement lands — so payouts come from settled
+    # collections, not float. 7 UTC = 8am WAT.
+    ESCROW_SETTLEMENT_HOUR_UTC: int = 7
     # Trusted sellers skip the hold (normal settlement). ALL must hold: not
     # flagged/suspended AND zero unresolved disputes AND the thresholds below.
     ESCROW_TRUST_MIN_PAID_INVOICES: int = 100

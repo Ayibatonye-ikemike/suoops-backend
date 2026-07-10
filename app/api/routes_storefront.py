@@ -1223,14 +1223,13 @@ def confirm_delivery(
     payload: ConfirmDeliveryIn,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
-    """Public: confirm delivery with the buyer's delivery code → release the held
-    funds to the seller immediately (skips the remaining protection window).
+    """Public: confirm delivery with the buyer's delivery code → ends the
+    buyer-protection window early. The seller is paid on our T+1 settlement
+    cadence (the next daily settlement run), never same-day.
 
     The code is only ever shown to the buyer, so the seller can't self-release.
     """
     import datetime as dt
-
-    from app.services.escrow_service import EscrowError, release_escrow
 
     owner = _lookup_store(db, slug)
     code = payload.code.strip()
@@ -1268,18 +1267,13 @@ def confirm_delivery(
     escrow.confirmed_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
 
-    try:
-        release_escrow(db, escrow, reason="buyer confirmed delivery with code")
-    except EscrowError:
-        # Payout hiccup (e.g. Paystack timeout / freeze) — not fatal to the buyer.
-        # The auto-release worker will retry; confirmation is already recorded.
-        logger.exception("Immediate release failed for escrow %s", escrow.id)
-        return {
-            "ok": True,
-            "message": "Thanks for confirming! We're releasing your order to the seller.",
-        }
-
-    return {"ok": True, "message": "Thank you for confirming! The seller has been paid."}
+    # Confirmation ENDS buyer protection, but the payout follows our T+1
+    # settlement cadence — the daily settlement run pays the seller (never
+    # same-day), funded by settled collections. No transfer is initiated here.
+    return {
+        "ok": True,
+        "message": "Thank you for confirming! The seller will be settled in our next payout run.",
+    }
 
 
 class OrderProblemIn(BaseModel):

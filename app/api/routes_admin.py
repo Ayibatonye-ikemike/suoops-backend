@@ -4823,8 +4823,9 @@ def resolve_dispute(
     message = None
     if result_status == "release_pending":
         message = (
-            "Payout accepted and processing — it confirms automatically (usually "
-            "within 15 minutes) and the order then moves to Released."
+            "Cleared for the seller. Payouts settle on our T+1 cadence, so this "
+            "pays out on the next daily settlement run (never same-day) and then "
+            "moves to Released."
         )
     return {
         "escrow_id": escrow_id,
@@ -4976,8 +4977,8 @@ def retry_dispute_payout(
     message = None
     if state == "release_pending":
         message = (
-            f"Fresh payout sent via {provider.name} — it confirms automatically "
-            "(usually within 15 minutes) and the order then moves to Released."
+            f"Cleared via {provider.name}. Payouts settle on our T+1 cadence, so "
+            "this pays out on the next daily settlement run and then moves to Released."
         )
     return {"state": state, "escrow_status": escrow.status, "provider": provider.name, "message": message}
 

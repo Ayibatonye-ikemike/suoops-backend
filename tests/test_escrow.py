@@ -330,6 +330,55 @@ def test_release_uses_collecting_rail(monkeypatch):
         s.close()
 
 
+def test_next_settlement_after_is_next_morning():
+    """Payouts settle T+1: the daily 07:00 UTC run on the WAT day after payment."""
+    paid = dt.datetime(2026, 7, 10, 13, 0, tzinfo=dt.timezone.utc)  # 2pm WAT
+    assert es.next_settlement_after(paid) == dt.datetime(
+        2026, 7, 11, 7, 0, tzinfo=dt.timezone.utc
+    )
+    # A late-night WAT payment still settles the very next morning.
+    paid2 = dt.datetime(2026, 7, 10, 22, 30, tzinfo=dt.timezone.utc)  # 11:30pm WAT
+    assert es.next_settlement_after(paid2) == dt.datetime(
+        2026, 7, 11, 7, 0, tzinfo=dt.timezone.utc
+    )
+
+
+def test_release_waits_for_settlement(monkeypatch):
+    """A cleared hold does NOT pay before settle_at (T+1), then pays after."""
+    import app.services.payouts as payouts
+    from app.db.session import SessionLocal
+    from app.models import models
+
+    fake = _fake_provider_class()()
+    monkeypatch.setattr(payouts, "get_payout_provider", lambda: fake)
+
+    s = SessionLocal()
+    try:
+        seller = models.User(
+            name="Settle Seller", phone="+2348000000020",
+            account_number="0123456789", bank_name="GTBank",
+        )
+        s.add(seller)
+        s.commit()
+        s.refresh(seller)
+        escrow = _held_escrow(seller.id)
+
+        now = dt.datetime.now(dt.timezone.utc)
+        # Settlement not yet reached → no payout initiated, stays held.
+        escrow.settle_at = now + dt.timedelta(hours=6)
+        assert es.release_escrow(s, escrow) is False
+        assert fake.sent == []
+        assert escrow.status == "held"
+
+        # Settlement time has passed → the payout is initiated (queued).
+        escrow.settle_at = now - dt.timedelta(minutes=1)
+        assert es.release_escrow(s, escrow) is False  # queued/pending
+        assert fake.sent == ["ESCROWREL-555"]
+    finally:
+        s.rollback()
+        s.close()
+
+
 def test_release_resends_when_rail_changed(monkeypatch):
     """A reference from a different (failed) rail must NOT be reconciled as
     'in flight' — release starts a fresh transfer on the CURRENT rail."""

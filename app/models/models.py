@@ -726,6 +726,13 @@ class StorefrontOrderEscrow(Base):
     release_due_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    # Earliest time the payout may actually execute (T+1 settlement cadence) — the
+    # daily settlement run after this pays the seller. Buyer protection ending or
+    # an early confirmation clears the order, but the money still settles next day
+    # from settled collections, never same-day float.
+    settle_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     # ── Amounts (kobo) ──
     gross_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)

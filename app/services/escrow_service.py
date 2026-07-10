@@ -142,6 +142,29 @@ def hold_window(same_state: bool) -> dt.timedelta:
     return dt.timedelta(days=settings.ESCROW_CROSS_STATE_HOLD_DAYS)
 
 
+# West Africa Time (Nigeria) — Flutterwave settles collections T+1 by ~7am WAT.
+_WAT = dt.timezone(dt.timedelta(hours=1))
+
+
+def next_settlement_after(paid_at: dt.datetime) -> dt.datetime:
+    """Earliest time a payout may execute for a payment made at ``paid_at``.
+
+    Sellers settle on a T+1 cadence: the daily settlement run (07:00 UTC / 08:00
+    WAT) on the WAT day AFTER the payment. By then Flutterwave's own T+1
+    settlement has landed, so the payout is funded by settled collections, never
+    same-day float. Returns a tz-aware UTC datetime.
+    """
+    if paid_at.tzinfo is None:
+        paid_at = paid_at.replace(tzinfo=dt.timezone.utc)
+    hour = settings.ESCROW_SETTLEMENT_HOUR_UTC
+    # The settlement run always fires on the WAT calendar day after the payment.
+    wat_day = (paid_at.astimezone(_WAT) + dt.timedelta(days=1)).date()
+    run_utc = dt.datetime.combine(wat_day, dt.time(hour=hour), tzinfo=dt.timezone.utc)
+    # Guard: never before the payment itself (paranoia around DST-free WAT).
+    return max(run_utc, paid_at + dt.timedelta(hours=1))
+
+
+
 def _norm_state(value: str | None) -> str | None:
     """Normalize a state name for comparison (lowercase, strip a trailing
     'state', drop non-alphanumerics). e.g. 'Lagos State' == 'lagos'."""
@@ -246,12 +269,14 @@ def activate_escrow_on_payment(
     same = bool(escrow.same_state) if escrow.same_state is not None else False
     escrow.status = "held"
     escrow.release_due_at = paid_at + hold_window(same)
+    # Payouts settle on a T+1 cadence — never before the collection has settled.
+    escrow.settle_at = next_settlement_after(paid_at)
     if charge_reference:
         escrow.charge_reference = charge_reference
     db.commit()
     logger.info(
-        "Escrow held for order invoice=%s (same_state=%s, release_due_at=%s)",
-        invoice.id, escrow.same_state, escrow.release_due_at,
+        "Escrow held for order invoice=%s (same_state=%s, release_due_at=%s, settle_at=%s)",
+        invoice.id, escrow.same_state, escrow.release_due_at, escrow.settle_at,
     )
 
     # Best-effort: send the buyer their delivery code so they can release the
@@ -365,6 +390,17 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
             # In flight or indeterminate — do NOT re-send; a later run confirms.
             return False
         # prior == "failed" → the reference is burned; retry with a fresh one below.
+
+    # T+1 settlement gate: never START a new payout before the collection has
+    # settled. Buyer protection may be over, but the money settles to the seller
+    # in the next daily settlement run (funded by settled collections, not float).
+    # (An in-flight transfer above is exempt — it's already been sent.)
+    settle_at = getattr(escrow, "settle_at", None)
+    if settle_at is not None and not escrow.transfer_reference:
+        if settle_at.tzinfo is None:
+            settle_at = settle_at.replace(tzinfo=dt.timezone.utc)
+        if settle_at > dt.datetime.now(dt.timezone.utc):
+            return False  # cleared but not yet settle-eligible — pay in the next run
 
     # First-ever attempt keeps the clean deterministic reference; a retry (after a
     # confirmed-failed transfer OR a rail change) gets a fresh (unburned) reference.
