@@ -4561,6 +4561,66 @@ class DisputeListResponse(BaseModel):
     total: int
 
 
+class FlaggedMessageItem(BaseModel):
+    id: int
+    escrow_id: int
+    seller_id: int
+    seller_business: str | None = None
+    sender_role: str
+    body_raw: str  # exact text kept for adjudication
+    flag_reasons: str | None = None
+    blocked: bool = False
+    created_at: dt.datetime | None = None
+
+
+class FlaggedMessageListResponse(BaseModel):
+    messages: list[FlaggedMessageItem]
+    total: int
+
+
+@router.get("/flagged-messages", response_model=FlaggedMessageListResponse)
+def list_flagged_messages(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    limit: int = Query(200, ge=1, le=ADMIN_LIST_CAP),
+) -> FlaggedMessageListResponse:
+    """Order messages flagged for circumvention (masked contact/account, or an
+    off-platform payment push), newest first. ``body_raw`` is the exact text kept
+    for adjudication; ``blocked`` messages were never delivered to the recipient.
+    """
+    q = (
+        db.query(models.OrderMessage, models.User)
+        .join(
+            models.StorefrontOrderEscrow,
+            models.OrderMessage.escrow_id == models.StorefrontOrderEscrow.id,
+        )
+        .join(models.User, models.StorefrontOrderEscrow.seller_id == models.User.id)
+        .filter(models.OrderMessage.flagged.is_(True))
+    )
+    total = q.count()
+    rows = q.order_by(desc(models.OrderMessage.id)).limit(limit).all()
+
+    log_audit_event("admin.flagged_messages.list", user_id=admin_user.id)
+
+    return FlaggedMessageListResponse(
+        messages=[
+            FlaggedMessageItem(
+                id=m.id,
+                escrow_id=m.escrow_id,
+                seller_id=seller.id,
+                seller_business=getattr(seller, "business_name", None),
+                sender_role=m.sender_role,
+                body_raw=m.body_raw,
+                flag_reasons=m.flag_reasons,
+                blocked=bool(m.blocked),
+                created_at=m.created_at,
+            )
+            for (m, seller) in rows
+        ],
+        total=total,
+    )
+
+
 @router.get("/disputes", response_model=DisputeListResponse)
 def list_disputes(
     db: Session = Depends(get_db),

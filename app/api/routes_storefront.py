@@ -1282,3 +1282,205 @@ def report_order_problem(
         "ok": True,
         "message": "Thanks for letting us know. Your payment is safe and our team will review this.",
     }
+
+
+# ── Order-scoped messaging (guarded buyer/seller chat) ─────────────────────────
+# Delivery-coordination only, and only while an order is live (held). Every
+# message is scanned: leak vectors (contact/account/links + the delivery code)
+# are masked, off-platform pushes are blocked, and seller circumvention attempts
+# flag the store. This keeps the escrow + commission on-platform.
+
+_MSG_MAX = 1000
+
+
+class BuyerMessageIn(BaseModel):
+    code: str = Field(min_length=4, max_length=12)  # buyer-only delivery code
+    body: str = Field(min_length=1, max_length=_MSG_MAX)
+
+
+class BuyerThreadIn(BaseModel):
+    code: str = Field(min_length=4, max_length=12)
+
+
+class SellerMessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=_MSG_MAX)
+
+
+def _escrow_by_code(db: Session, owner_id: int, code: str):
+    return (
+        db.query(models.StorefrontOrderEscrow)
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == owner_id,
+            models.StorefrontOrderEscrow.confirmation_code == code,
+        )
+        .order_by(models.StorefrontOrderEscrow.id.desc())
+        .first()
+    )
+
+
+def _messaging_open(escrow: "models.StorefrontOrderEscrow") -> bool:
+    # Only for a live (held) order — not before payment or after it closes.
+    return escrow.status == "held"
+
+
+def _msg_out(m: "models.OrderMessage", viewer_role: str) -> dict:
+    return {
+        "id": m.id,
+        "sender_role": m.sender_role,
+        "mine": m.sender_role == viewer_role,
+        "body": m.body_redacted,
+        "flagged": bool(m.flagged),
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+    }
+
+
+def _thread(db: Session, escrow_id: int) -> list["models.OrderMessage"]:
+    return (
+        db.query(models.OrderMessage)
+        .filter(
+            models.OrderMessage.escrow_id == escrow_id,
+            models.OrderMessage.blocked.is_(False),  # blocked = stored for audit, never delivered
+        )
+        .order_by(models.OrderMessage.id.asc())
+        .all()
+    )
+
+
+def _mark_read(db: Session, escrow_id: int, sender_role: str) -> None:
+    import datetime as dt
+
+    (
+        db.query(models.OrderMessage)
+        .filter(
+            models.OrderMessage.escrow_id == escrow_id,
+            models.OrderMessage.sender_role == sender_role,
+            models.OrderMessage.read_at.is_(None),
+        )
+        .update({models.OrderMessage.read_at: dt.datetime.now(dt.timezone.utc)}, synchronize_session=False)
+    )
+    db.commit()
+
+
+def _store_message(db: Session, escrow, *, sender_role: str, sender_user_id: int | None, body: str):
+    from app.services.message_guard import scan_message
+
+    result = scan_message(body)
+    m = models.OrderMessage(
+        escrow_id=escrow.id,
+        sender_role=sender_role,
+        sender_user_id=sender_user_id,
+        body_raw=body,
+        body_redacted=("" if result.blocked else result.redacted),
+        flagged=result.flagged,
+        flag_reasons=(",".join(result.reasons) or None),
+        blocked=result.blocked,
+    )
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return m, result
+
+
+@public_router.post("/store/{slug}/messages")
+@limiter.limit("30/hour")
+def buyer_send_message(
+    request: Request,
+    slug: str,
+    payload: BuyerMessageIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Public: buyer sends a message on their order, authenticated by the
+    buyer-only delivery code."""
+    owner = _lookup_store(db, slug)
+    escrow = _escrow_by_code(db, owner.id, payload.code.strip())
+    if not escrow:
+        raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
+    if not _messaging_open(escrow):
+        raise HTTPException(status_code=409, detail="Messaging is closed for this order.")
+
+    m, result = _store_message(db, escrow, sender_role="buyer", sender_user_id=None, body=payload.body)
+    if result.blocked:
+        return {
+            "ok": False,
+            "blocked": True,
+            "message": "Keep payments and contact on SuoOps so you stay protected — that message wasn't sent.",
+        }
+    return {
+        "ok": True,
+        "message": _msg_out(m, "buyer"),
+        "warning": "Some details were hidden to keep you protected." if result.flagged else None,
+    }
+
+
+@public_router.post("/store/{slug}/messages/list")
+@limiter.limit("60/hour")
+def buyer_list_messages(
+    request: Request,
+    slug: str,
+    payload: BuyerThreadIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Public: buyer reads their order thread (delivery code = access)."""
+    owner = _lookup_store(db, slug)
+    escrow = _escrow_by_code(db, owner.id, payload.code.strip())
+    if not escrow:
+        raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
+    _mark_read(db, escrow.id, "seller")  # buyer has now seen the seller's messages
+    return {"messages": [_msg_out(m, "buyer") for m in _thread(db, escrow.id)]}
+
+
+@router.get("/storefront/orders/{invoice_id}/messages")
+def seller_list_messages(
+    invoice_id: str,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Seller reads the thread for one of their storefront orders."""
+    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+    escrow, _buyer = row
+    _mark_read(db, escrow.id, "buyer")
+    return {"messages": [_msg_out(m, "seller") for m in _thread(db, escrow.id)]}
+
+
+@router.post("/storefront/orders/{invoice_id}/messages")
+def seller_send_message(
+    invoice_id: str,
+    payload: SellerMessageIn,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Seller replies on one of their storefront orders. Circumvention attempts
+    (masked contact/account or off-platform pushes) flag the store."""
+    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+    escrow, _buyer = row
+    if not _messaging_open(escrow):
+        raise HTTPException(status_code=409, detail="Messaging is closed for this order.")
+
+    m, result = _store_message(
+        db, escrow, sender_role="seller", sender_user_id=current_user_id, body=payload.body
+    )
+    if result.flagged:
+        try:
+            from app.services.escrow_service import record_seller_circumvention
+
+            seller = db.query(models.User).filter(models.User.id == current_user_id).first()
+            if seller:
+                record_seller_circumvention(db, seller)
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to record seller circumvention for order %s", invoice_id)
+
+    if result.blocked:
+        return {
+            "ok": False,
+            "blocked": True,
+            "message": "Payments and contact must stay on SuoOps. That message wasn't sent — repeated attempts flag your store.",
+        }
+    return {
+        "ok": True,
+        "message": _msg_out(m, "seller"),
+        "warning": "Sharing contact or payment details off-platform is not allowed and was hidden." if result.flagged else None,
+    }

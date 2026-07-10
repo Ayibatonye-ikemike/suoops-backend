@@ -110,6 +110,9 @@ class BaseAppSettings(BaseSettings):
     # Flag a buyer after this many disputes an admin ruled against them (false
     # "not delivered" claims) so future reports get extra scrutiny.
     ESCROW_BUYER_ABUSE_FLAG_AT: int = 2
+    # Flag a SELLER for review after this many order-messaging attempts to move a
+    # deal off-platform (share contact/account or push a direct transfer).
+    ESCROW_SELLER_CIRCUMVENTION_FLAG_AT: int = 3
     # Which provider pays sellers out of the held balance: "paystack" (default)
     # or "flutterwave". Refunds always use the collector (Paystack). Switch this
     # to move payouts to another rail without touching the escrow logic.

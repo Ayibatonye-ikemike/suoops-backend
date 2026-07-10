@@ -555,3 +555,15 @@ def get_buyer_reputation(db: Session, phone: str | None) -> "models.BuyerReputat
         .filter(models.BuyerReputation.phone == p)
         .first()
     )
+
+
+def record_seller_circumvention(db: Session, seller: "models.User") -> None:
+    """Count a seller order-message that tried to move the deal off-platform
+    (masked contact/account, or an off-platform payment push). Enough of them
+    flags the seller for review, which also revokes trusted status (is_trusted_seller
+    checks flagged_for_review), so their future orders go back under escrow hold.
+    """
+    seller.circumvention_attempts = (seller.circumvention_attempts or 0) + 1
+    if seller.circumvention_attempts >= settings.ESCROW_SELLER_CIRCUMVENTION_FLAG_AT:
+        seller.flagged_for_review = True
+    db.commit()

@@ -395,6 +395,11 @@ class User(Base):
     flagged_for_review: Mapped[bool] = mapped_column(
         default=False, server_default="false", nullable=False, index=True
     )
+    # Count of storefront-messaging attempts to move a deal off-platform (share
+    # contact/account or push a direct transfer). Enough of them flags the seller.
+    circumvention_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -796,5 +801,44 @@ class BuyerReputation(Base):
     )
     updated_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=utcnow, nullable=True
+    )
+
+
+class OrderMessage(Base):
+    """An order-scoped message between a storefront buyer and seller.
+
+    Exists only for a real order (tied to its escrow) and only while the order is
+    live (held). Every message is scanned before delivery: leak vectors
+    (phone/account/email/links + the buyer-only delivery code) are masked into
+    ``body_redacted`` (what the other party sees), the exact text is kept in
+    ``body_raw`` for dispute evidence (admin-only), and clear off-platform pushes
+    are ``blocked`` (stored, never delivered). ``flag_reasons`` feeds seller trust.
+    """
+
+    __tablename__ = "order_message"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    escrow_id: Mapped[int] = mapped_column(
+        ForeignKey("storefront_order_escrow.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    # "buyer" | "seller" | "system".
+    sender_role: Mapped[str] = mapped_column(String(10), nullable=False)
+    # The seller's user id when sender_role == "seller"; None for buyer/system.
+    sender_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user.id"), nullable=True, index=True
+    )
+    body_raw: Mapped[str] = mapped_column(Text, nullable=False)  # admin-only
+    body_redacted: Mapped[str] = mapped_column(Text, nullable=False)  # delivered
+    flagged: Mapped[bool] = mapped_column(
+        default=False, server_default="false", nullable=False, index=True
+    )
+    flag_reasons: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Blocked messages are stored for audit but NEVER delivered to the recipient.
+    blocked: Mapped[bool] = mapped_column(
+        default=False, server_default="false", nullable=False
+    )
+    read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now(), index=True
     )
 
