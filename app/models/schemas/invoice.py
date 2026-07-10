@@ -173,11 +173,10 @@ class InvoicePublicOut(BaseModel):
     receipt_pdf_url: str | None = None
     lines: list[InvoiceLinePublicOut] = []
 
-    @field_serializer("account_number")
-    def _mask_account_number(self, value: str | None) -> str | None:
-        if not value or len(value) < 6:
-            return value
-        return value[:3] + "*" * (len(value) - 6) + value[-3:]
+    # NOTE: account_number is intentionally NOT masked here — this is the payee's
+    # receiving account shown to the customer as bank-transfer instructions; they
+    # need the FULL number to pay. (Masking it broke transfers: customers copied
+    # "810****548".)
 
     @field_serializer("amount")
     def _serialize_amount(self, value: Decimal) -> str:
