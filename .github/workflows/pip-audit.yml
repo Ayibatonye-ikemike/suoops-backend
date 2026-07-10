@@ -16,8 +16,12 @@ jobs:
         run: pip install pip-audit
       - name: Run pip-audit (requirements.txt)
         run: |
+          # CVE-2026-49452 (weasyprint) has NO upstream fix release yet. We render
+          # only our own templates (not attacker HTML), so exploitability is low.
+          # Ignore it here so CI stays strict for everything else; remove when a
+          # patched weasyprint ships.
           if [ -f requirements.txt ]; then
-            pip-audit -r requirements.txt --output-format json > pip-audit-report.json || true
+            pip-audit -r requirements.txt --ignore-vuln CVE-2026-49452 --output-format json > pip-audit-report.json || true
           else
             echo 'requirements.txt not found'; exit 1
           fi
