@@ -286,20 +286,50 @@ class InvoiceStatusMixin:
         items = "\n".join(
             f"• {ln.quantity} × {ln.description}" for ln in (invoice.lines or [])
         ) or "• (see dashboard)"
-        bank_name = getattr(user, "bank_name", None)
-        settle_to = f"your {bank_name} account" if bank_name else "your bank account"
+        settle_bank = (
+            getattr(user, "payout_bank_name", None) or getattr(user, "bank_name", None)
+        )
+        settle_to = f"your {settle_bank} account" if settle_bank else "your bank account"
         is_storefront = getattr(invoice, "channel", None) == "storefront"
+        # Buyer-protection HELD order? (an escrow row exists for this invoice)
+        held_escrow = None
+        if is_storefront:
+            held_escrow = (
+                self.db.query(models.StorefrontOrderEscrow)
+                .filter(models.StorefrontOrderEscrow.invoice_id == invoice.id)
+                .first()
+            )
         if is_storefront:
             header = "🛒 New paid order — payment confirmed ✅"
-            footer = (
-                "📦 No action needed on payment — just prepare and deliver the order.\n"
-                f"🔗 Order details:\n{order_link}"
-            )
+            if held_escrow is not None:
+                footer = (
+                    "📦 Prepare and deliver the order. Mark it “sent out”, then "
+                    "“delivered”, in your dashboard to add proof — that protects your "
+                    f"payout.\n🔗 Order details:\n{order_link}"
+                )
+            else:
+                footer = (
+                    "📦 No action needed on payment — just prepare and deliver the order.\n"
+                    f"🔗 Order details:\n{order_link}"
+                )
         else:
             header = "💰 Payment received — invoice paid ✅"
             footer = (
                 "📦 No action needed — your customer already has the receipt.\n"
                 f"🔗 Invoice details:\n{order_link}"
+            )
+        # Settlement copy differs for held (buyer-protection) vs normal orders.
+        if held_escrow is not None:
+            settle_line = (
+                "💰 Payment is HELD under buyer protection. Your payout (amount less "
+                f"the 3% fee) is released to {settle_to} on our next daily settlement "
+                "run once the buyer-protection window passes — sooner if the buyer "
+                "confirms delivery.\n\n"
+            )
+        else:
+            settle_line = (
+                f"💰 Your money (less the 3% fee) settles to {settle_to} by the next "
+                "business day.\n\n"
             )
         # Delivery details (GPS maps link + landmark note) are stored on the
         # invoice notes at order time — surface them so the business knows where
@@ -314,9 +344,8 @@ class InvoiceStatusMixin:
             f"👤 {customer_name}"
             + (f" ({customer_phone})" if customer_phone else "")
             + f"\n💵 ₦{invoice.amount:,.2f} — paid online\n"
-            f"💰 Your money (less the 3% fee) settles to {settle_to} by the next "
-            "business day — Paystack pays you directly.\n\n"
-            f"{items}"
+            + settle_line
+            + f"{items}"
             f"{delivery_block}\n\n"
             f"{footer}"
         )
