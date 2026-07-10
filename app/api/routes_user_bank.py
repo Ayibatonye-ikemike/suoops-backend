@@ -155,6 +155,16 @@ def update_bank_details(
         user.account_number = data.account_number
     if data.account_name is not None:
         user.account_name = data.account_name
+
+    # Single source of truth: the bank a seller sees/edits here IS where they get
+    # paid. Mirror it into the payout fields so escrow/commission payouts always
+    # follow the current account and never a stale separate payout account.
+    if user.bank_name and user.account_number:
+        user.payout_bank_name = user.bank_name
+        user.payout_account_number = user.account_number
+        user.payout_account_name = (
+            user.account_name or user.business_name or user.name
+        )
     db.commit()
     db.refresh(user)
 
@@ -200,5 +210,10 @@ def delete_bank_details(
     user.bank_name = None
     user.account_number = None
     user.account_name = None
+    # Single-account model: clearing the visible bank clears the payout account
+    # too, so payouts can't silently go to a stale destination.
+    user.payout_bank_name = None
+    user.payout_account_number = None
+    user.payout_account_name = None
     db.commit()
     return schemas.MessageOut(detail="Bank details cleared successfully")

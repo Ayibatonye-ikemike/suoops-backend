@@ -63,3 +63,38 @@ def test_bank_change_requires_step_up_otp():
     )
     assert r2.status_code == 200, r2.text
     assert r2.json()["account_number"] == "1112223334"
+
+
+def test_bank_update_syncs_payout_account():
+    """Single-account model: saving bank details mirrors them into the payout
+    fields so payouts follow the account the seller currently manages."""
+    from app.db.session import get_db
+    from app.models import models
+
+    phone = "+234" + secrets.token_hex(4)
+    headers = {"Authorization": f"Bearer {_signup_with_bank(phone)}"}
+
+    # Change to a new account (with step-up OTP).
+    client.post("/users/me/bank-details/request-otp", headers=headers)
+    r = client.patch(
+        "/users/me/bank-details",
+        json={
+            "bank_name": "Kuda Bank",
+            "account_number": "3003182519",
+            "account_name": "Bank User",
+            "otp": _otp(phone, "bank_change"),
+        },
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+
+    db = next(get_db())
+    try:
+        user = db.query(models.User).filter(models.User.phone == phone).one()
+        # Payout fields now mirror the visible bank details.
+        assert user.payout_bank_name == "Kuda Bank"
+        assert user.payout_account_number == "3003182519"
+        assert user.payout_account_name == "Bank User"
+    finally:
+        db.close()
+
