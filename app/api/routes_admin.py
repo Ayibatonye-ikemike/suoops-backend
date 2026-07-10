@@ -4554,6 +4554,11 @@ class DisputeItem(BaseModel):
     buyer_flagged: bool = False
     # Seller off-platform-messaging attempts (contact/account leak or payment push).
     seller_circumvention_attempts: int = 0
+    # Payout state derived from stored fields (no live API call):
+    # none | processing | paid | refunded. Use the live payout-status endpoint
+    # to confirm the provider's transfer state (queued/paid/failed) on demand.
+    payout_state: str = "none"
+    transfer_reference: str | None = None
     disputed_at: dt.datetime | None = None
     created_at: dt.datetime | None = None
 
@@ -4561,6 +4566,17 @@ class DisputeItem(BaseModel):
 class DisputeListResponse(BaseModel):
     disputes: list[DisputeItem]
     total: int
+
+
+def _derive_payout_state(e: "models.StorefrontOrderEscrow") -> str:
+    """Cheap payout state from stored escrow fields (no provider API call)."""
+    if e.status == "released":
+        return "paid"
+    if e.status == "refunded":
+        return "refunded"
+    if e.transfer_reference:
+        return "processing"  # a payout was initiated and is in flight
+    return "none"
 
 
 class FlaggedMessageItem(BaseModel):
@@ -4684,6 +4700,8 @@ def list_disputes(
                 buyer_false_disputes=rep.false_disputes if rep else 0,
                 buyer_flagged=bool(rep.flagged) if rep else False,
                 seller_circumvention_attempts=seller.circumvention_attempts or 0,
+                payout_state=_derive_payout_state(e),
+                transfer_reference=e.transfer_reference,
                 disputed_at=e.disputed_at,
                 created_at=e.created_at,
             )
@@ -4814,4 +4832,56 @@ def resolve_dispute(
         "action": payload.action,
         "message": message,
     }
+
+
+@router.get("/disputes/{escrow_id}/payout-status")
+def dispute_payout_status(
+    escrow_id: int,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Live payout state for one escrow's seller transfer.
+
+    Confirms the actual provider transfer state (paid/pending/failed) on demand —
+    used by the disputes panel so an admin can see whether a release actually
+    landed without leaving the page. Normalizes provider values to:
+    paid | pending | failed | unknown | refunded | none.
+    """
+    escrow = (
+        db.query(models.StorefrontOrderEscrow)
+        .filter(models.StorefrontOrderEscrow.id == escrow_id)
+        .first()
+    )
+    if not escrow:
+        raise HTTPException(status_code=404, detail="Escrow not found")
+
+    if escrow.status == "released":
+        return {"state": "paid", "reference": escrow.transfer_reference}
+    if escrow.status == "refunded":
+        return {"state": "refunded", "reference": escrow.refund_reference}
+    if not escrow.transfer_reference:
+        return {"state": "none", "reference": None}
+
+    from app.services.escrow_service import _collector_for_charge
+    from app.services.payouts import get_payout_provider, get_payout_provider_named
+
+    if escrow.charge_reference:
+        provider = get_payout_provider_named(_collector_for_charge(db, escrow.charge_reference))
+    else:
+        provider = get_payout_provider()
+
+    try:
+        raw = (provider.transfer_status(escrow.transfer_reference) or "unknown").lower()
+    except Exception:  # noqa: BLE001 — never let a status poll 500 the panel
+        logger.exception("Payout status poll failed for escrow %s", escrow_id)
+        raw = "unknown"
+
+    state = "paid" if raw == "successful" else raw  # normalize for the UI
+    log_audit_event(
+        "admin.disputes.payout_status",
+        user_id=admin_user.id,
+        escrow_id=escrow_id,
+        payout_state=state,
+    )
+    return {"state": state, "reference": escrow.transfer_reference, "provider": provider.name}
 
