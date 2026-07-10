@@ -4877,11 +4877,30 @@ def dispute_payout_status(
         raw = "unknown"
 
     state = "paid" if raw == "successful" else raw  # normalize for the UI
+
+    # If the provider confirms the transfer landed, finalize the hold now so the
+    # admin doesn't wait for the reconcile worker. This is safe/idempotent —
+    # release_escrow only marks 'released' on a confirmed success and never sends
+    # a new transfer from here.
+    if state == "paid" and escrow.status == "held":
+        try:
+            from app.services.escrow_service import release_escrow
+
+            if release_escrow(db, escrow, reason="admin payout-status reconcile"):
+                state = "paid"
+        except Exception:  # noqa: BLE001 — reporting must not fail on reconcile
+            logger.exception("Reconcile-on-status-check failed for escrow %s", escrow_id)
+
     log_audit_event(
         "admin.disputes.payout_status",
         user_id=admin_user.id,
         escrow_id=escrow_id,
         payout_state=state,
     )
-    return {"state": state, "reference": escrow.transfer_reference, "provider": provider.name}
+    return {
+        "state": state,
+        "reference": escrow.transfer_reference,
+        "provider": provider.name,
+        "escrow_status": escrow.status,
+    }
 
