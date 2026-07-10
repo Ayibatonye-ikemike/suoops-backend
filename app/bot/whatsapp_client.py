@@ -8,6 +8,7 @@ import httpx
 import requests
 
 from app.core.config import settings
+from app.utils.phone import normalize_phone
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,24 @@ class WhatsAppClient:
         "oauth_google_x" in the phone column) that Meta rejects with #131009,
         wasting an API call and denting the number's quality signals.
         """
-        digits = (to or "").strip().lstrip("+")
-        return digits.isdigit() and len(digits) >= 10
+        return WhatsAppClient._clean_recipient(to) is not None
+
+    @staticmethod
+    def _clean_recipient(to: str | None) -> str | None:
+        """Normalize ``to`` to E.164 digits (no ``+``) and validate it.
+
+        Returns the deliverable digit string, or ``None`` if the value can't be
+        a real number Meta will accept. This both normalizes local formats
+        (e.g. ``08012345678`` → ``2348012345678``) and rejects placeholders and
+        malformed junk (e.g. ``09020452362090``) that Meta rejects with #131009.
+        """
+        if not to:
+            return None
+        digits = normalize_phone(str(to)).lstrip("+")
+        # Valid E.164: 10–15 digits, and country codes never start with 0.
+        if not digits.isdigit() or digits.startswith("0") or not (10 <= len(digits) <= 15):
+            return None
+        return digits
 
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -83,13 +100,14 @@ class WhatsAppClient:
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP] Not configured, would send to %s: %s", to, body)
             return False
-        if not self._is_valid_recipient(to):
+        recipient = self._clean_recipient(to)
+        if not recipient:
             logger.warning("[WHATSAPP] Skipping invalid recipient %r (not a phone number)", to)
             return False
         try:
             payload = {
                 "messaging_product": "whatsapp",
-                "to": to.replace("+", ""),
+                "to": recipient,
                 "type": "text",
                 "text": {"body": body},
             }
@@ -129,7 +147,8 @@ class WhatsAppClient:
         if not self.phone_number_id or not self.api_key:
             logger.warning("[WHATSAPP DOC] Not configured, would send to %s: %s", to, filename)
             return False
-        if not self._is_valid_recipient(to):
+        recipient = self._clean_recipient(to)
+        if not recipient:
             logger.warning("[WHATSAPP DOC] Skipping invalid recipient %r (not a phone number)", to)
             return False
 
@@ -146,7 +165,7 @@ class WhatsAppClient:
 
             payload = {
                 "messaging_product": "whatsapp",
-                "to": to.replace("+", ""),
+                "to": recipient,
                 "type": "document",
                 "document": document,
             }
@@ -296,7 +315,7 @@ class WhatsAppClient:
 
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
-            "to": to.replace("+", ""),
+            "to": self._clean_recipient(to),
             "type": "template",
             "template": {
                 "name": template_name,

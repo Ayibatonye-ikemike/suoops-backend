@@ -40,8 +40,10 @@ def normalize_phone(phone: str) -> str:
     if len(digits) == 10 and digits[0] in "789":
         return "+234" + digits
 
-    # Generic international: just add +
-    if len(digits) >= 7:
+    # Generic international: just add '+' (E.164 country codes never start with 0,
+    # so a leading-0 string here is malformed junk — leave it for the caller to
+    # reject rather than fabricating an invalid '+0…' number).
+    if len(digits) >= 7 and not digits.startswith("0"):
         return "+" + digits
 
     return phone
