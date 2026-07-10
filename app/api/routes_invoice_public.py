@@ -142,8 +142,25 @@ async def initialize_invoice_payment(
             status_code=400, detail="This invoice is paid by bank transfer."
         )
 
+    # If this storefront order was set up as a buyer-protection HOLD, the retry
+    # (e.g. after the customer cancelled at checkout) MUST use the same held
+    # collection rail — not the default Paystack subaccount split. Otherwise the
+    # money would bypass escrow and settle straight to the seller. A pending
+    # escrow row means "this order is held".
+    from app.models import models as _models
+
+    held = (
+        db.query(_models.StorefrontOrderEscrow)
+        .filter(
+            _models.StorefrontOrderEscrow.invoice_id == invoice.id,
+            _models.StorefrontOrderEscrow.status == "pending",
+        )
+        .first()
+        is not None
+    )
+
     try:
-        return await start_invoice_payment(db, invoice, issuer)
+        return await start_invoice_payment(db, invoice, issuer, hold=held)
     except PaymentInitError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
