@@ -301,6 +301,14 @@ class InvoiceStatusMixin:
                 "📦 No action needed — your customer already has the receipt.\n"
                 f"🔗 Invoice details:\n{order_link}"
             )
+        # Delivery details (GPS maps link + landmark note) are stored on the
+        # invoice notes at order time — surface them so the business knows where
+        # to deliver.
+        delivery_block = ""
+        if is_storefront:
+            notes = (getattr(invoice, "notes", None) or "").strip()
+            if notes:
+                delivery_block = f"\n\n🚚 {notes}"
         message = (
             f"{header}\n\n"
             f"👤 {customer_name}"
@@ -308,7 +316,8 @@ class InvoiceStatusMixin:
             + f"\n💵 ₦{invoice.amount:,.2f} — paid online\n"
             f"💰 Your money (less the 3% fee) settles to {settle_to} by the next "
             "business day — Paystack pays you directly.\n\n"
-            f"{items}\n\n"
+            f"{items}"
+            f"{delivery_block}\n\n"
             f"{footer}"
         )
 
@@ -327,7 +336,10 @@ class InvoiceStatusMixin:
                         )
                     except Exception as exc:  # noqa: BLE001
                         logger.error("Order email to business failed %s: %s", invoice.invoice_id, exc)
-                if user.phone:
+                if user.phone and not is_storefront:
+                    # Storefront orders notify the business by EMAIL ONLY — the
+                    # free-form WhatsApp alert fails outside WhatsApp's 24h window
+                    # (error 131047), so email is the reliable channel.
                     try:
                         from app.bot.whatsapp_client import WhatsAppClient
                         whatsapp_key = getattr(settings, "WHATSAPP_API_KEY", None)
