@@ -85,6 +85,9 @@ class StorefrontEnableIn(BaseModel):
 
 
 class StorefrontUpdateIn(BaseModel):
+    # Change the store URL slug. Not auto-derived from the business name (that
+    # would break links already shared); the seller edits it deliberately.
+    slug: str | None = Field(default=None, max_length=60)
     description: str | None = Field(default=None, max_length=160)
     address: str | None = Field(default=None, max_length=200)
     city: str | None = Field(default=None, max_length=80)
@@ -265,6 +268,17 @@ def update_storefront(
     user = db.query(models.User).filter(models.User.id == current_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # Optional store-URL change (validated + made unique). Renaming the business
+    # does NOT auto-change the slug, so existing links keep working.
+    if payload.slug is not None:
+        new_slug = _slugify(payload.slug)
+        if not new_slug or new_slug == "shop":
+            raise HTTPException(
+                status_code=400,
+                detail="Choose a valid store link — letters and numbers only.",
+            )
+        if new_slug != user.storefront_slug:
+            user.storefront_slug = _unique_slug(db, new_slug, user.id)
     _apply_storefront_profile(db, user, payload)
     db.commit()
     return _storefront_out(db, user)
