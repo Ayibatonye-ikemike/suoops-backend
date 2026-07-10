@@ -37,6 +37,69 @@ def _normalize_bank_name(name: str) -> str:
     return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
+# Nigerian neobanks/fintechs are often listed under their licensed MFB name, so
+# the exact name a seller saved (e.g. "Kuda Bank") won't match a provider's list
+# entry (e.g. "Kuda Microfinance Bank"). These aliases bridge the common cases.
+_BANK_ALIASES: dict[str, list[str]] = {
+    "kudabank": ["kudamicrofinancebank", "kuda"],
+    "kuda": ["kudamicrofinancebank", "kudabank"],
+    "opay": ["opaydigitalservices", "opaydigitalservicesltd", "paycomopay"],
+    "opaydigitalservices": ["opay", "paycomopay"],
+    "palmpay": ["palmpaylimited", "palmpay"],
+    "moniepoint": ["moniepointmfb", "moniepointmicrofinancebank"],
+    "moniepointmfb": ["moniepointmicrofinancebank", "moniepoint"],
+    "paycom": ["opay", "opaydigitalservices"],
+}
+
+# Filler tokens dropped to compare bank "cores" (e.g. "Kuda MFB" ≈ "Kuda Bank").
+_BANK_FILLER = (
+    "microfinancebank",
+    "microfinance",
+    "digitalservices",
+    "mfb",
+    "bank",
+    "plc",
+    "limited",
+    "ltd",
+    "nigeria",
+)
+
+
+def _bank_core(normalized: str) -> str:
+    core = normalized
+    for token in _BANK_FILLER:
+        core = core.replace(token, "")
+    return core
+
+
+def _match_bank_code(target: str, mapping: dict[str, str]) -> str | None:
+    """Resolve a bank name to its code, tolerant of provider naming differences.
+
+    Order: exact normalized → known alias → unambiguous 'core' match (filler
+    tokens stripped) → unambiguous prefix match. Ambiguous matches are refused
+    (return None) so we never pay the wrong bank.
+    """
+    key = _normalize_bank_name(target)
+    if key in mapping:
+        return mapping[key]
+    for alias in _BANK_ALIASES.get(key, []):
+        if alias in mapping:
+            return mapping[alias]
+    tcore = _bank_core(key)
+    if tcore:
+        core_hits = {code for name, code in mapping.items() if _bank_core(name) == tcore}
+        if len(core_hits) == 1:
+            return next(iter(core_hits))
+        prefix_hits = {
+            code
+            for name, code in mapping.items()
+            if name.startswith(key) or key.startswith(name) or _bank_core(name).startswith(tcore)
+        }
+        if len(prefix_hits) == 1:
+            return next(iter(prefix_hits))
+    return None
+
+
 def _normalize_transfer_status(raw_status: str | None) -> str:
     """Map a Flutterwave transfer state to our normalized status."""
     s = (raw_status or "").strip().upper()
@@ -82,9 +145,12 @@ class FlutterwavePayoutProvider(PayoutProvider):
             }
             _fw_bank_cache_at = now
 
-        code = _fw_bank_cache.get(_normalize_bank_name(bank_name))
+        code = _match_bank_code(bank_name, _fw_bank_cache)
         if not code:
-            raise PayoutError(f"Unknown bank: {bank_name!r}")
+            raise PayoutError(
+                f"Unknown bank: {bank_name!r} — couldn't match it to a Flutterwave "
+                "bank. Ask the seller to re-select their bank from the list."
+            )
         return code
 
     def _available_balance_naira(self) -> float | None:
