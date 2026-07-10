@@ -580,6 +580,13 @@ async def mark_order_sent(
 
     import datetime as dt
 
+    # A photo of the packaged item is REQUIRED — it's the proof of quality and
+    # shipment (and the buyer sees it), so a "sent out" mark is never empty.
+    if not (file is not None and file.filename) and not escrow.dispatch_proof_url:
+        raise HTTPException(
+            status_code=400, detail="A photo of the packaged item is required to mark it sent out."
+        )
+
     proof_url = escrow.dispatch_proof_url
     if file is not None and file.filename:
         proof_url = await _save_proof_photo(escrow, file, prefix="dispatch-proof")

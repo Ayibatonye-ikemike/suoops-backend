@@ -63,16 +63,25 @@ def _make_held_order(db):
     return seller, inv, esc
 
 
-def test_mark_sent_persists_dispatch_and_notifies_buyer():
+def test_mark_sent_persists_dispatch_and_notifies_buyer(monkeypatch):
     client = TestClient(app)
     db = next(get_db())
     seller, inv, esc = _make_held_order(db)
+
+    # A photo is required — stub the S3 upload so the test doesn't hit the network.
+    import app.api.routes_storefront as rs
+
+    async def _fake_save(escrow, file, *, prefix):  # noqa: ANN001
+        return f"https://s3.example/{prefix}/{escrow.id}.jpg"
+
+    monkeypatch.setattr(rs, "_save_proof_photo", _fake_save)
+
     app.dependency_overrides[routes_auth.get_current_user_id] = lambda: seller.id
     try:
-        # Seller marks the order sent out (tracking + note, no photo).
         r = client.post(
             f"/inventory/storefront/orders/{inv.invoice_id}/mark-sent",
             data={"tracking": "GIG-ABC123", "note": "Sealed blue box, 2 items"},
+            files={"file": ("packed.jpg", b"\xff\xd8\xff\xe0stub", "image/jpeg")},
             headers={"Authorization": "Bearer test"},
         )
         assert r.status_code == 200, r.text
@@ -80,6 +89,7 @@ def test_mark_sent_persists_dispatch_and_notifies_buyer():
         assert summary["dispatched_at"] is not None
         assert summary["dispatch_tracking"] == "GIG-ABC123"
         assert summary["dispatch_note"] == "Sealed blue box, 2 items"
+        assert summary["dispatch_proof_url"]
 
         db.refresh(esc)
         assert esc.seller_dispatched_at is not None

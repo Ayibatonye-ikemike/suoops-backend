@@ -4548,6 +4548,14 @@ class DisputeItem(BaseModel):
     delivered_at: dt.datetime | None = None
     delivery_proof_note: str | None = None
     delivery_proof_url: str | None = None
+    # Seller DISPATCH proof (marked sent out) — the earlier handoff evidence.
+    dispatched_at: dt.datetime | None = None
+    dispatch_tracking: str | None = None
+    dispatch_note: str | None = None
+    dispatch_proof_url: str | None = None
+    # Where the order was to be delivered (GPS maps link + landmark), captured at
+    # order time — lets the reviewer see the delivery destination.
+    delivery_location: str | None = None
     # Buyer reputation (global, by phone) — spot serial false-disputers.
     buyer_disputes: int = 0
     buyer_false_disputes: int = 0
@@ -4672,6 +4680,7 @@ def list_disputes(
     log_audit_event("admin.disputes.list", user_id=admin_user.id, status_filter=status_filter)
 
     from app.services.escrow_service import get_buyer_reputation
+    from app.api.routes_storefront import _presign
 
     disputes = []
     for (e, seller, inv, cust) in rows:
@@ -4695,7 +4704,12 @@ def list_disputes(
                 review_reason=e.review_reason,
                 delivered_at=e.seller_marked_delivered_at,
                 delivery_proof_note=e.delivery_proof_note,
-                delivery_proof_url=e.delivery_proof_url,
+                delivery_proof_url=_presign(e.delivery_proof_url),
+                dispatched_at=e.seller_dispatched_at,
+                dispatch_tracking=e.dispatch_tracking,
+                dispatch_note=e.dispatch_note,
+                dispatch_proof_url=_presign(e.dispatch_proof_url),
+                delivery_location=getattr(inv, "notes", None),
                 buyer_disputes=rep.disputes if rep else 0,
                 buyer_false_disputes=rep.false_disputes if rep else 0,
                 buyer_flagged=bool(rep.flagged) if rep else False,
