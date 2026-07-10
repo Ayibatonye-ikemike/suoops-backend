@@ -18,8 +18,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Drop root: run as a non-privileged user (defense-in-depth vs container escape).
-RUN groupadd -r appuser && useradd -r -g appuser appuser \
-    && chown -R appuser:appuser /app
+# Give it a home + writable XDG cache so fontconfig/weasyprint can build their
+# caches (otherwise: "Fontconfig error: No writable cache directories").
+RUN groupadd -r appuser \
+    && useradd -r -g appuser -m -d /home/appuser appuser \
+    && mkdir -p /home/appuser/.cache/fontconfig \
+    && chown -R appuser:appuser /app /home/appuser
+ENV HOME=/home/appuser \
+    XDG_CACHE_HOME=/home/appuser/.cache
 USER appuser
 
 EXPOSE 8000

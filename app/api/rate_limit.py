@@ -49,11 +49,15 @@ def get_user_identifier(request: Request) -> str:
 
 
 def _should_use_redis() -> bool:
-    """Whether Redis should back the rate limiter (production with rediss:// URL)."""
+    """Whether Redis should back the rate limiter (production with a Redis URL).
+
+    Accept both redis:// and rediss:// — Render's managed Redis is reached over the
+    private network as redis://, same as the app's main Redis pool.
+    """
     if settings.ENV.lower() != "prod":
         return False
     redis_url = settings.REDIS_URL
-    return bool(redis_url) and redis_url.startswith("rediss://")
+    return bool(redis_url) and redis_url.startswith(("redis://", "rediss://"))
 
 
 class ResilientStorage(MemoryStorage):
