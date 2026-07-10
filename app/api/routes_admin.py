@@ -4904,3 +4904,80 @@ def dispute_payout_status(
         "escrow_status": escrow.status,
     }
 
+
+@router.post("/disputes/{escrow_id}/retry-payout")
+def retry_dispute_payout(
+    escrow_id: int,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Force a fresh seller payout on the CURRENT rail for a stuck hold.
+
+    Use when a release is stuck (e.g. an earlier attempt went out on the wrong
+    rail and failed, leaving a reference the current provider reports as
+    'unknown'). Safe: if the current rail already shows the transfer as paid or
+    in flight, it finalizes/waits instead of sending a second payout; otherwise
+    it clears the void reference and sends a fresh transfer on the correct rail.
+    """
+    from app.services.escrow_service import EscrowError, _collector_for_charge, release_escrow
+    from app.services.payouts import get_payout_provider, get_payout_provider_named
+
+    escrow = (
+        db.query(models.StorefrontOrderEscrow)
+        .filter(models.StorefrontOrderEscrow.id == escrow_id)
+        .first()
+    )
+    if not escrow:
+        raise HTTPException(status_code=404, detail="Escrow not found")
+    if escrow.status == "released":
+        return {"state": "paid", "escrow_status": "released"}
+    if escrow.status != "held":
+        raise HTTPException(status_code=409, detail="Only a held order can be retried.")
+    if escrow.held_for_review:
+        raise HTTPException(status_code=409, detail="Order is under review — resolve that first.")
+
+    if escrow.charge_reference:
+        provider = get_payout_provider_named(_collector_for_charge(db, escrow.charge_reference))
+    else:
+        provider = get_payout_provider()
+
+    # Never send a second payout if the current rail already has this transfer.
+    if escrow.transfer_reference and escrow.transfer_provider == provider.name:
+        try:
+            cur = (provider.transfer_status(escrow.transfer_reference) or "unknown").lower()
+        except Exception:  # noqa: BLE001
+            cur = "unknown"
+        if cur == "successful":
+            release_escrow(db, escrow, reason="admin retry (already paid)")
+            return {"state": "paid", "escrow_status": escrow.status}
+        if cur == "pending":
+            return {
+                "state": "pending",
+                "escrow_status": escrow.status,
+                "message": "A payout is already in flight on this rail — it will confirm shortly.",
+            }
+
+    # Clear the void reference (from a failed/other-rail attempt) and resend fresh.
+    escrow.transfer_reference = None
+    escrow.transfer_provider = None
+    db.commit()
+    try:
+        released = release_escrow(db, escrow, reason="admin retry payout")
+    except EscrowError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    log_audit_event(
+        "admin.disputes.retry_payout",
+        user_id=admin_user.id,
+        escrow_id=escrow_id,
+        provider=provider.name,
+    )
+    state = "paid" if released else "release_pending"
+    message = None
+    if state == "release_pending":
+        message = (
+            f"Fresh payout sent via {provider.name} — it confirms automatically "
+            "(usually within 15 minutes) and the order then moves to Released."
+        )
+    return {"state": state, "escrow_status": escrow.status, "provider": provider.name, "message": message}
+

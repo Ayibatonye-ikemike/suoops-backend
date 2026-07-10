@@ -748,6 +748,12 @@ class StorefrontOrderEscrow(Base):
     # ── Paystack payout / refund tracking ──
     transfer_recipient_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     transfer_reference: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # Which payout rail the transfer_reference was sent on. A reference is only
+    # valid on its own provider, so if the payout rail changes (e.g. an early
+    # Paystack attempt that failed on balance, then routed to Flutterwave), the
+    # old reference is void and a fresh transfer must be sent — never reconciled
+    # against the wrong provider.
+    transfer_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
     refund_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # The original Paystack charge reference (INVPAY-…) — needed to refund the buyer.
     charge_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)

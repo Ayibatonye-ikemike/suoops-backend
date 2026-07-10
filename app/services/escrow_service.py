@@ -345,8 +345,19 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
         )
         return True
 
-    # Reconcile an already-initiated transfer before sending anything new.
-    if escrow.transfer_reference:
+    # A reference is only valid on the rail it was sent to. If the payout rail
+    # has since changed (e.g. an early Paystack attempt that failed on balance,
+    # now correctly routed to Flutterwave), the old reference is void on the new
+    # provider — querying it returns 'unknown', which must NOT be read as
+    # "in flight". Detect that and start a fresh transfer on the current rail.
+    rail_changed = bool(
+        escrow.transfer_reference
+        and escrow.transfer_provider
+        and escrow.transfer_provider != provider.name
+    )
+
+    # Reconcile an already-initiated transfer (on the SAME rail) before sending new.
+    if escrow.transfer_reference and not rail_changed:
         prior = provider.transfer_status(escrow.transfer_reference)
         if prior == "successful":
             return _finalize(escrow.transfer_reference)
@@ -355,8 +366,8 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
             return False
         # prior == "failed" → the reference is burned; retry with a fresh one below.
 
-    # First-ever attempt keeps the clean deterministic reference; a retry after a
-    # confirmed-failed transfer gets a fresh (unburned) reference.
+    # First-ever attempt keeps the clean deterministic reference; a retry (after a
+    # confirmed-failed transfer OR a rail change) gets a fresh (unburned) reference.
     if not escrow.transfer_reference:
         reference = f"ESCROWREL-{escrow.id}"
     else:
@@ -364,9 +375,11 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
 
     payout_reason = f"Storefront order payout ({reason}) — invoice {escrow.invoice_id}"
 
-    # Record intent before calling the provider so a crash mid-flight is recoverable.
-    if escrow.transfer_reference != reference:
+    # Record intent (reference + rail) before calling the provider so a crash
+    # mid-flight is recoverable and the reference is never reconciled cross-rail.
+    if escrow.transfer_reference != reference or escrow.transfer_provider != provider.name:
         escrow.transfer_reference = reference
+        escrow.transfer_provider = provider.name
         db.commit()
 
     try:

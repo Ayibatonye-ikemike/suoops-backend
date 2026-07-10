@@ -330,6 +330,71 @@ def test_release_uses_collecting_rail(monkeypatch):
         s.close()
 
 
+def test_release_resends_when_rail_changed(monkeypatch):
+    """A reference from a different (failed) rail must NOT be reconciled as
+    'in flight' — release starts a fresh transfer on the CURRENT rail."""
+    import app.services.escrow_service as escrow_mod
+    import app.services.payouts as payouts
+    from app.db.session import SessionLocal
+    from app.models import models
+    from app.services.payouts.base import PayoutResult
+
+    sent: list[str] = []
+
+    class _FW:
+        name = "flutterwave"
+
+        def transfer_status(self, reference):
+            return "unknown"  # the old Paystack ref doesn't exist on Flutterwave
+
+        def transfer(self, db, *, seller, amount_kobo, reference, reason):
+            sent.append(reference)
+            return PayoutResult(
+                ok=True, reference=reference, provider="flutterwave", status="successful"
+            )
+
+        def transfer_exists(self, reference):
+            return True
+
+    monkeypatch.setattr(escrow_mod, "_collector_for_charge", lambda db, ref: "flutterwave")
+    monkeypatch.setattr(payouts, "get_payout_provider_named", lambda name: _FW())
+
+    s = SessionLocal()
+    try:
+        seller = models.User(
+            name="Rail Change Seller", phone="+2348000000010",
+            account_number="0123456789", bank_name="GTBank",
+        )
+        s.add(seller)
+        s.commit()
+        s.refresh(seller)
+
+        from types import SimpleNamespace
+
+        escrow = SimpleNamespace(
+            id=888,
+            status="held",
+            held_for_review=False,
+            payout_kobo=50000,
+            seller_id=seller.id,
+            invoice_id=1,
+            transfer_reference="ESCROWREL-888",  # burned on the old (Paystack) rail
+            transfer_provider="paystack",
+            released_at=None,
+            charge_reference="INVPAY-RAIL-CHG",
+        )
+
+        # Must NOT read the 'unknown' status as in-flight — it sends fresh + releases.
+        assert es.release_escrow(s, escrow) is True
+        assert escrow.status == "released"
+        assert len(sent) == 1
+        assert sent[0].startswith("ESCROWREL-888-")  # fresh reference, not the burned one
+        assert escrow.transfer_provider == "flutterwave"
+    finally:
+        s.rollback()
+        s.close()
+
+
 def test_refund_escrow_status_guards():
     """refund_escrow is idempotent and refuses to refund an already-paid order."""
     from types import SimpleNamespace

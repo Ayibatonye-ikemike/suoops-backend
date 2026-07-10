@@ -29,7 +29,7 @@ def _admin(db):
     return admin
 
 
-def _order(db, *, status="held", transfer_reference=None):
+def _order(db, *, status="held", transfer_reference=None, charge_reference=None):
     seller = models.User(name="Payout Seller", phone="+2349555000111")
     db.add(seller)
     db.commit()
@@ -58,6 +58,7 @@ def _order(db, *, status="held", transfer_reference=None):
         fee_kobo=9000,
         payout_kobo=291000,
         transfer_reference=transfer_reference,
+        charge_reference=charge_reference,
     )
     db.add(esc)
     db.commit()
@@ -120,3 +121,49 @@ def test_payout_status_live_poll_normalizes_successful(monkeypatch):
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
         db.close()
+
+
+def test_retry_payout_resends_on_correct_rail_and_finalizes(monkeypatch):
+    """Retry clears a stale (wrong-rail) reference and pays out fresh on the
+    order's collecting rail, finalizing the hold on confirmed success."""
+    client = TestClient(app)
+    db = next(get_db())
+    admin = _admin(db)
+    esc = _order(
+        db,
+        status="held",
+        transfer_reference="ESCROWREL-STALE",  # burned on a different (failed) rail
+        charge_reference="INVPAY-RETRY-1",
+    )
+
+    import app.services.escrow_service as escrow_mod
+    import app.services.payouts as payouts
+    from app.services.payouts.base import PayoutResult
+
+    class _FW:
+        name = "flutterwave"
+
+        def transfer_status(self, reference):
+            return "unknown"
+
+        def transfer(self, db, *, seller, amount_kobo, reference, reason):
+            return PayoutResult(
+                ok=True, reference=reference, provider="flutterwave", status="successful"
+            )
+
+        def transfer_exists(self, reference):
+            return True
+
+    monkeypatch.setattr(escrow_mod, "_collector_for_charge", lambda db, ref: "flutterwave")
+    monkeypatch.setattr(payouts, "get_payout_provider_named", lambda name: _FW())
+    app.dependency_overrides[get_current_admin] = lambda: admin
+    try:
+        r = client.post(f"/admin/disputes/{esc.id}/retry-payout")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["state"] == "paid"
+        assert body["escrow_status"] == "released"
+    finally:
+        app.dependency_overrides.pop(get_current_admin, None)
+        db.close()
+
