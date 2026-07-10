@@ -1178,6 +1178,7 @@ def confirm_delivery(
     )
 
     if not escrow:
+        logger.warning("Invalid delivery-code attempt on store %s", slug)
         raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
 
     if escrow.status == "released":
@@ -1394,7 +1395,7 @@ def _store_message(db: Session, escrow, *, sender_role: str, sender_user_id: int
 
 
 @public_router.post("/store/{slug}/messages")
-@limiter.limit("30/hour")
+@limiter.limit("20/hour")
 def buyer_send_message(
     request: Request,
     slug: str,
@@ -1406,6 +1407,7 @@ def buyer_send_message(
     owner = _lookup_store(db, slug)
     escrow = _escrow_by_code(db, owner.id, payload.code.strip())
     if not escrow:
+        logger.warning("Invalid delivery-code attempt (message) on store %s", slug)
         raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
     if not _messaging_open(escrow):
         raise HTTPException(status_code=409, detail="Messaging is closed for this order.")
@@ -1425,7 +1427,7 @@ def buyer_send_message(
 
 
 @public_router.post("/store/{slug}/messages/list")
-@limiter.limit("60/hour")
+@limiter.limit("20/hour")
 def buyer_list_messages(
     request: Request,
     slug: str,
@@ -1436,6 +1438,7 @@ def buyer_list_messages(
     owner = _lookup_store(db, slug)
     escrow = _escrow_by_code(db, owner.id, payload.code.strip())
     if not escrow:
+        logger.warning("Invalid delivery-code attempt (thread) on store %s", slug)
         raise HTTPException(status_code=404, detail="That delivery code isn't valid.")
     _mark_read(db, escrow.id, "seller")  # buyer has now seen the seller's messages
     return {"messages": [_msg_out(m, "buyer") for m in _thread(db, escrow.id)]}
