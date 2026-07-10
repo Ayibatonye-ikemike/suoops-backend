@@ -647,13 +647,10 @@ def _handle_flutterwave_invoice_payment(payload: dict, db: Session, signature: s
     if not reference or not reference.startswith("INVPAY-"):
         return {"status": "ignored", "reason": "not invoice payment"}
 
-    duplicate = _record_webhook(db, "flutterwave:invoice_payment", reference, signature)
-    if duplicate:
-        logger.info("Flutterwave invoice payment webhook duplicate for %s", reference)
-        return {"status": "duplicate", "reference": reference}
-
+    # Only a SUCCESSFUL charge is actionable. Do NOT record the dedup key (or write
+    # anything) for failed/other events — a customer can fail then retry & succeed
+    # on the SAME tx_ref, and we must still process the later successful event.
     if event_type != "charge.completed" or (data.get("status") or "").lower() != "successful":
-        db.commit()
         return {"status": "ignored", "event": event_type, "charge_status": data.get("status")}
 
     transaction = (
@@ -667,19 +664,17 @@ def _handle_flutterwave_invoice_payment(payload: dict, db: Session, signature: s
     )
     if not invoice_id:
         logger.error("FLW webhook missing invoice_id (ref=%s): %s", reference, meta)
-        db.commit()
         return {"status": "error", "message": "Missing invoice_id"}
 
     # Re-verify with Flutterwave before giving value, and confirm the amount matches
-    # what we expected (anti-tamper — FW explicitly recommends this).
+    # what we expected (anti-tamper — FW explicitly recommends this). Do this BEFORE
+    # recording the dedup key so a transient verify failure can be retried by FW.
     try:
         status = get_collection_provider_named("flutterwave").verify_charge(reference)
     except Exception:
         logger.exception("FLW webhook verify failed (ref=%s)", reference)
-        db.commit()
         return {"status": "error", "message": "verify failed"}
     if status.status != "successful":
-        db.commit()
         return {"status": "ignored", "reason": f"verify={status.status}"}
     if (
         transaction is not None
@@ -690,8 +685,15 @@ def _handle_flutterwave_invoice_payment(payload: dict, db: Session, signature: s
             "FLW webhook amount mismatch (ref=%s): verified %s < expected %s",
             reference, status.amount_kobo, transaction.amount,
         )
-        db.commit()
         return {"status": "error", "message": "amount mismatch"}
+
+    # Confirmed successful — record the dedup key and finalize atomically. A repeat
+    # of the same successful event is short-circuited here (and finalize is itself
+    # idempotent: it won't re-pay an already-paid invoice or re-activate a hold).
+    duplicate = _record_webhook(db, "flutterwave:invoice_payment", reference, signature)
+    if duplicate:
+        logger.info("Flutterwave invoice payment webhook duplicate for %s", reference)
+        return {"status": "duplicate", "reference": reference}
 
     return _finalize_invoice_payment(
         db,

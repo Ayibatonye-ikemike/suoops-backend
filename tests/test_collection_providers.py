@@ -131,3 +131,33 @@ def test_flutterwave_refund_raises_without_tx(monkeypatch):
     monkeypatch.setattr(fc.httpx, "Client", lambda *a, **k: _FakeClient(handler))
     with pytest.raises(CollectionError):
         fc.FlutterwaveCollectionProvider().refund(reference="INVPAY-9-Z", amount_kobo=1000, note="x")
+
+
+def test_flw_webhook_failed_event_does_not_burn_dedup_key():
+    """A failed charge.completed must NOT record the dedup key, so a later
+    successful event on the SAME tx_ref (retry) is still processed."""
+    from app.api.routes_webhooks import _handle_flutterwave_invoice_payment
+    from app.db.session import SessionLocal
+    from app.models.models import WebhookEvent
+
+    ref = "INVPAY-999-FAILTEST"
+    s = SessionLocal()
+    try:
+        res = _handle_flutterwave_invoice_payment(
+            {"event": "charge.completed", "data": {"tx_ref": ref, "status": "failed"}},
+            s,
+            "sig",
+        )
+        assert res["status"] == "ignored"
+        recorded = (
+            s.query(WebhookEvent)
+            .filter(
+                WebhookEvent.provider == "flutterwave:invoice_payment",
+                WebhookEvent.external_id == ref,
+            )
+            .count()
+        )
+        assert recorded == 0  # key not burned → retry can succeed
+    finally:
+        s.rollback()
+        s.close()
