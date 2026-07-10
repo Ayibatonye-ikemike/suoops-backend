@@ -161,6 +161,7 @@ def _held_escrow(seller_id):
         invoice_id=1,
         transfer_reference=None,
         released_at=None,
+        charge_reference=None,
     )
 
 
@@ -265,6 +266,65 @@ def test_release_does_not_resend_on_unknown_status(monkeypatch):
         assert es.release_escrow(s, escrow) is False
         assert fake.sent == ["ESCROWREL-555"]  # still only one transfer
         assert escrow.status == "held"
+    finally:
+        s.rollback()
+        s.close()
+
+
+def test_release_uses_collecting_rail(monkeypatch):
+    """Release must pay out through the SAME provider that collected the order —
+    a Flutterwave-collected order pays out from Flutterwave, not the default."""
+    import app.services.escrow_service as escrow_mod
+    import app.services.payouts as payouts
+    from app.db.session import SessionLocal
+    from app.models import models
+    from app.services.payouts.base import PayoutResult
+
+    captured = {}
+
+    def _named(name):
+        captured["name"] = name
+        prov = _fake_provider_class()()
+
+        def _confirming_transfer(db, *, seller, amount_kobo, reference, reason):
+            prov.sent.append(reference)
+            return PayoutResult(
+                ok=True, reference=reference, provider="flutterwave", status="successful"
+            )
+
+        prov.transfer = _confirming_transfer
+        return prov
+
+    monkeypatch.setattr(escrow_mod, "_collector_for_charge", lambda db, ref: "flutterwave")
+    monkeypatch.setattr(payouts, "get_payout_provider_named", _named)
+
+    s = SessionLocal()
+    try:
+        seller = models.User(
+            name="Rail Seller", phone="+2348000000009",
+            account_number="0123456789", bank_name="GTBank",
+        )
+        s.add(seller)
+        s.commit()
+        s.refresh(seller)
+
+        from types import SimpleNamespace
+
+        escrow = SimpleNamespace(
+            id=777,
+            status="held",
+            held_for_review=False,
+            payout_kobo=50000,
+            seller_id=seller.id,
+            invoice_id=1,
+            transfer_reference=None,
+            released_at=None,
+            charge_reference="INVPAY-RAIL-1",
+        )
+
+        assert es.release_escrow(s, escrow) is True
+        assert escrow.status == "released"
+        assert captured["name"] == "flutterwave"
     finally:
         s.rollback()
         s.close()

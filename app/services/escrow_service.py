@@ -321,9 +321,19 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
                 f"Payouts frozen for seller {seller.id} until {frozen.isoformat()}"
             )
 
-    from app.services.payouts import PayoutError, get_payout_provider
+    from app.services.payouts import (
+        PayoutError,
+        get_payout_provider,
+        get_payout_provider_named,
+    )
 
-    provider = get_payout_provider()
+    # Release through the SAME rail that COLLECTED the order — the held funds sit
+    # in that provider's balance (e.g. a Flutterwave-collected order must pay out
+    # from Flutterwave, not Paystack). Falls back to the configured default.
+    if escrow.charge_reference:
+        provider = get_payout_provider_named(_collector_for_charge(db, escrow.charge_reference))
+    else:
+        provider = get_payout_provider()
 
     def _finalize(ref: str) -> bool:
         escrow.status = "released"

@@ -4789,7 +4789,7 @@ def resolve_dispute(
         "admin.disputes.resolve",
         user_id=admin_user.id,
         escrow_id=escrow_id,
-        action=payload.action,
+        resolution=payload.action,
         suspend_seller=payload.suspend_seller,
         reason=payload.reason,
     )
