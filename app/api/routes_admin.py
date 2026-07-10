@@ -4510,7 +4510,7 @@ def review_flagged_user(
         "admin.fraud.review",
         user_id=admin_user.id,
         target_user_id=user_id,
-        action=payload.action,
+        review_action=payload.action,
         reason=payload.reason,
     )
     logger.info(
