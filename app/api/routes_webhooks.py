@@ -548,10 +548,53 @@ def _handle_paystack_invoice_pack(payload: dict, db: Session, signature: str | N
     return result
 
 
+def _finalize_invoice_payment(
+    db: Session,
+    *,
+    reference: str,
+    invoice_id,
+    transaction,
+    provider_label: str,
+) -> dict:
+    """Mark an invoice paid + activate its escrow hold. Shared by the Paystack and
+    Flutterwave collection webhooks (provider-agnostic)."""
+    from app.models.payment_models import PaymentStatus
+    from app.services.invoice_service import build_invoice_service
+
+    service = build_invoice_service(db)
+    try:
+        invoice, issuer = service.get_public_invoice(invoice_id)
+    except ValueError:
+        logger.error("%s webhook invoice %s not found (ref=%s)", provider_label, invoice_id, reference)
+        db.commit()
+        return {"status": "error", "message": "Invoice not found"}
+
+    if invoice.status != "paid":
+        try:
+            service.update_status(issuer.id, invoice_id, "paid", via_online=True)
+        except Exception:
+            logger.exception("%s: failed to mark invoice %s paid", provider_label, invoice_id)
+
+    # Activate the buyer-protection hold (pending -> held) for storefront orders.
+    # Idempotent + best-effort; never break payment confirmation.
+    try:
+        from app.services.escrow_service import activate_escrow_on_payment
+
+        activate_escrow_on_payment(db, invoice, charge_reference=reference)
+    except Exception:
+        logger.exception("%s: failed to activate escrow for invoice %s", provider_label, invoice_id)
+
+    if transaction:
+        transaction.status = PaymentStatus.SUCCESS
+
+    db.commit()
+    logger.info("✅ Invoice %s auto-confirmed paid via %s (ref=%s)", invoice_id, provider_label, reference)
+    return {"status": "success", "invoice_id": invoice_id, "reference": reference}
+
+
 def _handle_paystack_invoice_payment(payload: dict, db: Session, signature: str | None) -> dict:
     """Auto-confirm an invoice paid online via the issuer's Paystack subaccount."""
-    from app.models.payment_models import PaymentStatus, PaymentTransaction
-    from app.services.invoice_service import build_invoice_service
+    from app.models.payment_models import PaymentTransaction
 
     event_type = (payload.get("event") or "").lower()
     data = payload.get("data") or {}
@@ -583,35 +626,81 @@ def _handle_paystack_invoice_payment(payload: dict, db: Session, signature: str 
         db.commit()
         return {"status": "error", "message": "Missing invoice_id"}
 
-    service = build_invoice_service(db)
-    try:
-        invoice, issuer = service.get_public_invoice(invoice_id)
-    except ValueError:
-        logger.error("INVPAY webhook invoice %s not found (ref=%s)", invoice_id, reference)
+    return _finalize_invoice_payment(
+        db,
+        reference=reference,
+        invoice_id=invoice_id,
+        transaction=transaction,
+        provider_label="Paystack",
+    )
+
+
+def _handle_flutterwave_invoice_payment(payload: dict, db: Session, signature: str | None) -> dict:
+    """Auto-confirm a storefront/escrow invoice collected via Flutterwave."""
+    from app.models.payment_models import PaymentTransaction
+    from app.services.collections import get_collection_provider_named
+
+    event_type = (payload.get("event") or "").lower()
+    data = payload.get("data") or {}
+    reference = data.get("tx_ref")  # our INVPAY- reference
+
+    if not reference or not reference.startswith("INVPAY-"):
+        return {"status": "ignored", "reason": "not invoice payment"}
+
+    duplicate = _record_webhook(db, "flutterwave:invoice_payment", reference, signature)
+    if duplicate:
+        logger.info("Flutterwave invoice payment webhook duplicate for %s", reference)
+        return {"status": "duplicate", "reference": reference}
+
+    if event_type != "charge.completed" or (data.get("status") or "").lower() != "successful":
         db.commit()
-        return {"status": "error", "message": "Invoice not found"}
+        return {"status": "ignored", "event": event_type, "charge_status": data.get("status")}
 
-    if invoice.status != "paid":
-        try:
-            service.update_status(issuer.id, invoice_id, "paid", via_online=True)
-        except Exception:
-            logger.exception("INVPAY: failed to mark invoice %s paid", invoice_id)
+    transaction = (
+        db.query(PaymentTransaction)
+        .filter(PaymentTransaction.reference == reference)
+        .one_or_none()
+    )
+    meta = data.get("meta") or {}
+    invoice_id = meta.get("invoice_id") or (
+        (transaction.payment_metadata or {}).get("invoice_id") if transaction else None
+    )
+    if not invoice_id:
+        logger.error("FLW webhook missing invoice_id (ref=%s): %s", reference, meta)
+        db.commit()
+        return {"status": "error", "message": "Missing invoice_id"}
 
-    # Activate the buyer-protection hold (pending -> held) for storefront orders.
-    # Idempotent + best-effort; never break payment confirmation.
+    # Re-verify with Flutterwave before giving value, and confirm the amount matches
+    # what we expected (anti-tamper — FW explicitly recommends this).
     try:
-        from app.services.escrow_service import activate_escrow_on_payment
-
-        activate_escrow_on_payment(db, invoice, charge_reference=reference)
+        status = get_collection_provider_named("flutterwave").verify_charge(reference)
     except Exception:
-        logger.exception("INVPAY: failed to activate escrow for invoice %s", invoice_id)
+        logger.exception("FLW webhook verify failed (ref=%s)", reference)
+        db.commit()
+        return {"status": "error", "message": "verify failed"}
+    if status.status != "successful":
+        db.commit()
+        return {"status": "ignored", "reason": f"verify={status.status}"}
+    if (
+        transaction is not None
+        and status.amount_kobo is not None
+        and int(status.amount_kobo) < int(transaction.amount)
+    ):
+        logger.error(
+            "FLW webhook amount mismatch (ref=%s): verified %s < expected %s",
+            reference, status.amount_kobo, transaction.amount,
+        )
+        db.commit()
+        return {"status": "error", "message": "amount mismatch"}
 
-    if transaction:
-        transaction.status = PaymentStatus.SUCCESS
+    return _finalize_invoice_payment(
+        db,
+        reference=reference,
+        invoice_id=invoice_id,
+        transaction=transaction,
+        provider_label="Flutterwave",
+    )
 
-    db.commit()
-    logger.info("✅ Invoice %s auto-confirmed paid via Paystack (ref=%s)", invoice_id, reference)
-    return {"status": "success", "invoice_id": invoice_id, "reference": reference}
 
 
 @router.post("/paystack")
@@ -667,3 +756,40 @@ async def paystack_webhook(
     else:
         logger.info("Paystack webhook event %s not handled", event_type)
         return {"status": "ignored", "event": event_type}
+
+
+@router.post("/flutterwave")
+@limiter.limit(RATE_LIMITS["webhook_paystack"])
+async def flutterwave_webhook(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Flutterwave collection webhook — verified via the `verif-hash` header
+    (the secret hash set in the FW dashboard, read from FLUTTERWAVE_WEBHOOK_HASH).
+    Flutterwave's webhook source IPs are dynamic, so signature is the trust
+    anchor (not IP allow-listing)."""
+    raw_body = await request.body()
+    expected = settings.FLUTTERWAVE_WEBHOOK_HASH
+    if not expected:
+        logger.error("Flutterwave webhook hit but FLUTTERWAVE_WEBHOOK_HASH is unset")
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+
+    signature = request.headers.get("verif-hash")
+    if not signature or not hmac.compare_digest(signature, expected):
+        logger.warning("Flutterwave webhook signature verification failed")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8") or "{}")
+    except json.JSONDecodeError as exc:
+        logger.error("Invalid Flutterwave webhook payload: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid payload") from exc
+
+    event_type = payload.get("event")
+    data = payload.get("data") or {}
+    reference = data.get("tx_ref") or ""
+
+    if reference.startswith("INVPAY-"):
+        return _handle_flutterwave_invoice_payment(payload, db, signature)
+    logger.info("Flutterwave webhook event %s (ref=%s) not handled", event_type, reference)
+    return {"status": "ignored", "event": event_type}

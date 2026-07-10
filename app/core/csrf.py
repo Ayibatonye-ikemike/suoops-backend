@@ -38,6 +38,7 @@ EXEMPT_PATHS = {
     "/auth/",              # Auth endpoints use OTP-based flow, not session
     "/webhooks/whatsapp",  # External webhook — verified via X-Hub-Signature-256
     "/webhooks/paystack",  # External webhook — verified via HMAC signature
+    "/webhooks/flutterwave",  # External webhook — verified via verif-hash header
     "/public/invoices/",   # Public read-only endpoints
     "/public/store/",      # Public storefront ordering (unauthenticated customers, no session)
     "/public/feedback",    # Public feedback form (token-authenticated, no session)

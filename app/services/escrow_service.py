@@ -383,13 +383,29 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
 
 # ── Refund (return money to the buyer) ─────────────────────────────────
 
-def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason: str = "dispute") -> bool:
-    """Refund the buyer for a held/disputed order via the Paystack Refund API.
+def _collector_for_charge(db: Session, charge_reference: str) -> str:
+    """Which provider collected this charge (recorded in the payment metadata).
+    Refunds MUST go back through the collecting rail. Defaults to Paystack."""
+    from app.models.payment_models import PaymentTransaction
 
-    The full gross amount is refunded against the original charge (funds are
-    still in the SuoOps balance, never transferred to the seller). Idempotent:
-    once ``refunded`` it is a no-op. Raises EscrowError on a genuine failure so
-    the caller can retry (row stays in its current state).
+    txn = (
+        db.query(PaymentTransaction)
+        .filter(PaymentTransaction.reference == charge_reference)
+        .one_or_none()
+    )
+    if txn and txn.payment_metadata:
+        return txn.payment_metadata.get("collector") or "paystack"
+    return "paystack"
+
+
+def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason: str = "dispute") -> bool:
+    """Refund the buyer for a held/disputed order via the COLLECTING provider.
+
+    A refund reverses the exact original charge, so it routes back through the
+    provider that collected the order (Paystack or Flutterwave). The full gross
+    amount is refunded (funds were held, never transferred to the seller).
+    Idempotent: once ``refunded`` it is a no-op. Raises EscrowError on a genuine
+    failure so the caller can retry (row stays in its current state).
     """
     if escrow.status == "refunded":
         return True
@@ -399,16 +415,17 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
     if not escrow.charge_reference:
         raise EscrowError(f"Escrow {escrow.id} has no charge reference to refund")
 
-    from app.services.payouts import PayoutError
-    from app.services.payouts.paystack import paystack_refund
+    from app.services.collections import CollectionError, get_collection_provider_named
+
+    collector = get_collection_provider_named(_collector_for_charge(db, escrow.charge_reference))
 
     try:
-        data = paystack_refund(
-            charge_reference=escrow.charge_reference,
+        data = collector.refund(
+            reference=escrow.charge_reference,
             amount_kobo=int(escrow.gross_kobo),
             note=f"Storefront buyer protection ({reason}) — invoice {escrow.invoice_id}",
         )
-    except PayoutError as exc:  # noqa: BLE001 — network/timeout → retry later
+    except CollectionError as exc:  # network/timeout / provider error → retry later
         raise EscrowError(str(exc)) from exc
 
     refund = data.get("data") or {}
@@ -417,8 +434,8 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
     escrow.refund_reference = str(refund.get("id") or escrow.charge_reference)[:100]
     db.commit()
     logger.info(
-        "Escrow %s refunded — %s kobo returned to buyer (charge=%s)",
-        escrow.id, escrow.gross_kobo, escrow.charge_reference,
+        "Escrow %s refunded via %s — %s kobo returned to buyer (charge=%s)",
+        escrow.id, collector.name, escrow.gross_kobo, escrow.charge_reference,
     )
     return True
 

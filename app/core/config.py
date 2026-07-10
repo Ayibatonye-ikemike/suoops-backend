@@ -114,10 +114,21 @@ class BaseAppSettings(BaseSettings):
     # or "flutterwave". Refunds always use the collector (Paystack). Switch this
     # to move payouts to another rail without touching the escrow logic.
     ESCROW_PAYOUT_PROVIDER: str = "paystack"
+    # Which provider COLLECTS storefront/escrow payments (the held funds):
+    # "paystack" (default, collects to the SuoOps Paystack balance) or
+    # "flutterwave" (collects to the FW payout balance so funds can be held there).
+    # Only the escrow-hold path is pluggable — regular invoice payments always
+    # settle through the issuer's Paystack subaccount. Refunds follow the
+    # provider that collected each order.
+    ESCROW_COLLECTOR_PROVIDER: str = "paystack"
     # Flutterwave (alternative payout rail). Off unless the secret is set AND
     # ESCROW_PAYOUT_PROVIDER="flutterwave".
     FLUTTERWAVE_SECRET: str | None = None
     FLUTTERWAVE_BASE: str = "https://api.flutterwave.com"
+    # Secret hash configured in the Flutterwave dashboard (Settings → Webhooks).
+    # Flutterwave echoes it in the `verif-hash` header; we reject any webhook whose
+    # header doesn't match. Required for the Flutterwave collection webhook.
+    FLUTTERWAVE_WEBHOOK_HASH: str | None = None
     JWT_SECRET: str = "change_me"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SSL_CERT_REQS: str | None = "required"

@@ -106,6 +106,48 @@ async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False
     db.add(transaction)
     db.commit()
 
+    # Escrow-hold collections are pluggable (Paystack default, Flutterwave
+    # optional): collect the FULL amount to the platform/payout balance so it can
+    # be held and released later. The collector is recorded on the transaction so
+    # a refund follows the same rail.
+    if hold:
+        from app.services.collections import CollectionError, get_collection_provider
+
+        collector = get_collection_provider()
+        meta = dict(transaction.payment_metadata or {})
+        meta["collector"] = collector.name
+        transaction.payment_metadata = meta
+        db.commit()
+        try:
+            charge = collector.initialize_hold_charge(
+                amount_kobo=int(amount * 100),
+                reference=reference,
+                customer_email=customer_email,
+                customer_phone=customer.phone if customer else None,
+                customer_name=getattr(customer, "name", None) if customer else None,
+                callback_url=f"{settings.FRONTEND_URL}/pay/{invoice.invoice_id}?ref={reference}",
+                narration=f"Storefront order — invoice {invoice.invoice_id}",
+                metadata={
+                    "payment_type": "invoice_payment",
+                    "invoice_id": invoice.invoice_id,
+                    "issuer_id": issuer.id,
+                    "escrow_hold": True,
+                    "collector": collector.name,
+                },
+            )
+        except CollectionError as exc:
+            transaction.status = PaymentStatus.FAILED
+            db.commit()
+            logger.error("Escrow collection init error (ref=%s): %s", reference, exc)
+            raise PaymentInitError("Payment gateway error. Please try again.", 502) from exc
+        return {
+            "authorization_url": charge.authorization_url,
+            "reference": reference,
+            "amount": float(amount),
+        }
+
+    # Normal (non-hold) path: split to the seller's Paystack subaccount — they bear
+    # the Paystack fee, SuoOps keeps the commission via transaction_charge.
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             init_payload = {
@@ -119,19 +161,10 @@ async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False
                     "issuer_id": issuer.id,
                     "escrow_hold": hold,
                 },
+                "subaccount": issuer.paystack_subaccount_code,
+                "bearer": "subaccount",
+                "transaction_charge": commission_kobo,
             }
-            if not hold:
-                # Normal path: split to the seller's subaccount, they bear the
-                # Paystack fee, SuoOps keeps the commission via transaction_charge.
-                init_payload.update(
-                    {
-                        "subaccount": issuer.paystack_subaccount_code,
-                        "bearer": "subaccount",
-                        "transaction_charge": commission_kobo,
-                    }
-                )
-            # Held path: no subaccount → full amount collected to SuoOps balance;
-            # the seller is paid out (minus commission) when the hold releases.
             resp = await client.post(
                 "https://api.paystack.co/transaction/initialize",
                 headers={
