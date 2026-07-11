@@ -215,6 +215,16 @@ def create_shipment(
     }
 
 
+def cancel_shipment(order_id: str) -> bool:
+    """Cancel a booked shipment (e.g. on a refund before delivery) to reclaim the
+    delivery fee to the wallet. Returns True on success, False otherwise. Never
+    raises — a failed cancel just means we couldn't reclaim the fee."""
+    if not order_id:
+        return False
+    data = _post("/shipping/labels/cancel", {"order_id": order_id})
+    return data is not None
+
+
 def _to_option(c: dict[str, Any]) -> DeliveryOption | None:
     try:
         return DeliveryOption(

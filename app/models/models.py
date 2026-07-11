@@ -820,6 +820,16 @@ class StorefrontOrderEscrow(Base):
         String(60), nullable=True, index=True
     )
     shipbubble_tracking_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # When the courier shipment was booked, and when the courier reported the
+    # parcel DELIVERED (from the Shipbubble webhook). For courier orders, payout
+    # is gated on delivery + a post-delivery inspection window, not on the flat
+    # payment-time window.
+    delivery_booked_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    courier_delivered_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

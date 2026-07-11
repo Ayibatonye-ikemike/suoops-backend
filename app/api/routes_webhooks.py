@@ -939,8 +939,32 @@ def _apply_shipbubble_update(
         escrow.dispatch_tracking = str(tracking_code)[:120]
     if courier.get("name") and not escrow.dispatch_carrier:
         escrow.dispatch_carrier = str(courier["name"])[:80]
-    # First movement (picked up / in transit) → record the dispatch timestamp.
-    if (order_status or "").lower() in {"picked_up", "in_transit"} and not escrow.seller_dispatched_at:
-        import datetime as _dt
+    import datetime as _dt
 
+    status = (order_status or "").lower()
+    # First movement (picked up / in transit) → record the dispatch timestamp.
+    if status in {"picked_up", "in_transit"} and not escrow.seller_dispatched_at:
         escrow.seller_dispatched_at = _dt.datetime.now(_dt.timezone.utc)
+    # Delivered → start the post-delivery inspection window: the payout can now
+    # auto-release only after the buyer has had time to inspect/dispute.
+    if status == "completed" and escrow.courier_delivered_at is None:
+        from app.core.config import settings
+
+        now = _dt.datetime.now(_dt.timezone.utc)
+        escrow.courier_delivered_at = now
+        if escrow.status == "held":
+            escrow.release_due_at = now + _dt.timedelta(
+                hours=settings.ESCROW_POST_DELIVERY_INSPECTION_HOURS
+            )
+        # Let the buyer know it's delivered so they can confirm or report a problem.
+        try:
+            from app.api.routes_storefront import _store_system_message
+
+            _store_system_message(
+                db,
+                escrow,
+                "✅ Your order was delivered. If anything's wrong, tap 'Report a "
+                "problem' within the next day — otherwise it completes automatically.",
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to post delivery notice for escrow %s", escrow.id)

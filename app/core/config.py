@@ -106,6 +106,13 @@ class BaseAppSettings(BaseSettings):
     # auto-release never needs the code).
     ESCROW_CODE_MAX_FAILURES: int = 30
     ESCROW_CODE_FAILURE_WINDOW_SECONDS: int = 3600
+    # Courier-delivery-aware release: for orders shipped by a booked courier, the
+    # payout is NOT auto-released until the courier reports delivery, then the
+    # buyer gets this many hours to inspect/dispute. If the courier hasn't
+    # delivered within the SLA (working days), the order is flagged for admin
+    # review instead of auto-releasing to the seller.
+    ESCROW_POST_DELIVERY_INSPECTION_HOURS: int = 24
+    ESCROW_MAX_DELIVERY_DAYS: int = 10
 
     # ── Shipbubble courier integration (buyer pays delivery at checkout) ──
     # Master switch: keep OFF until a Shipbubble account, API key and a funded

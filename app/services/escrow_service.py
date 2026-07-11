@@ -619,7 +619,8 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
     try:
         data = collector.refund(
             reference=escrow.charge_reference,
-            amount_kobo=int(escrow.gross_kobo),
+            # Make the buyer whole: refund goods PLUS the delivery fee they paid.
+            amount_kobo=int(escrow.gross_kobo) + int(getattr(escrow, "delivery_fee_kobo", 0) or 0),
             note=f"Storefront buyer protection ({reason}) — invoice {escrow.invoice_id}",
         )
     except CollectionError as exc:  # network/timeout / provider error → retry later
@@ -630,11 +631,58 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
     escrow.refunded_at = dt.datetime.now(dt.timezone.utc)
     escrow.refund_reference = str(refund.get("id") or escrow.charge_reference)[:100]
     db.commit()
+    # The buyer's delivery fee was refunded too. Recover it: cancel the courier
+    # booking to reclaim the fee if it hasn't been delivered; if it was already
+    # delivered (seller's goods were the problem), the seller absorbs the cost.
+    try:
+        _settle_refunded_delivery_fee(db, escrow)
+    except Exception:  # noqa: BLE001 — never let fee recovery undo the refund
+        logger.exception("Delivery-fee settlement failed for escrow %s", getattr(escrow, "id", None))
     logger.info(
         "Escrow %s refunded via %s — %s kobo returned to buyer (charge=%s)",
         escrow.id, collector.name, escrow.gross_kobo, escrow.charge_reference,
     )
     return True
+
+
+def _settle_refunded_delivery_fee(db: Session, escrow: "models.StorefrontOrderEscrow") -> None:
+    """Recover the refunded delivery fee. Delivered → the seller absorbs it (debit
+    their wallet). Not yet delivered → cancel the Shipbubble shipment to reclaim
+    the fee. If neither is possible, log for manual review."""
+    fee = int(getattr(escrow, "delivery_fee_kobo", 0) or 0)
+    if fee <= 0:
+        return
+    delivered = getattr(escrow, "courier_delivered_at", None) is not None
+    order_id = getattr(escrow, "shipbubble_order_id", None)
+    if delivered:
+        seller = (
+            db.query(models.User)
+            .filter(models.User.id == escrow.seller_id)
+            .first()
+        )
+        if seller is not None:
+            seller.wallet_balance_kobo = (
+                int(getattr(seller, "wallet_balance_kobo", 0) or 0) - fee
+            )
+            db.commit()
+            logger.info(
+                "Seller %s absorbed delivery fee %s kobo (delivered order refunded, escrow %s)",
+                seller.id, fee, getattr(escrow, "id", None),
+            )
+        return
+    if order_id:
+        from app.services.shipping import shipbubble
+
+        if shipbubble.cancel_shipment(order_id):
+            logger.info(
+                "Reclaimed delivery fee via Shipbubble cancel (order %s, escrow %s)",
+                order_id, getattr(escrow, "id", None),
+            )
+            return
+    logger.warning(
+        "Delivery fee %s kobo not reclaimed for escrow %s — needs manual review",
+        fee, getattr(escrow, "id", None),
+    )
 
 
 # ── Payout security (account-takeover protection) ──────────────────────

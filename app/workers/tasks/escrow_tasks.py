@@ -45,6 +45,14 @@ def release_due_escrow_orders(self: Task) -> dict[str, Any]:
                 StorefrontOrderEscrow.held_for_review.is_(False),
                 # Skip sellers whose payouts are frozen (post bank-change cooldown).
                 (User.payout_frozen_until.is_(None)) | (User.payout_frozen_until <= now),
+                # Delivery-aware: a booked courier order must be DELIVERED (or the
+                # buyer confirmed) before payout — never pay for goods still in
+                # transit just because the payment-time window elapsed.
+                or_(
+                    StorefrontOrderEscrow.shipbubble_order_id.is_(None),
+                    StorefrontOrderEscrow.courier_delivered_at.isnot(None),
+                    StorefrontOrderEscrow.confirmed_at.isnot(None),
+                ),
                 or_(
                     # Cleared (protection window elapsed OR buyer confirmed early)
                     # AND settled (T+1 cadence) → pay the seller out. The settle_at
@@ -79,6 +87,30 @@ def release_due_escrow_orders(self: Task) -> dict[str, Any]:
                 failed += 1
                 db.rollback()
                 logger.warning("Escrow release failed for %s: %s", escrow.id, exc)
+
+        # Courier orders that never reported delivery within the SLA (their
+        # release_due_at cap) → flag for admin review (lost parcel / courier
+        # failure) instead of leaving them held forever or paying the seller.
+        stuck = (
+            db.query(StorefrontOrderEscrow)
+            .filter(
+                StorefrontOrderEscrow.status == "held",
+                StorefrontOrderEscrow.held_for_review.is_(False),
+                StorefrontOrderEscrow.shipbubble_order_id.isnot(None),
+                StorefrontOrderEscrow.courier_delivered_at.is_(None),
+                StorefrontOrderEscrow.confirmed_at.is_(None),
+                StorefrontOrderEscrow.release_due_at.isnot(None),
+                StorefrontOrderEscrow.release_due_at <= now,
+            )
+            .limit(200)
+            .all()
+        )
+        for e in stuck:
+            e.held_for_review = True
+            e.review_reason = "courier not delivered within SLA"
+        if stuck:
+            db.commit()
+            logger.warning("Flagged %d undelivered courier orders for review", len(stuck))
 
     result = {"checked": released + failed, "released": released, "failed": failed}
     logger.info("Escrow release run: %s", result)

@@ -641,6 +641,16 @@ async def mark_order_sent(
                 escrow.shipbubble_tracking_url = booking.get("tracking_url") or None
                 if booking.get("courier") and not escrow.dispatch_carrier:
                     escrow.dispatch_carrier = str(booking["courier"])[:80]
+                # Delivery-aware payout: don't auto-release until the courier
+                # reports delivery. Cap the hold at the delivery SLA so a lost
+                # parcel gets flagged for review instead of hanging forever.
+                escrow.delivery_booked_at = dt.datetime.now(dt.timezone.utc)
+                from app.services.escrow_service import add_business_days
+
+                escrow.release_due_at = add_business_days(
+                    dt.datetime.now(dt.timezone.utc),
+                    settings.ESCROW_MAX_DELIVERY_DAYS,
+                )
                 logger.info(
                     "Booked Shipbubble shipment %s for order %s",
                     booking["order_id"], invoice_id,
