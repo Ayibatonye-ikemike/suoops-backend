@@ -81,6 +81,63 @@ def _post(path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _get(path: str) -> Any | None:
+    """GET helper — returns the ``data`` payload on success, else None. Never raises."""
+    if not enabled():
+        return None
+    try:
+        with _client() as client:
+            resp = client.get(path)
+        body = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Shipbubble GET %s failed: %s", path, exc)
+        return None
+    if isinstance(body, dict) and body.get("status") == "success":
+        return body.get("data")
+    return None
+
+
+# Cache the account's package categories so we resolve a default id once, not per
+# quote. Category ids are account-specific, so we can't hardcode one.
+_CATEGORY_CACHE: dict[str, Any] = {"id": None, "fetched": False}
+# Prefer a broad, commonly-accepted category when picking a default.
+_CATEGORY_PREFERENCE = (
+    "others",
+    "general",
+    "merchandise",
+    "package",
+    "accessories",
+    "fashion",
+)
+
+
+def default_category_id() -> int | None:
+    """The package ``category_id`` to use for rate quotes. Uses the configured id
+    if set, otherwise fetches the account's categories once and picks a sensible
+    general-purpose one (cached)."""
+    if settings.SHIPBUBBLE_DEFAULT_CATEGORY_ID:
+        return settings.SHIPBUBBLE_DEFAULT_CATEGORY_ID
+    if _CATEGORY_CACHE["fetched"]:
+        return _CATEGORY_CACHE["id"]
+    _CATEGORY_CACHE["fetched"] = True
+    cats = _get("/shipping/labels/categories") or []
+    chosen: int | None = None
+    for pref in _CATEGORY_PREFERENCE:
+        for c in cats:
+            if pref in str(c.get("category", "")).lower():
+                chosen = int(c["category_id"])
+                break
+        if chosen:
+            break
+    if chosen is None and cats:  # fall back to the first available category
+        try:
+            chosen = int(cats[0]["category_id"])
+        except Exception:  # noqa: BLE001
+            chosen = None
+    _CATEGORY_CACHE["id"] = chosen
+    return chosen
+
+
 def validate_address(
     *,
     name: str,
@@ -120,7 +177,7 @@ def fetch_rates(
         # NB: Shipbubble spells the field "reciever_address_code".
         "reciever_address_code": receiver_address_code,
         "pickup_date": pickup_date or dt.date.today().isoformat(),
-        "category_id": category_id or settings.SHIPBUBBLE_DEFAULT_CATEGORY_ID,
+        "category_id": category_id or default_category_id(),
         "package_items": package_items,
         "package_dimension": package_dimension or {"length": 20, "width": 20, "height": 10},
     }
