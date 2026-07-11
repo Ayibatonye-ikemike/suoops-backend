@@ -106,6 +106,17 @@ class BaseAppSettings(BaseSettings):
     # auto-release never needs the code).
     ESCROW_CODE_MAX_FAILURES: int = 30
     ESCROW_CODE_FAILURE_WINDOW_SECONDS: int = 3600
+
+    # ── Shipbubble courier integration (buyer pays delivery at checkout) ──
+    # Master switch: keep OFF until a Shipbubble account, API key and a funded
+    # Naira shipping wallet exist. While off, delivery-quote endpoints return no
+    # options and nothing is booked — the manual dispatch flow is unaffected.
+    SHIPBUBBLE_ENABLED: bool = False
+    SHIPBUBBLE_API_KEY: str | None = None  # "sb_sandbox_…" (test) or "sb_prod_…" (live)
+    SHIPBUBBLE_BASE_URL: str = "https://api.shipbubble.com/v1"
+    # Default package category id (from Shipbubble's Package Categories API) used
+    # for rate quotes when a product doesn't specify one.
+    SHIPBUBBLE_DEFAULT_CATEGORY_ID: int | None = None
     # Trusted sellers skip the hold (normal settlement). ALL must hold: not
     # flagged/suspended AND zero unresolved disputes AND the thresholds below.
     ESCROW_TRUST_MIN_PAID_INVOICES: int = 100

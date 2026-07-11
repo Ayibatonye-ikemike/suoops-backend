@@ -895,6 +895,95 @@ def list_public_stores(
     }
 
 
+@public_router.post("/store/{slug}/delivery-quote")
+@limiter.limit("30/minute")
+async def store_delivery_quote(
+    request: Request,
+    slug: str,
+    payload: StoreOrderIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Public: live courier delivery options for a prospective order (buyer pays
+    delivery). Returns ``{"enabled": False, "options": []}`` unless the Shipbubble
+    integration is switched on with a key + funded wallet — so the manual dispatch
+    flow is the default and nothing here can break checkout.
+
+    NOTE: the enabled path talks to Shipbubble's sandbox/live API and must be
+    verified against a real key + wallet before going live.
+    """
+    from app.services.shipping import shipbubble
+
+    if not shipbubble.enabled():
+        return {"enabled": False, "options": []}
+
+    owner = (
+        db.query(models.User)
+        .filter(
+            models.User.storefront_slug == slug.lower(),
+            models.User.storefront_enabled.is_(True),
+            models.User.store_status == "active",
+        )
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=404, detail="Storefront not found")
+
+    seller_addr = ", ".join(
+        p for p in [owner.storefront_city, owner.storefront_state, "Nigeria"] if p
+    )
+    sender_code = shipbubble.validate_address(
+        name=owner.business_name or "Store",
+        email=owner.email or "store@suoops.com",
+        phone=owner.phone or "",
+        address=seller_addr or "Nigeria",
+        latitude=owner.storefront_lat,
+        longitude=owner.storefront_lng,
+    )
+    buyer_digits = "".join(ch for ch in payload.customer_phone if ch.isdigit())
+    receiver_code = shipbubble.validate_address(
+        name=payload.customer_name,
+        email=f"{buyer_digits or 'buyer'}@buyer.suoops.com",
+        phone=payload.customer_phone,
+        address=(payload.delivery_note or "customer location"),
+        latitude=payload.customer_lat,
+        longitude=payload.customer_lng,
+    )
+    if not (sender_code and receiver_code):
+        return {"enabled": True, "options": []}
+
+    prods = {
+        p.id: p
+        for p in db.query(Product)
+        .filter(Product.id.in_([it.product_id for it in payload.items]))
+        .all()
+    }
+    package_items = []
+    for it in payload.items:
+        p = prods.get(it.product_id)
+        package_items.append(
+            {
+                "name": (getattr(p, "name", None) or "Item")[:60],
+                "description": "order item",
+                "unit_weight": str(getattr(p, "weight_kg", None) or 0.5),
+                "unit_amount": str(int(getattr(p, "price", 0) or 0)),
+                "quantity": str(it.quantity),
+            }
+        )
+
+    rates = shipbubble.fetch_rates(
+        sender_address_code=sender_code,
+        receiver_address_code=receiver_code,
+        package_items=package_items,
+    )
+    if not rates:
+        return {"enabled": True, "options": []}
+    return {
+        "enabled": True,
+        "request_token": rates.get("request_token"),
+        "options": [o.as_dict() for o in rates.get("options", [])],
+    }
+
+
 @public_router.post("/store/{slug}/order")
 @limiter.limit("20/hour")
 async def create_store_order(
