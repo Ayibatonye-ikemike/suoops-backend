@@ -853,3 +853,94 @@ async def flutterwave_webhook(
         return _handle_flutterwave_invoice_payment(payload, db, None)
     logger.info("Flutterwave webhook event %s (ref=%s) not handled", event_type, reference)
     return {"status": "ignored", "event": event_type}
+
+
+@router.post("/shipbubble")
+@limiter.limit(RATE_LIMITS["webhook_paystack"])
+async def shipbubble_webhook(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Shipbubble courier webhook — shipment status/tracking updates.
+
+    Verified via the ``x-ship-signature`` header (HMAC-SHA512 of the raw body,
+    keyed by our Shipbubble secret). Register this URL in the Shipbubble
+    dashboard: ``https://api.suoops.com/webhooks/shipbubble``. Must return 200
+    within 15s or Shipbubble retries. Fail-soft: a body we can't correlate is
+    still acknowledged so the endpoint isn't marked failed.
+    """
+    raw_body = await request.body()
+    secret = settings.SHIPBUBBLE_WEBHOOK_SECRET or settings.SHIPBUBBLE_API_KEY
+    if not secret:
+        logger.error("Shipbubble webhook hit but no secret/API key configured")
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+
+    signature = request.headers.get("x-ship-signature")
+    expected = hmac.new(secret.encode(), raw_body, hashlib.sha512).hexdigest()
+    if not signature or not hmac.compare_digest(signature, expected):
+        logger.warning("Shipbubble webhook signature verification failed")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8") or "{}")
+    except json.JSONDecodeError as exc:
+        logger.error("Invalid Shipbubble webhook payload: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid payload") from exc
+
+    event = (payload.get("event") or "").lower()
+    order_id = payload.get("order_id")
+    order_status = payload.get("status")
+    courier = payload.get("courier") or {}
+
+    # Dedup / audit — (order_id, status, event) is a stable idempotency key.
+    if order_id:
+        if _record_webhook(
+            db, "shipbubble", f"{order_id}:{order_status}:{event}", signature
+        ):
+            logger.info("Shipbubble webhook duplicate for %s (%s)", order_id, order_status)
+            return {"status": "duplicate", "order_id": order_id}
+
+    # Best-effort: reflect the courier update onto the matching storefront order.
+    # (Correlation by shipbubble_order_id is wired with the booking step; until
+    # then this safely no-ops and we just acknowledge + log.)
+    try:
+        _apply_shipbubble_update(db, order_id, order_status, courier, payload)
+    except Exception:  # noqa: BLE001 — never fail the webhook on a bookkeeping error
+        logger.exception("Shipbubble webhook apply failed (order_id=%s)", order_id)
+
+    db.commit()
+    logger.info(
+        "Shipbubble webhook: event=%s order=%s status=%s tracking=%s",
+        event, order_id, order_status, courier.get("tracking_code"),
+    )
+    return {"status": "ok", "order_id": order_id}
+
+
+def _apply_shipbubble_update(
+    db: Session,
+    order_id: str | None,
+    order_status: str | None,
+    courier: dict,
+    payload: dict,
+) -> None:
+    """Reflect a Shipbubble shipment update onto the storefront order it belongs
+    to, matched by ``shipbubble_order_id``. No-op until booking stores that id."""
+    if not order_id or not hasattr(models.StorefrontOrderEscrow, "shipbubble_order_id"):
+        return
+    escrow = (
+        db.query(models.StorefrontOrderEscrow)
+        .filter(models.StorefrontOrderEscrow.shipbubble_order_id == order_id)
+        .first()
+    )
+    if not escrow:
+        return
+    tracking_code = courier.get("tracking_code")
+    if tracking_code and not escrow.dispatch_tracking:
+        escrow.dispatch_tracking = str(tracking_code)[:120]
+    if courier.get("name") and not escrow.dispatch_carrier:
+        escrow.dispatch_carrier = str(courier["name"])[:80]
+    # First movement (picked up / in transit) → record the dispatch timestamp.
+    if (order_status or "").lower() in {"picked_up", "in_transit"} and not escrow.seller_dispatched_at:
+        import datetime as _dt
+
+        escrow.seller_dispatched_at = _dt.datetime.now(_dt.timezone.utc)

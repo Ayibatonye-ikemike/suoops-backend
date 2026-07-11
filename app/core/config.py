@@ -117,6 +117,10 @@ class BaseAppSettings(BaseSettings):
     # Default package category id (from Shipbubble's Package Categories API) used
     # for rate quotes when a product doesn't specify one.
     SHIPBUBBLE_DEFAULT_CATEGORY_ID: int | None = None
+    # Secret used to verify the `x-ship-signature` HMAC-SHA512 on Shipbubble
+    # webhooks. If unset we fall back to the API key (Shipbubble signs with your
+    # secret key). Webhook URL to register: https://api.suoops.com/webhooks/shipbubble
+    SHIPBUBBLE_WEBHOOK_SECRET: str | None = None
     # Trusted sellers skip the hold (normal settlement). ALL must hold: not
     # flagged/suspended AND zero unresolved disputes AND the thresholds below.
     ESCROW_TRUST_MIN_PAID_INVOICES: int = 100
