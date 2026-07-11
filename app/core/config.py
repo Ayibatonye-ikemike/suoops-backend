@@ -128,6 +128,10 @@ class BaseAppSettings(BaseSettings):
     # Package category id — usually leave unset; the code auto-resolves one from
     # the account's Package Categories API (ids are account-specific).
     SHIPBUBBLE_DEFAULT_CATEGORY_ID: int | None = None
+    # Anti-abuse for the public delivery-quote endpoint (each miss makes several
+    # paid Shipbubble calls): cache identical quotes briefly + cap per store/day.
+    SHIPBUBBLE_QUOTE_CACHE_SECONDS: int = 180
+    SHIPBUBBLE_QUOTE_DAILY_CAP_PER_STORE: int = 500
     # Secret used to verify the `x-ship-signature` HMAC-SHA512 on Shipbubble
     # webhooks. If unset we fall back to the API key (Shipbubble signs with your
     # secret key). Webhook URL to register: https://api.suoops.com/webhooks/shipbubble

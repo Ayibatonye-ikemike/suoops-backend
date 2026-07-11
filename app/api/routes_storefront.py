@@ -944,7 +944,7 @@ def list_public_stores(
 
 
 @public_router.post("/store/{slug}/delivery-quote")
-@limiter.limit("30/minute")
+@limiter.limit("10/minute")
 async def store_delivery_quote(
     request: Request,
     slug: str,
@@ -956,18 +956,30 @@ async def store_delivery_quote(
     integration is switched on with a key + funded wallet — so the manual dispatch
     flow is the default and nothing here can break checkout.
 
-    NOTE: the enabled path talks to Shipbubble's sandbox/live API and must be
-    verified against a real key + wallet before going live.
+    Cost-abuse hardened: identical quotes are cached briefly and per-store fresh
+    fetches are capped daily, so this public endpoint can't be used to burn the
+    Shipbubble quota (or as a free address-validation oracle).
     """
-    from app.services.shipping import shipbubble
+    from app.services.shipping import quote_cache, shipbubble
 
     if not shipbubble.enabled():
         return {"enabled": False, "options": []}
 
+    slug_l = slug.lower()
+    cart_sig = ",".join(
+        sorted(f"{it.product_id}:{it.quantity}" for it in payload.items)
+    )
+    # 1) Serve an identical recent quote from cache (no Shipbubble calls).
+    cached = quote_cache.get_cached(
+        slug_l, payload.customer_lat, payload.customer_lng, cart_sig
+    )
+    if cached is not None:
+        return cached
+
     owner = (
         db.query(models.User)
         .filter(
-            models.User.storefront_slug == slug.lower(),
+            models.User.storefront_slug == slug_l,
             models.User.storefront_enabled.is_(True),
             models.User.store_status == "active",
         )
@@ -976,12 +988,21 @@ async def store_delivery_quote(
     if not owner:
         raise HTTPException(status_code=404, detail="Storefront not found")
 
+    # 2) Per-store daily cap on fresh (uncached) quotes — abuse ceiling.
+    if not quote_cache.store_quota_ok(slug_l):
+        logger.warning("Delivery-quote daily cap hit for store %s", slug_l)
+        return {"enabled": True, "options": []}
+
     quote = _shipbubble_quote(db, owner, payload) or {}
-    return {
+    result = {
         "enabled": True,
         "request_token": quote.get("request_token"),
         "options": [o.as_dict() for o in quote.get("options", [])],
     }
+    quote_cache.set_cached(
+        slug_l, payload.customer_lat, payload.customer_lng, cart_sig, result
+    )
+    return result
 
 
 def _shipbubble_quote(db: Session, owner: "models.User", payload: "StoreOrderIn"):
