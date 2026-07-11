@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -795,6 +796,11 @@ class StorefrontOrderEscrow(Base):
     dispatch_tracking: Mapped[str | None] = mapped_column(String(120), nullable=True)
     dispatch_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     dispatch_proof_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Courier/company name (e.g. "GIG Logistics") and the seller's expected
+    # delivery date, both shown to the buyer so they know who's bringing the
+    # order and roughly when to expect it.
+    dispatch_carrier: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    dispatch_eta: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

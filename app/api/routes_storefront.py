@@ -461,6 +461,8 @@ def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Custo
         ),
         "dispatch_tracking": escrow.dispatch_tracking,
         "dispatch_note": escrow.dispatch_note,
+        "dispatch_carrier": escrow.dispatch_carrier,
+        "dispatch_eta": escrow.dispatch_eta.isoformat() if escrow.dispatch_eta else None,
         "dispatch_proof_url": _presign(escrow.dispatch_proof_url),
         "held_for_review": bool(escrow.held_for_review),
         "gross_naira": round((escrow.gross_kobo or 0) / 100, 2),
@@ -578,14 +580,17 @@ async def mark_order_sent(
     db: Annotated[Session, Depends(get_db)],
     tracking: Annotated[str | None, Form()] = None,
     note: Annotated[str | None, Form()] = None,
+    carrier: Annotated[str | None, Form()] = None,
+    eta: Annotated[str | None, Form()] = None,
     file: Annotated[UploadFile | None, File()] = None,
 ) -> dict:
     """Business: mark a storefront order SENT OUT (dispatched), with an optional
-    courier/waybill tracking code and a photo of the packaged item.
+    courier/waybill tracking code, courier name, expected delivery date, and a
+    photo of the packaged item.
 
     This is seller protection: timestamped proof you shipped a quality item,
-    before the buyer confirms delivery. It also tells the buyer their order is
-    on the way. It does NOT release funds.
+    before the buyer confirms delivery. It also tells the buyer who's bringing
+    their order and when to expect it. It does NOT release funds.
     """
     row = _load_owner_escrow(db, current_user_id, invoice_id)
     if not row:
@@ -610,6 +615,18 @@ async def mark_order_sent(
         escrow.dispatch_tracking = tracking.strip()[:120] or None
     if note is not None:
         escrow.dispatch_note = note.strip()[:255] or None
+    if carrier is not None:
+        escrow.dispatch_carrier = carrier.strip()[:80] or None
+    if eta is not None:
+        # Accept an ISO date (YYYY-MM-DD); ignore anything unparseable.
+        raw_eta = eta.strip()
+        if raw_eta:
+            try:
+                escrow.dispatch_eta = dt.date.fromisoformat(raw_eta[:10])
+            except ValueError:
+                pass
+        else:
+            escrow.dispatch_eta = None
     escrow.dispatch_proof_url = proof_url
     db.commit()
     db.refresh(escrow)
@@ -617,8 +634,14 @@ async def mark_order_sent(
     # Tell the buyer their order is on the way (system notice in the thread).
     try:
         parts = ["📦 Your order has been sent out."]
+        if escrow.dispatch_carrier:
+            parts.append(f"Courier: {escrow.dispatch_carrier}.")
         if escrow.dispatch_tracking:
             parts.append(f"Tracking: {escrow.dispatch_tracking}.")
+        if escrow.dispatch_eta:
+            parts.append(
+                f"Expected delivery: {escrow.dispatch_eta.strftime('%a %d %b %Y')}."
+            )
         _store_system_message(db, escrow, " ".join(parts))
     except Exception:  # noqa: BLE001
         logger.exception("Failed to post dispatch notice for order %s", invoice_id)
@@ -1004,13 +1027,19 @@ async def create_store_order(
         consume_balance=False,
     )
 
-    # Surface delivery details to the business on the order/invoice. The GPS pin
-    # (a Google Maps link) is the primary "where to deliver"; the buyer can add
-    # an optional landmark/instructions note.
+    # Surface delivery details to the business on the order/invoice. We send the
+    # location as readable TEXT (reverse-geocoded address) so the seller can read
+    # it in their notification, plus the GPS pin (a Google Maps link) for
+    # turn-by-turn navigation. The buyer can add an optional landmark note.
     delivery_lines: list[str] = []
     if payload.customer_lat is not None and payload.customer_lng is not None:
+        from app.services.geocode_service import reverse_geocode_address
+
+        address = reverse_geocode_address(payload.customer_lat, payload.customer_lng)
+        if address:
+            delivery_lines.append(f"📍 Deliver to: {address}")
         delivery_lines.append(
-            f"📍 Delivery location: https://www.google.com/maps?q="
+            f"Map: https://www.google.com/maps?q="
             f"{payload.customer_lat},{payload.customer_lng}"
         )
     note = (payload.delivery_note or "").strip()
@@ -1465,6 +1494,8 @@ def _buyer_order_view(escrow: "models.StorefrontOrderEscrow") -> dict:
             escrow.seller_dispatched_at.isoformat() if escrow.seller_dispatched_at else None
         ),
         "dispatch_tracking": escrow.dispatch_tracking,
+        "dispatch_carrier": escrow.dispatch_carrier,
+        "dispatch_eta": escrow.dispatch_eta.isoformat() if escrow.dispatch_eta else None,
         "dispatch_proof_url": _presign(escrow.dispatch_proof_url),
         "delivered_at": (
             escrow.seller_marked_delivered_at.isoformat()

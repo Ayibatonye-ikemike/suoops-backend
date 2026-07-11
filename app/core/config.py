@@ -92,7 +92,8 @@ class BaseAppSettings(BaseSettings):
     # ── Storefront order escrow (buyer protection) ──
     ESCROW_ENABLED: bool = True  # master switch for the hold-&-release flow
     ESCROW_SAME_STATE_HOLD_HOURS: int = 12  # dispute window when buyer & seller share a state
-    ESCROW_CROSS_STATE_HOLD_DAYS: int = 3  # dispute window across states
+    ESCROW_CROSS_STATE_HOLD_DAYS: int = 3  # base dispute window across nearby states (working days)
+    ESCROW_MAX_CROSS_STATE_HOLD_DAYS: int = 7  # cap for far-apart states (e.g. Lagos↔Borno)
     # Sellers settle on a T+1 cadence (never same-day): once buyer protection ends,
     # the payout waits for the daily settlement run at this UTC hour, which fires
     # after Flutterwave's own T+1 settlement lands — so payouts come from settled

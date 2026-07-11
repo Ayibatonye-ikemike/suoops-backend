@@ -26,6 +26,24 @@ _LINK_RE = re.compile(
 # A run of 10–14 digits (allowing spaces / dashes / dots / leading +) — phone
 # numbers and 10-digit NUBAN account numbers.
 _LONG_NUM_RE = re.compile(r"\+?\d(?:[\s.\-]?\d){9,13}")
+# Spelled-out phone/account numbers ("zero eight zero three …", "oh eight oh…") —
+# a common way to dodge the digit filter. A run of 6+ number-words in a row is
+# almost never innocent prose, so we treat it as a shared contact number.
+_NUM_WORDS = (
+    r"zero|one|two|three|four|five|six|seven|eight|nine|ten|oh|nought|niner|double"
+)
+_SPELLED_NUM_RE = re.compile(
+    rf"(?:\b(?:{_NUM_WORDS})\b[\s,.\-]*){{6,}}",
+    re.IGNORECASE,
+)
+# Off-platform contact channels — naming a chat app or asking to be contacted
+# directly is a circumvention signal inside an on-platform order thread.
+_PLATFORM_RE = re.compile(
+    r"(whats\s?app|telegram|snapchat|\bviber\b|\bimo\b|"
+    r"dm\s+me|message\s+me\s+on|reach\s+me\s+(on|at)|add\s+me\s+on|"
+    r"call\s+me\s+(on|at)|text\s+me\s+(on|at)|my\s+(number|line|digits|contact))",
+    re.IGNORECASE,
+)
 # A standalone 6-digit number — could be the buyer-only delivery code.
 _CODE_RE = re.compile(r"(?<!\d)\d{6}(?!\d)")
 
@@ -86,7 +104,9 @@ def scan_message(text: str) -> GuardResult:
     _mask(_EMAIL_RE, "email")
     _mask(_LINK_RE, "link_or_handle")
     _mask(_LONG_NUM_RE, "contact_or_account")
+    _mask(_SPELLED_NUM_RE, "spelled_contact")
     _mask(_CODE_RE, "possible_delivery_code")
+    _mask(_PLATFORM_RE, "off_platform_contact")
 
     for rx in _SOFT_NUDGE_RES:
         if rx.search(redacted):

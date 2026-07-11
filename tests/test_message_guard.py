@@ -47,6 +47,26 @@ def test_clean_message_passes_through():
     assert r.flagged is False
 
 
+def test_spelled_out_number_is_masked_and_flagged():
+    r = scan_message("reach me: zero eight zero three one two three four five six")
+    assert MASK in r.redacted
+    assert "spelled_contact" in r.reasons
+    assert r.flagged is True
+
+
+def test_short_spelled_count_not_flagged():
+    # A couple of number-words in normal prose must NOT trip the filter.
+    r = scan_message("I ordered two shirts and three caps, thanks.")
+    assert "spelled_contact" not in r.reasons
+
+
+def test_off_platform_channel_is_flagged():
+    r = scan_message("just message me on whatsapp instead")
+    assert MASK in r.redacted
+    assert "off_platform_contact" in r.reasons
+    assert r.flagged is True
+
+
 def test_seller_circumvention_flags_at_threshold():
     """Enough circumvention attempts flag the seller (revokes trusted status)."""
     from app.core.config import settings

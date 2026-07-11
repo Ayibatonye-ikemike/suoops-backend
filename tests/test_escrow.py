@@ -9,6 +9,42 @@ def test_hold_window_same_vs_cross_state():
     assert es.hold_window(False) == dt.timedelta(days=3)
 
 
+def test_release_due_after_cross_state_skips_weekend():
+    # Thursday 10:00 UTC + 3 working days → Tuesday (Sat/Sun skipped).
+    thu = dt.datetime(2026, 7, 9, 10, 0, tzinfo=dt.timezone.utc)  # Thursday
+    due = es.release_due_after(thu, same_state=False)
+    assert due == dt.datetime(2026, 7, 14, 10, 0, tzinfo=dt.timezone.utc)  # Tuesday
+    assert due.weekday() == 1
+
+
+def test_release_due_after_same_state_is_hours():
+    fri = dt.datetime(2026, 7, 10, 10, 0, tzinfo=dt.timezone.utc)  # Friday
+    due = es.release_due_after(fri, same_state=True)
+    assert due == fri + dt.timedelta(hours=12)
+
+
+def test_cross_state_delivery_days_scales_with_distance():
+    from app.services.delivery_zones import cross_state_delivery_days as cd
+
+    # Same zone, different state → base (3).
+    assert cd("Lagos", "Ogun") == 3
+    # Lagos (SW) → Abuja (NC): one step apart → 4.
+    assert cd("Lagos", "Abuja") == 4
+    # Kaduna (NW) → Rivers (SS): farther → 5.
+    assert cd("Kaduna", "Rivers") == 5
+    # Lagos (SW) → Borno (NE): opposite corners → 6.
+    assert cd("Lagos", "Borno") == 6
+    # Unknown state → base fallback.
+    assert cd("Atlantis", "Rivers") == 3
+
+
+def test_release_due_after_uses_scaled_cross_state_days():
+    thu = dt.datetime(2026, 7, 9, 10, 0, tzinfo=dt.timezone.utc)  # Thursday
+    # 5 working days from Thursday: Fri, Mon, Tue, Wed, Thu → next Thursday.
+    due = es.release_due_after(thu, same_state=False, cross_state_days=5)
+    assert due == dt.datetime(2026, 7, 16, 10, 0, tzinfo=dt.timezone.utc)
+
+
 def test_buyer_reputation_tracks_and_flags():
     """Disputes accumulate; enough false disputes flags the buyer."""
     import secrets

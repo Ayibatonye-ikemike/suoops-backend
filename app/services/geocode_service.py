@@ -49,3 +49,37 @@ def reverse_geocode(lat: float, lng: float) -> tuple[str | None, str | None]:
         elif "place" in place_types and not city:
             city = (feat.get("text") or "").strip() or None
     return (state, city)
+
+
+def reverse_geocode_address(lat: float, lng: float) -> str | None:
+    """Return a human-readable address for a coordinate (e.g. "12 Bode Thomas St,
+    Surulere, Lagos"), or ``None`` if it can't be resolved. Best-effort; never
+    raises. Used to send the buyer's delivery location to the seller as readable
+    text (not just a raw map pin)."""
+    token = settings.MAPBOX_TOKEN
+    if not token:
+        return None
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(
+                f"{_MAPBOX_GEOCODE}/{lng},{lat}.json",
+                params={
+                    "access_token": token,
+                    "country": "NG",
+                    "types": "address,neighborhood,locality,place,region",
+                    "limit": 1,
+                },
+            )
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001 — geocoding must never break the request
+        logger.warning("Reverse geocode (address) failed: %s", exc)
+        return None
+    feats = data.get("features", [])
+    if not feats:
+        return None
+    # Mapbox's place_name is the full readable address ("…, Surulere, Lagos, Nigeria").
+    name = (feats[0].get("place_name") or "").strip()
+    # Drop a trailing ", Nigeria" — the seller already knows the country.
+    if name.endswith(", Nigeria"):
+        name = name[: -len(", Nigeria")]
+    return name or None

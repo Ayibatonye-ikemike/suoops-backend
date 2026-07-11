@@ -200,6 +200,37 @@ def hold_window(same_state: bool) -> dt.timedelta:
     return dt.timedelta(days=settings.ESCROW_CROSS_STATE_HOLD_DAYS)
 
 
+def add_business_days(start: dt.datetime, days: int) -> dt.datetime:
+    """Advance ``start`` by ``days`` working days (skipping Sat/Sun), keeping the
+    same time of day. Weekends do not count toward the window."""
+    cur = start
+    remaining = max(0, int(days))
+    while remaining > 0:
+        cur = cur + dt.timedelta(days=1)
+        if cur.weekday() < 5:  # Mon(0)–Fri(4)
+            remaining -= 1
+    return cur
+
+
+def release_due_after(
+    paid_at: dt.datetime, same_state: bool, cross_state_days: int | None = None
+) -> dt.datetime:
+    """When the dispute/hold window closes for a payment at ``paid_at``.
+
+    Same-state orders get a short 12h window (hours-based). Cross-state orders get
+    N *working* days — weekends don't count, since couriers and buyers are far
+    less active then. ``cross_state_days`` lets the caller scale the window by how
+    far apart the states are (Lagos→Abuja < Kaduna→Rivers); it defaults to the
+    base ``ESCROW_CROSS_STATE_HOLD_DAYS``.
+    """
+    if paid_at.tzinfo is None:
+        paid_at = paid_at.replace(tzinfo=dt.timezone.utc)
+    if same_state:
+        return paid_at + dt.timedelta(hours=settings.ESCROW_SAME_STATE_HOLD_HOURS)
+    days = cross_state_days if cross_state_days is not None else settings.ESCROW_CROSS_STATE_HOLD_DAYS
+    return add_business_days(paid_at, days)
+
+
 # West Africa Time (Nigeria) — Flutterwave settles collections T+1 by ~7am WAT.
 _WAT = dt.timezone(dt.timedelta(hours=1))
 
@@ -333,7 +364,14 @@ def activate_escrow_on_payment(
     # Unknown same/different state → treat as cross-state (longer, safer window).
     same = bool(escrow.same_state) if escrow.same_state is not None else False
     escrow.status = "held"
-    escrow.release_due_at = paid_at + hold_window(same)
+    if same:
+        escrow.release_due_at = release_due_after(paid_at, True)
+    else:
+        # Scale the working-day window by how far apart the two states are.
+        from app.services.delivery_zones import cross_state_delivery_days
+
+        days = cross_state_delivery_days(escrow.business_state, escrow.customer_state)
+        escrow.release_due_at = release_due_after(paid_at, False, cross_state_days=days)
     # Payouts settle on a T+1 cadence — never before the collection has settled.
     escrow.settle_at = next_settlement_after(paid_at)
     if charge_reference:
