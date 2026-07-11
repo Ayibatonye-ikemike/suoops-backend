@@ -468,6 +468,9 @@ def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Custo
         "dispatch_carrier": escrow.dispatch_carrier,
         "dispatch_eta": escrow.dispatch_eta.isoformat() if escrow.dispatch_eta else None,
         "dispatch_tracking_url": escrow.shipbubble_tracking_url,
+        "delivery_courier": escrow.delivery_courier,
+        "delivery_service_type": escrow.delivery_service_type,
+        "delivery_dropoff_station": escrow.delivery_dropoff_station,
         "dispatch_proof_url": _presign(escrow.dispatch_proof_url),
         "held_for_review": bool(escrow.held_for_review),
         "gross_naira": round((escrow.gross_kobo or 0) / 100, 2),
@@ -1175,11 +1178,21 @@ async def create_store_order(
                 detail="That delivery option is no longer available — please pick a courier again.",
             )
         delivery_fee = Decimal(str(chosen.amount))
+        station = chosen.dropoff_station or {}
+        station_str = None
+        if station:
+            station_str = " — ".join(
+                s for s in [station.get("name"), station.get("address")] if s
+            )
+            if station.get("phone"):
+                station_str = f"{station_str} ({station['phone']})"
         delivery_sel = {
             "token": token,
             "courier_id": str(chosen.courier_id),
             "service_code": str(chosen.service_code),
             "courier": chosen.name,
+            "service_type": chosen.service_type,
+            "station": (station_str or None),
         }
 
     grand_total = total + delivery_fee
@@ -1263,6 +1276,10 @@ async def create_store_order(
                 # selection so the shipment can be booked at "mark as sent".
                 escrow.delivery_fee_kobo = int(delivery_fee * 100)
                 escrow.delivery_courier = delivery_sel["courier"][:80]
+                escrow.delivery_service_type = (delivery_sel.get("service_type") or None)
+                escrow.delivery_dropoff_station = (
+                    (delivery_sel.get("station") or None) and delivery_sel["station"][:300]
+                )
                 escrow.delivery_request_token = delivery_sel["token"][:200]
                 escrow.delivery_courier_id = delivery_sel["courier_id"][:60]
                 escrow.delivery_service_code = delivery_sel["service_code"][:60]

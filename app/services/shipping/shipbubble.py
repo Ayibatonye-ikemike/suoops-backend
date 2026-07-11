@@ -48,6 +48,7 @@ class DeliveryOption:
     delivery_eta: str | None
     delivery_eta_time: str | None
     service_type: str | None
+    dropoff_station: dict[str, Any] | None
 
     def as_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -227,6 +228,7 @@ def _to_option(c: dict[str, Any]) -> DeliveryOption | None:
             delivery_eta=c.get("delivery_eta"),
             delivery_eta_time=c.get("delivery_eta_time"),
             service_type=c.get("service_type"),
+            dropoff_station=c.get("dropoff_station"),
         )
     except Exception:  # noqa: BLE001 — skip a malformed courier entry
         return None

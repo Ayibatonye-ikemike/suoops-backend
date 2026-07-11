@@ -809,6 +809,10 @@ class StorefrontOrderEscrow(Base):
     # from the booking (and correlate incoming courier webhooks).
     delivery_fee_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     delivery_courier: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # "pickup" (rider collects from the seller) or "dropoff" (seller takes it to a
+    # station) + the station details when it's a dropoff, shown to the seller.
+    delivery_service_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    delivery_dropoff_station: Mapped[str | None] = mapped_column(String(300), nullable=True)
     delivery_request_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
     delivery_courier_id: Mapped[str | None] = mapped_column(String(60), nullable=True)
     delivery_service_code: Mapped[str | None] = mapped_column(String(60), nullable=True)

@@ -60,6 +60,7 @@ def test_delivery_fee_added_and_excluded_from_payout(db_session, client, monkeyp
         delivery_eta="1-2 days",
         delivery_eta_time=None,
         service_type="pickup",
+        dropoff_station=None,
     )
     import app.api.routes_storefront as rs
 
