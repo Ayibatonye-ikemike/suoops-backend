@@ -114,8 +114,12 @@ class BaseAppSettings(BaseSettings):
     SHIPBUBBLE_ENABLED: bool = False
     SHIPBUBBLE_API_KEY: str | None = None  # "sb_sandbox_…" (test) or "sb_prod_…" (live)
     SHIPBUBBLE_BASE_URL: str = "https://api.shipbubble.com/v1"
-    # Default package category id (from Shipbubble's Package Categories API) used
-    # for rate quotes when a product doesn't specify one.
+    # Live-money switch, SEPARATE from SHIPBUBBLE_ENABLED: only when this is on do
+    # storefront checkouts charge the buyer a delivery fee and auto-book the
+    # courier. Keep OFF until a real test order has been verified end-to-end.
+    SHIPBUBBLE_CHECKOUT_ENABLED: bool = False
+    # Package category id — usually leave unset; the code auto-resolves one from
+    # the account's Package Categories API (ids are account-specific).
     SHIPBUBBLE_DEFAULT_CATEGORY_ID: int | None = None
     # Secret used to verify the `x-ship-signature` HMAC-SHA512 on Shipbubble
     # webhooks. If unset we fall back to the API key (Shipbubble signs with your

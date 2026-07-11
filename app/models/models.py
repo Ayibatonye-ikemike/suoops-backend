@@ -801,6 +801,21 @@ class StorefrontOrderEscrow(Base):
     # order and roughly when to expect it.
     dispatch_carrier: Mapped[str | None] = mapped_column(String(80), nullable=True)
     dispatch_eta: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # ── Shipbubble courier booking (buyer-pays-delivery, feature-flagged) ──
+    # Delivery fee the buyer paid (kobo) — retained by SuoOps to fund the courier;
+    # NOT part of gross/payout (the seller is never paid the shipping fee). The
+    # request_token + courier + service_code are captured at checkout so the
+    # shipment can be booked at dispatch; the order id + tracking url come back
+    # from the booking (and correlate incoming courier webhooks).
+    delivery_fee_kobo: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    delivery_courier: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    delivery_request_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    delivery_courier_id: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    delivery_service_code: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    shipbubble_order_id: Mapped[str | None] = mapped_column(
+        String(60), nullable=True, index=True
+    )
+    shipbubble_tracking_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

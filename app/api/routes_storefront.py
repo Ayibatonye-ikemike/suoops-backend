@@ -148,6 +148,10 @@ class StoreOrderIn(BaseModel):
     # Optional landmark / delivery instructions the buyer can add so the
     # business can find them (the GPS pin is the primary delivery detail).
     delivery_note: str | None = Field(default=None, max_length=200)
+    # Optional courier selection (buyer-pays-delivery). The server re-quotes and
+    # validates the fee for this courier — the client can't set the price.
+    delivery_courier_id: str | None = Field(default=None, max_length=60)
+    delivery_service_code: str | None = Field(default=None, max_length=60)
 
 
 def _link_for(slug: str | None) -> str | None:
@@ -463,6 +467,7 @@ def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Custo
         "dispatch_note": escrow.dispatch_note,
         "dispatch_carrier": escrow.dispatch_carrier,
         "dispatch_eta": escrow.dispatch_eta.isoformat() if escrow.dispatch_eta else None,
+        "dispatch_tracking_url": escrow.shipbubble_tracking_url,
         "dispatch_proof_url": _presign(escrow.dispatch_proof_url),
         "held_for_review": bool(escrow.held_for_review),
         "gross_naira": round((escrow.gross_kobo or 0) / 100, 2),
@@ -609,6 +614,36 @@ async def mark_order_sent(
     proof_url = escrow.dispatch_proof_url
     if file is not None and file.filename:
         proof_url = await _save_proof_photo(escrow, file, prefix="dispatch-proof")
+
+    # Auto-book the courier if the buyer paid for delivery at checkout and we
+    # haven't booked yet. Best-effort: if booking fails the seller still marks
+    # sent manually, so the flow never blocks on Shipbubble.
+    if (
+        settings.SHIPBUBBLE_CHECKOUT_ENABLED
+        and escrow.delivery_request_token
+        and escrow.delivery_courier_id
+        and escrow.delivery_service_code
+        and not escrow.shipbubble_order_id
+    ):
+        try:
+            from app.services.shipping import shipbubble
+
+            booking = shipbubble.create_shipment(
+                request_token=escrow.delivery_request_token,
+                courier_id=escrow.delivery_courier_id,
+                service_code=escrow.delivery_service_code,
+            )
+            if booking and booking.get("order_id"):
+                escrow.shipbubble_order_id = str(booking["order_id"])[:60]
+                escrow.shipbubble_tracking_url = booking.get("tracking_url") or None
+                if booking.get("courier") and not escrow.dispatch_carrier:
+                    escrow.dispatch_carrier = str(booking["courier"])[:80]
+                logger.info(
+                    "Booked Shipbubble shipment %s for order %s",
+                    booking["order_id"], invoice_id,
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("Shipbubble booking failed for order %s", invoice_id)
 
     escrow.seller_dispatched_at = dt.datetime.now(dt.timezone.utc)
     if tracking is not None:
@@ -928,6 +963,24 @@ async def store_delivery_quote(
     if not owner:
         raise HTTPException(status_code=404, detail="Storefront not found")
 
+    quote = _shipbubble_quote(db, owner, payload) or {}
+    return {
+        "enabled": True,
+        "request_token": quote.get("request_token"),
+        "options": [o.as_dict() for o in quote.get("options", [])],
+    }
+
+
+def _shipbubble_quote(db: Session, owner: "models.User", payload: "StoreOrderIn"):
+    """Validate both addresses and fetch live courier rates for this order.
+    Returns ``{"request_token": str|None, "options": [DeliveryOption]}`` or None
+    when the integration is off. Shared by the quote endpoint and checkout so the
+    fee charged is always a fresh, server-verified rate (never a client value)."""
+    from app.services.shipping import shipbubble
+
+    if not shipbubble.enabled():
+        return None
+
     seller_addr = ", ".join(
         p for p in [owner.storefront_city, owner.storefront_state, "Nigeria"] if p
     )
@@ -949,7 +1002,7 @@ async def store_delivery_quote(
         longitude=payload.customer_lng,
     )
     if not (sender_code and receiver_code):
-        return {"enabled": True, "options": []}
+        return {"request_token": None, "options": []}
 
     prods = {
         p.id: p
@@ -965,7 +1018,7 @@ async def store_delivery_quote(
                 "name": (getattr(p, "name", None) or "Item")[:60],
                 "description": "order item",
                 "unit_weight": str(getattr(p, "weight_kg", None) or 0.5),
-                "unit_amount": str(int(getattr(p, "price", 0) or 0)),
+                "unit_amount": str(int(getattr(p, "selling_price", 0) or 0)),
                 "quantity": str(it.quantity),
             }
         )
@@ -975,13 +1028,7 @@ async def store_delivery_quote(
         receiver_address_code=receiver_code,
         package_items=package_items,
     )
-    if not rates:
-        return {"enabled": True, "options": []}
-    return {
-        "enabled": True,
-        "request_token": rates.get("request_token"),
-        "options": [o.as_dict() for o in rates.get("options", [])],
-    }
+    return rates or {"request_token": None, "options": []}
 
 
 @public_router.post("/store/{slug}/order")
@@ -1101,13 +1148,49 @@ async def create_store_order(
     )
     from app.services.invoice_service import build_invoice_service
 
+    # Buyer-pays-delivery (flag-gated, HELD orders only): re-quote the chosen
+    # courier server-side so the fee can't be tampered, and add it to the amount
+    # charged. The delivery fee is retained by SuoOps to fund the courier — it is
+    # NOT part of the seller's goods total, so the seller is paid on goods only.
+    delivery_fee = Decimal("0")
+    delivery_sel: dict | None = None
+    if settings.SHIPBUBBLE_CHECKOUT_ENABLED and held and payload.delivery_courier_id:
+        quote = _shipbubble_quote(db, owner, payload) or {}
+        token = quote.get("request_token")
+        chosen = next(
+            (
+                o
+                for o in quote.get("options", [])
+                if str(o.courier_id) == str(payload.delivery_courier_id)
+                and (
+                    not payload.delivery_service_code
+                    or o.service_code == payload.delivery_service_code
+                )
+            ),
+            None,
+        )
+        if not (token and chosen):
+            raise HTTPException(
+                status_code=409,
+                detail="That delivery option is no longer available — please pick a courier again.",
+            )
+        delivery_fee = Decimal(str(chosen.amount))
+        delivery_sel = {
+            "token": token,
+            "courier_id": str(chosen.courier_id),
+            "service_code": str(chosen.service_code),
+            "courier": chosen.name,
+        }
+
+    grand_total = total + delivery_fee
+
     svc = build_invoice_service(db)
     invoice = svc.create_invoice(
         owner.id,
         {
             "customer_name": payload.customer_name.strip(),
             "customer_phone": payload.customer_phone.strip(),
-            "amount": total,
+            "amount": grand_total,
             "currency": "NGN",
             "lines": lines,
             "channel": "storefront",
@@ -1175,6 +1258,15 @@ async def create_store_order(
                 review_reason=review_reason,
             )
             delivery_code = escrow.confirmation_code
+            if delivery_sel:
+                # Retain the buyer's delivery fee to fund the courier; store the
+                # selection so the shipment can be booked at "mark as sent".
+                escrow.delivery_fee_kobo = int(delivery_fee * 100)
+                escrow.delivery_courier = delivery_sel["courier"][:80]
+                escrow.delivery_request_token = delivery_sel["token"][:200]
+                escrow.delivery_courier_id = delivery_sel["courier_id"][:60]
+                escrow.delivery_service_code = delivery_sel["service_code"][:60]
+                db.commit()
             if review_reason:
                 owner.flagged_for_review = True
                 db.commit()
@@ -1188,6 +1280,8 @@ async def create_store_order(
     resp = {"invoice_id": invoice.invoice_id, **pay}
     if delivery_code:
         resp["delivery_code"] = delivery_code
+    if delivery_fee > 0:
+        resp["delivery_fee"] = float(delivery_fee)
     return resp
 
 
@@ -1585,6 +1679,7 @@ def _buyer_order_view(escrow: "models.StorefrontOrderEscrow") -> dict:
         "dispatch_tracking": escrow.dispatch_tracking,
         "dispatch_carrier": escrow.dispatch_carrier,
         "dispatch_eta": escrow.dispatch_eta.isoformat() if escrow.dispatch_eta else None,
+        "dispatch_tracking_url": escrow.shipbubble_tracking_url,
         "dispatch_proof_url": _presign(escrow.dispatch_proof_url),
         "delivered_at": (
             escrow.seller_marked_delivered_at.isoformat()
