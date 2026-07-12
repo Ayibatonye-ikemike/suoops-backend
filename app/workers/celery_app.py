@@ -48,6 +48,10 @@ def _create_celery() -> Celery:
                 "task": "escrow.release_due_orders",
                 "schedule": crontab(minute="*/15"),  # every 15 min — pay out elapsed holds
             },
+            "escrow-cancel-stale-pending": {
+                "task": "escrow.cancel_stale_pending",
+                "schedule": crontab(minute=20, hour="*/6"),  # every 6h — clear abandoned unpaid orders
+            },
             "monthly-tax-reports": {
                 "task": "tax.generate_previous_month_reports",
                 "schedule": crontab(minute=0, hour=2, day_of_month=1),  # 02:00 UTC first day

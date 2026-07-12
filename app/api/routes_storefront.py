@@ -1166,7 +1166,10 @@ async def create_store_order(
             db.query(func.coalesce(func.sum(models.StorefrontOrderEscrow.gross_kobo), 0))
             .filter(
                 models.StorefrontOrderEscrow.seller_id == owner.id,
-                models.StorefrontOrderEscrow.status.in_(["pending", "held"]),
+                # Only PAID/held money counts toward the cap. Counting unpaid
+                # "pending" rows would let a buyer spam abandoned orders to fill
+                # the cap and block the seller from accepting real orders (DoS).
+                models.StorefrontOrderEscrow.status == "held",
             )
             .scalar()
         ) or 0

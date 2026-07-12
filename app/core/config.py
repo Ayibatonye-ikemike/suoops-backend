@@ -113,6 +113,10 @@ class BaseAppSettings(BaseSettings):
     # review instead of auto-releasing to the seller.
     ESCROW_POST_DELIVERY_INSPECTION_HOURS: int = 24
     ESCROW_MAX_DELIVERY_DAYS: int = 10
+    # Unpaid storefront orders are just pending records (the seller is never
+    # charged for them). Auto-cancel abandoned ones after this many hours so they
+    # don't clutter the seller's / admin's order views.
+    ESCROW_PENDING_ORDER_TTL_HOURS: int = 24
 
     # ── Shipbubble courier integration (buyer pays delivery at checkout) ──
     # Master switch: keep OFF until a Shipbubble account, API key and a funded

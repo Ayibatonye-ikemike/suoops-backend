@@ -115,3 +115,43 @@ def release_due_escrow_orders(self: Task) -> dict[str, Any]:
     result = {"checked": released + failed, "released": released, "failed": failed}
     logger.info("Escrow release run: %s", result)
     return result
+
+
+@celery_app.task(
+    bind=True,
+    name="escrow.cancel_stale_pending",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=2,
+)
+def cancel_stale_pending_orders(self: Task) -> dict[str, Any]:
+    """Cancel abandoned unpaid storefront orders.
+
+    A 'pending' escrow means the buyer never paid (payment confirmation flips it
+    to 'held'). Such rows cost the seller nothing, but left around they clutter
+    order/admin views — so we cancel ones older than the configured TTL.
+    """
+    from app.core.config import settings
+    from app.models.models import StorefrontOrderEscrow
+
+    canceled = 0
+    with session_scope() as db:
+        cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+            hours=settings.ESCROW_PENDING_ORDER_TTL_HOURS
+        )
+        rows = (
+            db.query(StorefrontOrderEscrow)
+            .filter(
+                StorefrontOrderEscrow.status == "pending",
+                StorefrontOrderEscrow.created_at < cutoff,
+            )
+            .limit(500)
+            .all()
+        )
+        for e in rows:
+            e.status = "canceled"
+            canceled += 1
+        if canceled:
+            db.commit()
+    logger.info("Stale pending escrow cleanup: canceled %d", canceled)
+    return {"canceled": canceled}
