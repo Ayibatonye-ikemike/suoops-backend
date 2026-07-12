@@ -382,6 +382,24 @@ class InvoiceStatusMixin:
             logger.error("Order notification dispatch failed for %s: %s", invoice.invoice_id, exc)
 
     def _notify_business_of_transfer(self, invoice: models.Invoice) -> None:
+        # Per-invoice notification cooldown (anti-griefing, defense-in-depth on
+        # top of the status-transition guard in confirm_transfer): even if the
+        # invoice is flipped back to 'pending' and re-confirmed, don't re-blast
+        # the business more than once per window. Fail-open so a cache blip never
+        # drops a genuine notification.
+        try:
+            from app.db.redis_client import get_redis_client
+
+            _k = f"invoice:xfernotify:{invoice.invoice_id}"
+            if not get_redis_client().set(_k, "1", nx=True, ex=600):
+                logger.info(
+                    "Skipping duplicate transfer notification for invoice %s (cooldown)",
+                    invoice.invoice_id,
+                )
+                return
+        except Exception:  # noqa: BLE001 — fail open
+            pass
+
         try:
             user = self.db.query(models.User).filter(models.User.id == invoice.issuer_id).one_or_none()
         except Exception as exc:  # noqa: BLE001
