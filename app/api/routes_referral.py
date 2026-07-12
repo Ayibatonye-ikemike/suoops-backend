@@ -351,18 +351,16 @@ def delete_payout_bank_details(
 
 
 class EarningsBreakdown(BaseModel):
-    """Detailed earnings for influencer dashboard."""
-    first_purchase_earned: int  # Total from first purchases
-    recurring_earned: int  # Total from recurring commissions
-    perpetual_earned: int  # Total from perpetual %
+    """Influencer earnings (flat-commission model: you earn a % of SuoOps' 3%
+    on every referred business's activity, ongoing)."""
     total_earned: int
+    online_earned: int  # commission from referred businesses' online/storefront sales
+    topup_earned: int  # commission from referred businesses' wallet top-ups
     total_signups: int
     total_conversions: int  # Free → paid
     pending_payout: int
     custom_link: str | None = None
-    commission_first: int  # Rate: ₦ per first purchase
-    commission_recurring: int  # Rate: ₦ per recurring
-    commission_perpetual_pct: int  # Rate: % perpetual
+    commission_pct: int  # your ongoing % of SuoOps' fee
     recent_earnings: list[dict]
 
 
@@ -397,17 +395,14 @@ def get_influencer_earnings(
 
     if not code_obj:
         return EarningsBreakdown(
-            first_purchase_earned=0,
-            recurring_earned=0,
-            perpetual_earned=0,
             total_earned=0,
+            online_earned=0,
+            topup_earned=0,
             total_signups=0,
             total_conversions=0,
             pending_payout=0,
             custom_link=None,
-            commission_first=500,
-            commission_recurring=200,
-            commission_perpetual_pct=5,
+            commission_pct=20,
             recent_earnings=[],
         )
 
@@ -440,26 +435,25 @@ def get_influencer_earnings(
         .order_by(ReferralReward.created_at.desc())
     ).scalars().all()
 
-    first_earned = 0
-    recurring_earned = 0
-    perpetual_earned = 0
+    online_earned = 0
+    topup_earned = 0
     pending_payout = 0
 
     for r in rewards:
         # Parse amount from reward_description (e.g. "₦500 commission...")
         amount = _extract_amount(r.reward_description)
-        # "commission" is the legacy type for first-purchase rewards
-        if r.reward_type in ("commission_first_purchase", "commission"):
-            first_earned += amount
-        elif r.reward_type == "commission_recurring":
-            recurring_earned += amount
-        elif r.reward_type == "commission_perpetual":
-            perpetual_earned += amount
+        if r.reward_type == "commission_online":
+            # % of SuoOps' 3% on a referred business's storefront/online sale.
+            online_earned += amount
+        else:
+            # Wallet-top-up commission (commission_perpetual) + any legacy
+            # first-purchase/recurring rewards all roll into the top-up bucket.
+            topup_earned += amount
 
         if r.status == RewardStatus.PENDING:
             pending_payout += amount
 
-    total_earned = first_earned + recurring_earned + perpetual_earned
+    total_earned = online_earned + topup_earned
 
     # Recent earnings (last 20)
     recent = []
@@ -474,17 +468,14 @@ def get_influencer_earnings(
         })
 
     return EarningsBreakdown(
-        first_purchase_earned=first_earned,
-        recurring_earned=recurring_earned,
-        perpetual_earned=perpetual_earned,
         total_earned=total_earned,
+        online_earned=online_earned,
+        topup_earned=topup_earned,
         total_signups=total_signups,
         total_conversions=total_conversions,
         pending_payout=pending_payout,
         custom_link=custom_link,
-        commission_first=code_obj.commission_first,
-        commission_recurring=code_obj.commission_recurring,
-        commission_perpetual_pct=code_obj.commission_perpetual_pct,
+        commission_pct=int(code_obj.commission_perpetual_pct or 20),
         recent_earnings=recent,
     )
 
