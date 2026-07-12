@@ -59,8 +59,15 @@ class S3Client:
         return local_url
 
     async def upload_file(self, data: bytes, key: str, content_type: str = "image/png") -> str:
-        """Async wrapper for upload_bytes. Used by logo upload endpoint."""
-        return self.upload_bytes(data, key, content_type)
+        """Async wrapper for upload_bytes.
+
+        Offloads the blocking boto3 upload to a worker thread so it never blocks
+        the event loop — a slow S3 call used to hang the whole request (and the
+        uvicorn worker) with no way to recover.
+        """
+        import anyio
+
+        return await anyio.to_thread.run_sync(self.upload_bytes, data, key, content_type)
 
     def _initialize_client(self):
         try:
@@ -75,7 +82,14 @@ class S3Client:
             client_kwargs = {
                 "service_name": "s3",
                 "region_name": region,
-                "config": Config(signature_version="s3v4"),
+                # Fast-fail timeouts + bounded retries so a flaky/misconfigured S3
+                # returns an error in seconds instead of hanging the request.
+                "config": Config(
+                    signature_version="s3v4",
+                    connect_timeout=5,
+                    read_timeout=20,
+                    retries={"max_attempts": 2, "mode": "standard"},
+                ),
             }
             
             # Only set endpoint_url for non-AWS S3-compatible services

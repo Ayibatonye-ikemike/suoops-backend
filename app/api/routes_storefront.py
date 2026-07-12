@@ -668,6 +668,12 @@ async def mark_order_sent(
     escrow, buyer = row
 
     import datetime as dt
+    import time
+
+    logger.info(
+        "mark-sent request: order=%s seller=%s has_file=%s",
+        invoice_id, current_user_id, bool(file is not None and file.filename),
+    )
 
     # A photo of the packaged item is REQUIRED — it's the proof of quality and
     # shipment (and the buyer sees it), so a "sent out" mark is never empty.
@@ -678,7 +684,11 @@ async def mark_order_sent(
 
     proof_url = escrow.dispatch_proof_url
     if file is not None and file.filename:
+        _t0 = time.monotonic()
         proof_url = await _save_proof_photo(escrow, file, prefix="dispatch-proof")
+        logger.info(
+            "mark-sent photo stored for %s in %.2fs", invoice_id, time.monotonic() - _t0
+        )
 
     escrow.seller_dispatched_at = dt.datetime.now(dt.timezone.utc)
     if tracking is not None:
