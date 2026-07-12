@@ -159,6 +159,19 @@ class PaystackSubaccountService:
         if not (user.bank_name and user.account_number):
             raise SubaccountError("Add your bank name and account number first")
 
+        # Serialize concurrent enable-payments calls for the SAME user so we never
+        # create two subaccounts (one would be orphaned and keep costing us
+        # commission). Re-load the row under a lock; the second caller then sees
+        # the code the first one committed and takes the update path instead.
+        locked = (
+            self.db.query(models.User)
+            .filter(models.User.id == user.id)
+            .with_for_update()
+            .first()
+        )
+        if locked is not None:
+            user = locked
+
         bank_code = await self.resolve_bank_code(user.bank_name)
         verified_name = await self.resolve_account(user.account_number, bank_code)
 
