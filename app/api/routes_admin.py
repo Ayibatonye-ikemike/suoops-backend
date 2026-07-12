@@ -4451,6 +4451,215 @@ def get_linked_accounts(
     }
 
 
+@router.get("/fraud/{user_id}/dossier")
+def get_account_review_dossier(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _admin: Any = Depends(get_current_admin),
+) -> dict:
+    """Full account dossier for a Trust & Safety review — identity, signup
+    forensics, financials, activity, storefront/escrow history, circumvention
+    evidence and the duplicate-account cluster, in one payload.
+
+    Everything a reviewer needs to clear/flag/ban an account without spelunking
+    across pages. Bank account numbers are masked to their last 4 digits.
+    """
+    from sqlalchemy import case as sa_case
+
+    from app.services.escrow_service import get_buyer_reputation
+    from app.services.fraud_service import linked_account_ids
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    log_audit_event("admin.fraud.dossier", user_id=_admin.id, target_user_id=user_id)
+
+    # ── Invoice activity (single aggregated query) ──
+    inv_agg = (
+        db.query(
+            func.count(models.Invoice.id).label("total"),
+            func.count(sa_case((models.Invoice.status == "paid", 1))).label("paid"),
+            func.count(
+                sa_case((models.Invoice.channel == "storefront", 1))
+            ).label("storefront"),
+            func.coalesce(
+                func.sum(sa_case((models.Invoice.status == "paid", models.Invoice.amount))),
+                0,
+            ).label("paid_revenue"),
+        )
+        .filter(models.Invoice.issuer_id == user_id)
+        .one()
+    )
+    unique_customers = (
+        db.query(models.Customer.id)
+        .join(models.Invoice, models.Invoice.customer_id == models.Customer.id)
+        .filter(models.Invoice.issuer_id == user_id)
+        .distinct()
+        .count()
+    )
+
+    # ── Escrow / storefront-order aggregates by status ──
+    esc_rows = (
+        db.query(
+            models.StorefrontOrderEscrow.status,
+            func.count(models.StorefrontOrderEscrow.id),
+            func.coalesce(func.sum(models.StorefrontOrderEscrow.gross_kobo), 0),
+        )
+        .filter(models.StorefrontOrderEscrow.seller_id == user_id)
+        .group_by(models.StorefrontOrderEscrow.status)
+        .all()
+    )
+    escrow_by_status = {
+        st: {"count": int(c or 0), "gross_naira": round((g or 0) / 100, 2)}
+        for (st, c, g) in esc_rows
+    }
+    held_escrow_naira = round(
+        escrow_by_status.get("held", {}).get("gross_naira", 0.0), 2
+    )
+
+    # ── Recent storefront orders (most recent 10) ──
+    recent = (
+        db.query(models.StorefrontOrderEscrow, models.Invoice, models.Customer)
+        .join(models.Invoice, models.StorefrontOrderEscrow.invoice_id == models.Invoice.id)
+        .outerjoin(models.Customer, models.Invoice.customer_id == models.Customer.id)
+        .filter(models.StorefrontOrderEscrow.seller_id == user_id)
+        .order_by(desc(models.StorefrontOrderEscrow.id))
+        .limit(10)
+        .all()
+    )
+    recent_orders = [
+        {
+            "escrow_id": e.id,
+            "invoice_public_id": getattr(inv, "invoice_id", None),
+            "status": e.status,
+            "held_for_review": bool(e.held_for_review),
+            "review_reason": e.review_reason,
+            "gross_naira": round((e.gross_kobo or 0) / 100, 2),
+            "buyer_name": cust.name if cust else None,
+            "buyer_phone": cust.phone if cust else None,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "disputed_at": e.disputed_at.isoformat() if e.disputed_at else None,
+        }
+        for (e, inv, cust) in recent
+    ]
+
+    # ── Circumvention evidence (this seller's flagged order messages) ──
+    flagged_msgs = (
+        db.query(models.OrderMessage)
+        .join(
+            models.StorefrontOrderEscrow,
+            models.OrderMessage.escrow_id == models.StorefrontOrderEscrow.id,
+        )
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == user_id,
+            models.OrderMessage.flagged.is_(True),
+        )
+        .order_by(desc(models.OrderMessage.id))
+        .limit(10)
+        .all()
+    )
+    circumvention_evidence = [
+        {
+            "id": m.id,
+            "escrow_id": m.escrow_id,
+            "sender_role": m.sender_role,
+            "body_raw": m.body_raw,  # admin-only exact text
+            "flag_reasons": m.flag_reasons,
+            "blocked": bool(m.blocked),
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        }
+        for m in flagged_msgs
+    ]
+
+    # ── Duplicate-account cluster (shared IP / device) ──
+    ids = linked_account_ids(db, user)
+    linked_rows = (
+        db.query(models.User).filter(models.User.id.in_(ids)).all() if ids else []
+    )
+    linked_accounts = [
+        {
+            "id": lu.id,
+            "name": lu.name,
+            "business_name": lu.business_name,
+            "phone": lu.phone,
+            "email": lu.email,
+            "created_at": lu.created_at.isoformat() if lu.created_at else None,
+            "risk_score": int(lu.risk_score or 0),
+            "flagged_for_review": bool(lu.flagged_for_review),
+            "store_status": lu.store_status,
+            "same_ip": bool(user.signup_ip and lu.signup_ip == user.signup_ip),
+            "same_device": bool(
+                user.signup_device_id
+                and lu.signup_device_id == user.signup_device_id
+            ),
+        }
+        for lu in linked_rows
+    ]
+
+    # ── Buyer reputation (if this person has also bought on storefronts) ──
+    rep = get_buyer_reputation(db, user.phone) if user.phone else None
+
+    return {
+        "identity": {
+            "id": user.id,
+            "name": user.name,
+            "business_name": user.business_name,
+            "phone": user.phone,
+            "email": user.email,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "last_login": user.last_login.isoformat() if user.last_login else None,
+            "phone_verified": bool(user.phone_verified),
+            "role": user.role,
+            "store_status": user.store_status,
+            "store_status_reason": getattr(user, "store_status_reason", None),
+            "storefront_slug": user.storefront_slug,
+            "has_logo": user.logo_url is not None,
+        },
+        "signup_forensics": {
+            "signup_source": getattr(user, "signup_source", None),
+            "signup_ip": user.signup_ip,
+            "signup_device_id": user.signup_device_id,
+            "signup_user_agent": user.signup_user_agent,
+            "risk_score": int(user.risk_score or 0),
+            "risk_signals": list(user.risk_signals or []),
+            "flagged_for_review": bool(user.flagged_for_review),
+            "circumvention_attempts": int(user.circumvention_attempts or 0),
+        },
+        "financials": {
+            "wallet_balance_naira": int(getattr(user, "wallet_balance_kobo", 0) or 0)
+            / 100,
+            "has_bank_details": user.account_number is not None,
+            "bank_name": user.payout_bank_name or user.bank_name,
+            "account_number_masked": _mask_account_number(
+                user.payout_account_number or user.account_number
+            ),
+            "account_name": user.payout_account_name or user.account_name,
+            "held_escrow_naira": held_escrow_naira,
+        },
+        "activity": {
+            "total_invoices": int(inv_agg.total or 0),
+            "paid_invoices": int(inv_agg.paid or 0),
+            "storefront_orders": int(inv_agg.storefront or 0),
+            "paid_revenue_naira": round(float(inv_agg.paid_revenue or 0), 2),
+            "unique_customers": int(unique_customers or 0),
+            "escrow_by_status": escrow_by_status,
+        },
+        "buyer_reputation": (
+            {
+                "disputes": rep.disputes,
+                "false_disputes": rep.false_disputes,
+                "flagged": bool(rep.flagged),
+            }
+            if rep
+            else None
+        ),
+        "recent_orders": recent_orders,
+        "circumvention_evidence": circumvention_evidence,
+        "linked_accounts": linked_accounts,
+    }
+
+
 class RiskReviewAction(BaseModel):
     action: str = Field(..., pattern="^(clear|flag|ban)$")
     reason: str | None = Field(None, max_length=255)
