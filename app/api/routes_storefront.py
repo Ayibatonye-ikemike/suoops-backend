@@ -1015,9 +1015,17 @@ def _shipbubble_quote(db: Session, owner: "models.User", payload: "StoreOrderIn"
     if not shipbubble.enabled():
         return None
 
-    seller_addr = ", ".join(
-        p for p in [owner.storefront_city, owner.storefront_state, "Nigeria"] if p
-    )
+    from app.services.geocode_service import reverse_geocode_address
+
+    # Shipbubble wants a DETAILED address, not "city, state". Use the seller's
+    # pinned GPS reverse-geocoded to a street address where possible.
+    seller_addr = None
+    if owner.storefront_lat is not None and owner.storefront_lng is not None:
+        seller_addr = reverse_geocode_address(owner.storefront_lat, owner.storefront_lng)
+    if not seller_addr:
+        seller_addr = ", ".join(
+            p for p in [owner.storefront_city, owner.storefront_state, "Nigeria"] if p
+        )
     sender_code = shipbubble.validate_address(
         name=shipbubble.clean_name(owner.business_name or owner.name, pad="Store"),
         email=owner.email or "store@suoops.com",
@@ -1027,11 +1035,20 @@ def _shipbubble_quote(db: Session, owner: "models.User", payload: "StoreOrderIn"
         longitude=owner.storefront_lng,
     )
     buyer_digits = "".join(ch for ch in payload.customer_phone if ch.isdigit())
+    # Buyer's detailed delivery address: reverse-geocode their GPS pin (the same
+    # street address we show the seller), plus any landmark note.
+    buyer_addr = None
+    if payload.customer_lat is not None and payload.customer_lng is not None:
+        buyer_addr = reverse_geocode_address(payload.customer_lat, payload.customer_lng)
+    buyer_addr = (
+        ", ".join(p for p in [buyer_addr, payload.delivery_note] if p)
+        or "customer location"
+    )
     receiver_code = shipbubble.validate_address(
         name=shipbubble.clean_name(payload.customer_name, pad="Buyer"),
         email=f"{buyer_digits or 'buyer'}@buyer.suoops.com",
         phone=payload.customer_phone,
-        address=(payload.delivery_note or "customer location"),
+        address=buyer_addr,
         latitude=payload.customer_lat,
         longitude=payload.customer_lng,
     )
