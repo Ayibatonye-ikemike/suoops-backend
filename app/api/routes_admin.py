@@ -4685,8 +4685,17 @@ def list_disputes(
         .outerjoin(models.Customer, models.Invoice.customer_id == models.Customer.id)
     )
     if status_filter == "review":
-        q = q.filter(models.StorefrontOrderEscrow.held_for_review.is_(True))
-    elif status_filter != "all":
+        q = q.filter(
+            models.StorefrontOrderEscrow.held_for_review.is_(True),
+            # Unpaid ('pending') orders never moved money — keep them out of the
+            # review queue even if flagged, so an abandoned checkout can't put a
+            # seller in front of Trust & Safety.
+            models.StorefrontOrderEscrow.status != "pending",
+        )
+    elif status_filter == "all":
+        # 'All' means all REAL (paid) orders — exclude unpaid pending rows.
+        q = q.filter(models.StorefrontOrderEscrow.status != "pending")
+    else:
         q = q.filter(models.StorefrontOrderEscrow.status == status_filter)
 
     total = q.count()
