@@ -1855,21 +1855,24 @@ def _mark_read(db: Session, escrow_id: int, sender_role: str) -> None:
 
 def _store_message(db: Session, escrow, *, sender_role: str, sender_user_id: int | None, body: str):
     from app.services.message_guard import (
-        count_number_words,
+        encoded_contact_score,
+        is_number_fragment,
+        mask_encoded_numbers,
         mask_number_words,
         scan_message,
     )
 
     result = scan_message(body)
 
-    # Cross-message evasion: a phone number spelled out in words and split across
-    # several short messages ("six seven eight" … "nine ten" … "zero zero") slips
-    # past the single-message filter. Sum the number-words this sender used in
-    # their recent messages; a phone-length run is a shared contact number.
-    current_words = count_number_words(body)
-    if "spelled_contact" not in result.reasons and current_words > 0:
-        recent_words = sum(
-            count_number_words(b or "")
+    # Cross-message evasion: a phone number split across several short messages —
+    # spelled out ("six seven eight" … "zero zero"), in digit groups ("080" …
+    # "312"), binary ("001" … "110") or roman — slips past the single-message
+    # filter. Sum the number 'positions' this sender used across their recent
+    # messages; a phone-length total (>=7) is a shared contact number.
+    current_score = encoded_contact_score(body)
+    if "spelled_contact" not in result.reasons and current_score > 0:
+        recent_score = sum(
+            encoded_contact_score(b or "")
             for (b,) in (
                 db.query(models.OrderMessage.body_raw)
                 .filter(
@@ -1881,10 +1884,14 @@ def _store_message(db: Session, escrow, *, sender_role: str, sender_user_id: int
                 .all()
             )
         )
-        if recent_words + current_words >= 7:
+        if recent_score + current_score >= 7:
             result.reasons.append("spelled_contact")
             if not result.blocked:
-                result.redacted = mask_number_words(result.redacted)
+                result.redacted = (
+                    mask_encoded_numbers(result.redacted)
+                    if is_number_fragment(body)
+                    else mask_number_words(result.redacted)
+                )
 
     m = models.OrderMessage(
         escrow_id=escrow.id,
@@ -1899,6 +1906,10 @@ def _store_message(db: Session, escrow, *, sender_role: str, sender_user_id: int
     db.add(m)
     db.commit()
     db.refresh(m)
+    # First time a thread trips the leak filter, drop a one-time system nudge so
+    # both parties know contact/payment must stay on SuoOps (deterrent).
+    if result.flagged:
+        _maybe_warn_circumvention(db, escrow)
     return m, result
 
 
@@ -1922,6 +1933,29 @@ def _store_system_message(db: Session, escrow, body: str):
     db.commit()
     db.refresh(m)
     return m
+
+
+_CIRCUMVENTION_WARNING = (
+    "🔒 For everyone's protection, keep contact and payment on SuoOps. Sharing "
+    "phone numbers or arranging payment off-platform voids buyer protection and "
+    "can flag the seller."
+)
+
+
+def _maybe_warn_circumvention(db: Session, escrow) -> None:
+    """Post the anti-circumvention nudge into a thread once (the first time it
+    trips the leak filter), so both parties are warned without spamming."""
+    already = (
+        db.query(models.OrderMessage.id)
+        .filter(
+            models.OrderMessage.escrow_id == escrow.id,
+            models.OrderMessage.sender_role == "system",
+            models.OrderMessage.body_raw == _CIRCUMVENTION_WARNING,
+        )
+        .first()
+    )
+    if not already:
+        _store_system_message(db, escrow, _CIRCUMVENTION_WARNING)
 
 
 @public_router.post("/store/{slug}/messages")

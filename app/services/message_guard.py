@@ -140,3 +140,59 @@ def mask_number_words(text: str) -> str:
     """Mask runs of spelled-out number-words — used once a thread's accumulated
     spelled digits look like a shared phone number."""
     return _NUM_WORD_RUN_RE.sub(MASK, text or "")
+
+
+_DIGIT_RE = re.compile(r"\d")
+_DIGIT_RUN_RE = re.compile(r"\d(?:[\s.\-]*\d)*")
+# Roman-numeral tokens. NOTE: many ordinary English words are all-roman letters
+# ("mix", "did", "mill", "civic"), so roman tokens are only ever *counted* inside
+# an otherwise number-only message fragment (see is_number_fragment) — never in
+# normal prose.
+_ROMAN_RE = re.compile(
+    r"\b(?=[mdclxvi])m{0,4}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})\b",
+    re.IGNORECASE,
+)
+
+
+def count_digits(text: str) -> int:
+    return len(_DIGIT_RE.findall(text or ""))
+
+
+def count_roman_tokens(text: str) -> int:
+    return sum(1 for m in _ROMAN_RE.finditer(text or "") if m.group())
+
+
+def is_number_fragment(text: str) -> bool:
+    """True when a message is essentially just a number — spelled out, in digits,
+    binary or roman — with almost no other words. Lets the caller safely count
+    digit/roman contact fragments without flagging normal price/quantity chat.
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    stripped = _NUM_WORD_RUN_RE.sub("", t)
+    stripped = _ROMAN_RE.sub("", stripped)
+    stripped = re.sub(r"[\d\s,.\-+()#]", "", stripped)
+    return len(stripped) <= 2 and (
+        count_number_words(t) + count_digits(t) + count_roman_tokens(t)
+    ) >= 1
+
+
+def encoded_contact_score(text: str) -> int:
+    """Number 'positions' in a message: spelled number-words always, plus digits
+    and roman tokens when the whole message is a number-fragment. Summed across a
+    sender's recent messages, a phone-length total is a shared contact number.
+    """
+    words = count_number_words(text)
+    if is_number_fragment(text):
+        return words + count_digits(text) + count_roman_tokens(text)
+    return words
+
+
+def mask_encoded_numbers(text: str) -> str:
+    """Mask spelled number-words, digit runs and roman tokens — used once a
+    thread's accumulated fragments look like a shared phone number."""
+    t = mask_number_words(text or "")
+    t = _DIGIT_RUN_RE.sub(MASK, t)
+    t = _ROMAN_RE.sub(MASK, t)
+    return t
