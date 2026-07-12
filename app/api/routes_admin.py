@@ -4568,6 +4568,10 @@ class DisputeItem(BaseModel):
     # to confirm the provider's transfer state (queued/paid/failed) on demand.
     payout_state: str = "none"
     transfer_reference: str | None = None
+    # For a held order, when it will auto-pay (later of the dispute-window end and
+    # the T+1 settlement time). Lets the panel show "pays out after X" instead of
+    # a bare "No payout yet".
+    payout_eta: dt.datetime | None = None
     disputed_at: dt.datetime | None = None
     created_at: dt.datetime | None = None
 
@@ -4578,14 +4582,28 @@ class DisputeListResponse(BaseModel):
 
 
 def _derive_payout_state(e: "models.StorefrontOrderEscrow") -> str:
-    """Cheap payout state from stored escrow fields (no provider API call)."""
+    """Cheap payout state from stored escrow fields (no provider API call).
+    none | scheduled | processing | paid | refunded."""
     if e.status == "released":
         return "paid"
     if e.status == "refunded":
         return "refunded"
     if e.transfer_reference:
         return "processing"  # a payout was initiated and is in flight
+    if e.status == "held":
+        return "scheduled"  # cleared/holding — auto-pays after window + T+1 settlement
     return "none"
+
+
+def _payout_eta(e: "models.StorefrontOrderEscrow") -> "dt.datetime | None":
+    """Earliest a held order will auto-pay: the later of its dispute-window end and
+    the T+1 settlement time (payouts never run before funds have settled)."""
+    if e.status != "held":
+        return None
+    times = [
+        t for t in (getattr(e, "release_due_at", None), getattr(e, "settle_at", None)) if t
+    ]
+    return max(times) if times else None
 
 
 class FlaggedMessageItem(BaseModel):
@@ -4717,6 +4735,7 @@ def list_disputes(
                 seller_circumvention_attempts=seller.circumvention_attempts or 0,
                 payout_state=_derive_payout_state(e),
                 transfer_reference=e.transfer_reference,
+                payout_eta=_payout_eta(e),
                 disputed_at=e.disputed_at,
                 created_at=e.created_at,
             )
