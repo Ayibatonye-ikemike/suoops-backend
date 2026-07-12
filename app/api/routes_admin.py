@@ -591,6 +591,18 @@ class PayoutListResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+def _mask_account_number(number: str | None) -> str | None:
+    """Mask a bank account number to its last 4 digits so a compromised admin
+    session can't exfiltrate every user's full bank account. Enough for the
+    admin to eyeball-match against the account name during a payout run."""
+    if not number:
+        return number
+    n = number.strip()
+    if len(n) <= 4:
+        return n
+    return "•" * (len(n) - 4) + n[-4:]
+
+
 @router.get("/referrals/payouts", response_model=PayoutListResponse)
 def get_referral_payouts(
     db: Session = Depends(get_db),
@@ -685,7 +697,7 @@ def get_referral_payouts(
             email=user.email,
             phone=user.phone,
             payout_bank_name=bank_name,
-            payout_account_number=account_number,
+            payout_account_number=_mask_account_number(account_number),
             payout_account_name=account_name,
             paid_referrals=agg["count"],
             commission_amount=agg["amount"],
