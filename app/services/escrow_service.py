@@ -732,9 +732,10 @@ def send_delivery_code(user_phone: str | None, code: str, business_name: str | N
 
         shop = business_name or "the store"
         msg = (
-            f"🛡️ Your SuoOps delivery code for your order from {shop} is: {code}\n\n"
-            "Give this code to the seller ONLY when your order arrives — it "
-            "releases your payment. Your money is safely held until then."
+            f"🛡️ Your SuoOps release code for your order from {shop} is: {code}\n\n"
+            "Give this code to the SELLER only after your order is in your hands "
+            "— it releases your payment. The delivery rider never needs it. Your "
+            "money is safely held until then."
         )
         WhatsAppClient(settings.WHATSAPP_API_KEY).send_text(user_phone, msg)
     except Exception:  # noqa: BLE001
