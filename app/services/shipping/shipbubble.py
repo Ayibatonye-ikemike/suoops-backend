@@ -50,6 +50,57 @@ def enabled() -> bool:
     return bool(settings.SHIPBUBBLE_ENABLED and settings.SHIPBUBBLE_API_KEY)
 
 
+# ── Delivery status (buyer-facing) ──────────────────────────────────────────
+# Normalized lifecycle codes in display order, mapped to friendly labels.
+DELIVERY_STATUS_LABELS: dict[str, str] = {
+    "booked": "Booked — awaiting courier pickup",
+    "pickup_enroute": "Rider on the way to pick up",
+    "picked_up": "Picked up by courier",
+    "in_transit": "In transit",
+    "out_for_delivery": "Out for delivery",
+    "delivered": "Delivered",
+    "cancelled": "Delivery cancelled",
+    "returned": "Returned to sender",
+}
+
+# Raw Shipbubble status strings → our normalized code. Keys are lowercased with
+# spaces/hyphens collapsed to underscores.
+_RAW_STATUS_MAP: dict[str, str] = {
+    "pending": "pickup_enroute",
+    "confirmed": "pickup_enroute",
+    "accepted": "pickup_enroute",
+    "picked_up": "picked_up",
+    "pickup": "picked_up",
+    "collected": "picked_up",
+    "in_transit": "in_transit",
+    "intransit": "in_transit",
+    "shipped": "in_transit",
+    "out_for_delivery": "out_for_delivery",
+    "outfordelivery": "out_for_delivery",
+    "dispatched": "out_for_delivery",
+    "completed": "delivered",
+    "delivered": "delivered",
+    "fulfilled": "delivered",
+    "cancelled": "cancelled",
+    "canceled": "cancelled",
+    "returned": "returned",
+    "return": "returned",
+}
+
+
+def normalize_status(raw: str | None) -> str | None:
+    """Map a raw Shipbubble status to our normalized code (or None if unknown)."""
+    if not raw:
+        return None
+    key = re.sub(r"[\s\-]+", "_", str(raw).strip().lower())
+    return _RAW_STATUS_MAP.get(key)
+
+
+def status_label(code: str | None) -> str | None:
+    """Friendly, buyer-facing label for a normalized status code."""
+    return DELIVERY_STATUS_LABELS.get(code or "")
+
+
 @dataclasses.dataclass
 class DeliveryOption:
     """One courier rate, normalized for the checkout UI."""

@@ -830,6 +830,13 @@ class StorefrontOrderEscrow(Base):
     courier_delivered_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Latest normalized courier status from the Shipbubble webhook, shown to the
+    # buyer ("booked" → "pickup_enroute" → "picked_up" → "in_transit" →
+    # "out_for_delivery" → "delivered", plus "cancelled"/"returned").
+    delivery_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    delivery_status_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

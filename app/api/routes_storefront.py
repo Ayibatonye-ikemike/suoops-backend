@@ -444,6 +444,13 @@ def storefront_qr(
 
 # ── Business-facing storefront order (escrow) status + delivery proof ──
 
+def _delivery_status_label(code: str | None) -> str | None:
+    """Friendly, buyer-facing label for a normalized courier status code."""
+    from app.services.shipping.shipbubble import status_label
+
+    return status_label(code)
+
+
 def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Customer | None") -> dict:
     """Business-safe escrow summary. NEVER includes the buyer-only delivery code."""
     return {
@@ -468,6 +475,8 @@ def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Custo
         "dispatch_carrier": escrow.dispatch_carrier,
         "dispatch_eta": escrow.dispatch_eta.isoformat() if escrow.dispatch_eta else None,
         "dispatch_tracking_url": escrow.shipbubble_tracking_url,
+        "delivery_status": escrow.delivery_status,
+        "delivery_status_label": _delivery_status_label(escrow.delivery_status),
         "delivery_courier": escrow.delivery_courier,
         "delivery_service_type": escrow.delivery_service_type,
         "delivery_dropoff_station": escrow.delivery_dropoff_station,
@@ -623,6 +632,11 @@ def _book_courier_pickup(escrow_id: int, invoice_id: str) -> None:
             escrow.shipbubble_tracking_url = booking.get("tracking_url") or None
             if booking.get("courier") and not escrow.dispatch_carrier:
                 escrow.dispatch_carrier = str(booking["courier"])[:80]
+            # Show the buyer the courier is booked and a pickup is pending until
+            # the first webhook status arrives.
+            if not escrow.delivery_status:
+                escrow.delivery_status = "booked"
+                escrow.delivery_status_at = dt.datetime.now(dt.timezone.utc)
             # Delivery-aware payout: don't auto-release until the courier reports
             # delivery. Cap the hold at the delivery SLA so a lost parcel gets
             # flagged for review instead of hanging forever.
@@ -1828,6 +1842,8 @@ def _buyer_order_view(escrow: "models.StorefrontOrderEscrow") -> dict:
         "dispatch_eta": escrow.dispatch_eta.isoformat() if escrow.dispatch_eta else None,
         "dispatch_tracking_url": escrow.shipbubble_tracking_url,
         "dispatch_proof_url": _presign(escrow.dispatch_proof_url),
+        "delivery_status": escrow.delivery_status,
+        "delivery_status_label": _delivery_status_label(escrow.delivery_status),
         "delivered_at": (
             escrow.seller_marked_delivered_at.isoformat()
             if escrow.seller_marked_delivered_at

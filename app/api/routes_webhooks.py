@@ -952,16 +952,37 @@ def _apply_shipbubble_update(
         escrow.dispatch_carrier = str(courier["name"])[:80]
     import datetime as _dt
 
-    status = (order_status or "").lower()
+    from app.services.shipping import shipbubble as _sb
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    # Normalized lifecycle: booked → pickup_enroute → picked_up → in_transit →
+    # out_for_delivery → delivered (+ cancelled/returned). Store the latest so the
+    # buyer and seller can see live progress, and nudge the buyer on key moves.
+    code = _sb.normalize_status(order_status)
+    if code and code != escrow.delivery_status:
+        escrow.delivery_status = code
+        escrow.delivery_status_at = now
+        notice = {
+            "picked_up": "🚚 Your order has been picked up by the courier — it's on the way.",
+            "out_for_delivery": "🛵 Your order is out for delivery — expect it soon.",
+        }.get(code)
+        if notice:
+            try:
+                from app.api.routes_storefront import _store_system_message
+
+                _store_system_message(db, escrow, notice)
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to post %s notice for escrow %s", code, escrow.id)
+
     # First movement (picked up / in transit) → record the dispatch timestamp.
-    if status in {"picked_up", "in_transit"} and not escrow.seller_dispatched_at:
-        escrow.seller_dispatched_at = _dt.datetime.now(_dt.timezone.utc)
+    if code in {"picked_up", "in_transit"} and not escrow.seller_dispatched_at:
+        escrow.seller_dispatched_at = now
     # Delivered → start the post-delivery inspection window: the payout can now
     # auto-release only after the buyer has had time to inspect/dispute.
-    if status == "completed" and escrow.courier_delivered_at is None:
+    if code == "delivered" and escrow.courier_delivered_at is None:
         from app.core.config import settings
 
-        now = _dt.datetime.now(_dt.timezone.utc)
         escrow.courier_delivered_at = now
         if escrow.status == "held":
             escrow.release_due_at = now + _dt.timedelta(
