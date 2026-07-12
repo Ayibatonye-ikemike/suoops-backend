@@ -6,6 +6,18 @@ manual dispatch flow is never affected until a key + wallet are configured.
 from app.services.shipping import shipbubble
 
 
+def test_clean_name_strips_symbols_and_pads():
+    # Business names with symbols/digits → clean two-word person name.
+    assert shipbubble.clean_name("Family's Saloon") == "Familys Saloon"
+    assert shipbubble.clean_name("IKEMIKE CREATIVE HUB LTd") == "IKEMIKE CREATIVE HUB LTd"
+    assert shipbubble.clean_name("Shop 24/7", pad="Store") == "Shop Store"
+    # Single word → padded to two words.
+    assert shipbubble.clean_name("Tonye", pad="Buyer") == "Tonye Buyer"
+    # Empty / all-symbols → safe fallback.
+    assert shipbubble.clean_name("", pad="Store") == "Suoops Store"
+    assert shipbubble.clean_name("123 456", pad="Buyer") == "Suoops Buyer"
+
+
 def test_disabled_by_default():
     assert shipbubble.enabled() is False
 

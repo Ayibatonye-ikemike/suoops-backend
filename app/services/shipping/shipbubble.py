@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -27,6 +28,21 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def clean_name(name: str | None, pad: str = "Customer") -> str:
+    """Shipbubble's address validation demands a clean person name ('John Doe')
+    with NO numbers or symbols and at least two words. Business names ("Family's
+    Saloon", "…Ltd", digits) and single-word names get rejected, which kills the
+    quote. So we strip to letters/spaces and pad to two words."""
+    cleaned = re.sub(r"[^A-Za-z ]+", "", name or "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return f"Suoops {pad}"
+    if len(cleaned.split()) < 2:
+        return f"{cleaned} {pad}"[:60]
+    return cleaned[:60]
+
 
 
 def enabled() -> bool:

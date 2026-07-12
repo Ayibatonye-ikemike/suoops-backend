@@ -1019,7 +1019,7 @@ def _shipbubble_quote(db: Session, owner: "models.User", payload: "StoreOrderIn"
         p for p in [owner.storefront_city, owner.storefront_state, "Nigeria"] if p
     )
     sender_code = shipbubble.validate_address(
-        name=owner.business_name or "Store",
+        name=shipbubble.clean_name(owner.business_name or owner.name, pad="Store"),
         email=owner.email or "store@suoops.com",
         phone=owner.phone or "",
         address=seller_addr or "Nigeria",
@@ -1028,7 +1028,7 @@ def _shipbubble_quote(db: Session, owner: "models.User", payload: "StoreOrderIn"
     )
     buyer_digits = "".join(ch for ch in payload.customer_phone if ch.isdigit())
     receiver_code = shipbubble.validate_address(
-        name=payload.customer_name,
+        name=shipbubble.clean_name(payload.customer_name, pad="Buyer"),
         email=f"{buyer_digits or 'buyer'}@buyer.suoops.com",
         phone=payload.customer_phone,
         address=(payload.delivery_note or "customer location"),
