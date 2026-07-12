@@ -28,11 +28,12 @@ def reverse_geocode(lat: float, lng: float) -> tuple[str | None, str | None]:
         with httpx.Client(timeout=15) as client:
             resp = client.get(
                 f"{_MAPBOX_GEOCODE}/{lng},{lat}.json",
+                # No `types`/`limit`: Mapbox reverse geocoding returns HTTP 422 for
+                # a multi-type request combined with a limit. The single default
+                # feature carries the full region/place hierarchy in `context`.
                 params={
                     "access_token": token,
                     "country": "NG",
-                    "types": "region,place",
-                    "limit": 5,
                 },
             )
         data = resp.json()
@@ -44,10 +45,22 @@ def reverse_geocode(lat: float, lng: float) -> tuple[str | None, str | None]:
     city: str | None = None
     for feat in data.get("features", []):
         place_types = feat.get("place_type", [])
+        text = (feat.get("text") or "").strip() or None
         if "region" in place_types and not state:
-            state = (feat.get("text") or "").strip() or None
-        elif "place" in place_types and not city:
-            city = (feat.get("text") or "").strip() or None
+            state = text
+        if "place" in place_types and not city:
+            city = text
+        # The most specific feature (address/place) lists its parent region/place
+        # in `context` — pull the state/city from there.
+        for ctx in feat.get("context", []):
+            cid = str(ctx.get("id", ""))
+            ctext = (ctx.get("text") or "").strip() or None
+            if cid.startswith("region") and not state:
+                state = ctext
+            elif cid.startswith("place") and not city:
+                city = ctext
+        if state and city:
+            break
     if not state:
         # Token is set but no state resolved — surface WHY (invalid/deprecated
         # token, no NG coverage, error body) so state=None is diagnosable instead
@@ -76,11 +89,11 @@ def reverse_geocode_address(lat: float, lng: float) -> str | None:
         with httpx.Client(timeout=15) as client:
             resp = client.get(
                 f"{_MAPBOX_GEOCODE}/{lng},{lat}.json",
+                # Default single feature: its `place_name` is the full readable
+                # address. (A multi-type request with a limit returns HTTP 422.)
                 params={
                     "access_token": token,
                     "country": "NG",
-                    "types": "address,neighborhood,locality,place,region",
-                    "limit": 1,
                 },
             )
         data = resp.json()
