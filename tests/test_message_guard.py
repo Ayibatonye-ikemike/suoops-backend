@@ -67,6 +67,31 @@ def test_off_platform_channel_is_flagged():
     assert r.flagged is True
 
 
+def test_price_or_amount_talk_is_flagged():
+    # Order is already paid via escrow — discussing a price/amount is a push to
+    # collect more money off-platform.
+    for text in (
+        "the balance is ₦5000",
+        "send 5k for the extra one",
+        "how much for two more?",
+        "top up 3000 naira please",
+    ):
+        r = scan_message(text)
+        assert "money_amount" in r.reasons, text
+        assert r.flagged is True
+
+
+def test_address_and_quantity_numbers_not_money_flagged():
+    # Short address / quantity numbers with no currency must NOT be money-flagged.
+    for text in (
+        "I'm at no 6, second gate",
+        "block 12 flat 3",
+        "bring 2 bags please",
+    ):
+        r = scan_message(text)
+        assert "money_amount" not in r.reasons, text
+
+
 def test_seller_circumvention_flags_at_threshold():
     """Enough circumvention attempts flag the seller (revokes trusted status)."""
     from app.core.config import settings

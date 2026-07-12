@@ -71,6 +71,17 @@ _SOFT_NUDGE_RES = [
         r"cash\s+on\s+delivery",
     )
 ]
+# A storefront order is already paid via escrow, so there's nothing left to
+# charge — any talk of a price/amount/balance/top-up in the thread is a push to
+# collect more money off-platform. Matches ₦/naira amounts, "5k", and the common
+# "balance / top up / extra charge" asks. (Bare address/quantity numbers like
+# "no 6" carry no currency and are left alone.)
+_MONEY_RE = re.compile(
+    r"(₦\s*\d|\bngn\s*\d|\b\d[\d,]*\s*(?:naira|ngn)\b|\b\d{1,3}\s*k\b|"
+    r"\b(?:price|how\s+much|balance|top\s*-?\s*up|extra\s+(?:charge|cost|fee)|"
+    r"additional\s+(?:pay(?:ment)?|charge|cost|fee))\b)",
+    re.IGNORECASE,
+)
 
 
 @dataclasses.dataclass
@@ -112,6 +123,11 @@ def scan_message(text: str) -> GuardResult:
         if rx.search(redacted):
             reasons.append("payment_nudge")
             break
+
+    # The order is already paid — treat any price/amount talk as an off-platform
+    # money push (delivered but flagged; feeds seller trust + posts the nudge).
+    if _MONEY_RE.search(redacted):
+        reasons.append("money_amount")
 
     blocked = any(rx.search(text or "") for rx in _HARD_BLOCK_RES)
     if blocked and "payment_circumvention" not in reasons:
