@@ -189,5 +189,12 @@ def paystack_refund(*, charge_reference: str, amount_kobo: int, note: str) -> di
         raise PayoutError(f"Refund request failed: {exc}") from exc
 
     if data.get("status"):
+        # Paystack accepts the refund (top-level status:true); the refund itself
+        # is then 'pending'/'processing' → 'processed'. Only an explicit failure
+        # means the buyer won't be paid — surface that so the caller doesn't mark
+        # the order refunded when Paystack actually rejected it.
+        refund_status = str((data.get("data") or {}).get("status") or "").lower()
+        if refund_status in ("failed", "cancelled", "canceled", "declined", "reversed"):
+            raise PayoutError(f"Refund not accepted by Paystack: {refund_status}")
         return data
     raise PayoutError(f"Refund failed: {data.get('message')}")

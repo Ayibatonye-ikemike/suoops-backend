@@ -1623,9 +1623,11 @@ def confirm_delivery(
 
 
 class OrderProblemIn(BaseModel):
-    phone: str = Field(min_length=6, max_length=20)
+    # The buyer proves ownership with their release code (a secret only the buyer
+    # has), so a third party who merely knows a phone number can't file a dispute
+    # or get the seller flagged.
+    code: str = Field(min_length=4, max_length=12)
     reason: str = Field(min_length=3, max_length=255)
-    invoice_id: str | None = Field(default=None, max_length=40)
 
 
 @public_router.post("/store/{slug}/report-problem")
@@ -1638,35 +1640,34 @@ def report_order_problem(
 ) -> dict:
     """Public: the buyer reports a problem with a held order (e.g. never
     delivered, wrong item). Puts the hold into ``disputed`` so no auto-payout
-    happens, and flags the seller for a Trust & Safety review. Gated by the
-    buyer's phone number.
+    happens. Gated by the buyer's RELEASE CODE (a secret only the buyer has), so
+    a third party who knows a phone number can't dispute someone else's order.
     """
     import datetime as dt
 
-    from app.utils.phone import normalize_phone
+    from app.services.escrow_code_guard import (
+        clear_code_failures,
+        is_code_locked,
+        register_code_failure,
+    )
 
     owner = _lookup_store(db, slug)
-    normalized = normalize_phone(payload.phone.strip())
-    candidates = {payload.phone.strip(), normalized}
-
-    q = (
-        db.query(models.StorefrontOrderEscrow)
-        .join(models.Invoice, models.StorefrontOrderEscrow.invoice_id == models.Invoice.id)
-        .join(models.Customer, models.Invoice.customer_id == models.Customer.id)
-        .filter(
-            models.StorefrontOrderEscrow.seller_id == owner.id,
-            models.Customer.phone.in_(candidates),
+    # Brute-force guard: a wrong release code counts against the store's shared
+    # failure budget (same lockout as delivery confirmation).
+    if is_code_locked(owner.id):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts on this store. Please try again later.",
         )
-    )
-    if payload.invoice_id:
-        q = q.filter(models.Invoice.invoice_id == payload.invoice_id.strip())
-    escrow = q.order_by(models.StorefrontOrderEscrow.id.desc()).first()
-
+    escrow = _escrow_by_code(db, owner.id, payload.code.strip())
     if not escrow:
+        register_code_failure(owner.id)
+        logger.warning("Invalid report-problem code on store %s", slug)
         raise HTTPException(
             status_code=404,
-            detail="We couldn't find a held order for that phone number.",
+            detail="That release code isn't valid.",
         )
+    clear_code_failures(owner.id)
 
     if escrow.status == "refunded":
         return {"ok": True, "message": "You've already been refunded for this order."}
@@ -1683,15 +1684,27 @@ def report_order_problem(
     escrow.status = "disputed"
     escrow.disputed_at = dt.datetime.now(dt.timezone.utc)
     escrow.dispute_reason = payload.reason.strip()[:255]
-    # Flag the seller so it surfaces in the Trust & Safety review queue.
-    owner.flagged_for_review = True
+    # We deliberately DON'T set owner.flagged_for_review here. The disputed order
+    # already freezes the payout, blocks the seller from trusted status
+    # (is_trusted_seller treats any disputed order as disqualifying) and surfaces
+    # in the Trust & Safety queue. A single dispute shouldn't also force ALL the
+    # seller's other new orders into manual review — the dispute-velocity guard
+    # escalates repeat disputes instead.
     db.commit()
 
-    # Track the buyer's dispute history (deters serial false "not delivered" claims).
+    # Track the buyer's dispute history (deters serial false "not delivered"
+    # claims). Use the order's own customer phone.
     try:
         from app.services.escrow_service import record_buyer_dispute
 
-        record_buyer_dispute(db, payload.phone)
+        cust = (
+            db.query(models.Customer)
+            .join(models.Invoice, models.Invoice.customer_id == models.Customer.id)
+            .filter(models.Invoice.id == escrow.invoice_id)
+            .first()
+        )
+        if cust and cust.phone:
+            record_buyer_dispute(db, cust.phone)
     except Exception:  # noqa: BLE001
         logger.exception("Failed to record buyer dispute for %s", slug)
 

@@ -92,7 +92,7 @@ class StockMovementService(InventoryServiceBase):
         Called when an invoice is paid with line items linked to products.
         Returns None if product doesn't track stock.
         """
-        product = self._get_product(product_id)
+        product = self._get_product_for_update(product_id)
         if not product or not product.track_stock:
             return None
 
@@ -352,6 +352,16 @@ class StockMovementService(InventoryServiceBase):
             Product.id == product_id,
             Product.user_id == self._user_id,
         ).first()
+
+    def _get_product_for_update(self, product_id: int) -> Product | None:
+        """Like _get_product but locks the row (SELECT ... FOR UPDATE) so two paid
+        webhooks racing on the same product serialize and can't oversell."""
+        return (
+            self._db.query(Product)
+            .filter(Product.id == product_id, Product.user_id == self._user_id)
+            .with_for_update()
+            .first()
+        )
 
     def _get_product_or_raise(self, product_id: int) -> Product:
         """Get product by ID or raise ValueError."""

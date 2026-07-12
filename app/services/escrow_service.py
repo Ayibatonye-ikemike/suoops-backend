@@ -266,6 +266,28 @@ def _norm_state(value: str | None) -> str | None:
     return s or None
 
 
+def _unique_confirmation_code(db: Session, seller_id: int) -> str:
+    """A 6-digit buyer release code that doesn't collide with any of this
+    seller's currently-live orders (pending/held/disputed), so entering a code
+    can never match the wrong order. Falls back after a few tries — collision
+    odds are tiny and a stale/terminal order sharing a code is harmless."""
+    live = ("pending", "held", "disputed")
+    for _ in range(8):
+        code = f"{secrets.randbelow(900000) + 100000}"
+        clash = (
+            db.query(models.StorefrontOrderEscrow.id)
+            .filter(
+                models.StorefrontOrderEscrow.seller_id == seller_id,
+                models.StorefrontOrderEscrow.confirmation_code == code,
+                models.StorefrontOrderEscrow.status.in_(live),
+            )
+            .first()
+        )
+        if not clash:
+            return code
+    return f"{secrets.randbelow(900000) + 100000}"
+
+
 def create_order_escrow(
     db: Session,
     *,
@@ -313,8 +335,9 @@ def create_order_escrow(
         customer_state=customer_state,
         customer_lat=customer_lat,
         customer_lng=customer_lng,
-        # 6-digit buyer-only delivery code (never shown to the seller).
-        confirmation_code=f"{secrets.randbelow(900000) + 100000}",
+        # 6-digit buyer-only delivery code (never shown to the seller). Unique
+        # among this seller's live orders so a code can never match a wrong order.
+        confirmation_code=_unique_confirmation_code(db, seller.id),
         held_for_review=bool(review_reason),
         review_reason=review_reason,
     )
@@ -669,6 +692,10 @@ def _settle_refunded_delivery_fee(db: Session, escrow: "models.StorefrontOrderEs
                 "Seller %s absorbed delivery fee %s kobo (delivered order refunded, escrow %s)",
                 seller.id, fee, getattr(escrow, "id", None),
             )
+            return
+        # Seller record is gone (deleted account) — can't debit the wallet, so
+        # flag the fee for manual recovery instead of losing it silently.
+        _flag_unrecovered_delivery_fee(db, escrow, fee)
         return
     if order_id:
         from app.services.shipping import shipbubble
@@ -679,8 +706,23 @@ def _settle_refunded_delivery_fee(db: Session, escrow: "models.StorefrontOrderEs
                 order_id, getattr(escrow, "id", None),
             )
             return
-    logger.warning(
-        "Delivery fee %s kobo not reclaimed for escrow %s — needs manual review",
+    _flag_unrecovered_delivery_fee(db, escrow, fee)
+
+
+def _flag_unrecovered_delivery_fee(
+    db: Session, escrow: "models.StorefrontOrderEscrow", fee: int
+) -> None:
+    """Record an unreclaimed delivery fee on the escrow so it's queryable for
+    manual recovery (not just buried in logs)."""
+    try:
+        escrow.review_reason = (
+            f"delivery fee {fee} kobo not reclaimed — manual recovery"
+        )[:120]
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    logger.error(
+        "Delivery fee %s kobo NOT reclaimed for escrow %s — needs manual recovery",
         fee, getattr(escrow, "id", None),
     )
 

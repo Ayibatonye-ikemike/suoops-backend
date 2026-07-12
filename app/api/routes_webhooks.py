@@ -739,6 +739,17 @@ def _handle_flutterwave_invoice_payment(payload: dict, db: Session, signature: s
             reference, status.amount_kobo, transaction.amount,
         )
         return {"status": "error", "message": "amount mismatch"}
+    if (
+        transaction is not None
+        and status.amount_kobo is not None
+        and int(status.amount_kobo) > int(transaction.amount)
+    ):
+        # Overpayment: accept it (the buyer paid) but audit it — the excess sits
+        # in the hold and should be reconciled/refunded manually.
+        logger.warning(
+            "FLW webhook OVERPAYMENT (ref=%s): verified %s > expected %s — accepting, needs review",
+            reference, status.amount_kobo, transaction.amount,
+        )
 
     # Confirmed successful — record the dedup key and finalize atomically. A repeat
     # of the same successful event is short-circuited here (and finalize is itself
