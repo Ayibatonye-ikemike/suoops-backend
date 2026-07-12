@@ -85,6 +85,7 @@ def test_delivery_fee_added_and_excluded_from_payout(db_session, client, monkeyp
             "customer_name": "Buyer",
             "customer_phone": "+2348161111111",
             "items": [{"product_id": prod.id, "quantity": 1}],
+            "delivery_note": "12 Test St, Ikeja; blue gate",
             "delivery_courier_id": "gig",
             "delivery_service_code": "gig",
         },
@@ -160,6 +161,7 @@ def test_trusted_seller_courier_order_forces_escrow(db_session, client, monkeypa
             "customer_name": "Buyer",
             "customer_phone": "+2348161111111",
             "items": [{"product_id": prod.id, "quantity": 1}],
+            "delivery_note": "12 Test St, Ikeja; blue gate",
             "delivery_courier_id": "gig",
             "delivery_service_code": "gig",
         },
@@ -209,6 +211,7 @@ def test_all_storefront_orders_escrow_no_instant_payout(db_session, client, monk
             "customer_name": "Buyer",
             "customer_phone": "+2348161111111",
             "items": [{"product_id": prod.id, "quantity": 1}],
+            "delivery_note": "12 Test St, Ikeja; blue gate",
         },
     )
     assert resp.status_code == 200, resp.text

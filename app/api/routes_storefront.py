@@ -1155,6 +1155,16 @@ async def create_store_order(
     if total <= 0:
         raise HTTPException(status_code=400, detail="Order total must be greater than zero.")
 
+    # Delivery address is REQUIRED. The buyer's GPS pin may not be where they
+    # want delivery (they could be ordering from elsewhere), so a typed address
+    # + landmark is mandatory for the seller/courier to deliver to the right
+    # place. It's also appended to the courier address when a shipment is booked.
+    if not payload.delivery_note or len(payload.delivery_note.strip()) < 4:
+        raise HTTPException(
+            status_code=400,
+            detail="Please add your delivery address and a landmark.",
+        )
+
     from app.core.admin_security import get_client_ip
     from app.services.escrow_service import (
         create_order_escrow,
