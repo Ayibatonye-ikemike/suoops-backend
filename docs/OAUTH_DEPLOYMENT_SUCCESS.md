@@ -173,19 +173,23 @@ const handleOAuthCallback = async () => {
 };
 ```
 
-### Step 3: Store Tokens
+### Step 3: Handle Tokens (do NOT put them in localStorage)
 ```javascript
-// Backend returns tokens in callback response
+// Backend returns the access token in the callback response body and sets the
+// refresh token as an httpOnly, Secure, SameSite=strict cookie automatically.
 const response = await fetch('/auth/oauth/google/callback', {
   method: 'GET',
-  credentials: 'include'
+  credentials: 'include', // needed so the httpOnly refresh cookie is set
 });
 
-const { access_token, refresh_token, redirect_uri } = await response.json();
+const { access_token, redirect_uri } = await response.json();
 
-// Store tokens
-localStorage.setItem('access_token', access_token);
-localStorage.setItem('refresh_token', refresh_token);
+// SECURITY: keep the access token in MEMORY ONLY (e.g. the in-memory auth
+// store), never in localStorage/sessionStorage — that would expose it to XSS.
+// The refresh token is a httpOnly cookie the browser sends automatically; JS
+// must never read or store it. On page refresh, call the refresh endpoint
+// (credentials: 'include') to mint a new in-memory access token.
+useAuthStore.getState().setTokens({ accessToken: access_token /* ... */ });
 
 // Redirect to dashboard
 window.location.href = redirect_uri;
