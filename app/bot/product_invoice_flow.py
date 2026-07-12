@@ -472,7 +472,8 @@ class ProductInvoiceFlow:
             "amount": session.total,
             "currency": get_user_currency(self.db, session.user_id),
             "lines": lines,
-            # due_date omitted — backend auto-defaults to 3 days
+            # due_date omitted — no due date is set (no auto-default), so this
+            # invoice won't trigger overdue reminders.
         }
 
         # Clear the cart
