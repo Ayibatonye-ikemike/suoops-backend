@@ -93,6 +93,9 @@ class MessageOut(BaseModel):
 class PhoneVerificationRequest(BaseModel):
     """Request to add/verify phone number."""
     phone: str = Field(..., min_length=10, description="Phone number in E.164 format")
+    # Step-up code, REQUIRED only when changing an EXISTING phone (the login
+    # identity). First-time linking doesn't need it.
+    otp: str | None = Field(None, max_length=12)
 
 
 class PhoneVerificationVerify(BaseModel):
