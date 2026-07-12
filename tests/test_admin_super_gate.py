@@ -32,7 +32,10 @@ def test_non_super_admin_blocked_from_money_action(db_session):
     admin = _mk_admin(db_session, email="peon-gate@suoops.com", is_super_admin=False)
     app.dependency_overrides[get_current_admin] = lambda: admin
     try:
-        r = client.post("/admin/users/999999/pro-override")
+        r = client.post(
+            "/admin/users/999999/credit-wallet",
+            json={"amount_naira": 1000, "reason": "test reason"},
+        )
         assert r.status_code == 403, r.text
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
@@ -43,7 +46,10 @@ def test_super_admin_passes_the_gate(db_session):
     admin = _mk_admin(db_session, email="super-gate@suoops.com", is_super_admin=True)
     app.dependency_overrides[get_current_admin] = lambda: admin
     try:
-        r = client.post("/admin/users/999999/pro-override")
+        r = client.post(
+            "/admin/users/999999/credit-wallet",
+            json={"amount_naira": 1000, "reason": "test reason"},
+        )
         # Past the gate → it's a 404 for the missing user, not a 403.
         assert r.status_code == 404, r.text
     finally:

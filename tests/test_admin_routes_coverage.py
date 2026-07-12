@@ -190,22 +190,23 @@ def test_tasks_schedule(admin_client, seeded):
 # POST endpoints (safe / mocked)
 # ---------------------------------------------------------------------------
 
-def test_pro_override_toggle(admin_client, seeded):
+def test_credit_wallet(admin_client, seeded):
     uid = seeded["users"][1]
-    r1 = admin_client.post(f"/admin/users/{uid}/pro-override")
-    assert r1.status_code == 200
-    assert r1.json()["pro_override"] is True
-    r2 = admin_client.post(f"/admin/users/{uid}/pro-override")
-    assert r2.json()["pro_override"] is False
-    assert admin_client.post("/admin/users/99999/pro-override").status_code == 404
-
-
-def test_downgrade_to_free(admin_client, seeded):
-    uid = seeded["users"][0]  # the PRO user
-    r = admin_client.post(f"/admin/users/{uid}/downgrade-free")
-    assert r.status_code == 200
-    assert r.json()["plan"] == "FREE"
-    assert admin_client.post("/admin/users/99999/downgrade-free").status_code == 404
+    r = admin_client.post(
+        f"/admin/users/{uid}/credit-wallet",
+        json={"amount_naira": 1000, "reason": "goodwill credit"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["credited_naira"] == 1000
+    # Missing user → 404; invalid amount → 422.
+    assert admin_client.post(
+        "/admin/users/99999/credit-wallet",
+        json={"amount_naira": 1000, "reason": "x reason"},
+    ).status_code == 404
+    assert admin_client.post(
+        f"/admin/users/{uid}/credit-wallet",
+        json={"amount_naira": 0, "reason": "bad"},
+    ).status_code == 422
 
 
 def test_trigger_task_mocked(admin_client, seeded):

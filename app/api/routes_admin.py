@@ -341,86 +341,51 @@ def get_user_detail(
     }
 
 
-@router.post("/users/{user_id}/pro-override")
-def toggle_pro_override(
+class WalletCreditIn(BaseModel):
+    amount_naira: int = Field(..., gt=0, le=500_000)
+    reason: str = Field(..., min_length=3, max_length=255)
+
+
+@router.post("/users/{user_id}/credit-wallet")
+def credit_user_wallet(
     user_id: int,
+    payload: WalletCreditIn,
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
 ) -> dict:
-    """
-    Toggle admin-granted PRO feature access for a user.
+    """Credit a business's prepaid wallet as a goodwill / support gesture.
 
-    This gives the user access to all PRO features (inventory, branding,
-    voice, daily summary, etc.) WITHOUT changing their actual plan or
-    invoice balance. Invoice packs are NOT included.
+    In the flat-3%/free model the wallet is what invoices debit their fee from,
+    so this lets a business invoice without the 3% wallet debit until the credit
+    is used up. It is PLATFORM value (free fees), NOT a cash payout — no real
+    money leaves the platform. Super-admin only + audited + capped per credit.
     """
     _require_super_admin(admin_user)
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    new_value = not getattr(user, "pro_override", False)
-    user.pro_override = new_value
+    before_kobo = int(getattr(user, "wallet_balance_kobo", 0) or 0)
+    user.wallet_balance_kobo = before_kobo + int(payload.amount_naira) * 100
     db.commit()
 
-    change = "granted" if new_value else "revoked"
     log_audit_event(
-        "admin.users.pro_override",
+        "admin.users.wallet_credit",
         user_id=admin_user.id,
         target_user_id=user_id,
-        change=change,
+        amount_naira=payload.amount_naira,
+        reason=payload.reason,
     )
     logger.info(
-        "Admin %s %s PRO override for user %s (%s)",
-        admin_user.id, change, user_id, user.email or user.phone,
+        "Admin %s credited ₦%s to user %s wallet (%s)",
+        admin_user.id, payload.amount_naira, user_id, payload.reason,
     )
 
     return {
         "user_id": user_id,
-        "pro_override": new_value,
-        "message": f"PRO features {change} for {user.name or user.email}",
-    }
-
-
-@router.post("/users/{user_id}/downgrade-free")
-def downgrade_user_to_free(
-    user_id: int,
-    db: Session = Depends(get_db),
-    admin_user=Depends(get_current_admin),
-) -> dict:
-    """Force a user back to the FREE plan.
-
-    Clears the PRO plan, any subscription expiry, and the admin pro_override
-    flag. Use for stale PRO accounts that have no subscription dates and never
-    get caught by the auto-downgrade task. Invoice balance is preserved.
-    """
-    _require_super_admin(admin_user)
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    old_plan = user.plan.value if hasattr(user.plan, "value") else str(user.plan)
-    user.plan = models.SubscriptionPlan.FREE
-    user.subscription_expires_at = None
-    if getattr(user, "pro_override", False):
-        user.pro_override = False
-    db.commit()
-
-    log_audit_event(
-        "admin.users.downgrade_free",
-        user_id=admin_user.id,
-        target_user_id=user_id,
-        old_plan=old_plan,
-    )
-    logger.info(
-        "Admin %s downgraded user %s (%s) from %s to FREE",
-        admin_user.id, user_id, user.email or user.phone, old_plan,
-    )
-
-    return {
-        "user_id": user_id,
-        "plan": "FREE",
-        "message": f"{user.name or user.email or user_id} downgraded to FREE",
+        "credited_naira": payload.amount_naira,
+        "wallet_balance_naira": user.wallet_balance_kobo / 100,
+        "message": f"Credited ₦{payload.amount_naira:,} to {user.name or user.email or user_id}",
     }
 
 
