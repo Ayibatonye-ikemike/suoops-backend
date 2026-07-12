@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import secrets
@@ -424,7 +425,7 @@ Powered by SuoOps
             self._store.delete(key)
             metrics.otp_invalid_attempt()
             return False
-        if record.code != otp:
+        if not hmac.compare_digest(str(record.code), str(otp)):
             logger.warning("OTP mismatch | key=%s attempt=%d", key, record.attempts + 1)
             record.attempts += 1
             self._store.set(key, record.serialize(), int(self.OTP_TTL))
