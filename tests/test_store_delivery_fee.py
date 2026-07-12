@@ -184,14 +184,20 @@ def test_trusted_seller_courier_order_forces_escrow(db_session, client, monkeypa
     assert escrow.delivery_courier == "GIG"
 
 
-def test_trusted_seller_without_courier_stays_instant(db_session, client, monkeypatch):
-    """A service / self-pickup order (no courier) still settles instantly for a
-    trusted seller — no escrow row, no delivery fee."""
+def test_all_storefront_orders_escrow_no_instant_payout(db_session, client, monkeypatch):
+    """No instant payout on storefront: even a trusted seller's non-courier order
+    settles through escrow (hold-&-release), not an instant subaccount split."""
     owner, prod = _seed_store(db_session)
     monkeypatch.setattr(settings, "SHIPBUBBLE_CHECKOUT_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "ESCROW_ENABLED", True, raising=False)
 
     monkeypatch.setattr("app.services.escrow_service.is_trusted_seller", lambda db, u: True)
+    monkeypatch.setattr(
+        "app.services.escrow_service.detect_order_collusion", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        "app.services.escrow_service.seller_velocity_hold_reason", lambda *a, **k: None
+    )
     start = AsyncMock(return_value={"authorization_url": "http://pay"})
     monkeypatch.setattr(
         "app.services.invoice_payment_service.start_invoice_payment", start
@@ -212,9 +218,12 @@ def test_trusted_seller_without_courier_stays_instant(db_session, client, monkey
     inv = (
         db_session.query(models.Invoice).filter_by(invoice_id=body["invoice_id"]).one()
     )
-    assert inv.amount == Decimal("10000")  # goods only
-    assert start.await_args.kwargs.get("hold") is False
-    assert (
-        db_session.query(models.StorefrontOrderEscrow).filter_by(invoice_id=inv.id).first()
-        is None
+    assert inv.amount == Decimal("10000")  # goods only, no delivery
+
+    # Held through escrow (no instant split), even though the seller is trusted.
+    assert start.await_args.kwargs.get("hold") is True
+    escrow = (
+        db_session.query(models.StorefrontOrderEscrow).filter_by(invoice_id=inv.id).one()
     )
+    assert escrow.gross_kobo == 1_000_000  # goods held for release
+    assert not escrow.delivery_fee_kobo  # 0 / None — no courier on this order

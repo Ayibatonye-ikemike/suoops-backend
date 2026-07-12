@@ -1250,13 +1250,13 @@ async def create_store_order(
             "station": (station_str or None),
         }
 
-    # A physical-courier order ALWAYS escrows — for every seller, trusted or not
-    # — so the delivery fee is held (never split to the seller) and the order
-    # gets the full courier lifecycle (booking + delivery-aware release). Service
-    # / self-pickup orders keep the seller's normal settlement (instant split for
-    # trusted sellers). Because delivery only ever rides on a held order, the fee
-    # is retained automatically and the Paystack split never carries it.
-    held = untrusted or (delivery_sel is not None and settings.ESCROW_ENABLED)
+    # EVERY storefront order settles through escrow (hold-&-release) — there is
+    # NO instant payout to sellers on storefront orders, trusted or not. This
+    # keeps buyer protection on every order and means the delivery fee is always
+    # held (never split to the seller); the Paystack subaccount split is never
+    # used for storefront checkout. (`untrusted` above still governs the
+    # blast-radius caps — trusted sellers hold too, but keep their higher limits.)
+    held = settings.ESCROW_ENABLED
 
     grand_total = total + delivery_fee
 
