@@ -112,7 +112,7 @@ def request_bank_change_otp(
 
 @router.patch("/me/bank-details", response_model=schemas.BankDetailsOut)
 @limiter.limit("10/minute")
-def update_bank_details(
+async def update_bank_details(
     request: Request,
     data: schemas.BankDetailsUpdate,
     current_user_id: AdminUserDep,
@@ -147,13 +147,39 @@ def update_bank_details(
                 detail="A valid confirmation code is required to change your bank details.",
             )
 
+    # Never trust a client-supplied account NAME: re-resolve it server-side from
+    # the bank + account number so the stored payout name always matches what the
+    # bank actually returns. Best-effort — if the resolver is unreachable we fall
+    # back to the submitted name rather than blocking a legitimate update.
+    verified_name: str | None = None
+    bank_or_acct_changed = data.bank_name is not None or data.account_number is not None
+    intended_bank_name = data.bank_name if data.bank_name is not None else user.bank_name
+    intended_account_number = (
+        data.account_number if data.account_number is not None else user.account_number
+    )
+    if bank_or_acct_changed and intended_bank_name and intended_account_number:
+        from app.services.paystack_subaccount_service import PaystackSubaccountService
+
+        try:
+            svc = PaystackSubaccountService(db)
+            bank_code = await svc.resolve_bank_code(intended_bank_name)
+            verified_name = await svc.resolve_account(intended_account_number, bank_code)
+        except Exception:  # noqa: BLE001 — resolver down → fall back to submitted name
+            logger.warning(
+                "Bank account name could not be verified for user %s", current_user_id
+            )
+
     if data.business_name is not None:
         user.business_name = data.business_name
     if data.bank_name is not None:
         user.bank_name = data.bank_name
     if data.account_number is not None:
         user.account_number = data.account_number
-    if data.account_name is not None:
+    # Prefer the SERVER-VERIFIED name; fall back to the submitted one only if the
+    # resolver was unavailable.
+    if verified_name:
+        user.account_name = verified_name
+    elif data.account_name is not None:
         user.account_name = data.account_name
 
     # Single source of truth: the bank a seller sees/edits here IS where they get
@@ -187,13 +213,13 @@ def update_bank_details(
 
 @router.post("/me/bank-details", response_model=schemas.BankDetailsOut)
 @limiter.limit("10/minute")
-def create_bank_details(
+async def create_bank_details(
     request: Request,
     data: schemas.BankDetailsUpdate,
     current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
 ):
-    return update_bank_details(request, data, current_user_id, db)
+    return await update_bank_details(request, data, current_user_id, db)
 
 
 @router.delete("/me/bank-details", response_model=schemas.MessageOut)

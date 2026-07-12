@@ -40,7 +40,19 @@ def _signup_with_bank(phone: str) -> str:
     return v.json()["access_token"]
 
 
-def test_bank_change_requires_step_up_otp():
+def test_bank_change_requires_step_up_otp(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.services.paystack_subaccount_service import PaystackSubaccountService
+
+    # Keep the server-side name resolution hermetic (no real Paystack call).
+    monkeypatch.setattr(
+        PaystackSubaccountService, "resolve_bank_code", AsyncMock(return_value="999")
+    )
+    monkeypatch.setattr(
+        PaystackSubaccountService, "resolve_account", AsyncMock(return_value="Bank User")
+    )
+
     phone = "+234" + secrets.token_hex(4)
     headers = {"Authorization": f"Bearer {_signup_with_bank(phone)}"}
     new_acct = {
@@ -65,11 +77,24 @@ def test_bank_change_requires_step_up_otp():
     assert r2.json()["account_number"] == "1112223334"
 
 
-def test_bank_update_syncs_payout_account():
+def test_bank_update_syncs_payout_account(monkeypatch):
     """Single-account model: saving bank details mirrors them into the payout
-    fields so payouts follow the account the seller currently manages."""
+    fields so payouts follow the account the seller currently manages. The stored
+    account NAME is the server-verified one (not whatever the client submitted)."""
+    from unittest.mock import AsyncMock
+
     from app.db.session import get_db
     from app.models import models
+    from app.services.paystack_subaccount_service import PaystackSubaccountService
+
+    monkeypatch.setattr(
+        PaystackSubaccountService, "resolve_bank_code", AsyncMock(return_value="999")
+    )
+    monkeypatch.setattr(
+        PaystackSubaccountService,
+        "resolve_account",
+        AsyncMock(return_value="VERIFIED HOLDER"),
+    )
 
     phone = "+234" + secrets.token_hex(4)
     headers = {"Authorization": f"Bearer {_signup_with_bank(phone)}"}
@@ -81,7 +106,7 @@ def test_bank_update_syncs_payout_account():
         json={
             "bank_name": "Kuda Bank",
             "account_number": "3003182519",
-            "account_name": "Bank User",
+            "account_name": "Client Supplied Name",
             "otp": _otp(phone, "bank_change"),
         },
         headers=headers,
@@ -94,7 +119,8 @@ def test_bank_update_syncs_payout_account():
         # Payout fields now mirror the visible bank details.
         assert user.payout_bank_name == "Kuda Bank"
         assert user.payout_account_number == "3003182519"
-        assert user.payout_account_name == "Bank User"
+        # The stored name is the bank-VERIFIED one, not the client's value.
+        assert user.payout_account_name == "VERIFIED HOLDER"
     finally:
         db.close()
 
