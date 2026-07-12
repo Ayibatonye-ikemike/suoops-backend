@@ -272,6 +272,13 @@ class BaseAppSettings(BaseSettings):
     # client IPs may reach any /admin* route.
     ADMIN_IP_ALLOWLIST: str | None = None
 
+    # Number of trusted reverse-proxy hops in front of the app (Render = 1). The
+    # real client IP is read this many entries from the RIGHT of X-Forwarded-For,
+    # since a client can only PREPEND fake entries on the left. Prevents XFF
+    # spoofing of the admin IP allowlist and buyer-IP fraud signals. Set 0 for
+    # local dev with no proxy; raise it if you add another proxy (e.g. Cloudflare).
+    TRUSTED_PROXY_HOPS: int = 1
+
     # Operational
     NGN_USD_RATE: str | None = None  # Naira/USD conversion rate (e.g. "1600")
     AUDIT_LOG_FILE: str = "storage/audit.log"  # Path to structured audit log

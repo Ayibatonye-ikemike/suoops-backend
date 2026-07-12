@@ -26,15 +26,23 @@ logger = logging.getLogger(__name__)
 def get_client_ip(request: Request) -> str | None:
     """Return the originating client IP.
 
-    Render (and most reverse proxies) put the real client IP in the
-    ``X-Forwarded-For`` header. We use the first hop in that list and fall back
-    to the direct peer address.
+    Behind a reverse proxy (Render), the real client IP is the entry the trusted
+    proxy APPENDS to the RIGHT of ``X-Forwarded-For``. A malicious client can
+    prepend their own fake entries on the left, so we must NOT take the leftmost
+    value — we count ``settings.TRUSTED_PROXY_HOPS`` from the right (default 1 for
+    Render's single edge proxy). This closes X-Forwarded-For spoofing of the
+    admin IP allowlist and of buyer-IP fraud signals.
     """
+    hops = max(0, int(getattr(settings, "TRUSTED_PROXY_HOPS", 1)))
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        first = forwarded.split(",")[0].strip()
-        if first:
-            return first
+    if forwarded and hops > 0:
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            idx = len(parts) - hops
+            # If the client sent fewer entries than expected hops, fall back to
+            # the leftmost we have rather than indexing out of range.
+            return parts[idx] if 0 <= idx < len(parts) else parts[0]
+    # x-real-ip is set by the proxy (a single value), safe to use when present.
     real_ip = request.headers.get("x-real-ip")
     if real_ip:
         return real_ip.strip()
