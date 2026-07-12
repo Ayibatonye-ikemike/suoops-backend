@@ -4466,6 +4466,7 @@ def get_account_review_dossier(
     """
     from sqlalchemy import case as sa_case
 
+    from app.api.routes_storefront import _presign
     from app.services.escrow_service import get_buyer_reputation
     from app.services.fraud_service import linked_account_ids
 
@@ -4540,6 +4541,8 @@ def get_account_review_dossier(
             "buyer_phone": cust.phone if cust else None,
             "created_at": e.created_at.isoformat() if e.created_at else None,
             "disputed_at": e.disputed_at.isoformat() if e.disputed_at else None,
+            "dispatch_proof_url": _presign(e.dispatch_proof_url),
+            "delivery_proof_url": _presign(e.delivery_proof_url),
         }
         for (e, inv, cust) in recent
     ]
