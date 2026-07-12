@@ -21,11 +21,11 @@ class InvoiceLineIn(BaseModel):
 
 class InvoiceCreate(BaseModel):
     # Common fields for both revenue and expense invoices
-    amount: Decimal
+    amount: Decimal = Field(..., gt=0, description="Amount must be greater than 0")
     currency: Literal["NGN", "USD"] = "NGN"
     due_date: dt.datetime | None = None
     lines: list[InvoiceLineIn] | None = None
-    discount_amount: Decimal | None = None
+    discount_amount: Decimal | None = Field(default=None, ge=0)
     
     # Invoice type
     invoice_type: Literal["revenue", "expense"] = "revenue"
@@ -46,6 +46,14 @@ class InvoiceCreate(BaseModel):
     channel: str | None = None  # whatsapp, email, dashboard
     verified: bool = False
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_amounts(self) -> "InvoiceCreate":
+        # A discount can never exceed the amount (that would make the payable
+        # total negative). amount>0 and discount>=0 are enforced by Field above.
+        if self.discount_amount is not None and self.discount_amount > self.amount:
+            raise ValueError("Discount cannot exceed the invoice amount")
+        return self
 
 
 class CustomerOut(BaseModel):
