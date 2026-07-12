@@ -1854,9 +1854,38 @@ def _mark_read(db: Session, escrow_id: int, sender_role: str) -> None:
 
 
 def _store_message(db: Session, escrow, *, sender_role: str, sender_user_id: int | None, body: str):
-    from app.services.message_guard import scan_message
+    from app.services.message_guard import (
+        count_number_words,
+        mask_number_words,
+        scan_message,
+    )
 
     result = scan_message(body)
+
+    # Cross-message evasion: a phone number spelled out in words and split across
+    # several short messages ("six seven eight" … "nine ten" … "zero zero") slips
+    # past the single-message filter. Sum the number-words this sender used in
+    # their recent messages; a phone-length run is a shared contact number.
+    current_words = count_number_words(body)
+    if "spelled_contact" not in result.reasons and current_words > 0:
+        recent_words = sum(
+            count_number_words(b or "")
+            for (b,) in (
+                db.query(models.OrderMessage.body_raw)
+                .filter(
+                    models.OrderMessage.escrow_id == escrow.id,
+                    models.OrderMessage.sender_role == sender_role,
+                )
+                .order_by(models.OrderMessage.id.desc())
+                .limit(5)
+                .all()
+            )
+        )
+        if recent_words + current_words >= 7:
+            result.reasons.append("spelled_contact")
+            if not result.blocked:
+                result.redacted = mask_number_words(result.redacted)
+
     m = models.OrderMessage(
         escrow_id=escrow.id,
         sender_role=sender_role,

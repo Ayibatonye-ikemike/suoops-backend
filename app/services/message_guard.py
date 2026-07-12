@@ -121,3 +121,22 @@ def scan_message(text: str) -> GuardResult:
     seen: set[str] = set()
     reasons = [r for r in reasons if not (r in seen or seen.add(r))]
     return GuardResult(redacted=redacted, reasons=reasons, blocked=blocked)
+
+
+# Individual number-words + runs, for cross-message accumulation: a phone number
+# spelled out and split across several short messages ("six seven eight" … "nine
+# ten" … "zero zero") slips past the single-message filter, so the caller sums
+# the number-words a sender used across their recent messages.
+_NUM_WORD_RE = re.compile(rf"\b(?:{_NUM_WORDS})\b", re.IGNORECASE)
+_NUM_WORD_RUN_RE = re.compile(rf"(?:\b(?:{_NUM_WORDS})\b[\s,.\-]*)+", re.IGNORECASE)
+
+
+def count_number_words(text: str) -> int:
+    """How many spelled-out number-words a message contains (zero, one, oh…)."""
+    return len(_NUM_WORD_RE.findall(text or ""))
+
+
+def mask_number_words(text: str) -> str:
+    """Mask runs of spelled-out number-words — used once a thread's accumulated
+    spelled digits look like a shared phone number."""
+    return _NUM_WORD_RUN_RE.sub(MASK, text or "")
