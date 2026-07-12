@@ -48,6 +48,19 @@ def reverse_geocode(lat: float, lng: float) -> tuple[str | None, str | None]:
             state = (feat.get("text") or "").strip() or None
         elif "place" in place_types and not city:
             city = (feat.get("text") or "").strip() or None
+    if not state:
+        # Token is set but no state resolved — surface WHY (invalid/deprecated
+        # token, no NG coverage, error body) so state=None is diagnosable instead
+        # of silent. Mapbox puts the reason in `message` on error responses.
+        msg = data.get("message") if isinstance(data, dict) else None
+        logger.warning(
+            "Reverse geocode resolved no state for (%.5f, %.5f): status=%s msg=%s features=%d",
+            lat,
+            lng,
+            getattr(resp, "status_code", "?"),
+            msg,
+            len(data.get("features", [])),
+        )
     return (state, city)
 
 
