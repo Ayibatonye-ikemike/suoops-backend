@@ -697,8 +697,17 @@ def admin_ip_allowed(request: Request, db: Session = Depends(get_db)):
     intentionally exempt from the IP-allowlist middleware so a blocked client
     still receives a clean ``{"allowed": false}`` answer (rather than a 403),
     letting the dashboard show a friendly "blocked" page.
+
+    The admin frontend middleware calls this SERVER-SIDE and forwards the real
+    visitor IP in ``X-Client-IP`` (a header intermediary proxies don't rewrite,
+    unlike X-Forwarded-For). We honor it when present so the verdict matches what
+    the visitor's own browser would get — otherwise the extra Vercel→Cloudflare
+    →Render hop makes us read a proxy IP and wrongly block the visitor. This
+    endpoint only returns a verdict; the admin routes + API enforce the allowlist
+    authoritatively via the real client IP.
     """
-    ip = get_client_ip(request)
+    forwarded = (request.headers.get("x-client-ip") or "").strip()
+    ip = forwarded or get_client_ip(request)
     return {"allowed": is_admin_ip_allowed(ip, db), "ip": ip}
 
 
