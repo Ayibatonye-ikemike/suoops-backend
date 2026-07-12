@@ -87,8 +87,9 @@ def request_bank_change_otp(
 ):
     """Send a one-time code to confirm a change of bank details (step-up auth).
 
-    Required before changing an EXISTING payout account — protects against an
-    attacker who has a hijacked session rerouting the business's money.
+    Required before SETTING or CHANGING a payout account — protects against an
+    attacker who has a hijacked session pointing the business's money at their
+    own account.
     """
     user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
     if not user:
@@ -124,18 +125,21 @@ async def update_bank_details(
     update_data = data.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="At least one field must be provided")
-    # Snapshot the current payout-critical values so we can detect a real change
-    # to an EXISTING account (first-time setup should not freeze payouts).
-    had_bank = bool(user.bank_name and user.account_number)
+    # Snapshot the payout-critical values so we can detect a SET or CHANGE of the
+    # bank account. Setting a payout account (first-time included) or changing it
+    # is a step-up event — a hijacked session on an account with no bank on file
+    # must not be able to silently point payouts at an attacker.
     old_bank = (user.bank_name, user.account_number)
     intended_bank = (
         data.bank_name if data.bank_name is not None else user.bank_name,
         data.account_number if data.account_number is not None else user.account_number,
     )
-    is_change = had_bank and intended_bank != old_bank
+    bank_is_written = (
+        bool(intended_bank[0] and intended_bank[1]) and intended_bank != old_bank
+    )
 
-    # Step-up auth: changing an EXISTING bank account requires a fresh OTP.
-    if is_change:
+    # Step-up auth: setting or changing the payout account requires a fresh OTP.
+    if bank_is_written:
         identifier = user.phone or user.email
         from app.services.otp_service import OTPService
 
@@ -144,7 +148,7 @@ async def update_bank_details(
         ):
             raise HTTPException(
                 status_code=401,
-                detail="A valid confirmation code is required to change your bank details.",
+                detail="A valid confirmation code is required to set or change your bank details.",
             )
 
     # Never trust a client-supplied account NAME: re-resolve it server-side from
@@ -194,9 +198,9 @@ async def update_bank_details(
     db.commit()
     db.refresh(user)
 
-    # Bank details drive escrow payouts — a change to an existing account is a
+    # Bank details drive escrow payouts — setting or changing the account is a
     # takeover risk, so invalidate the recipient, freeze payouts + alert the owner.
-    if is_change:
+    if bank_is_written:
         from app.services.escrow_service import on_payout_details_changed
 
         on_payout_details_changed(db, user)
