@@ -140,8 +140,11 @@ class BaseAppSettings(BaseSettings):
     # webhooks. If unset we fall back to the API key (Shipbubble signs with your
     # secret key). Webhook URL to register: https://api.suoops.com/webhooks/shipbubble
     SHIPBUBBLE_WEBHOOK_SECRET: str | None = None
-    # Trusted sellers skip the hold (normal settlement). ALL must hold: not
-    # flagged/suspended AND zero unresolved disputes AND the thresholds below.
+    # Trust thresholds. A trusted seller keeps HIGHER exposure limits (skips the
+    # untrusted blast-radius caps below) and a shorter buyer-protection window —
+    # but ALL storefront orders still settle through escrow (no instant payout).
+    # Trust requires: not flagged/suspended AND zero unresolved disputes AND the
+    # thresholds below.
     ESCROW_TRUST_MIN_PAID_INVOICES: int = 100
     ESCROW_TRUST_MIN_ACCOUNT_AGE_DAYS: int = 90
     # Anti self-dealing: trust also needs breadth (many DISTINCT paying customers)
