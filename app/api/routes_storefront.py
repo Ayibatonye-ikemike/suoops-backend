@@ -476,7 +476,11 @@ def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Custo
         "gross_naira": round((escrow.gross_kobo or 0) / 100, 2),
         "payout_naira": round((escrow.payout_kobo or 0) / 100, 2),
         "customer_name": buyer.name if buyer else None,
-        "customer_phone": buyer.phone if buyer else None,
+        # For automated courier deliveries the courier handles buyer contact —
+        # don't expose the buyer's phone to the seller.
+        "customer_phone": (
+            None if escrow.delivery_courier else (buyer.phone if buyer else None)
+        ),
     }
 
 

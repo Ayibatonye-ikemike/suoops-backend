@@ -299,6 +299,10 @@ class InvoiceStatusMixin:
                 .filter(models.StorefrontOrderEscrow.invoice_id == invoice.id)
                 .first()
             )
+        # Automated courier order? The courier collects and delivers using the
+        # buyer's contact + address it already holds, so the seller doesn't need
+        # (and shouldn't receive) the buyer's phone or home address.
+        is_courier = bool(held_escrow is not None and held_escrow.delivery_courier)
         if is_storefront:
             header = "🛒 New paid order — payment confirmed ✅"
             if held_escrow is not None:
@@ -334,15 +338,32 @@ class InvoiceStatusMixin:
         # Delivery details (GPS maps link + landmark note) are stored on the
         # invoice notes at order time — surface them so the business knows where
         # to deliver.
+        # Delivery details. For automated courier orders the courier handles the
+        # buyer's address — tell the seller how to hand off, not where the buyer
+        # lives. For self-delivery orders, surface the buyer's address note.
         delivery_block = ""
-        if is_storefront:
+        if is_storefront and is_courier:
+            courier = held_escrow.delivery_courier
+            if held_escrow.delivery_service_type == "dropoff":
+                station = held_escrow.delivery_dropoff_station
+                where = f" at {station}" if station else ""
+                delivery_block = (
+                    f"\n\n🚚 Drop the package off for {courier}{where}, then mark it "
+                    f"“sent out” to book it. {courier} delivers it to the buyer."
+                )
+            else:
+                delivery_block = (
+                    f"\n\n🚚 {courier} will pick up from your store address — mark the "
+                    f"order “sent out” to book the pickup. {courier} delivers it to the buyer."
+                )
+        elif is_storefront:
             notes = (getattr(invoice, "notes", None) or "").strip()
             if notes:
                 delivery_block = f"\n\n🚚 {notes}"
         message = (
             f"{header}\n\n"
             f"👤 {customer_name}"
-            + (f" ({customer_phone})" if customer_phone else "")
+            + (f" ({customer_phone})" if (customer_phone and not is_courier) else "")
             + f"\n💵 ₦{invoice.amount:,.2f} — paid online\n"
             + settle_line
             + f"{items}"
