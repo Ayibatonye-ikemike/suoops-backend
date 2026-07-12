@@ -1163,12 +1163,14 @@ async def create_store_order(
         seller_velocity_hold_reason,
     )
 
-    # Decide hold vs normal settlement up front (drives caps + payment init).
-    held = settings.ESCROW_ENABLED and not is_trusted_seller(db, owner)
+    # Untrusted sellers settle via escrow (hold-&-release); trusted sellers
+    # settle normally. A physical-courier order overrides this below and ALWAYS
+    # holds (so the delivery fee is retained and the courier lifecycle applies).
+    untrusted = settings.ESCROW_ENABLED and not is_trusted_seller(db, owner)
 
     # Blast-radius caps for UNTRUSTED sellers: cap per-order value and the total
     # value held in-flight, so a scam/hijacked store can only ever touch so much.
-    if held:
+    if untrusted:
         order_kobo = int(total * 100)
         if order_kobo > settings.ESCROW_MAX_ORDER_NAIRA_UNTRUSTED * 100:
             raise HTTPException(
@@ -1202,13 +1204,15 @@ async def create_store_order(
     )
     from app.services.invoice_service import build_invoice_service
 
-    # Buyer-pays-delivery (flag-gated, HELD orders only): re-quote the chosen
-    # courier server-side so the fee can't be tampered, and add it to the amount
-    # charged. The delivery fee is retained by SuoOps to fund the courier — it is
-    # NOT part of the seller's goods total, so the seller is paid on goods only.
+    # Buyer-pays-delivery: re-quote the chosen courier server-side so the fee
+    # can't be tampered, and add it to the amount charged. The delivery fee is
+    # retained by SuoOps to fund the courier — it is NOT part of the seller's
+    # goods total, so the seller is always paid on goods only. This is computed
+    # for EVERY seller (trusted or not); a courier order then forces the hold
+    # path below so the fee is never split to the seller.
     delivery_fee = Decimal("0")
     delivery_sel: dict | None = None
-    if settings.SHIPBUBBLE_CHECKOUT_ENABLED and held and payload.delivery_courier_id:
+    if settings.SHIPBUBBLE_CHECKOUT_ENABLED and payload.delivery_courier_id:
         quote = _shipbubble_quote(db, owner, payload) or {}
         token = quote.get("request_token")
         chosen = next(
@@ -1245,6 +1249,14 @@ async def create_store_order(
             "service_type": chosen.service_type,
             "station": (station_str or None),
         }
+
+    # A physical-courier order ALWAYS escrows — for every seller, trusted or not
+    # — so the delivery fee is held (never split to the seller) and the order
+    # gets the full courier lifecycle (booking + delivery-aware release). Service
+    # / self-pickup orders keep the seller's normal settlement (instant split for
+    # trusted sellers). Because delivery only ever rides on a held order, the fee
+    # is retained automatically and the Paystack split never carries it.
+    held = untrusted or (delivery_sel is not None and settings.ESCROW_ENABLED)
 
     grand_total = total + delivery_fee
 

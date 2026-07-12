@@ -109,3 +109,112 @@ def test_delivery_fee_added_and_excluded_from_payout(db_session, client, monkeyp
     assert escrow.delivery_fee_kobo == 150_000
     assert escrow.delivery_courier == "GIG"
     assert escrow.delivery_request_token == "tok"
+
+
+def _courier_option():
+    return DeliveryOption(
+        courier_id="gig",
+        service_code="gig",
+        name="GIG",
+        image=None,
+        amount=1500.0,
+        wallet_total=1500.0,
+        currency="NGN",
+        delivery_eta="1-2 days",
+        delivery_eta_time=None,
+        service_type="pickup",
+        dropoff_station=None,
+    )
+
+
+def test_trusted_seller_courier_order_forces_escrow(db_session, client, monkeypatch):
+    """Option A: a physical-courier order ALWAYS escrows — even for a trusted
+    seller — so the delivery fee is charged and retained (never split out)."""
+    owner, prod = _seed_store(db_session)
+    monkeypatch.setattr(settings, "SHIPBUBBLE_CHECKOUT_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "ESCROW_ENABLED", True, raising=False)
+
+    import app.api.routes_storefront as rs
+
+    monkeypatch.setattr(
+        rs,
+        "_shipbubble_quote",
+        lambda db, owner, payload: {"request_token": "tok", "options": [_courier_option()]},
+    )
+    # Seller IS trusted — without Option A they'd settle instantly with no escrow.
+    monkeypatch.setattr("app.services.escrow_service.is_trusted_seller", lambda db, u: True)
+    monkeypatch.setattr(
+        "app.services.escrow_service.detect_order_collusion", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        "app.services.escrow_service.seller_velocity_hold_reason", lambda *a, **k: None
+    )
+    start = AsyncMock(return_value={"authorization_url": "http://pay"})
+    monkeypatch.setattr(
+        "app.services.invoice_payment_service.start_invoice_payment", start
+    )
+
+    resp = client.post(
+        "/public/store/teststore/order",
+        json={
+            "customer_name": "Buyer",
+            "customer_phone": "+2348161111111",
+            "items": [{"product_id": prod.id, "quantity": 1}],
+            "delivery_courier_id": "gig",
+            "delivery_service_code": "gig",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["delivery_fee"] == 1500.0
+
+    inv = (
+        db_session.query(models.Invoice).filter_by(invoice_id=body["invoice_id"]).one()
+    )
+    assert inv.amount == Decimal("11500")  # goods + delivery charged to buyer
+
+    # The order was routed through escrow despite the seller being trusted, and
+    # the payment was collected on the HOLD rail (fee retained by the platform).
+    assert start.await_args.kwargs.get("hold") is True
+    escrow = (
+        db_session.query(models.StorefrontOrderEscrow).filter_by(invoice_id=inv.id).one()
+    )
+    assert escrow.gross_kobo == 1_000_000  # seller paid on goods only
+    assert escrow.delivery_fee_kobo == 150_000
+    assert escrow.delivery_courier == "GIG"
+
+
+def test_trusted_seller_without_courier_stays_instant(db_session, client, monkeypatch):
+    """A service / self-pickup order (no courier) still settles instantly for a
+    trusted seller — no escrow row, no delivery fee."""
+    owner, prod = _seed_store(db_session)
+    monkeypatch.setattr(settings, "SHIPBUBBLE_CHECKOUT_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "ESCROW_ENABLED", True, raising=False)
+
+    monkeypatch.setattr("app.services.escrow_service.is_trusted_seller", lambda db, u: True)
+    start = AsyncMock(return_value={"authorization_url": "http://pay"})
+    monkeypatch.setattr(
+        "app.services.invoice_payment_service.start_invoice_payment", start
+    )
+
+    resp = client.post(
+        "/public/store/teststore/order",
+        json={
+            "customer_name": "Buyer",
+            "customer_phone": "+2348161111111",
+            "items": [{"product_id": prod.id, "quantity": 1}],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "delivery_fee" not in body
+
+    inv = (
+        db_session.query(models.Invoice).filter_by(invoice_id=body["invoice_id"]).one()
+    )
+    assert inv.amount == Decimal("10000")  # goods only
+    assert start.await_args.kwargs.get("hold") is False
+    assert (
+        db_session.query(models.StorefrontOrderEscrow).filter_by(invoice_id=inv.id).first()
+        is None
+    )
