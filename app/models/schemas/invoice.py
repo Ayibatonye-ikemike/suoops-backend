@@ -84,6 +84,9 @@ class InvoiceOut(BaseModel):
     merchant: str | None = None
     verified: bool | None = None
     notes: str | None = None
+    # Origin channel (storefront, whatsapp, dashboard…) so the UI can adapt —
+    # e.g. a storefront order hides the due date and payment-link fields.
+    channel: str | None = None
     
     # Creator tracking for team scenarios
     created_by_user_id: int | None = None
