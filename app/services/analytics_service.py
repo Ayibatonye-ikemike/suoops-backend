@@ -83,6 +83,12 @@ def calculate_revenue_metrics(
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= start_dt,
             models.Invoice.created_at <= end_dt,
+            # Exclude abandoned/unpaid storefront orders (never a real sale).
+            or_(
+                models.Invoice.channel.is_(None),
+                models.Invoice.channel != "storefront",
+                models.Invoice.status != "pending",
+            ),
         )
         .first()
     )

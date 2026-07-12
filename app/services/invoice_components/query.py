@@ -25,9 +25,24 @@ class InvoiceQueryMixin:
         end_date: dt.date | None = None,
     ) -> tuple[list[models.Invoice], int]:
         """Return a page of invoices and the total count matching the filters."""
+        from sqlalchemy import or_ as _sa_or
+
         query = (
             self.db.query(models.Invoice)
             .filter(models.Invoice.issuer_id == issuer_id)
+        )
+
+        # Abandoned/unpaid storefront orders (an online order the customer started
+        # but never paid for) aren't real seller invoices yet — keep them out of
+        # the seller's list + count until payment confirms. Paid orders are marked
+        # 'paid' before the escrow hold, so held orders still show; only unpaid
+        # ('pending') storefront rows are hidden (they auto-cancel after 24h).
+        query = query.filter(
+            _sa_or(
+                models.Invoice.channel.is_(None),
+                models.Invoice.channel != "storefront",
+                models.Invoice.status != "pending",
+            )
         )
         
         # Filter by invoice_type before limit for correct results

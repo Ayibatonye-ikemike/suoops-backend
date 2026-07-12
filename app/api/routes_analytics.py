@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_data_owner_id
@@ -231,6 +231,12 @@ def get_conversion_funnel(
             models.Invoice.issuer_id == data_owner_id,
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= datetime.combine(start_date, datetime.min.time()),
+            # Exclude abandoned/unpaid storefront orders from the funnel.
+            or_(
+                models.Invoice.channel.is_(None),
+                models.Invoice.channel != "storefront",
+                models.Invoice.status != "pending",
+            ),
         )
         .first()
     )
