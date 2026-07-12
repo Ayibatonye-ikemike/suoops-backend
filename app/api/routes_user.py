@@ -13,7 +13,10 @@ from app.core.cache import cached
 from app.core.encryption import decrypt_value
 from app.db.session import get_db
 from app.models import models, schemas
-from app.services.account_deletion_service import AccountDeletionService
+from app.services.account_deletion_service import (
+    AccountDeletionBlockedError,
+    AccountDeletionService,
+)
 from app.services.otp_service import OTPService
 
 logger = logging.getLogger(__name__)
@@ -256,6 +259,8 @@ def delete_own_account(
             message="Your account has been permanently deleted.",
             deleted_items=result.get("deleted_items")
         )
+    except AccountDeletionBlockedError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -306,6 +311,8 @@ def admin_delete_account(
             message=f"Account {user_id} has been permanently deleted.",
             deleted_items=result.get("deleted_items")
         )
+    except AccountDeletionBlockedError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

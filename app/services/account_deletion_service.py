@@ -22,6 +22,11 @@ from app.models.team_models import Team, TeamMember
 logger = logging.getLogger(__name__)
 
 
+class AccountDeletionBlockedError(Exception):
+    """Raised when an account can't be deleted yet because it still has buyer
+    money in escrow (held/disputed). Callers should surface this as 409."""
+
+
 class AccountDeletionService:
     """Service for handling complete account deletion."""
 
@@ -42,10 +47,31 @@ class AccountDeletionService:
         
         Raises:
             ValueError: If user not found
+            AccountDeletionBlockedError: If the seller has money still in escrow
         """
         user = self.db.query(User).filter(User.id == user_id).one_or_none()
         if not user:
             raise ValueError("User not found")
+
+        # Money-safety: never delete a seller who still has buyer funds in escrow
+        # (held or under dispute) — the buyer's protected money would be orphaned
+        # (release/refund can't find the seller). Resolve those orders first.
+        from app.models.models import StorefrontOrderEscrow
+
+        active_escrow = (
+            self.db.query(StorefrontOrderEscrow.id)
+            .filter(
+                StorefrontOrderEscrow.seller_id == user_id,
+                StorefrontOrderEscrow.status.in_(["held", "disputed"]),
+            )
+            .first()
+        )
+        if active_escrow is not None:
+            raise AccountDeletionBlockedError(
+                "This account has orders with money still in escrow (held or under "
+                "dispute). Those must be released or refunded before the account "
+                "can be deleted."
+            )
         
         # Capture user info for audit before deletion
         user_info = {
