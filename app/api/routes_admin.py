@@ -354,6 +354,7 @@ def toggle_pro_override(
     voice, daily summary, etc.) WITHOUT changing their actual plan or
     invoice balance. Invoice packs are NOT included.
     """
+    _require_super_admin(admin_user)
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -393,6 +394,7 @@ def downgrade_user_to_free(
     flag. Use for stale PRO accounts that have no subscription dates and never
     get caught by the auto-downgrade task. Invoice balance is preserved.
     """
+    _require_super_admin(admin_user)
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -4779,6 +4781,14 @@ class RetryPayoutIn(BaseModel):
 _ADMIN_MONEY_OTP_PURPOSE = "admin_money_action"
 
 
+def _require_super_admin(admin_user) -> None:
+    """Restrict money movement and destructive account changes to super admins.
+    A lower-privilege support admin can view/triage but can't refund, pay out, or
+    change a user's plan even with a valid session."""
+    if not getattr(admin_user, "is_super_admin", False):
+        raise HTTPException(status_code=403, detail="This action requires a super-admin.")
+
+
 def _require_money_stepup(admin_user, amount_naira: float, otp: str | None) -> None:
     """Require a fresh step-up OTP for money moves above the configured threshold.
 
@@ -4837,6 +4847,7 @@ def resolve_dispute(
       suspend the seller's storefront (``suspend_seller``).
     - ``release`` — side with the seller and pay them out (Paystack Transfer).
     """
+    _require_super_admin(admin_user)
     from app.services.escrow_service import EscrowError, refund_escrow, release_escrow
 
     escrow = (
@@ -5061,6 +5072,7 @@ def retry_dispute_payout(
     in flight, it finalizes/waits instead of sending a second payout; otherwise
     it clears the void reference and sends a fresh transfer on the correct rail.
     """
+    _require_super_admin(admin_user)
     from app.services.escrow_service import EscrowError, _collector_for_charge, release_escrow
     from app.services.payouts import get_payout_provider, get_payout_provider_named
 
