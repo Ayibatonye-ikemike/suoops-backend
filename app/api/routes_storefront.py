@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Annotated
 from urllib.parse import quote_plus
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -583,6 +583,63 @@ async def mark_order_delivered(
     return {"escrow": _escrow_summary(escrow, buyer)}
 
 
+def _book_courier_pickup(escrow_id: int, invoice_id: str) -> None:
+    """Book the Shipbubble courier pickup for a dispatched order, out of band.
+
+    Runs as a background task so the seller's “mark sent” request returns
+    immediately instead of blocking on Shipbubble's API (which can take several
+    seconds). Best-effort: on failure the order stays sent, just without an
+    auto-booked courier.
+    """
+    import datetime as dt
+
+    from app.db.session import SessionLocal
+    from app.services.escrow_service import add_business_days
+    from app.services.shipping import shipbubble
+
+    try:
+        with SessionLocal() as db:
+            escrow = (
+                db.query(models.StorefrontOrderEscrow)
+                .filter(models.StorefrontOrderEscrow.id == escrow_id)
+                .first()
+            )
+            if not escrow or escrow.shipbubble_order_id:
+                return
+            if not (
+                escrow.delivery_request_token
+                and escrow.delivery_courier_id
+                and escrow.delivery_service_code
+            ):
+                return
+            booking = shipbubble.create_shipment(
+                request_token=escrow.delivery_request_token,
+                courier_id=escrow.delivery_courier_id,
+                service_code=escrow.delivery_service_code,
+            )
+            if not (booking and booking.get("order_id")):
+                return
+            escrow.shipbubble_order_id = str(booking["order_id"])[:60]
+            escrow.shipbubble_tracking_url = booking.get("tracking_url") or None
+            if booking.get("courier") and not escrow.dispatch_carrier:
+                escrow.dispatch_carrier = str(booking["courier"])[:80]
+            # Delivery-aware payout: don't auto-release until the courier reports
+            # delivery. Cap the hold at the delivery SLA so a lost parcel gets
+            # flagged for review instead of hanging forever.
+            escrow.delivery_booked_at = dt.datetime.now(dt.timezone.utc)
+            escrow.release_due_at = add_business_days(
+                dt.datetime.now(dt.timezone.utc),
+                settings.ESCROW_MAX_DELIVERY_DAYS,
+            )
+            db.commit()
+            logger.info(
+                "Booked Shipbubble shipment %s for order %s (background)",
+                booking["order_id"], invoice_id,
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("Background Shipbubble booking failed for order %s", invoice_id)
+
+
 @router.post("/storefront/orders/{invoice_id}/mark-sent")
 @limiter.limit("30/minute")
 async def mark_order_sent(
@@ -590,6 +647,7 @@ async def mark_order_sent(
     invoice_id: str,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
     db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
     tracking: Annotated[str | None, Form()] = None,
     note: Annotated[str | None, Form()] = None,
     carrier: Annotated[str | None, Form()] = None,
@@ -621,46 +679,6 @@ async def mark_order_sent(
     proof_url = escrow.dispatch_proof_url
     if file is not None and file.filename:
         proof_url = await _save_proof_photo(escrow, file, prefix="dispatch-proof")
-
-    # Auto-book the courier if the buyer paid for delivery at checkout and we
-    # haven't booked yet. Best-effort: if booking fails the seller still marks
-    # sent manually, so the flow never blocks on Shipbubble.
-    if (
-        settings.SHIPBUBBLE_CHECKOUT_ENABLED
-        and escrow.delivery_request_token
-        and escrow.delivery_courier_id
-        and escrow.delivery_service_code
-        and not escrow.shipbubble_order_id
-    ):
-        try:
-            from app.services.shipping import shipbubble
-
-            booking = shipbubble.create_shipment(
-                request_token=escrow.delivery_request_token,
-                courier_id=escrow.delivery_courier_id,
-                service_code=escrow.delivery_service_code,
-            )
-            if booking and booking.get("order_id"):
-                escrow.shipbubble_order_id = str(booking["order_id"])[:60]
-                escrow.shipbubble_tracking_url = booking.get("tracking_url") or None
-                if booking.get("courier") and not escrow.dispatch_carrier:
-                    escrow.dispatch_carrier = str(booking["courier"])[:80]
-                # Delivery-aware payout: don't auto-release until the courier
-                # reports delivery. Cap the hold at the delivery SLA so a lost
-                # parcel gets flagged for review instead of hanging forever.
-                escrow.delivery_booked_at = dt.datetime.now(dt.timezone.utc)
-                from app.services.escrow_service import add_business_days
-
-                escrow.release_due_at = add_business_days(
-                    dt.datetime.now(dt.timezone.utc),
-                    settings.ESCROW_MAX_DELIVERY_DAYS,
-                )
-                logger.info(
-                    "Booked Shipbubble shipment %s for order %s",
-                    booking["order_id"], invoice_id,
-                )
-        except Exception:  # noqa: BLE001
-            logger.exception("Shipbubble booking failed for order %s", invoice_id)
 
     escrow.seller_dispatched_at = dt.datetime.now(dt.timezone.utc)
     if tracking is not None:
@@ -697,6 +715,18 @@ async def mark_order_sent(
         _store_system_message(db, escrow, " ".join(parts))
     except Exception:  # noqa: BLE001
         logger.exception("Failed to post dispatch notice for order %s", invoice_id)
+
+    # Book the courier pickup out of band so this request returns immediately —
+    # the Shipbubble API call can take several seconds and must not block the
+    # seller's “mark sent” action.
+    if (
+        settings.SHIPBUBBLE_CHECKOUT_ENABLED
+        and escrow.delivery_request_token
+        and escrow.delivery_courier_id
+        and escrow.delivery_service_code
+        and not escrow.shipbubble_order_id
+    ):
+        background_tasks.add_task(_book_courier_pickup, escrow.id, invoice_id)
 
     logger.info("Seller %s marked order %s sent out", current_user_id, invoice_id)
     return {"escrow": _escrow_summary(escrow, buyer)}
