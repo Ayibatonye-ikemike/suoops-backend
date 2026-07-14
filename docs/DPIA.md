@@ -1,7 +1,7 @@
 # Data Protection Impact Assessment (DPIA)
 
 **System:** SuoOps — invoicing, payments/escrow, buyer‑protected storefront & courier delivery
-**Owner:** Data Protection Officer (dpo@suoops.com)
+**Owner:** Data Protection Officer (privacy@suoops.com)
 **Last reviewed:** 2026-07-14 · **Review cycle:** annual + on material change to processing
 
 > A DPIA is required because SuoOps carries out high‑risk processing under the

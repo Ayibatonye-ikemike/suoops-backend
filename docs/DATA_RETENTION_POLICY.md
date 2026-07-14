@@ -1,6 +1,6 @@
 # Data Retention Policy
 
-**Owner:** Data Protection Officer (dpo@suoops.com)
+**Owner:** Data Protection Officer (privacy@suoops.com)
 **Applies to:** SuoOps platform (invoicing, payments, storefront, courier delivery)
 **Last reviewed:** 2026-07-14 · **Review cycle:** annual (or on material change)
 
@@ -36,7 +36,7 @@
 
 ## 3. Deletion & anonymisation
 - **Account deletion** is available in‑app (self‑service) and via
-  dpo@suoops.com. It is executed by `account_deletion_service`, which **blocks
+  privacy@suoops.com. It is executed by `account_deletion_service`, which **blocks
   deletion while there is held/disputed escrow** (funds/obligations outstanding)
   and otherwise removes/anonymises account data after the 90‑day window.
 - **Financial records are not hard‑deleted** before the 6‑year period; instead
