@@ -496,12 +496,21 @@ def calculate_cash_position(db: Session, user_id: int) -> dict:
         .scalar()
     )
 
-    # Total outstanding (unpaid revenue invoices)
+    # Total outstanding (unpaid revenue invoices).
+    # Exclude abandoned/unpaid storefront orders — a storefront order only
+    # becomes real money owed once the buyer has paid (awaiting_confirmation)
+    # or the seller confirms. A `pending` storefront order is just an
+    # unpaid/abandoned cart and must not inflate "Outstanding".
     outstanding = (
         db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
         .filter(
             *base,
             models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
+            or_(
+                models.Invoice.channel.is_(None),
+                models.Invoice.channel != "storefront",
+                models.Invoice.status != "pending",
+            ),
         )
         .scalar()
     )
