@@ -2223,11 +2223,21 @@ class BusinessHealthItem(BaseModel):
     risk_flags: list[str]
 
 
+class BusinessSummary(BaseModel):
+    """Aggregate health counts across ALL matching businesses (not just the page)."""
+    healthy: int  # health_score >= 60
+    at_risk: int  # health_score < 40
+    inactive: int  # never_invoiced OR inactive_30d
+    never_invoiced: int
+    upgrade_candidates: int
+
+
 class BusinessListResponse(BaseModel):
     businesses: list[BusinessHealthItem]
     total: int
     page: int
     page_size: int
+    summary: BusinessSummary
 
 
 # ─── Activity Analytics ─────────────────────────────────────────
@@ -2682,6 +2692,20 @@ def get_business_intelligence(
 
         items.append(item)
 
+    # ── Summary (over the full matching set, BEFORE the risk filter) ──
+    # Computed here so the health cards always show the complete breakdown and
+    # can be used to switch between risk views — not the current page only.
+    summary = BusinessSummary(
+        healthy=sum(1 for i in items if i.health_score >= 60),
+        at_risk=sum(1 for i in items if i.health_score < 40),
+        inactive=sum(
+            1 for i in items
+            if "never_invoiced" in i.risk_flags or "inactive_30d" in i.risk_flags
+        ),
+        never_invoiced=sum(1 for i in items if "never_invoiced" in i.risk_flags),
+        upgrade_candidates=sum(1 for i in items if "upgrade_candidate" in i.risk_flags),
+    )
+
     # ── Risk filter ──
     if risk_filter == "at_risk":
         items = [i for i in items if i.health_score < 40]
@@ -2714,6 +2738,7 @@ def get_business_intelligence(
         total=total,
         page=page,
         page_size=page_size,
+        summary=summary,
     )
 
 
