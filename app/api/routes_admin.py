@@ -1750,15 +1750,21 @@ def get_growth_metrics(
     # ── Activation Funnel ──
     total_signups = db.query(models.User).count()
 
-    # Users who created at least 1 invoice
+    # Users who created at least 1 REVENUE invoice. Expenses are also stored as
+    # invoices (invoice_type="expense", auto status="paid"), so we must filter to
+    # revenue only — otherwise a user who only logged an expense counts as
+    # "activated" and as having "received a payment", inflating the funnel.
     users_with_invoice = db.query(
         func.count(func.distinct(Invoice.issuer_id))
-    ).scalar() or 0
+    ).filter(Invoice.invoice_type == "revenue").scalar() or 0
 
-    # Users who received at least 1 payment
+    # Users who received at least 1 real customer payment (revenue + paid).
     users_with_payment = db.query(
         func.count(func.distinct(Invoice.issuer_id))
-    ).filter(Invoice.status == "paid").scalar() or 0
+    ).filter(
+        Invoice.invoice_type == "revenue",
+        Invoice.status == "paid",
+    ).scalar() or 0
 
     # Users who turned on online payments (Paystack subaccount active)
     enabled_online = db.query(models.User).filter(
@@ -1844,7 +1850,14 @@ def get_growth_metrics(
     ).group_by(Invoice.issuer_id).having(func.count(Invoice.id) >= 10).subquery()
     power_users = db.query(func.count()).select_from(power_user_sq).scalar() or 0
 
-    users_with_any_invoice = db.query(Invoice.issuer_id).distinct().subquery()
+    # Zero-invoice = never created a REVENUE invoice (mirrors the funnel's
+    # "Created First Invoice" step; expense-only users are NOT activated).
+    users_with_any_invoice = (
+        db.query(Invoice.issuer_id)
+        .filter(Invoice.invoice_type == "revenue")
+        .distinct()
+        .subquery()
+    )
     zero_invoice = db.query(models.User).filter(
         ~models.User.id.in_(db.query(users_with_any_invoice))
     ).count()
