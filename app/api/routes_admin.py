@@ -56,6 +56,17 @@ def _exclude_users(query, column, excluded_ids: list[int]):
     return query
 
 
+def _cap_amount(query, amount_col):
+    """Exclude implausibly large single invoices from platform MONEY aggregates
+    (GMV/commission), per settings.METRICS_MAX_INVOICE_NAIRA. Set 0 to disable."""
+    from app.core.config import settings
+
+    ceiling = settings.METRICS_MAX_INVOICE_NAIRA or 0
+    if ceiling and ceiling > 0:
+        return query.filter(amount_col <= ceiling)
+    return query
+
+
 # ── Admin response schemas ────────────────────────────────────────────
 
 class AdminIdentity(BaseModel):
@@ -1535,14 +1546,18 @@ def get_platform_metrics(
     cancelled = db.query(Invoice).filter(Invoice.status == "cancelled").count()
 
     # Revenue and expense totals (exclude internal/test accounts so a single
-    # test store can't skew platform GMV).
-    revenue_sum = _exclude_users(
-        db.query(func.sum(Invoice.amount)).filter(
-            Invoice.invoice_type == "revenue",
-            Invoice.status == "paid",
+    # test store can't skew platform GMV, and cap implausibly large single
+    # invoices so a junk self-marked-paid invoice can't inflate GMV).
+    revenue_sum = _cap_amount(
+        _exclude_users(
+            db.query(func.sum(Invoice.amount)).filter(
+                Invoice.invoice_type == "revenue",
+                Invoice.status == "paid",
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
         ),
-        Invoice.issuer_id,
-        excluded_ids,
+        Invoice.amount,
     ).scalar() or 0
 
     expense_sum = _exclude_users(
@@ -1581,26 +1596,32 @@ def get_platform_metrics(
     from sqlalchemy import or_
 
     from app.utils.feature_gate import platform_fee_kobo
-    wallet_amounts = _exclude_users(
-        db.query(Invoice.amount).filter(
-            Invoice.invoice_type == "revenue",
-            Invoice.created_at >= month_start,
-            or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+    wallet_amounts = _cap_amount(
+        _exclude_users(
+            db.query(Invoice.amount).filter(
+                Invoice.invoice_type == "revenue",
+                Invoice.created_at >= month_start,
+                or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
         ),
-        Invoice.issuer_id,
-        excluded_ids,
+        Invoice.amount,
     ).all()
     commission_wallet_kobo = sum(platform_fee_kobo(a) for (a,) in wallet_amounts)
 
-    online_amounts = _exclude_users(
-        db.query(Invoice.amount).filter(
-            Invoice.invoice_type == "revenue",
-            Invoice.channel == "storefront",
-            Invoice.status == "paid",
-            Invoice.paid_at >= month_start,
+    online_amounts = _cap_amount(
+        _exclude_users(
+            db.query(Invoice.amount).filter(
+                Invoice.invoice_type == "revenue",
+                Invoice.channel == "storefront",
+                Invoice.status == "paid",
+                Invoice.paid_at >= month_start,
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
         ),
-        Invoice.issuer_id,
-        excluded_ids,
+        Invoice.amount,
     ).all()
     commission_online_kobo = sum(platform_fee_kobo(a) for (a,) in online_amounts)
 
@@ -1748,26 +1769,32 @@ def get_growth_metrics(
         creation + storefront orders charged (via Paystack) when paid. Internal/
         test accounts are excluded so a large test invoice (whose tiered fee cap
         could be tens of millions) can't distort platform commission."""
-        manual = _exclude_users(
-            db.query(Invoice.amount).filter(
-                Invoice.invoice_type == "revenue",
-                Invoice.created_at >= start,
-                Invoice.created_at < end,
-                or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+        manual = _cap_amount(
+            _exclude_users(
+                db.query(Invoice.amount).filter(
+                    Invoice.invoice_type == "revenue",
+                    Invoice.created_at >= start,
+                    Invoice.created_at < end,
+                    or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+                ),
+                Invoice.issuer_id,
+                excluded_ids,
             ),
-            Invoice.issuer_id,
-            excluded_ids,
+            Invoice.amount,
         ).all()
-        online = _exclude_users(
-            db.query(Invoice.amount).filter(
-                Invoice.invoice_type == "revenue",
-                Invoice.channel == "storefront",
-                Invoice.status == "paid",
-                Invoice.paid_at >= start,
-                Invoice.paid_at < end,
+        online = _cap_amount(
+            _exclude_users(
+                db.query(Invoice.amount).filter(
+                    Invoice.invoice_type == "revenue",
+                    Invoice.channel == "storefront",
+                    Invoice.status == "paid",
+                    Invoice.paid_at >= start,
+                    Invoice.paid_at < end,
+                ),
+                Invoice.issuer_id,
+                excluded_ids,
             ),
-            Invoice.issuer_id,
-            excluded_ids,
+            Invoice.amount,
         ).all()
         return (
             sum(platform_fee_kobo(a) for (a,) in manual)
@@ -1904,15 +1931,18 @@ def get_growth_metrics(
         ).count()
         invoice_growth.append(MonthlyDataPoint(month=label, value=new_invoices))
 
-        month_rev = _exclude_users(
-            db.query(func.sum(Invoice.amount)).filter(
-                Invoice.invoice_type == "revenue",
-                Invoice.status == "paid",
-                Invoice.paid_at >= m_start,
-                Invoice.paid_at < m_end,
+        month_rev = _cap_amount(
+            _exclude_users(
+                db.query(func.sum(Invoice.amount)).filter(
+                    Invoice.invoice_type == "revenue",
+                    Invoice.status == "paid",
+                    Invoice.paid_at >= m_start,
+                    Invoice.paid_at < m_end,
+                ),
+                Invoice.issuer_id,
+                excluded_ids,
             ),
-            Invoice.issuer_id,
-            excluded_ids,
+            Invoice.amount,
         ).scalar() or 0
         gmv_growth.append(MonthlyDataPoint(month=label, value=float(month_rev)))
 

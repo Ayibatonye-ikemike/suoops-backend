@@ -278,6 +278,14 @@ class BaseAppSettings(BaseSettings):
     # Signup/activation counts are NOT affected (those are real signups).
     METRICS_EXCLUDED_EMAILS: str | None = None
 
+    # Backstop for platform MONEY aggregates (GMV + commission): ignore any
+    # single revenue invoice larger than this (Naira) when computing platform
+    # totals, so an implausible/junk self-marked-paid invoice can't inflate them.
+    # The per-invoice 3% wallet fee is the primary deterrent; this is a safety
+    # net. Set to 0 to disable. Does NOT affect per-business rows (admins should
+    # still see outliers there to investigate them).
+    METRICS_MAX_INVOICE_NAIRA: int = 50_000_000
+
     # Number of trusted reverse-proxy hops in front of the app (Render = 1). The
     # real client IP is read this many entries from the RIGHT of X-Forwarded-For,
     # since a client can only PREPEND fake entries on the left. Prevents XFF
