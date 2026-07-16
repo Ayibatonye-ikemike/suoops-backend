@@ -252,6 +252,15 @@ def calculate_aging_report(
         models.Invoice.issuer_id == user_id,
         models.Invoice.invoice_type == "revenue",
         models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
+        # Accounts receivable = money customers actually owe. An unpaid/abandoned
+        # storefront cart (status "pending", online-pay only) is NOT receivable,
+        # so exclude it — consistent with the cash-position Outstanding figure.
+        # A storefront order still counts once it's awaiting_confirmation/paid.
+        or_(
+            models.Invoice.channel.is_(None),
+            models.Invoice.channel != "storefront",
+            models.Invoice.status != "pending",
+        ),
     ]
 
     row = (
