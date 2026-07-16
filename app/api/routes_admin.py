@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import case, desc, func
+from sqlalchemy import and_, case, desc, func, or_
 from sqlalchemy.orm import Session
 
 from app.api.rate_limit import limiter
@@ -25,6 +25,35 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 # into memory. Generous enough to never truncate real data at current scale,
 # but prevents pathological memory blowup if the table grows unexpectedly.
 ADMIN_LIST_CAP = 5000
+
+
+def _excluded_metric_user_ids(db: Session) -> list[int]:
+    """User IDs to exclude from admin MONEY/HEALTH analytics (internal/test
+    accounts), resolved from settings.METRICS_EXCLUDED_EMAILS. Empty when unset.
+    """
+    from app.core.config import settings
+
+    raw = settings.METRICS_EXCLUDED_EMAILS
+    if not raw:
+        return []
+    emails = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    if not emails:
+        return []
+    rows = (
+        db.query(models.User.id)
+        .filter(func.lower(models.User.email).in_(emails))
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+def _exclude_users(query, column, excluded_ids: list[int]):
+    """Apply a NOT-IN filter only when there are IDs to exclude (avoids an empty
+    IN() clause). ``column`` is the user-id column to filter on (e.g.
+    Invoice.issuer_id or models.User.id)."""
+    if excluded_ids:
+        return query.filter(column.notin_(excluded_ids))
+    return query
 
 
 # ── Admin response schemas ────────────────────────────────────────────
@@ -1496,21 +1525,32 @@ def get_platform_metrics(
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = today_start - dt.timedelta(days=today_start.weekday())
     month_start = today_start.replace(day=1)
-    
+
+    excluded_ids = _excluded_metric_user_ids(db)
+
     # Invoice counts
     total_invoices = db.query(Invoice).count()
     paid = db.query(Invoice).filter(Invoice.status == "paid").count()
     pending = db.query(Invoice).filter(Invoice.status == "pending").count()
     cancelled = db.query(Invoice).filter(Invoice.status == "cancelled").count()
-    
-    # Revenue and expense totals
-    revenue_sum = db.query(func.sum(Invoice.amount)).filter(
-        Invoice.invoice_type == "revenue",
-        Invoice.status == "paid"
+
+    # Revenue and expense totals (exclude internal/test accounts so a single
+    # test store can't skew platform GMV).
+    revenue_sum = _exclude_users(
+        db.query(func.sum(Invoice.amount)).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.status == "paid",
+        ),
+        Invoice.issuer_id,
+        excluded_ids,
     ).scalar() or 0
-    
-    expense_sum = db.query(func.sum(Invoice.amount)).filter(
-        Invoice.invoice_type == "expense"
+
+    expense_sum = _exclude_users(
+        db.query(func.sum(Invoice.amount)).filter(
+            Invoice.invoice_type == "expense",
+        ),
+        Invoice.issuer_id,
+        excluded_ids,
     ).scalar() or 0
     
     # Time-based invoices
@@ -1541,18 +1581,26 @@ def get_platform_metrics(
     from sqlalchemy import or_
 
     from app.utils.feature_gate import platform_fee_kobo
-    wallet_amounts = db.query(Invoice.amount).filter(
-        Invoice.invoice_type == "revenue",
-        Invoice.created_at >= month_start,
-        or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+    wallet_amounts = _exclude_users(
+        db.query(Invoice.amount).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.created_at >= month_start,
+            or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+        ),
+        Invoice.issuer_id,
+        excluded_ids,
     ).all()
     commission_wallet_kobo = sum(platform_fee_kobo(a) for (a,) in wallet_amounts)
 
-    online_amounts = db.query(Invoice.amount).filter(
-        Invoice.invoice_type == "revenue",
-        Invoice.channel == "storefront",
-        Invoice.status == "paid",
-        Invoice.paid_at >= month_start,
+    online_amounts = _exclude_users(
+        db.query(Invoice.amount).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.channel == "storefront",
+            Invoice.status == "paid",
+            Invoice.paid_at >= month_start,
+        ),
+        Invoice.issuer_id,
+        excluded_ids,
     ).all()
     commission_online_kobo = sum(platform_fee_kobo(a) for (a,) in online_amounts)
 
@@ -1684,6 +1732,8 @@ def get_growth_metrics(
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = today_start.replace(day=1)
 
+    excluded_ids = _excluded_metric_user_ids(db)
+
     def _month_starts(count: int) -> list[dt.datetime]:
         """Return the first-of-month datetimes for the last `count` months (oldest first)."""
         starts: list[dt.datetime] = []
@@ -1695,19 +1745,29 @@ def get_growth_metrics(
 
     def _commission_between(start: dt.datetime, end: dt.datetime) -> float:
         """Commission (Naira) earned in [start, end): manual invoices charged at
-        creation + storefront orders charged (via Paystack) when paid."""
-        manual = db.query(Invoice.amount).filter(
-            Invoice.invoice_type == "revenue",
-            Invoice.created_at >= start,
-            Invoice.created_at < end,
-            or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+        creation + storefront orders charged (via Paystack) when paid. Internal/
+        test accounts are excluded so a large test invoice (whose tiered fee cap
+        could be tens of millions) can't distort platform commission."""
+        manual = _exclude_users(
+            db.query(Invoice.amount).filter(
+                Invoice.invoice_type == "revenue",
+                Invoice.created_at >= start,
+                Invoice.created_at < end,
+                or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
         ).all()
-        online = db.query(Invoice.amount).filter(
-            Invoice.invoice_type == "revenue",
-            Invoice.channel == "storefront",
-            Invoice.status == "paid",
-            Invoice.paid_at >= start,
-            Invoice.paid_at < end,
+        online = _exclude_users(
+            db.query(Invoice.amount).filter(
+                Invoice.invoice_type == "revenue",
+                Invoice.channel == "storefront",
+                Invoice.status == "paid",
+                Invoice.paid_at >= start,
+                Invoice.paid_at < end,
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
         ).all()
         return (
             sum(platform_fee_kobo(a) for (a,) in manual)
@@ -1844,29 +1904,42 @@ def get_growth_metrics(
         ).count()
         invoice_growth.append(MonthlyDataPoint(month=label, value=new_invoices))
 
-        month_rev = db.query(func.sum(Invoice.amount)).filter(
-            Invoice.invoice_type == "revenue",
-            Invoice.status == "paid",
-            Invoice.paid_at >= m_start,
-            Invoice.paid_at < m_end,
+        month_rev = _exclude_users(
+            db.query(func.sum(Invoice.amount)).filter(
+                Invoice.invoice_type == "revenue",
+                Invoice.status == "paid",
+                Invoice.paid_at >= m_start,
+                Invoice.paid_at < m_end,
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
         ).scalar() or 0
         gmv_growth.append(MonthlyDataPoint(month=label, value=float(month_rev)))
 
     # ── Engagement ── (revenue only — expenses are also stored as invoices, and
-    # counting them would inflate both averages and the power-user threshold.)
-    invoice_counts_sq = db.query(
-        func.count(Invoice.id).label("cnt")
-    ).filter(
-        Invoice.invoice_type == "revenue"
+    # counting them would inflate both averages and the power-user threshold.
+    # Internal/test accounts are excluded so they can't skew the averages.)
+    invoice_counts_sq = _exclude_users(
+        db.query(
+            func.count(Invoice.id).label("cnt")
+        ).filter(
+            Invoice.invoice_type == "revenue"
+        ),
+        Invoice.issuer_id,
+        excluded_ids,
     ).group_by(Invoice.issuer_id).subquery()
     avg_invoices = db.query(func.avg(invoice_counts_sq.c.cnt)).scalar()
     avg_invoices_per_user = round(float(avg_invoices), 1) if avg_invoices else 0
 
-    power_user_sq = db.query(
-        Invoice.issuer_id
-    ).filter(
-        Invoice.invoice_type == "revenue",
-        Invoice.created_at >= month_start,
+    power_user_sq = _exclude_users(
+        db.query(
+            Invoice.issuer_id
+        ).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.created_at >= month_start,
+        ),
+        Invoice.issuer_id,
+        excluded_ids,
     ).group_by(Invoice.issuer_id).having(func.count(Invoice.id) >= 10).subquery()
     power_users = db.query(func.count()).select_from(power_user_sq).scalar() or 0
 
@@ -2225,6 +2298,7 @@ class BusinessHealthItem(BaseModel):
 
 class BusinessSummary(BaseModel):
     """Aggregate health counts across ALL matching businesses (not just the page)."""
+    total: int  # grand total of matching businesses (filter-independent)
     healthy: int  # health_score >= 60
     at_risk: int  # health_score < 40
     inactive: int  # never_invoiced OR inactive_30d
@@ -2474,8 +2548,11 @@ def get_business_intelligence(
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     thirty_days_ago = now - dt.timedelta(days=30)
 
+    excluded_ids = _excluded_metric_user_ids(db)
+
     # ── Base query: all registered users ──
     q = db.query(models.User)
+    q = _exclude_users(q, models.User.id, excluded_ids)
 
     if plan_filter:
         plan_enum = {
@@ -2503,16 +2580,39 @@ def get_business_intelligence(
             func.count(Invoice.id).label("total"),
             func.count(case((Invoice.status == "paid", 1))).label("paid"),
             func.count(case((Invoice.status == "pending", 1))).label("pending"),
+            # Invoiced revenue volume — exclude abandoned/unpaid storefront carts
+            # (channel=storefront + status=pending), which are not real sales.
             func.sum(
-                case((Invoice.invoice_type == "revenue", Invoice.amount), else_=0)
+                case(
+                    (
+                        and_(
+                            Invoice.invoice_type == "revenue",
+                            or_(
+                                Invoice.channel.is_(None),
+                                Invoice.channel != "storefront",
+                                Invoice.status != "pending",
+                            ),
+                        ),
+                        Invoice.amount,
+                    ),
+                    else_=0,
+                )
             ).label("revenue"),
             func.sum(
                 case((Invoice.invoice_type == "expense", Invoice.amount), else_=0)
             ).label("expenses"),
             func.max(Invoice.created_at).label("last_invoice"),
+            # "This month" activity = REVENUE invoices only (expenses shouldn't
+            # count toward selling activity or the power-user threshold).
             func.count(
                 case(
-                    (Invoice.created_at >= month_start, 1),
+                    (
+                        and_(
+                            Invoice.invoice_type == "revenue",
+                            Invoice.created_at >= month_start,
+                        ),
+                        1,
+                    )
                 )
             ).label("this_month"),
             func.avg(
@@ -2526,9 +2626,21 @@ def get_business_intelligence(
                     )
                 )
             ).label("paid_revenue"),
+            # Collection denominator — exclude abandoned storefront carts so an
+            # unpaid online cart doesn't drag a seller's collection rate down.
             func.count(
                 case(
-                    (Invoice.invoice_type == "revenue", 1),
+                    (
+                        and_(
+                            Invoice.invoice_type == "revenue",
+                            or_(
+                                Invoice.channel.is_(None),
+                                Invoice.channel != "storefront",
+                                Invoice.status != "pending",
+                            ),
+                        ),
+                        1,
+                    )
                 )
             ).label("total_revenue_count"),
         )
@@ -2696,6 +2808,7 @@ def get_business_intelligence(
     # Computed here so the health cards always show the complete breakdown and
     # can be used to switch between risk views — not the current page only.
     summary = BusinessSummary(
+        total=len(items),
         healthy=sum(1 for i in items if i.health_score >= 60),
         at_risk=sum(1 for i in items if i.health_score < 40),
         inactive=sum(

@@ -272,6 +272,12 @@ class BaseAppSettings(BaseSettings):
     # client IPs may reach any /admin* route.
     ADMIN_IP_ALLOWLIST: str | None = None
 
+    # Comma-separated emails of INTERNAL/TEST accounts (founder store, QA users)
+    # to exclude from admin MONEY & HEALTH analytics so a single test account
+    # doesn't skew GMV, revenue, averages, and the business-health dashboard.
+    # Signup/activation counts are NOT affected (those are real signups).
+    METRICS_EXCLUDED_EMAILS: str | None = None
+
     # Number of trusted reverse-proxy hops in front of the app (Render = 1). The
     # real client IP is read this many entries from the RIGHT of X-Forwarded-For,
     # since a client can only PREPEND fake entries on the left. Prevents XFF
