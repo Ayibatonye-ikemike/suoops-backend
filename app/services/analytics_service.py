@@ -515,12 +515,20 @@ def calculate_cash_position(db: Session, user_id: int) -> dict:
         .scalar()
     )
 
-    # Overdue amount + count
+    # Overdue amount + count.
+    # Same storefront guard as Outstanding: a `pending` storefront order is an
+    # unpaid/abandoned cart, never "overdue money owed" the seller should chase
+    # with reminders. (Storefront orders normally carry no due date at all, but
+    # guard defensively so any legacy row can't leak into the overdue figure.)
     overdue_filters = [
         *base,
         models.Invoice.status == "pending",
         models.Invoice.due_date != None,  # noqa: E711
         models.Invoice.due_date < start_of_today,
+        or_(
+            models.Invoice.channel.is_(None),
+            models.Invoice.channel != "storefront",
+        ),
     ]
     overdue_amount = (
         db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
@@ -542,6 +550,11 @@ def calculate_cash_position(db: Session, user_id: int) -> dict:
             models.Invoice.due_date != None,  # noqa: E711
             models.Invoice.due_date >= start_of_today,
             models.Invoice.due_date <= end_of_next_week,
+            or_(
+                models.Invoice.channel.is_(None),
+                models.Invoice.channel != "storefront",
+                models.Invoice.status != "pending",
+            ),
         )
         .scalar()
     )

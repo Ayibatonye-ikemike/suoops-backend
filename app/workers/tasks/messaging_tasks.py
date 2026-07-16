@@ -163,6 +163,8 @@ def send_overdue_reminders() -> dict[str, Any]:
             today = date.today()
             now_dt = datetime.combine(today, datetime.min.time())
 
+            from sqlalchemy import or_
+
             overdue_invoices = (
                 db.query(Invoice)
                 .options(joinedload(Invoice.customer))
@@ -171,6 +173,12 @@ def send_overdue_reminders() -> dict[str, Any]:
                     Invoice.invoice_type == "revenue",
                     Invoice.due_date != None,  # noqa: E711
                     Invoice.due_date < now_dt,
+                    # Never nag owners about unpaid/abandoned storefront orders —
+                    # those are online-pay carts, not invoices to chase.
+                    or_(
+                        Invoice.channel.is_(None),
+                        Invoice.channel != "storefront",
+                    ),
                 )
                 .all()
             )
