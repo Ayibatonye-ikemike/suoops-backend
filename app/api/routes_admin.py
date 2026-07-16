@@ -1852,9 +1852,12 @@ def get_growth_metrics(
         ).scalar() or 0
         gmv_growth.append(MonthlyDataPoint(month=label, value=float(month_rev)))
 
-    # ── Engagement ──
+    # ── Engagement ── (revenue only — expenses are also stored as invoices, and
+    # counting them would inflate both averages and the power-user threshold.)
     invoice_counts_sq = db.query(
         func.count(Invoice.id).label("cnt")
+    ).filter(
+        Invoice.invoice_type == "revenue"
     ).group_by(Invoice.issuer_id).subquery()
     avg_invoices = db.query(func.avg(invoice_counts_sq.c.cnt)).scalar()
     avg_invoices_per_user = round(float(avg_invoices), 1) if avg_invoices else 0
@@ -1862,7 +1865,8 @@ def get_growth_metrics(
     power_user_sq = db.query(
         Invoice.issuer_id
     ).filter(
-        Invoice.created_at >= month_start
+        Invoice.invoice_type == "revenue",
+        Invoice.created_at >= month_start,
     ).group_by(Invoice.issuer_id).having(func.count(Invoice.id) >= 10).subquery()
     power_users = db.query(func.count()).select_from(power_user_sq).scalar() or 0
 
