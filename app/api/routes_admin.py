@@ -1779,8 +1779,17 @@ def get_growth_metrics(
     )
 
     # ── Collection Rate ──
+    # Denominator excludes abandoned/unpaid storefront carts (channel=storefront,
+    # status=pending) — those were never invoices the seller chases, and counting
+    # them drags the collection rate down artificially. A storefront order counts
+    # once it's awaiting_confirmation/paid. (Same guard used across dashboards.)
     total_revenue_invoices = db.query(Invoice).filter(
-        Invoice.invoice_type == "revenue"
+        Invoice.invoice_type == "revenue",
+        or_(
+            Invoice.channel.is_(None),
+            Invoice.channel != "storefront",
+            Invoice.status != "pending",
+        ),
     ).count()
     paid_revenue_invoices = db.query(Invoice).filter(
         Invoice.invoice_type == "revenue",
@@ -1791,12 +1800,14 @@ def get_growth_metrics(
         if total_revenue_invoices > 0 else 0
     )
 
-    # Average days to payment
+    # Average days to payment (revenue only — expenses are auto-paid at creation
+    # with paid_at≈created_at, i.e. ~0 days, which would drag the average down).
     avg_days_raw = db.query(
         func.avg(
             func.extract("epoch", Invoice.paid_at - Invoice.created_at) / 86400
         )
     ).filter(
+        Invoice.invoice_type == "revenue",
         Invoice.status == "paid",
         Invoice.paid_at.isnot(None),
     ).scalar()
