@@ -1647,9 +1647,9 @@ class GrowthMetrics(BaseModel):
     commission_month: float  # Commission earned this month, in Naira
     commission_trend: list[MonthlyDataPoint]  # Last 6 months
     commission_run_rate: float  # Annualized (this month × 12)
-    # Churn (activity-based: active last month, inactive this month)
+    # Churn (activity-based: active in prior 30-day window, inactive in the last 30 days)
     churned_users: int
-    churn_rate: float  # % of last month's active businesses now inactive
+    churn_rate: float  # % of prior-30d active businesses inactive in the last 30 days
     # Activation
     activation_funnel: ActivationFunnel
     # Collection
@@ -1728,20 +1728,25 @@ def get_growth_metrics(
             value=_commission_between(m_start, m_end),
         ))
 
-    # ── Churn (activity-based) ──
-    # Businesses that created a revenue invoice last month but none this month.
-    prev_month_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+    # ── Churn (activity-based, rolling 30-day windows) ──
+    # Compare equal-length windows so the figure isn't a calendar-month artifact:
+    # comparing a full previous month against a partial current month makes churn
+    # look catastrophic mid-month (active users simply haven't invoiced *yet*).
+    # Churned = created a revenue invoice in the PRIOR 30 days (days 31–60 ago)
+    # but none in the LAST 30 days.
+    window_now_start = now - dt.timedelta(days=30)
+    window_prev_start = now - dt.timedelta(days=60)
     active_prev = {
         r[0] for r in db.query(func.distinct(Invoice.issuer_id)).filter(
             Invoice.invoice_type == "revenue",
-            Invoice.created_at >= prev_month_start,
-            Invoice.created_at < month_start,
+            Invoice.created_at >= window_prev_start,
+            Invoice.created_at < window_now_start,
         ).all()
     }
     active_now = {
         r[0] for r in db.query(func.distinct(Invoice.issuer_id)).filter(
             Invoice.invoice_type == "revenue",
-            Invoice.created_at >= month_start,
+            Invoice.created_at >= window_now_start,
         ).all()
     }
     churned = len(active_prev - active_now)
