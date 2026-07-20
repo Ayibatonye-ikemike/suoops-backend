@@ -26,6 +26,7 @@ from sqlalchemy import func, or_
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import models
+from app.models.payment_models import PaymentStatus, PaymentTransaction
 from app.utils.feature_gate import platform_fee_kobo
 
 
@@ -96,14 +97,17 @@ def main() -> None:
         print(f"Monthly cost applied: {_naira(monthly_cost)}  "
               f"(payroll {_naira(args.payroll_ngn)} + mktg ${args.marketing_usd:.0f} "
               f"+ infra ${args.infra_usd:.0f} @ ₦{args.fx:.0f}/$)")
-        print("=" * 90)
-        hdr = (f"{'Month':<9}{'Signups':>8}{'Active':>8}{'Commission':>14}"
-               f"{'Cost':>12}{'Op result':>14}{'Cumulative':>14}")
+        print("Commission(3%) = THEORETICAL fee owed.  Cash in = REAL money collected")
+        print("(wallet top-ups + online 3% splits) — this is what hits your bank.")
+        print("=" * 96)
+        hdr = (f"{'Month':<9}{'Signups':>8}{'Active':>7}{'Commission':>13}"
+               f"{'Cash in':>12}{'Cost':>11}{'Op(cash)':>13}{'Cum(cash)':>13}")
         print(hdr)
-        print("-" * 90)
+        print("-" * 96)
 
         cum = 0.0
         tot_comm = 0.0
+        tot_cash = 0.0
         for ms in _month_starts(args.months):
             me = (ms + dt.timedelta(days=32)).replace(day=1)
             label = ms.strftime("%Y-%m")
@@ -137,30 +141,48 @@ def main() -> None:
                     Invoice.paid_at < me,
                 )
             )).all()
-            commission = (
-                sum(platform_fee_kobo(a) for (a,) in manual)
-                + sum(platform_fee_kobo(a) for (a,) in online)
-            ) / 100
+            manual_comm = sum(platform_fee_kobo(a) for (a,) in manual) / 100
+            online_comm = sum(platform_fee_kobo(a) for (a,) in online) / 100
+            commission = manual_comm + online_comm  # theoretical 3% owed
 
-            # Only charge costs for months the business was actually operating
-            # (i.e. from the first month with any signup or commission onward).
-            operating = commission > 0 or signups > 0 or active > 0
+            # REAL cash collected this month = wallet top-ups (real money sellers
+            # paid to fund their prepaid wallet) + the online 3% splits (settled
+            # via Paystack). Manual commission is drawn FROM the top-up pool, so
+            # it isn't extra cash — counting top-ups + online avoids double count.
+            topups_kobo = db.query(
+                func.coalesce(func.sum(PaymentTransaction.amount), 0)
+            ).filter(
+                PaymentTransaction.reference.like("INVPACK-%"),
+                PaymentTransaction.status == PaymentStatus.SUCCESS,
+                PaymentTransaction.created_at >= ms,
+                PaymentTransaction.created_at < me,
+            ).scalar() or 0
+            cash_in = topups_kobo / 100 + online_comm
+
+            # Only charge costs for months the business was actually operating.
+            operating = commission > 0 or cash_in > 0 or signups > 0 or active > 0
             cost = monthly_cost if operating else 0
-            op = commission - cost
+            op = cash_in - cost  # CASH-basis operating result (the real one)
             cum += op
             tot_comm += commission
+            tot_cash += cash_in
 
-            print(f"{label:<9}{signups:>8}{active:>8}{_naira(commission):>14}"
-                  f"{_naira(cost):>12}{_naira(op):>14}{_naira(cum):>14}")
+            print(f"{label:<9}{signups:>8}{active:>7}{_naira(commission):>13}"
+                  f"{_naira(cash_in):>12}{_naira(cost):>11}{_naira(op):>13}{_naira(cum):>13}")
 
-        print("-" * 90)
-        print(f"{'TOTAL':<9}{'':>8}{'':>8}{_naira(tot_comm):>14}"
-              f"{'':>12}{_naira(cum):>14}")
-        print("=" * 90)
-        print("Notes: commission is REAL (from the DB). Costs are your CURRENT run-rate")
-        print("applied flat across operating months — adjust --payroll/--marketing/--infra")
-        print("if they were different historically. This is your actuals; the projection")
-        print("model is separate. Cumulative op result ≈ your net burn/profit to date.")
+        print("-" * 96)
+        print(f"{'TOTAL':<9}{'':>8}{'':>7}{_naira(tot_comm):>13}"
+              f"{_naira(tot_cash):>12}{'':>11}{_naira(cum):>13}")
+        print("=" * 96)
+        print(f"Theoretical commission (3% owed): {_naira(tot_comm)}")
+        print(f"REAL cash collected (bank)      : {_naira(tot_cash)}")
+        gap = tot_comm - tot_cash
+        print(f"Gap (owed but not cash)         : {_naira(gap)}"
+              f"  ({gap/tot_comm*100:.0f}% of theoretical)" if tot_comm else "")
+        print("-" * 96)
+        print("Cash in = wallet top-ups + online 3% splits = what actually hit the bank.")
+        print("Costs are your CURRENT run-rate applied flat across operating months.")
+        print("Op(cash) uses REAL cash, so Cum(cash) ≈ your true net burn to date.")
 
 
 if __name__ == "__main__":
