@@ -939,3 +939,30 @@ class OrderMessage(Base):
         DateTime(timezone=True), default=utcnow, server_default=func.now(), index=True
     )
 
+
+
+class AuditLog(Base):
+    """Durable, queryable audit trail.
+
+    Persisted to Postgres so security/compliance events survive redeploys — the
+    file log (``storage/audit.log``) lives on ephemeral disk and is wiped on each
+    deploy. Each row also stores ``entry_hash = sha256(prev_hash + event)`` so
+    deleting or editing any row breaks the chain: cheap tamper-evidence with no
+    extra infrastructure. ``user_id`` is a plain int (not a FK) so the trail
+    persists even if the user is later deleted.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now(), index=True
+    )
+    action: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="success", server_default="success", nullable=False
+    )
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    entry_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)

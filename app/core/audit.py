@@ -41,11 +41,55 @@ def log_audit_event(action: str, user_id: int | None = None, status: str = "succ
             f.write(line + "\n")
     except Exception:  # noqa: BLE001
         _logger.debug("Failed to write audit event to file: %s", event)
+    # Durable, queryable copy in Postgres (survives redeploys). Best-effort and
+    # never allowed to break the caller. Skipped in tests to keep the suite's
+    # shared in-memory DB session clean — covered directly via _persist_audit_db.
+    if settings.AUDIT_LOG_TO_DB and getattr(settings, "ENV", None) != "test":
+        _persist_audit_db(event)
     # Emit via logger — downgrade expected noise to DEBUG
     if status == "failure" and metadata.get("error") == "missing_refresh_token":
         _logger.debug(line)
     else:
         _logger.info(line)
+
+
+def _persist_audit_db(event: dict[str, Any]) -> None:
+    """Insert one audit event into the durable ``audit_log`` table with a hash
+    chain (``entry_hash = sha256(prev_hash + event)``). Best-effort: any failure
+    is swallowed so audit logging never breaks a request. Uses its own session so
+    the row commits independently of the caller's transaction."""
+    try:
+        import hashlib
+
+        from app.db.session import SessionLocal
+        from app.models.models import AuditLog
+
+        details = {
+            k: v for k, v in event.items()
+            if k not in ("action", "user_id", "status", "ts")
+        } or None
+        payload = json.dumps(event, separators=(",", ":"), sort_keys=True)
+        with SessionLocal() as db:
+            prev = (
+                db.query(AuditLog.entry_hash)
+                .order_by(AuditLog.id.desc())
+                .limit(1)
+                .scalar()
+            ) or ""
+            entry_hash = hashlib.sha256((prev + payload).encode("utf-8")).hexdigest()
+            db.add(
+                AuditLog(
+                    action=str(event.get("action"))[:120],
+                    user_id=event.get("user_id"),
+                    status=str(event.get("status") or "success")[:20],
+                    details=details,
+                    prev_hash=prev or None,
+                    entry_hash=entry_hash,
+                )
+            )
+            db.commit()
+    except Exception:  # noqa: BLE001 — audit persistence must never break a request
+        _logger.debug("Failed to persist audit event to DB: %s", event.get("action"))
 
 
 def log_denied(action: str, user_id: int | None = None, reason: str | None = None, **extra: Any) -> None:

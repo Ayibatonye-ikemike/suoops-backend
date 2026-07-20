@@ -301,6 +301,9 @@ class BaseAppSettings(BaseSettings):
     # Operational
     NGN_USD_RATE: str | None = None  # Naira/USD conversion rate (e.g. "1600")
     AUDIT_LOG_FILE: str = "storage/audit.log"  # Path to structured audit log
+    # Also persist audit events to a durable Postgres table (survives redeploys;
+    # the file above lives on ephemeral disk). Costs ₦0 — reuses the existing DB.
+    AUDIT_LOG_TO_DB: bool = True
 
     # Feature flags / premium gating
     # When False, voice note invoice feature is available to all users regardless of plan.
