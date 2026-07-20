@@ -1700,6 +1700,130 @@ def get_platform_metrics(
 
 
 # =============================================================================
+# FILTERABLE METRICS SUMMARY — single source of truth (week/month/year/all)
+# =============================================================================
+
+class MetricsSummary(BaseModel):
+    period: str  # week | month | year | all
+    label: str
+    commission: float  # Suoops 3% earnings in the window (Naira)
+    gmv: float  # paid revenue volume in the window
+    invoices: int  # revenue invoices created in the window
+    new_users: int  # signups in the window
+    active_users: int  # distinct businesses that invoiced in the window
+
+
+@router.get("/metrics/summary", response_model=MetricsSummary)
+def get_metrics_summary(
+    period: str = Query("month", pattern="^(week|month|year|all)$"),
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> Any:
+    """Filterable headline numbers over a chosen window. This is the SINGLE source
+    of truth used by both the Platform Metrics page and the Dashboard, so the two
+    always agree (no duplicated computation) — and supports week/month/year/all.
+    Applies the same test-account exclusion + invoice ceiling as the rest of the
+    metrics."""
+    from app.models.models import Invoice, User
+    from app.utils.feature_gate import platform_fee_kobo
+
+    log_audit_event("admin.metrics.summary", user_id=admin_user.id, period=period)
+
+    now = dt.datetime.now(dt.timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "week":
+        start, label = today - dt.timedelta(days=today.weekday()), "This week"
+    elif period == "year":
+        start, label = today.replace(month=1, day=1), "This year"
+    elif period == "all":
+        start, label = None, "All time"
+    else:
+        start, label = today.replace(day=1), "This month"
+
+    excluded_ids = _excluded_metric_user_ids(db)
+
+    def _win(q, col):
+        return q.filter(col >= start) if start is not None else q
+
+    # Commission = wallet (revenue created in window) + online (storefront paid in window)
+    wallet_q = _cap_amount(
+        _exclude_users(
+            _win(
+                db.query(Invoice.amount).filter(
+                    Invoice.invoice_type == "revenue",
+                    or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
+                ),
+                Invoice.created_at,
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
+        ),
+        Invoice.amount,
+    )
+    online_q = _cap_amount(
+        _exclude_users(
+            _win(
+                db.query(Invoice.amount).filter(
+                    Invoice.invoice_type == "revenue",
+                    Invoice.channel == "storefront",
+                    Invoice.status == "paid",
+                ),
+                Invoice.paid_at,
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
+        ),
+        Invoice.amount,
+    )
+    commission = (
+        sum(platform_fee_kobo(a) for (a,) in wallet_q.all())
+        + sum(platform_fee_kobo(a) for (a,) in online_q.all())
+    ) / 100
+
+    # GMV = paid revenue volume in window (by paid_at)
+    gmv = _cap_amount(
+        _exclude_users(
+            _win(
+                db.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(
+                    Invoice.invoice_type == "revenue",
+                    Invoice.status == "paid",
+                ),
+                Invoice.paid_at,
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
+        ),
+        Invoice.amount,
+    ).scalar() or 0
+
+    invoices = _win(
+        db.query(func.count(Invoice.id)).filter(Invoice.invoice_type == "revenue"),
+        Invoice.created_at,
+    ).scalar() or 0
+    new_users = _win(db.query(func.count(User.id)), User.created_at).scalar() or 0
+    active_users = _exclude_users(
+        _win(
+            db.query(func.count(func.distinct(Invoice.issuer_id))).filter(
+                Invoice.invoice_type == "revenue"
+            ),
+            Invoice.created_at,
+        ),
+        Invoice.issuer_id,
+        excluded_ids,
+    ).scalar() or 0
+
+    return MetricsSummary(
+        period=period,
+        label=label,
+        commission=float(commission),
+        gmv=float(gmv),
+        invoices=int(invoices),
+        new_users=int(new_users),
+        active_users=int(active_users),
+    )
+
+
+# =============================================================================
 # GROWTH METRICS — Commission, Churn, Activation, Collection Rate, Trends
 # =============================================================================
 

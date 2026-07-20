@@ -133,6 +133,10 @@ GET_PATHS = [
     "/admin/influencers",
     "/admin/metrics",
     "/admin/metrics/growth",
+    "/admin/metrics/summary",
+    "/admin/metrics/summary?period=week",
+    "/admin/metrics/summary?period=year",
+    "/admin/metrics/summary?period=all",
     "/admin/metrics/zero-invoice-diagnostic",
     # NOTE: /admin/metrics/activity relies on func.date() returning a date
     # (Postgres); under SQLite it returns a str, breaking a Python-side
