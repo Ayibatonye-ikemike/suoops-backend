@@ -613,30 +613,62 @@ def get_dashboard_stats(
         models.Invoice.status == "paid"
     ).count()
 
-    # Revenue stats.
-    # GMV = gross value paid by customers this month (volume flowing through Suoops).
-    monthly_gmv = db.query(func.sum(models.Invoice.amount)).filter(
-        models.Invoice.status == "paid",
-        models.Invoice.paid_at >= month_start
+    # Revenue stats. Kept CONSISTENT with the main /admin/metrics dashboard:
+    # revenue invoices only (not expenses), excluding internal/test accounts, and
+    # capping implausible single invoices — otherwise this figure disagrees with
+    # the platform GMV shown elsewhere.
+    from sqlalchemy import or_ as _or
+
+    from app.core.config import settings as _settings
+
+    _excluded_ids: list[int] = []
+    _raw = _settings.METRICS_EXCLUDED_EMAILS
+    if _raw:
+        _emails = {e.strip().lower() for e in _raw.split(",") if e.strip()}
+        if _emails:
+            _excluded_ids = [
+                uid
+                for (uid,) in db.query(models.User.id)
+                .filter(func.lower(models.User.email).in_(_emails))
+                .all()
+            ]
+    _ceiling = _settings.METRICS_MAX_INVOICE_NAIRA or 0
+
+    def _guard(q):
+        if _excluded_ids:
+            q = q.filter(models.Invoice.issuer_id.notin_(_excluded_ids))
+        if _ceiling and _ceiling > 0:
+            q = q.filter(models.Invoice.amount <= _ceiling)
+        return q
+
+    # GMV = gross value of REVENUE paid this month (volume flowing through Suoops).
+    monthly_gmv = _guard(
+        db.query(func.sum(models.Invoice.amount)).filter(
+            models.Invoice.invoice_type == "revenue",
+            models.Invoice.status == "paid",
+            models.Invoice.paid_at >= month_start,
+        )
     ).scalar() or 0
 
     # Commission = Suoops' actual earnings (flat 3%, min ₦20, tiered cap ₦2,000 per ₦500k):
     #  - Wallet: charged at CREATION on every non-storefront revenue invoice.
     #  - Online: storefront orders charged by Paystack when PAID (count by paid_at).
-    from sqlalchemy import or_
-
     from app.utils.feature_gate import platform_fee_kobo
 
-    wallet_amounts = db.query(models.Invoice.amount).filter(
-        models.Invoice.invoice_type == "revenue",
-        models.Invoice.created_at >= month_start,
-        or_(models.Invoice.channel != "storefront", models.Invoice.channel.is_(None)),
+    wallet_amounts = _guard(
+        db.query(models.Invoice.amount).filter(
+            models.Invoice.invoice_type == "revenue",
+            models.Invoice.created_at >= month_start,
+            _or(models.Invoice.channel != "storefront", models.Invoice.channel.is_(None)),
+        )
     ).all()
-    online_amounts = db.query(models.Invoice.amount).filter(
-        models.Invoice.invoice_type == "revenue",
-        models.Invoice.channel == "storefront",
-        models.Invoice.status == "paid",
-        models.Invoice.paid_at >= month_start,
+    online_amounts = _guard(
+        db.query(models.Invoice.amount).filter(
+            models.Invoice.invoice_type == "revenue",
+            models.Invoice.channel == "storefront",
+            models.Invoice.status == "paid",
+            models.Invoice.paid_at >= month_start,
+        )
     ).all()
     commission_kobo = sum(
         platform_fee_kobo(a) for (a,) in (*wallet_amounts, *online_amounts)
