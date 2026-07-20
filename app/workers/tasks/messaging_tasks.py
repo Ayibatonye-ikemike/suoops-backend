@@ -1399,6 +1399,7 @@ def send_daily_summaries() -> dict[str, Any]:
     activity for the day so it never feels like spam.
     """
     from sqlalchemy import func as sqlfunc
+    from sqlalchemy import or_
     from sqlalchemy.orm import joinedload
 
     from app.models.models import Invoice, SubscriptionPlan, User
@@ -1498,6 +1499,14 @@ def send_daily_summaries() -> dict[str, Any]:
                             Invoice.issuer_id == user.id,
                             Invoice.invoice_type == "revenue",
                             Invoice.status.in_(["pending", "awaiting_confirmation"]),
+                            # Abandoned/unpaid storefront carts aren't money owed —
+                            # exclude them so this matches the web dashboard's
+                            # Outstanding figure (calculate_cash_position).
+                            or_(
+                                Invoice.channel.is_(None),
+                                Invoice.channel != "storefront",
+                                Invoice.status != "pending",
+                            ),
                         )
                         .scalar()
                     )
@@ -1511,6 +1520,11 @@ def send_daily_summaries() -> dict[str, Any]:
                             Invoice.status == "pending",
                             Invoice.due_date != None,  # noqa: E711
                             Invoice.due_date < start_of_day,
+                            # Same storefront-cart exclusion as Outstanding above.
+                            or_(
+                                Invoice.channel.is_(None),
+                                Invoice.channel != "storefront",
+                            ),
                         )
                         .scalar()
                     ) or 0

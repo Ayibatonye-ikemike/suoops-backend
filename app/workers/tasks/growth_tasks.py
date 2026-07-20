@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func as sqlfunc
+from sqlalchemy import or_
 
 from app.core.config import settings
 from app.db.session import session_scope
@@ -308,6 +309,13 @@ def send_weekly_free_summary() -> dict[str, Any]:
                     Invoice.issuer_id.in_(user_ids),
                     Invoice.invoice_type == "revenue",
                     Invoice.status.in_(["pending", "awaiting_confirmation"]),
+                    # Abandoned storefront carts aren't money owed — keep this
+                    # consistent with the dashboard + daily summary.
+                    or_(
+                        Invoice.channel.is_(None),
+                        Invoice.channel != "storefront",
+                        Invoice.status != "pending",
+                    ),
                 )
                 .group_by(Invoice.issuer_id)
                 .all()
@@ -325,6 +333,10 @@ def send_weekly_free_summary() -> dict[str, Any]:
                     Invoice.status == "pending",
                     Invoice.due_date != None,  # noqa: E711
                     Invoice.due_date < now_utc,
+                    or_(
+                        Invoice.channel.is_(None),
+                        Invoice.channel != "storefront",
+                    ),
                 )
                 .group_by(Invoice.issuer_id)
                 .all()
