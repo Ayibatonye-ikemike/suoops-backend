@@ -2886,6 +2886,70 @@ def get_business_intelligence(
 
 
 # =============================================================================
+# AUDIT-LOG INTEGRITY — verify the tamper-evident hash chain
+# =============================================================================
+
+class AuditChainResult(BaseModel):
+    ok: bool
+    total: int  # rows checked
+    verified: int  # rows that passed before the first break (== total when ok)
+    first_broken_id: int | None  # id of the first row that fails the chain
+    reason: str | None  # what broke: 'content_edited' | 'chain_broken' | None
+    message: str
+
+
+@router.get("/audit/verify", response_model=AuditChainResult)
+def verify_audit_chain(
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+    limit: int = Query(50000, ge=1, le=200000),
+) -> Any:
+    """Walk the audit_log hash chain and confirm nothing was edited or deleted.
+
+    For each row we recompute ``sha256(prev_entry_hash + canonical(columns))`` and
+    check it equals the stored ``entry_hash`` (detects CONTENT edits) and that the
+    row's ``prev_hash`` matches the previous row's ``entry_hash`` (detects DELETED
+    or reordered rows). The first mismatch is reported.
+    """
+    from app.core.audit import hash_entry
+    from app.models.models import AuditLog
+
+    log_audit_event("admin.audit.verify", user_id=admin_user.id)
+
+    rows = (
+        db.query(AuditLog)
+        .order_by(AuditLog.id.asc())
+        .limit(limit)
+        .all()
+    )
+    prev = ""
+    verified = 0
+    for r in rows:
+        expected = hash_entry(prev, r.action, r.user_id, r.status, r.details)
+        if (r.prev_hash or "") != prev:
+            return AuditChainResult(
+                ok=False, total=len(rows), verified=verified,
+                first_broken_id=r.id, reason="chain_broken",
+                message=f"Row {r.id}: prev_hash does not link to the previous row "
+                        "(a row was deleted, inserted or reordered).",
+            )
+        if r.entry_hash != expected:
+            return AuditChainResult(
+                ok=False, total=len(rows), verified=verified,
+                first_broken_id=r.id, reason="content_edited",
+                message=f"Row {r.id}: entry_hash does not match its contents "
+                        "(the row was edited after it was written).",
+            )
+        prev = r.entry_hash or ""
+        verified += 1
+    return AuditChainResult(
+        ok=True, total=len(rows), verified=verified,
+        first_broken_id=None, reason=None,
+        message=f"Audit chain intact: {verified} row(s) verified.",
+    )
+
+
+# =============================================================================
 # USER SEGMENTS FOR CAMPAIGNS (Brevo Email/WhatsApp Export)
 # =============================================================================
 

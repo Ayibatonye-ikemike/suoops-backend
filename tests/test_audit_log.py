@@ -38,3 +38,25 @@ def test_audit_db_persistence_never_raises(monkeypatch):
     monkeypatch.setattr("app.db.session.SessionLocal", boom)
     # Should not raise.
     audit._persist_audit_db({"ts": 1, "action": "x", "user_id": 1, "status": "success"})
+
+
+def test_audit_chain_recomputes_and_detects_tampering():
+    from app.core.audit import hash_entry
+
+    audit._persist_audit_db({"action": "a.one", "user_id": 1, "status": "success", "x": 1})
+    audit._persist_audit_db({"action": "a.two", "user_id": 2, "status": "success"})
+
+    with SessionLocal() as db:
+        rows = db.query(AuditLog).order_by(AuditLog.id).all()
+
+    # Chain recomputes exactly from the stored columns (verifiable).
+    prev = ""
+    for r in rows:
+        assert r.entry_hash == hash_entry(prev, r.action, r.user_id, r.status, r.details)
+        assert (r.prev_hash or "") == prev
+        prev = r.entry_hash
+
+    # Tampering with any field makes the recomputed hash diverge → detectable.
+    tampered = hash_entry("", "a.HACKED", rows[0].user_id, rows[0].status, rows[0].details)
+    assert tampered != rows[0].entry_hash
+

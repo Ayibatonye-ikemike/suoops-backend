@@ -68,7 +68,9 @@ def _persist_audit_db(event: dict[str, Any]) -> None:
             k: v for k, v in event.items()
             if k not in ("action", "user_id", "status", "ts")
         } or None
-        payload = json.dumps(event, separators=(",", ":"), sort_keys=True)
+        action = str(event.get("action"))[:120]
+        user_id = event.get("user_id")
+        status = str(event.get("status") or "success")[:20]
         with SessionLocal() as db:
             prev = (
                 db.query(AuditLog.entry_hash)
@@ -76,12 +78,12 @@ def _persist_audit_db(event: dict[str, Any]) -> None:
                 .limit(1)
                 .scalar()
             ) or ""
-            entry_hash = hashlib.sha256((prev + payload).encode("utf-8")).hexdigest()
+            entry_hash = hash_entry(prev, action, user_id, status, details)
             db.add(
                 AuditLog(
-                    action=str(event.get("action"))[:120],
-                    user_id=event.get("user_id"),
-                    status=str(event.get("status") or "success")[:20],
+                    action=action,
+                    user_id=user_id,
+                    status=status,
                     details=details,
                     prev_hash=prev or None,
                     entry_hash=entry_hash,
@@ -90,6 +92,27 @@ def _persist_audit_db(event: dict[str, Any]) -> None:
             db.commit()
     except Exception:  # noqa: BLE001 — audit persistence must never break a request
         _logger.debug("Failed to persist audit event to DB: %s", event.get("action"))
+
+
+def hash_entry(
+    prev_hash: str | None,
+    action: str,
+    user_id: int | None,
+    status: str,
+    details: Any,
+) -> str:
+    """Deterministic chain hash of an audit row from its STORED columns only, so a
+    verifier can recompute it from the DB later. ``entry_hash = sha256(prev_hash +
+    canonical(action, user_id, status, details))``."""
+    import hashlib
+
+    canonical = json.dumps(
+        {"action": action, "user_id": user_id, "status": status, "details": details},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(((prev_hash or "") + canonical).encode("utf-8")).hexdigest()
 
 
 def log_denied(action: str, user_id: int | None = None, reason: str | None = None, **extra: Any) -> None:
