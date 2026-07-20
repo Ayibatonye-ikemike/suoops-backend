@@ -52,6 +52,30 @@ def zone_for_state(state: str | None) -> str | None:
     return _STATE_ZONE.get(key) if key else None
 
 
+# A few state names that refer to the same place (so same-state matching works
+# regardless of how the seller typed it or how the geocoder labelled it).
+_STATE_ALIASES: dict[str, str] = {
+    "abuja": "fct",
+    "federalcapitalterritory": "fct",
+    "fctabuja": "fct",
+    "abujafct": "fct",
+}
+
+
+def canonical_state(state: str | None) -> str | None:
+    """Normalized, alias-resolved state key (e.g. 'Abuja' and 'FCT' → 'fct')."""
+    key = _norm(state)
+    if not key:
+        return None
+    return _STATE_ALIASES.get(key, key)
+
+
+def same_state(a: str | None, b: str | None) -> bool:
+    """True when two state names refer to the same Nigerian state."""
+    ca, cb = canonical_state(a), canonical_state(b)
+    return bool(ca and cb and ca == cb)
+
+
 def cross_state_delivery_days(seller_state: str | None, buyer_state: str | None) -> int:
     """Working-day dispute/delivery window for a cross-state order, scaled by how
     far apart the two states' zones are.

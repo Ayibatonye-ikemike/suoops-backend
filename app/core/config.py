@@ -136,6 +136,11 @@ class BaseAppSettings(BaseSettings):
     # paid Shipbubble calls): cache identical quotes briefly + cap per store/day.
     SHIPBUBBLE_QUOTE_CACHE_SECONDS: int = 180
     SHIPBUBBLE_QUOTE_DAILY_CAP_PER_STORE: int = 500
+    # When a storefront delivery is within the SAME state as the seller, only
+    # offer couriers that deliver within 24 hours (same-day / N-hour services),
+    # hiding multi-'working day' options. Falls back to showing all couriers if
+    # none qualify, so the buyer is never left with zero delivery choices.
+    STOREFRONT_SAME_STATE_FAST_ONLY: bool = True
     # Secret used to verify the `x-ship-signature` HMAC-SHA512 on Shipbubble
     # webhooks. If unset we fall back to the API key (Shipbubble signs with your
     # secret key). Webhook URL to register: https://api.suoops.com/webhooks/shipbubble

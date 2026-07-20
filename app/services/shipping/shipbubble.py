@@ -292,6 +292,27 @@ def cancel_shipment(order_id: str) -> bool:
     return data is not None
 
 
+def within_hours(option: "DeliveryOption", max_hours: int = 24) -> bool:
+    """True if a courier option's ETA is within ``max_hours``.
+
+    Same-day and N-hour services qualify; any multi-'working day' ETA does not.
+    Used to show only fast couriers on same-state storefront deliveries, e.g.
+    'Same day delivery' / 'Within 6 hrs' / '24 Hours after pickup' → True, while
+    'Within 1 - 2 working days' → False.
+    """
+    text = " ".join(
+        s.lower() for s in (option.delivery_eta, option.delivery_eta_time) if s
+    )
+    if not text:
+        return False
+    if "same day" in text or "same-day" in text:
+        return True
+    if re.search(r"\bday", text):  # any "working day(s)" → beyond the 24h window
+        return False
+    hours = [int(n) for n in re.findall(r"(\d+)\s*(?:hr|hrs|hour|hours)\b", text)]
+    return bool(hours) and max(hours) <= max_hours
+
+
 def _to_option(c: dict[str, Any]) -> DeliveryOption | None:
     try:
         return DeliveryOption(

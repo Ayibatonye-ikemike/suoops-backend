@@ -1137,7 +1137,31 @@ def _shipbubble_quote(db: Session, owner: "models.User", payload: "StoreOrderIn"
         receiver_address_code=receiver_code,
         package_items=package_items,
     )
-    return rates or {"request_token": None, "options": []}
+    if not rates:
+        return {"request_token": None, "options": []}
+
+    # Same-state deliveries should be fast: when the buyer is in the seller's
+    # state, only offer couriers that deliver within 24h (same-day / N-hour
+    # services), hiding multi-'working day' options. Fall back to all couriers
+    # if none qualify, so the buyer is never left with zero delivery choices.
+    if settings.STOREFRONT_SAME_STATE_FAST_ONLY and rates.get("options"):
+        if _quote_is_same_state(owner, payload):
+            fast = [o for o in rates["options"] if shipbubble.within_hours(o, 24)]
+            if fast:
+                rates["options"] = fast
+    return rates
+
+
+def _quote_is_same_state(owner: "models.User", payload: "StoreOrderIn") -> bool:
+    """True when the buyer's pinned location is in the seller's storefront state."""
+    seller_state = getattr(owner, "storefront_state", None)
+    if not seller_state or payload.customer_lat is None or payload.customer_lng is None:
+        return False
+    from app.services.delivery_zones import same_state
+    from app.services.geocode_service import reverse_geocode
+
+    buyer_state, _ = reverse_geocode(payload.customer_lat, payload.customer_lng)
+    return same_state(seller_state, buyer_state)
 
 
 @public_router.post("/store/{slug}/order")
