@@ -764,15 +764,23 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
 
     owner = (
         db.query(models.User)
-        .filter(
-            models.User.storefront_slug == slug.lower(),
-            models.User.storefront_enabled.is_(True),
-            models.User.store_status == "active",
-        )
+        .filter(models.User.storefront_slug == slug.lower())
         .first()
     )
     if not owner:
         raise HTTPException(status_code=404, detail="Storefront not found")
+
+    # Slug exists but the store isn't live — the owner hasn't enabled it yet, or
+    # it's under moderation. Return a graceful "offline" payload (HTTP 200) so a
+    # shared link degrades to a friendly message instead of a dead 404.
+    if not owner.storefront_enabled or owner.store_status != "active":
+        reason = owner.store_status if owner.store_status in ("suspended", "delisted") else "disabled"
+        return {
+            "slug": slug.lower(),
+            "business_name": owner.business_name or owner.name,
+            "offline": True,
+            "offline_reason": reason,
+        }
 
     # Discovery analytics: count this view (best-effort, never blocks the page).
     try:
