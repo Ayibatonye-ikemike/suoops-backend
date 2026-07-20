@@ -97,8 +97,9 @@ def main() -> None:
         print(f"Monthly cost applied: {_naira(monthly_cost)}  "
               f"(payroll {_naira(args.payroll_ngn)} + mktg ${args.marketing_usd:.0f} "
               f"+ infra ${args.infra_usd:.0f} @ ₦{args.fx:.0f}/$)")
-        print("Commission(3%) = THEORETICAL fee owed.  Cash in = REAL money collected")
-        print("(wallet top-ups + online 3% splits) — this is what hits your bank.")
+        print("Commission(3%) = THEORETICAL fee owed (new model).  Cash in = REAL money")
+        print("collected: Pro subs + invoice packs + wallet top-ups + online splits (both")
+        print("the pre-July subscription model AND the new commission model).")
         print("=" * 96)
         hdr = (f"{'Month':<9}{'Signups':>8}{'Active':>7}{'Commission':>13}"
                f"{'Cash in':>12}{'Cost':>11}{'Op(cash)':>13}{'Cum(cash)':>13}")
@@ -145,19 +146,20 @@ def main() -> None:
             online_comm = sum(platform_fee_kobo(a) for (a,) in online) / 100
             commission = manual_comm + online_comm  # theoretical 3% owed
 
-            # REAL cash collected this month = wallet top-ups (real money sellers
-            # paid to fund their prepaid wallet) + the online 3% splits (settled
-            # via Paystack). Manual commission is drawn FROM the top-up pool, so
-            # it isn't extra cash — counting top-ups + online avoids double count.
-            topups_kobo = db.query(
+            # REAL cash collected this month = ALL successful payments to SuoOps
+            # (Pro subscriptions SUB-*, invoice packs + wallet top-ups INVPACK-*)
+            # + the online 3% splits settled via Paystack. This captures BOTH the
+            # old model (subscriptions/packs, pre-July 2026) and the new commission
+            # model. Manual wallet debits aren't extra cash (drawn from the top-up
+            # pool already counted), so we don't add them separately.
+            payments_kobo = db.query(
                 func.coalesce(func.sum(PaymentTransaction.amount), 0)
             ).filter(
-                PaymentTransaction.reference.like("INVPACK-%"),
                 PaymentTransaction.status == PaymentStatus.SUCCESS,
                 PaymentTransaction.created_at >= ms,
                 PaymentTransaction.created_at < me,
             ).scalar() or 0
-            cash_in = topups_kobo / 100 + online_comm
+            cash_in = payments_kobo / 100 + online_comm
 
             # Only charge costs for months the business was actually operating.
             operating = commission > 0 or cash_in > 0 or signups > 0 or active > 0
@@ -180,7 +182,8 @@ def main() -> None:
         print(f"Gap (owed but not cash)         : {_naira(gap)}"
               f"  ({gap/tot_comm*100:.0f}% of theoretical)" if tot_comm else "")
         print("-" * 96)
-        print("Cash in = wallet top-ups + online 3% splits = what actually hit the bank.")
+        print("Cash in = ALL successful payments (Pro subs + packs + top-ups) + online")
+        print("splits = what actually hit the bank (should reconcile to your UBA balance).")
         print("Costs are your CURRENT run-rate applied flat across operating months.")
         print("Op(cash) uses REAL cash, so Cum(cash) ≈ your true net burn to date.")
 
