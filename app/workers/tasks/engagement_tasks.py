@@ -630,14 +630,14 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
         ),
         3: (
             EMAIL_DAILY_HABIT,
-            "How SuoOps pricing works — fees as low as 0.1% ⭐",
+            "How SuoOps pricing works — fees as low as 0.2% ⭐",
             "activation_day3_pro.html",
             (
                 f"Hi {name},\n\n"
                 "Quick note on pricing — it's refreshingly simple:\n\n"
                 "Every feature is free. You only pay when you invoice:\n"
                 "✅ Storefront orders — 3% when your customer pays online (nothing upfront)\n"
-                "✅ Manual invoices — just 0.1% (min ₦50, about ₦100 per ₦100k) from your prepaid wallet\n\n"
+                "✅ Manual invoices — just 0.2% (min ₦50, about ₦200 per ₦100k) from your prepaid wallet\n\n"
                 "So custom branding, tax reports, inventory, team, voice notes,\n"
                 "daily summaries and insights are all included — no plan to buy.\n\n"
                 "Top up your wallet anytime (₦1,250 / ₦5,000 / ₦20,000), or just share\n"
@@ -694,7 +694,7 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         body = (
             f"You've sent {invoice_count} invoices — that's great progress! "
             "Your invoice wallet is now empty. Top up to keep creating manual "
-            "invoices (just 0.1% each, min ₦50, about ₦100 per ₦100k) — or share your storefront so "
+            "invoices (just 0.2% each, min ₦50, about ₦200 per ₦100k) — or share your storefront so "
             "customers order and pay you online, no wallet needed."
         )
         tip = "Top up ₦1,250, ₦5,000 or ₦20,000 in Settings → Billing."
@@ -709,7 +709,7 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         body = (
             f"You've sent {invoice_count} invoices so far — you're clearly getting value from SuoOps. "
             f"Your wallet is down to ₦{wallet_naira}. Top up so invoicing never pauses "
-            "(0.1% per invoice, min ₦50, about ₦100 per ₦100k)."
+            "(0.2% per invoice, min ₦50, about ₦200 per ₦100k)."
         )
         tip = "Top up before you run out so there's no interruption."
         cta_url = "https://suoops.com/dashboard/billing/purchase"
