@@ -3648,44 +3648,59 @@ async def create_brevo_list(
 def export_users_csv(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
+    segment: str = Query("all", pattern="^(all|active|inactive|paying)$"),
 ):
+    """Export users as a Zoho Campaigns-ready CSV for marketing import.
+
+    Download and import into a Zoho Campaigns list (Contacts → Import). Suppressed
+    addresses (hard bounce / complaint) are excluded so a fresh sender never
+    inherits known-bad contacts. ``segment`` = all | active | inactive | paying.
     """
-    Export all users as CSV for Brevo import.
-    
-    Download this file and upload to Brevo:
-    Contacts → Import contacts → Upload file
-    """
+    import csv
     import io
 
     from fastapi.responses import StreamingResponse
-    
-    users = db.query(
-        models.User.email, models.User.name, models.User.phone,
-        models.User.plan, models.User.invoice_balance, models.User.business_name,
-    ).all()
-    
-    # Build CSV
+
+    from app.services.email_suppression import is_suppressed
+
+    log_audit_event("admin.users.export_csv", user_id=admin_user.id, segment=segment)
+
+    q = db.query(models.User).filter(
+        models.User.email.isnot(None), models.User.email != ""
+    )
+    invoiced = db.query(models.Invoice.issuer_id).distinct().subquery()
+    if segment == "active":
+        q = q.filter(models.User.id.in_(db.query(invoiced)))
+    elif segment == "inactive":
+        q = q.filter(~models.User.id.in_(db.query(invoiced)))
+    elif segment == "paying":
+        paid = (
+            db.query(models.Invoice.issuer_id)
+            .filter(
+                models.Invoice.invoice_type == "revenue",
+                models.Invoice.status == "paid",
+            )
+            .distinct()
+            .subquery()
+        )
+        q = q.filter(models.User.id.in_(db.query(paid)))
+
     output = io.StringIO()
-    output.write("EMAIL,FIRSTNAME,PHONE,PLAN,INVOICE_BALANCE,BUSINESS_NAME\n")
-    
-    for user in users:
-        if user.email:  # Brevo requires email
-            row = [
-                user.email,
-                (user.name or "Customer").replace(",", " "),
-                user.phone or "",
-                user.plan.value,
-                str(getattr(user, 'invoice_balance', 5)),
-                (user.business_name or "").replace(",", " ")
-            ]
-            output.write(",".join(row) + "\n")
-    
-    output.seek(0)
-    
+    writer = csv.writer(output)
+    writer.writerow(["Contact Email", "First Name", "Last Name", "Phone", "Business Name"])
+    for user in q.all():
+        email = (user.email or "").strip()
+        if not email or is_suppressed(email):
+            continue
+        parts = (user.name or "").split()
+        first = parts[0] if parts else ""
+        last = " ".join(parts[1:]) if len(parts) > 1 else ""
+        writer.writerow([email, first, last, user.phone or "", user.business_name or ""])
+
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=suoops_users.csv"}
+        headers={"Content-Disposition": f"attachment; filename=suoops_contacts_{segment}.csv"},
     )
 
 

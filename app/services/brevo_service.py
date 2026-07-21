@@ -15,6 +15,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _contact_sync_enabled() -> bool:
+    """Marketing contact sync to Brevo is retired (moved to Zoho Campaigns).
+
+    OFF by default; set ``BREVO_CONTACT_SYNC_ENABLED=true`` to re-enable. Brevo
+    remains available purely as a transactional-email fallback either way.
+    """
+    return bool(getattr(settings, "BREVO_CONTACT_SYNC_ENABLED", False))
+
 # Brevo list IDs (matching your Brevo setup)
 BREVO_LIST_ALL_USERS = 12       # All Users (master list)
 BREVO_LIST_STARTER = 9          # Legacy Starter list (now merged with Free/Active)
@@ -114,6 +123,8 @@ async def sync_user_to_brevo(user: "models.User") -> bool:
     
     Returns True if successful, False otherwise.
     """
+    if not _contact_sync_enabled():
+        return False
     brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
     if not brevo_api_key:
         logger.debug("BREVO_CONTACTS_API_KEY not configured, skipping sync")
@@ -247,6 +258,8 @@ async def sync_low_balance_status(user: "models.User") -> bool:
     
     Called when user's balance changes (e.g., after using invoices or topping up).
     """
+    if not _contact_sync_enabled():
+        return False
     brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
     if not brevo_api_key or not user.email:
         return False
@@ -276,6 +289,8 @@ def get_all_contacts_sync(list_id: int = BREVO_LIST_ALL_USERS) -> Optional[dict[
     Returns None if the API key is missing or a request fails (so callers can
     abort the reconcile safely rather than treating an error as "no contacts").
     """
+    if not _contact_sync_enabled():
+        return None
     brevo_api_key = getattr(settings, "BREVO_CONTACTS_API_KEY", None)
     if not brevo_api_key:
         logger.debug("BREVO_CONTACTS_API_KEY not configured, skipping contact fetch")
