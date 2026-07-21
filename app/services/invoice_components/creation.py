@@ -129,6 +129,17 @@ class InvoiceCreationMixin:
             vat_category=str(vat_category),
         )
 
+        # Lock in the SuoOps commission for this invoice at creation so reports
+        # read the fee actually charged, not a recompute at the current rate.
+        # Storefront/online orders are billed the storefront rate (Paystack
+        # collects it on payment); every other revenue invoice is billed the
+        # manual rate from the wallet. Expenses carry no fee.
+        if invoice_type == "revenue":
+            from app.utils.feature_gate import platform_fee_kobo
+
+            fee_channel = "storefront" if data.get("channel") == "storefront" else "manual"
+            invoice.platform_fee_kobo = platform_fee_kobo(invoice.amount, channel=fee_channel)
+
         lines_data = data.get("lines") or [
             {"description": default_description, "quantity": 1, "unit_price": invoice.amount}
         ]

@@ -216,6 +216,13 @@ class Invoice(Base):
     receipt_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # OCR extracted text
     input_method: Mapped[str | None] = mapped_column(String(20), nullable=True)  # voice, text, photo, manual
     channel: Mapped[str | None] = mapped_column(String(20), nullable=True)  # whatsapp, email, dashboard
+    # Fee ledger: the SuoOps commission (kobo) actually locked in for THIS invoice
+    # at creation — manual invoices at the manual rate (charged from the wallet),
+    # storefront/online at the storefront rate (collected by Paystack on payment).
+    # Persisted so commission reports read the fee that was really charged instead
+    # of recomputing at the current rate (which would rewrite history when rates
+    # change). NULL only for legacy rows created before this column / for expenses.
+    platform_fee_kobo: Mapped[int | None] = mapped_column(Integer, nullable=True)
     verified: Mapped[bool | None] = mapped_column(default=False, nullable=True)  # For expense verification
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Additional notes
     

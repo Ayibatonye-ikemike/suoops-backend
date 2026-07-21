@@ -650,20 +650,22 @@ def get_dashboard_stats(
         )
     ).scalar() or 0
 
-    # Commission = Suoops' actual earnings (flat 3%, min ₦20, tiered cap ₦2,000 per ₦500k):
+    # Commission = Suoops' actual earnings (manual invoices 1%, storefront 3%),
+    # read from each invoice's stored fee ledger:
     #  - Wallet: charged at CREATION on every non-storefront revenue invoice.
     #  - Online: storefront orders charged by Paystack when PAID (count by paid_at).
     from app.utils.feature_gate import platform_fee_kobo
 
-    wallet_amounts = _guard(
-        db.query(models.Invoice.amount).filter(
+    # Sum the per-invoice fee ledger; recompute only for legacy (NULL) rows.
+    wallet_rows = _guard(
+        db.query(models.Invoice.platform_fee_kobo, models.Invoice.amount).filter(
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= month_start,
             _or(models.Invoice.channel != "storefront", models.Invoice.channel.is_(None)),
         )
     ).all()
-    online_amounts = _guard(
-        db.query(models.Invoice.amount).filter(
+    online_rows = _guard(
+        db.query(models.Invoice.platform_fee_kobo, models.Invoice.amount).filter(
             models.Invoice.invoice_type == "revenue",
             models.Invoice.channel == "storefront",
             models.Invoice.status == "paid",
@@ -671,8 +673,14 @@ def get_dashboard_stats(
         )
     ).all()
     commission_kobo = (
-        sum(platform_fee_kobo(a, channel="manual") for (a,) in wallet_amounts)
-        + sum(platform_fee_kobo(a) for (a,) in online_amounts)
+        sum(
+            f if f is not None else platform_fee_kobo(a, channel="manual")
+            for (f, a) in wallet_rows
+        )
+        + sum(
+            f if f is not None else platform_fee_kobo(a)
+            for (f, a) in online_rows
+        )
     )
 
     return AdminDashboardStats(

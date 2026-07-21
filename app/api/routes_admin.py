@@ -1598,9 +1598,11 @@ def get_platform_metrics(
     from sqlalchemy import or_
 
     from app.utils.feature_gate import platform_fee_kobo
-    wallet_amounts = _cap_amount(
+    # Sum the fee LOCKED IN per invoice (fee ledger). Fall back to a recompute
+    # only for legacy rows created before the fee column existed.
+    wallet_rows = _cap_amount(
         _exclude_users(
-            db.query(Invoice.amount).filter(
+            db.query(Invoice.platform_fee_kobo, Invoice.amount).filter(
                 Invoice.invoice_type == "revenue",
                 Invoice.created_at >= month_start,
                 or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
@@ -1610,11 +1612,14 @@ def get_platform_metrics(
         ),
         Invoice.amount,
     ).all()
-    commission_wallet_kobo = sum(platform_fee_kobo(a, channel="manual") for (a,) in wallet_amounts)
+    commission_wallet_kobo = sum(
+        f if f is not None else platform_fee_kobo(a, channel="manual")
+        for (f, a) in wallet_rows
+    )
 
-    online_amounts = _cap_amount(
+    online_rows = _cap_amount(
         _exclude_users(
-            db.query(Invoice.amount).filter(
+            db.query(Invoice.platform_fee_kobo, Invoice.amount).filter(
                 Invoice.invoice_type == "revenue",
                 Invoice.channel == "storefront",
                 Invoice.status == "paid",
@@ -1625,7 +1630,10 @@ def get_platform_metrics(
         ),
         Invoice.amount,
     ).all()
-    commission_online_kobo = sum(platform_fee_kobo(a) for (a,) in online_amounts)
+    commission_online_kobo = sum(
+        f if f is not None else platform_fee_kobo(a)
+        for (f, a) in online_rows
+    )
 
     commission_wallet_this_month = commission_wallet_kobo / 100
     commission_online_this_month = commission_online_kobo / 100
@@ -1745,11 +1753,12 @@ def get_metrics_summary(
     def _win(q, col):
         return q.filter(col >= start) if start is not None else q
 
-    # Commission = wallet (revenue created in window) + online (storefront paid in window)
+    # Commission = wallet (revenue created in window) + online (storefront paid in window).
+    # Sum the per-invoice fee ledger; recompute only for legacy (NULL) rows.
     wallet_q = _cap_amount(
         _exclude_users(
             _win(
-                db.query(Invoice.amount).filter(
+                db.query(Invoice.platform_fee_kobo, Invoice.amount).filter(
                     Invoice.invoice_type == "revenue",
                     or_(Invoice.channel != "storefront", Invoice.channel.is_(None)),
                 ),
@@ -1763,7 +1772,7 @@ def get_metrics_summary(
     online_q = _cap_amount(
         _exclude_users(
             _win(
-                db.query(Invoice.amount).filter(
+                db.query(Invoice.platform_fee_kobo, Invoice.amount).filter(
                     Invoice.invoice_type == "revenue",
                     Invoice.channel == "storefront",
                     Invoice.status == "paid",
@@ -1776,8 +1785,14 @@ def get_metrics_summary(
         Invoice.amount,
     )
     commission = (
-        sum(platform_fee_kobo(a, channel="manual") for (a,) in wallet_q.all())
-        + sum(platform_fee_kobo(a) for (a,) in online_q.all())
+        sum(
+            f if f is not None else platform_fee_kobo(a, channel="manual")
+            for (f, a) in wallet_q.all()
+        )
+        + sum(
+            f if f is not None else platform_fee_kobo(a)
+            for (f, a) in online_q.all()
+        )
     ) / 100
 
     # GMV = paid revenue volume in window (by paid_at)
@@ -1897,7 +1912,7 @@ def get_growth_metrics(
         could be tens of millions) can't distort platform commission."""
         manual = _cap_amount(
             _exclude_users(
-                db.query(Invoice.amount).filter(
+                db.query(Invoice.platform_fee_kobo, Invoice.amount).filter(
                     Invoice.invoice_type == "revenue",
                     Invoice.created_at >= start,
                     Invoice.created_at < end,
@@ -1910,7 +1925,7 @@ def get_growth_metrics(
         ).all()
         online = _cap_amount(
             _exclude_users(
-                db.query(Invoice.amount).filter(
+                db.query(Invoice.platform_fee_kobo, Invoice.amount).filter(
                     Invoice.invoice_type == "revenue",
                     Invoice.channel == "storefront",
                     Invoice.status == "paid",
@@ -1923,8 +1938,14 @@ def get_growth_metrics(
             Invoice.amount,
         ).all()
         return (
-            sum(platform_fee_kobo(a, channel="manual") for (a,) in manual)
-            + sum(platform_fee_kobo(a) for (a,) in online)
+            sum(
+                f if f is not None else platform_fee_kobo(a, channel="manual")
+                for (f, a) in manual
+            )
+            + sum(
+                f if f is not None else platform_fee_kobo(a)
+                for (f, a) in online
+            )
         ) / 100
 
     # ── Commission (Suoops earnings this month) ──
