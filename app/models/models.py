@@ -294,11 +294,11 @@ class User(Base):
     # Invoice balance: purchased invoices available to use (100 invoices = ₦2,500 pack)
     # Decremented when creating revenue invoices. Users buy packs to replenish.
     invoice_balance: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
-    # Prepaid wallet balance in KOBO. Manual invoices deduct max(3% of amount,
-    # ₦20) at creation; this is the active billing field. New signups start with
-    # a ₦60 starter wallet (≨32 small invoices’ worth of goodwill). invoice_balance
-    # above is legacy (its value was migrated into this wallet at ₦30/credit).
-    wallet_balance_kobo: Mapped[int] = mapped_column(Integer, default=6000, server_default="6000")
+    # Prepaid wallet balance in KOBO. Manual invoices deduct max(1% of amount,
+    # ₦100) at creation; this is the active billing field. New signups start with
+    # a ₦100 starter wallet (one free small invoice's worth of goodwill).
+    # invoice_balance above is legacy (migrated into this wallet at ₦30/credit).
+    wallet_balance_kobo: Mapped[int] = mapped_column(Integer, default=10000, server_default="10000")
     # Legacy field - kept for backward compatibility, will be deprecated
     # Track monthly invoice usage (resets based on subscription start, not calendar month)
     invoices_this_month: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

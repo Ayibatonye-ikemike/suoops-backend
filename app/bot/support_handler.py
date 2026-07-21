@@ -129,9 +129,9 @@ _FAQ_ENTRIES: list[dict[str, Any]] = [
             "what plan", "my plan",
         ],
         "answer": (
-            "💰 *SuoOps Pricing — simple 3%*\n\n"
-            "Every feature is free. We only take a flat 3% per invoice:\n"
-            "🧾 *Manual invoices* — 3% (min ₦20, ₦2,000 cap up to ₦500k) from your prepaid wallet\n"
+            "💰 *SuoOps Pricing — fees as low as 1%*\n\n"
+            "Every feature is free. You only pay when you invoice:\n"
+            "🧾 *Manual invoices* — 1% (min ₦100, ₦1,000 cap up to ₦500k) from your prepaid wallet\n"
             "🛒 *Storefront orders* — 3% when the customer pays online\n\n"
             "So branding, inventory, tax reports, analytics & voice are all "
             "included — no plans.\n\n"

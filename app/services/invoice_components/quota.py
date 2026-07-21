@@ -70,7 +70,7 @@ class InvoiceQuotaMixin:
         if invoice_type != "revenue":
             return  # Expense invoices don't consume the wallet
 
-        fee = platform_fee_kobo(amount)
+        fee = platform_fee_kobo(amount, channel="manual")
         # Lock the user row to serialise concurrent invoice creation against the
         # wallet balance (race condition).
         user = (
@@ -89,7 +89,7 @@ class InvoiceQuotaMixin:
 
     def deduct_invoice_balance(self, issuer_id: int, amount=None) -> None:
         """Charge the manual-invoice fee from the wallet after creation."""
-        fee = platform_fee_kobo(amount)
+        fee = platform_fee_kobo(amount, channel="manual")
         # Lock the user row so concurrent deductions serialise and cannot both
         # read the same balance and overdraw the wallet (race condition).
         user = (

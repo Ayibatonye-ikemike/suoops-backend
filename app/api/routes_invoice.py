@@ -62,8 +62,9 @@ async def create_invoice(
             detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
         )
 
-    # The flat 3% commission is charged from the wallet at creation for every
-    # business-created invoice (check_invoice_limit enforces the balance). If the
+    # The manual-invoice commission (1%, min ₦100, tiered ₦1,000-per-₦500k cap)
+    # is charged from the wallet at creation for every business-created invoice
+    # (check_invoice_limit enforces the balance). If the
     # business has online payments enabled, the customer pays via the Paystack
     # link instead of bank transfer — but the commission was already taken from
     # the wallet here, so Paystack collects nothing extra (see

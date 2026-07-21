@@ -670,8 +670,9 @@ def get_dashboard_stats(
             models.Invoice.paid_at >= month_start,
         )
     ).all()
-    commission_kobo = sum(
-        platform_fee_kobo(a) for (a,) in (*wallet_amounts, *online_amounts)
+    commission_kobo = (
+        sum(platform_fee_kobo(a, channel="manual") for (a,) in wallet_amounts)
+        + sum(platform_fee_kobo(a) for (a,) in online_amounts)
     )
 
     return AdminDashboardStats(

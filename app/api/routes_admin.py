@@ -1610,7 +1610,7 @@ def get_platform_metrics(
         ),
         Invoice.amount,
     ).all()
-    commission_wallet_kobo = sum(platform_fee_kobo(a) for (a,) in wallet_amounts)
+    commission_wallet_kobo = sum(platform_fee_kobo(a, channel="manual") for (a,) in wallet_amounts)
 
     online_amounts = _cap_amount(
         _exclude_users(
@@ -1776,7 +1776,7 @@ def get_metrics_summary(
         Invoice.amount,
     )
     commission = (
-        sum(platform_fee_kobo(a) for (a,) in wallet_q.all())
+        sum(platform_fee_kobo(a, channel="manual") for (a,) in wallet_q.all())
         + sum(platform_fee_kobo(a) for (a,) in online_q.all())
     ) / 100
 
@@ -1923,7 +1923,7 @@ def get_growth_metrics(
             Invoice.amount,
         ).all()
         return (
-            sum(platform_fee_kobo(a) for (a,) in manual)
+            sum(platform_fee_kobo(a, channel="manual") for (a,) in manual)
             + sum(platform_fee_kobo(a) for (a,) in online)
         ) / 100
 

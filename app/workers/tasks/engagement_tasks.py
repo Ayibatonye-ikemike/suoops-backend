@@ -588,7 +588,7 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
     Day 0 — Welcome: feature showcase (invoicing, WhatsApp, reminders, receipts,
              expenses, customer DB) + CTA to create first invoice.
     Day 1 — Feature tour: deep dive into 5 key features users may not know about.
-    Day 3 — Pricing intro: how the flat 3% model works + a wallet top-up nudge.
+    Day 3 — Pricing intro: how the low 1% manual fee works + a wallet top-up nudge.
     """
     # Each day maps to: (email_type, subject, template_file, plain_text_fallback)
     email_map = {
@@ -630,14 +630,14 @@ def _send_activation(db, user, name: str, days_since_signup: int, stats: dict[st
         ),
         3: (
             EMAIL_DAILY_HABIT,
-            "How SuoOps pricing works — simple 3% ⭐",
+            "How SuoOps pricing works — fees as low as 1% ⭐",
             "activation_day3_pro.html",
             (
                 f"Hi {name},\n\n"
                 "Quick note on pricing — it's refreshingly simple:\n\n"
-                "Every feature is free. We only take a flat 3% per invoice:\n"
+                "Every feature is free. You only pay when you invoice:\n"
                 "✅ Storefront orders — 3% when your customer pays online (nothing upfront)\n"
-                "✅ Manual invoices — 3% (min ₦20, ₦2,000 cap up to ₦500k) from your prepaid wallet\n\n"
+                "✅ Manual invoices — just 1% (min ₦100, ₦1,000 cap up to ₦500k) from your prepaid wallet\n\n"
                 "So custom branding, tax reports, inventory, team, voice notes,\n"
                 "daily summaries and insights are all included — no plan to buy.\n\n"
                 "Top up your wallet anytime (₦1,250 / ₦5,000 / ₦20,000), or just share\n"
@@ -694,7 +694,7 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         body = (
             f"You've sent {invoice_count} invoices — that's great progress! "
             "Your invoice wallet is now empty. Top up to keep creating manual "
-            "invoices (just 3% each, min ₦20, ₦2,000 cap up to ₦500k) — or share your storefront so "
+            "invoices (just 1% each, min ₦100, ₦1,000 cap up to ₦500k) — or share your storefront so "
             "customers order and pay you online, no wallet needed."
         )
         tip = "Top up ₦1,250, ₦5,000 or ₦20,000 in Settings → Billing."
@@ -709,7 +709,7 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         body = (
             f"You've sent {invoice_count} invoices so far — you're clearly getting value from SuoOps. "
             f"Your wallet is down to ₦{wallet_naira}. Top up so invoicing never pauses "
-            "(3% per invoice, ₦20–₦2,000)."
+            "(1% per invoice, min ₦100, ₦1,000 cap up to ₦500k)."
         )
         tip = "Top up before you run out so there's no interruption."
         cta_url = "https://suoops.com/dashboard/billing/purchase"
@@ -723,7 +723,7 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         body = (
             f"You've already sent {invoice_count} invoices through SuoOps. "
             "You're building a real record of your business — and every feature is "
-            "included, so you only pay a flat 3% per invoice."
+            "included, so you only pay 1% per invoice."
         )
         tip = None
         cta_url = "https://suoops.com/dashboard"
