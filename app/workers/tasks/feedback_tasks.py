@@ -247,11 +247,9 @@ def _send_feedback_email(email: str, name: str, invoice_count: int, token: str) 
         "— The SuoOps Team"
     )
 
-    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
-    smtp_port = getattr(settings, "SMTP_PORT", 587)
-    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
-    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+    from app.utils.smtp import get_smtp_config
+
+    smtp_host, smtp_port, smtp_user, smtp_password, from_email = get_smtp_config()
 
     if not smtp_user or not smtp_password:
         logger.warning("SMTP not configured, skipping feedback email to %s", email)

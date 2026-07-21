@@ -463,11 +463,9 @@ def _send_owner_overdue_email(
 
     subject = f"⚠️ {total} Overdue Invoice(s) — Action Needed"
 
-    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
-    smtp_port = getattr(settings, "SMTP_PORT", 587)
-    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
-    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+    from app.utils.smtp import get_smtp_config
+
+    smtp_host, smtp_port, smtp_user, smtp_password, from_email = get_smtp_config()
 
     if not smtp_user or not smtp_password:
         logger.warning("SMTP not configured, cannot send overdue email to %s", to_email)
@@ -555,11 +553,9 @@ def _send_mark_paid_email(
 
     subject = f"📋 {pending_count} Invoices Still Pending — Were They Paid?"
 
-    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
-    smtp_port = getattr(settings, "SMTP_PORT", 587)
-    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
-    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+    from app.utils.smtp import get_smtp_config
+
+    smtp_host, smtp_port, smtp_user, smtp_password, from_email = get_smtp_config()
 
     if not smtp_user or not smtp_password:
         logger.warning("SMTP not configured, cannot send mark-paid email to %s", to_email)
@@ -967,11 +963,9 @@ def _notify_owner_escalation(
                 "Review at https://suoops.com/dashboard"
             )
 
-            smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
-            smtp_port = getattr(settings, "SMTP_PORT", 587)
-            smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
-            smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-            from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+            from app.utils.smtp import get_smtp_config
+
+            smtp_host, smtp_port, smtp_user, smtp_password, from_email = get_smtp_config()
 
             if smtp_user and smtp_password:
                 email_msg = MIMEMultipart("alternative")
@@ -1782,11 +1776,9 @@ def _send_daily_summary_email(
 
     subject = "📊 Your Daily Business Summary — SuoOps"
 
-    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
-    smtp_port = getattr(settings, "SMTP_PORT", 587)
-    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
-    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-    from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+    from app.utils.smtp import get_smtp_config
+
+    smtp_host, smtp_port, smtp_user, smtp_password, from_email = get_smtp_config()
 
     if not smtp_user or not smtp_password:
         logger.warning("SMTP not configured, cannot send daily summary email to %s", to_email)
