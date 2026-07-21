@@ -232,9 +232,15 @@ class AuthService:
 
     # ----------------------------- Login -----------------------------
 
-    def request_login(self, payload: schemas.OTPPhoneRequest) -> None:
-        """Request login OTP via phone OR email."""
-        
+    def request_login(self, payload: schemas.OTPPhoneRequest) -> str:
+        """Request login OTP via phone OR email.
+
+        To keep WhatsApp messaging costs down, a phone login delivers its OTP to
+        the user's EMAIL when one is on file (the code is still keyed by phone so
+        verification is unchanged). WhatsApp is only used as a fallback for users
+        with no email. Returns the delivery channel ("email" or "whatsapp").
+        """
+
         # Support both phone and email for login
         if hasattr(payload, 'email') and payload.email:
             identifier = payload.email.lower().strip()
@@ -247,17 +253,21 @@ class AuthService:
                 )
                 .one_or_none()
             )
-        else:
-            identifier = self._normalize_phone(payload.phone)
-            user = (
-                self.db.query(models.User)
-                .filter(models.User.phone == identifier)
-                .one_or_none()
-            )
-            
+            if not user:
+                raise ValueError("Invalid credentials")
+            return self.otp.request_login(identifier)
+
+        identifier = self._normalize_phone(payload.phone)
+        user = (
+            self.db.query(models.User)
+            .filter(models.User.phone == identifier)
+            .one_or_none()
+        )
         if not user:
             raise ValueError("Invalid credentials")
-        self.otp.request_login(identifier)
+        # Prefer email delivery (free) over WhatsApp when the user has an email.
+        deliver_to = user.email if getattr(user, "email", None) else None
+        return self.otp.request_login(identifier, deliver_to=deliver_to)
 
     def verify_login(self, payload: schemas.LoginVerify) -> TokenBundle:
         """Verify login OTP for phone OR email."""
@@ -319,8 +329,8 @@ class AuthService:
         expires_at = self._extract_expiry(access, TokenType.ACCESS)
         return TokenBundle(access, new_refresh, expires_at, user.id)
 
-    def resend_otp(self, payload: schemas.OTPResend) -> None:
-        """Resend OTP for phone OR email."""
+    def resend_otp(self, payload: schemas.OTPResend) -> str:
+        """Resend OTP for phone OR email. Returns the delivery channel used."""
         purpose = payload.purpose
         if purpose not in {"signup", "login"}:
             raise ValueError("Invalid OTP purpose")
@@ -328,12 +338,21 @@ class AuthService:
             # Support both phone and email
             if payload.email:
                 identifier = payload.email.lower().strip()
-            elif payload.phone:
-                identifier = self._normalize_phone(payload.phone)
-            else:
-                raise ValueError("Either phone or email is required")
-                
-            self.otp.resend_otp(identifier, purpose)
+                return self.otp.resend_otp(identifier, purpose)
+
+            identifier = self._normalize_phone(payload.phone)
+            # For a phone LOGIN, mirror request_login: deliver to email if we can
+            # (keeps WhatsApp cost down). Signup stays on WhatsApp (verifies phone).
+            deliver_to = None
+            if purpose == "login":
+                user = (
+                    self.db.query(models.User)
+                    .filter(models.User.phone == identifier)
+                    .one_or_none()
+                )
+                if user and getattr(user, "email", None):
+                    deliver_to = user.email
+            return self.otp.resend_otp(identifier, purpose, deliver_to=deliver_to)
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
 

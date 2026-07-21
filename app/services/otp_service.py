@@ -388,13 +388,20 @@ Powered by SuoOps
         data.pop("_requested_at", None)  # Not needed post verification
         return data
 
-    def request_login(self, identifier: str) -> None:
+    def request_login(self, identifier: str, deliver_to: str | None = None) -> str:
         """Send OTP for login.
-        
+
         Args:
-            identifier: Phone number or email address
+            identifier: Phone number or email address the OTP is keyed under
+                (must match what the client submits at verify).
+            deliver_to: Optional address to DELIVER the code to instead of
+                ``identifier`` — e.g. deliver a phone-login code to the user's
+                email so we don't pay for a WhatsApp message. Keying is
+                unchanged, so verification still works with ``identifier``.
+
+        Returns the delivery channel actually used ("email" or "whatsapp").
         """
-        self._send_otp(identifier, purpose="login")
+        return self._send_otp(identifier, purpose="login", deliver_to=deliver_to)
 
     def send_code(self, identifier: str, purpose: str) -> None:
         """Generate and deliver an OTP for an arbitrary purpose.
@@ -441,12 +448,14 @@ Powered by SuoOps
         self._store.delete(key)
         return True
 
-    def resend_otp(self, identifier: str, purpose: str) -> None:
+    def resend_otp(self, identifier: str, purpose: str, deliver_to: str | None = None) -> str:
         """Resend OTP for phone or email.
-        
+
         Args:
-            identifier: Phone number or email address
+            identifier: Phone number or email address the OTP is keyed under.
             purpose: 'signup' or 'login'
+            deliver_to: Optional address to deliver to instead of ``identifier``
+                (see ``request_login``). Returns the channel used.
         """
         key = self._otp_key(identifier, purpose)
         raw_record = self._store.get(key)
@@ -455,16 +464,23 @@ Powered by SuoOps
             elapsed = datetime.now(timezone.utc).timestamp() - record.created_at
             if elapsed < self.RESEND_COOLDOWN:
                 raise ValueError("Please wait before requesting another code")
-        self._send_otp(identifier, purpose)
+        channel = self._send_otp(identifier, purpose, deliver_to=deliver_to)
         # Mark that a resend occurred (ephemeral flag used for conversion metric)
         self._store.set(f"otp:resend-used:{purpose}:{identifier}", "1", self.OTP_TTL)
+        return channel
 
-    def _send_otp(self, identifier: str, purpose: str) -> None:
-        """Send OTP via email or WhatsApp based on identifier format.
-        
+    def _send_otp(self, identifier: str, purpose: str, deliver_to: str | None = None) -> str:
+        """Send OTP via email or WhatsApp.
+
+        The OTP is always KEYED under ``identifier`` (so verification matches
+        what the client submits), but DELIVERED to ``deliver_to`` when given.
+        This lets a phone-keyed login code be emailed to the user, avoiding a
+        paid WhatsApp message. Returns the channel used ("email"/"whatsapp").
+
         Args:
-            identifier: Phone number or email address
+            identifier: Phone number or email the OTP is keyed under.
             purpose: 'signup' or 'login'
+            deliver_to: Optional delivery address override.
         """
         code = self._generate_code()
         now_ts = datetime.now(timezone.utc).timestamp()
@@ -473,20 +489,22 @@ Powered by SuoOps
         # Clear any stale delivery-failure flag from a previous attempt.
         self._store.delete(self._delivery_failure_key(identifier, purpose))
 
-        delivery_method = self._get_delivery_method(identifier)
+        target = deliver_to or identifier
+        delivery_method = self._get_delivery_method(target)
 
         if delivery_method == "email":
             try:
-                self._send_email_otp(identifier, code, purpose)
+                self._send_email_otp(target, code, purpose)
                 metrics.otp_email_delivery_success()
             except Exception:
                 metrics.otp_email_delivery_failure()
                 raise
+            return "email"
         else:
             # WhatsApp OTP using approved authentication template
             try:
                 wamid = self._delivery.send_otp_template(
-                    to=identifier,
+                    to=target,
                     otp_code=code,
                     template_name="otp_verifications",  # Approved authentication template
                     language="en",
@@ -497,7 +515,7 @@ Powered by SuoOps
                     metrics.otp_whatsapp_delivery_failure()
                     raise ValueError("Failed to send OTP via WhatsApp template")
                 metrics.otp_whatsapp_delivery_success()
-                logger.info("OTP template sent successfully to %s (wamid=%s)", identifier, wamid or "<none>")
+                logger.info("OTP template sent successfully to %s (wamid=%s)", target, wamid or "<none>")
                 if wamid:
                     # Map wamid -> (purpose, identifier) so the delivery-status
                     # webhook can flag failures back to the waiting user.
@@ -509,6 +527,7 @@ Powered by SuoOps
             except Exception:
                 metrics.otp_whatsapp_delivery_failure()
                 raise
+            return "whatsapp"
 
     def _generate_code(self) -> str:
         return "".join(secrets.choice(string.digits) for _ in range(self._otp_length))

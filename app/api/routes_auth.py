@@ -114,18 +114,16 @@ def verify_signup(request: Request, payload: schemas.SignupVerify, svc: AuthServ
 @router.post("/login/request", response_model=schemas.MessageOut)
 @limiter.limit(RATE_LIMITS["login_request"])
 def request_login(request: Request, payload: schemas.OTPPhoneRequest | schemas.OTPEmailRequest, svc: AuthServiceDep):
-    """Request login OTP via phone OR email."""
+    """Request login OTP. Delivered to email when available (WhatsApp fallback)."""
     try:
-        svc.request_login(payload)
+        channel = svc.request_login(payload)
         metrics.otp_login_requested()
-        log_audit_event("auth.login.request", user_id=None, method=("email" if hasattr(payload, 'email') else "phone"))
-        
-        # Determine delivery method for response
-        if hasattr(payload, 'email'):
+        log_audit_event("auth.login.request", user_id=None, method=channel)
+
+        if channel == "email":
             return schemas.MessageOut(detail="OTP sent to email")
-        else:
-            return schemas.MessageOut(detail="OTP sent to WhatsApp")
-            
+        return schemas.MessageOut(detail="OTP sent to WhatsApp")
+
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -149,15 +147,13 @@ def resend_otp(request: Request, payload: schemas.OTPResend, svc: AuthServiceDep
     """Resend OTP for phone OR email."""
     try:
         metrics.otp_resend_attempt()
-        svc.resend_otp(payload)
-        log_audit_event("auth.otp.resend", user_id=None, method=("email" if payload.email else "phone"))
-        
-        # Determine delivery method for response
-        if payload.email:
+        channel = svc.resend_otp(payload)
+        log_audit_event("auth.otp.resend", user_id=None, method=channel)
+
+        if channel == "email":
             return schemas.MessageOut(detail="OTP resent to email")
-        else:
-            return schemas.MessageOut(detail="OTP resent to WhatsApp")
-            
+        return schemas.MessageOut(detail="OTP resent to WhatsApp")
+
     except ValueError as exc:
         # Cooldown or other resend restriction
         metrics.otp_resend_blocked()
