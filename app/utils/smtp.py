@@ -15,15 +15,45 @@ _smtp_connection: smtplib.SMTP | None = None
 
 
 def get_smtp_config() -> tuple[str, int, str | None, str | None, str]:
-    """Provider-agnostic SMTP config. Generic ``SMTP_*`` wins; legacy Brevo vars
-    are only a fallback, so switching providers is a pure env change.
+    """Provider-agnostic SMTP config with block precedence:
+
+        1. ZeptoMail  (SMTP_*_ZEP)   — primary, once its user+password are set
+        2. Generic    (SMTP_*)
+        3. Brevo      (BREVO_SMTP_LOGIN / BREVO_API_KEY) — automatic fallback
+
+    Each tier is used as a whole block (host+creds together) so a new provider's
+    host is never paired with another provider's credentials. Switching is a pure
+    env change; Brevo stays available as a safety net.
     """
-    smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
-    smtp_port = getattr(settings, "SMTP_PORT", 587)
-    smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
-    smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
+    # 1) ZeptoMail (explicit _ZEP vars).
+    zep_user = getattr(settings, "SMTP_USER_ZEP", None)
+    zep_pass = getattr(settings, "SMTP_PASSWORD_ZEP", None)
+    if zep_user and zep_pass:
+        host = getattr(settings, "SMTP_HOST_ZEP", None) or "smtp.zeptomail.com"
+        port = getattr(settings, "SMTP_PORT_ZEP", None) or getattr(settings, "SMTP_PORT", 587)
+        from_email = (
+            getattr(settings, "FROM_EMAIL_ZEP", None)
+            or getattr(settings, "FROM_EMAIL", None)
+            or "noreply@suoops.com"
+        )
+        return host, port, zep_user, zep_pass, from_email
+
+    # 2) Generic SMTP_*.
+    user = getattr(settings, "SMTP_USER", None)
+    password = getattr(settings, "SMTP_PASSWORD", None)
+    if user and password:
+        host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
+        port = getattr(settings, "SMTP_PORT", 587)
+        from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
+        return host, port, user, password, from_email
+
+    # 3) Legacy Brevo fallback.
+    host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
+    port = getattr(settings, "SMTP_PORT", 587)
+    user = getattr(settings, "BREVO_SMTP_LOGIN", None)
+    password = getattr(settings, "BREVO_API_KEY", None)
     from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
-    return smtp_host, smtp_port, smtp_user, smtp_password, from_email
+    return host, port, user, password, from_email
 
 
 # Backwards-compat alias (was module-private).

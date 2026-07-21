@@ -35,7 +35,16 @@ class BaseAppSettings(BaseSettings):
     BREVO_CONTACTS_API_KEY: str | None = None  # Full API key (xkeysib-...) for Contacts API
     BREVO_SMTP_LOGIN: str | None = None  # Brevo SMTP login (e.g., "9a485d001@smtp-brevo.com")
     BREVO_SENDER_NAME: str = "SuoOps"  # Sender name for emails
-    
+
+    # ZeptoMail (Zoho) — PRIMARY transactional SMTP. When the user + password are
+    # set, these take precedence over the generic SMTP_* and legacy Brevo vars,
+    # so Brevo remains an automatic fallback (used only if these are absent).
+    SMTP_HOST_ZEP: str | None = None      # e.g. smtp.zeptomail.com
+    SMTP_PORT_ZEP: int | None = None      # 587 (STARTTLS)
+    SMTP_USER_ZEP: str | None = None      # usually "emailapikey"
+    SMTP_PASSWORD_ZEP: str | None = None  # ZeptoMail SMTP token
+    FROM_EMAIL_ZEP: str | None = None     # a verified @suoops.com sender
+
     # WhatsApp Configuration (Meta/Facebook)
     WHATSAPP_API_KEY: str | None = None
     WHATSAPP_PHONE_NUMBER_ID: str | None = None
