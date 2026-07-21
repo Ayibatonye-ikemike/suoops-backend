@@ -31,43 +31,28 @@ class NotificationService:
         self.whatsapp = WhatsAppChannel(self)
 
     def _get_smtp_config(self) -> dict[str, str | int] | None:
-        """Get SMTP configuration for Brevo email sending.
-        
+        """Provider-agnostic SMTP config (generic SMTP_* first, Brevo vars as
+        fallback) so switching email providers is a pure env change.
+
         Returns:
-            dict with host, port, user, password or None if not configured
+            dict with host, port, user, password, from_email — or None if unset.
         """
-        provider = getattr(settings, "EMAIL_PROVIDER", "brevo").lower()
-        
-        if provider == "brevo":
-            # Brevo (formerly Sendinblue) SMTP configuration
-            # https://developers.brevo.com/docs/send-emails-with-smtp
-            host = getattr(settings, "SMTP_HOST", "smtp-relay.brevo.com")
-            port = getattr(settings, "SMTP_PORT", 587)
-            
-            # Try SMTP_USER first (actual SMTP credential), fallback to BREVO_SMTP_LOGIN
-            user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
+        from app.utils.smtp import get_smtp_config
 
-            # Brevo SMTP password is separate from API key - use SMTP_PASSWORD first
-            password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-
-            if not all([user, password]):
-                logger.warning(
-                    "Brevo email not configured. Set SMTP_USER/BREVO_SMTP_LOGIN and "
-                    "SMTP_PASSWORD/BREVO_API_KEY"
-                )
-                return None
-                
-            logger.info("Using Brevo SMTP for email: %s", host)
-            return {
-                "host": host,
-                "port": port,
-                "user": user,
-                "password": password,
-                "provider": "Brevo",
-            }
-        
-        logger.warning("Unsupported EMAIL_PROVIDER: %s. Only 'brevo' is supported.", provider)
-        return None
+        host, port, user, password, from_email = get_smtp_config()
+        if not user or not password:
+            logger.warning(
+                "Email not configured. Set SMTP_HOST/SMTP_USER/SMTP_PASSWORD (or legacy Brevo vars)."
+            )
+            return None
+        return {
+            "host": host,
+            "port": port,
+            "user": user,
+            "password": password,
+            "from_email": from_email,
+            "provider": "SMTP",
+        }
 
     # --- Email ---
     async def send_invoice_email(

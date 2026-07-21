@@ -297,20 +297,15 @@ class OTPService:
     def _send_email_otp(self, email: str, otp: str, purpose: str) -> None:
         """Send OTP via email using SMTP with HTML template."""
         try:
-            # Get Brevo SMTP configuration (try multiple possible env var names)
-            smtp_host = getattr(settings, "SMTP_HOST", "smtp-relay.brevo.com")
-            smtp_port = getattr(settings, "SMTP_PORT", 587)
-            
-            # Try BREVO_SMTP_LOGIN first, fallback to SMTP_USER
-            smtp_user = getattr(settings, "BREVO_SMTP_LOGIN", None) or getattr(settings, "SMTP_USER", None)
-            
-            # Try SMTP_PASSWORD first (actual SMTP credential), fallback to BREVO_API_KEY
-            smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-            
-            from_email = getattr(settings, "FROM_EMAIL", None) or smtp_user
-            
+            # Provider-agnostic SMTP config (SMTP_* first, Brevo vars as fallback).
+            from app.utils.smtp import get_smtp_config
+
+            smtp_host, smtp_port, smtp_user, smtp_password, from_email = get_smtp_config()
+
             if not all([smtp_user, smtp_password]):
-                logger.error("Brevo SMTP not configured. Need SMTP_USER/BREVO_SMTP_LOGIN and SMTP_PASSWORD/BREVO_API_KEY")
+                logger.error(
+                    "SMTP not configured. Set SMTP_HOST/SMTP_USER/SMTP_PASSWORD (or legacy Brevo vars)."
+                )
                 raise ValueError("Email OTP is not available")
             
             # Setup Jinja2 template environment

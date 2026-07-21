@@ -335,13 +335,11 @@ class TeamService:
     def _send_invitation_email(self, invitation: TeamInvitation, team: Team) -> None:
         """Send team invitation email via SMTP."""
         try:
-            # Get SMTP configuration
-            smtp_host = getattr(settings, "SMTP_HOST", "smtp-relay.brevo.com")
-            smtp_port = getattr(settings, "SMTP_PORT", 587)
-            smtp_user = getattr(settings, "BREVO_SMTP_LOGIN", None) or getattr(settings, "SMTP_USER", None)
-            smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
-            from_email = getattr(settings, "FROM_EMAIL", None) or smtp_user
-            
+            # Provider-agnostic SMTP config (SMTP_* first, Brevo vars as fallback).
+            from app.utils.smtp import get_smtp_config
+
+            smtp_host, smtp_port, smtp_user, smtp_password, from_email = get_smtp_config()
+
             if not all([smtp_user, smtp_password]):
                 logger.warning("SMTP not configured. Team invitation email not sent.")
                 return

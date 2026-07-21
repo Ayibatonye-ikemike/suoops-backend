@@ -14,13 +14,20 @@ logger = logging.getLogger(__name__)
 _smtp_connection: smtplib.SMTP | None = None
 
 
-def _get_smtp_config() -> tuple[str, int, str | None, str | None, str]:
+def get_smtp_config() -> tuple[str, int, str | None, str | None, str]:
+    """Provider-agnostic SMTP config. Generic ``SMTP_*`` wins; legacy Brevo vars
+    are only a fallback, so switching providers is a pure env change.
+    """
     smtp_host = getattr(settings, "SMTP_HOST", None) or "smtp-relay.brevo.com"
     smtp_port = getattr(settings, "SMTP_PORT", 587)
     smtp_user = getattr(settings, "SMTP_USER", None) or getattr(settings, "BREVO_SMTP_LOGIN", None)
     smtp_password = getattr(settings, "SMTP_PASSWORD", None) or getattr(settings, "BREVO_API_KEY", None)
     from_email = getattr(settings, "FROM_EMAIL", None) or "noreply@suoops.com"
     return smtp_host, smtp_port, smtp_user, smtp_password, from_email
+
+
+# Backwards-compat alias (was module-private).
+_get_smtp_config = get_smtp_config
 
 
 def send_smtp_email(to_email: str, subject: str, html_body: str | None, plain_body: str) -> bool:
