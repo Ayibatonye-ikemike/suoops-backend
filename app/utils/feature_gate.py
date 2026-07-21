@@ -35,7 +35,7 @@ PRO_FEATURES_PRICE = 1500  # ₦1,500/month (legacy recurring plan, not sold)
 # ── Commission billing model ──
 # The platform takes a percentage per invoice, but the rate/caps differ by
 # channel:
-#   • Manual invoices     → 1%, floor ₦100, cap ₦1,000 per ₦500,000 band.
+#   • Manual invoices     → 1%, floor ₦100, cap ₦500 per ₦500,000 band.
 #     Charged from the business's prepaid wallet at creation (the business pays
 #     it), so the rate is kept low.
 #   • Storefront / online → 3%, floor ₦20, cap ₦2,000 per ₦500,000 band.
@@ -49,15 +49,15 @@ STOREFRONT_CAP_BASE_KOBO = 200000  # ₦2,000 cap for the first ₦500,000 band
 # Manual-invoice commission (wallet fee).
 MANUAL_FEE_PERCENT = 1
 MANUAL_MIN_FEE_KOBO = 10000  # ₦100 floor per manual invoice
-MANUAL_CAP_BASE_KOBO = 100000  # ₦1,000 cap for the first ₦500,000 band
+MANUAL_CAP_BASE_KOBO = 50000  # ₦500 cap for the first ₦500,000 band
 
 # Tiered fee cap. The cap starts at the channel's base for transactions up to
 # ₦500,000, then steps up by that base for every additional ₦500,000 of
 # transaction value the amount CROSSES into (exact multiples stay in the lower
-# band). E.g. for manual (₦1,000 base):
-#   ≤ ₦500,000            → ₦1,000 cap
-#   ₦500,000–₦1,000,000   → ₦2,000 cap
-#   ₦1,000,000–₦1,500,000 → ₦3,000 cap
+# band). E.g. for manual (₦500 base):
+#   ≤ ₦500,000            → ₦500 cap
+#   ₦500,000–₦1,000,000   → ₦1,000 cap
+#   ₦1,000,000–₦1,500,000 → ₦1,500 cap
 FEE_CAP_TIER_NAIRA = 500000  # transaction value per cap tier (₦500,000)
 
 # ── Backward-compatible aliases (existing imports keep working) ──
@@ -93,7 +93,7 @@ def fee_cap_kobo(amount, base_kobo: int = STOREFRONT_CAP_BASE_KOBO) -> int:
 def platform_fee_kobo(amount, channel: str = "storefront") -> int:
     """Platform commission in kobo for ``amount`` Naira.
 
-    ``channel="manual"``     → 1%, floor ₦100, cap ₦1,000 per ₦500,000 band.
+    ``channel="manual"``     → 1%, floor ₦100, cap ₦500 per ₦500,000 band.
     ``channel="storefront"`` → 3%, floor ₦20,  cap ₦2,000 per ₦500,000 band
     (default, also used for any online/Paystack commission).
 
