@@ -35,7 +35,7 @@ PRO_FEATURES_PRICE = 1500  # ₦1,500/month (legacy recurring plan, not sold)
 # ── Commission billing model ──
 # The platform takes a percentage per invoice, but the rate/caps differ by
 # channel:
-#   • Manual invoices     → 0.5%, floor ₦50 (≡ ₦500 per ₦100,000).
+#   • Manual invoices     → 0.5%, floor ₦100, ₦400 cap under ₦500,000, uncapped above.
 #     Charged from the business's prepaid wallet at creation (the business pays
 #     it), so the rate is kept low.
 #   • Storefront / online → 3%, floor ₦20, cap ₦2,000 per ₦500,000 band.
@@ -47,28 +47,25 @@ STOREFRONT_MIN_FEE_KOBO = 2000  # ₦20 floor per storefront order
 STOREFRONT_CAP_BASE_KOBO = 200000  # ₦2,000 cap per ₦500,000 band
 STOREFRONT_CAP_TIER_NAIRA = 500000  # storefront cap steps every ₦500,000
 
-# Manual-invoice commission (wallet fee).
+# Manual-invoice commission (wallet fee): 0.5% with a ₦100 floor and a flat ₦400
+# ceiling for invoices UNDER ₦500,000. From ₦500,000 up the cap is removed, so
+# high-value invoices pay the full 0.5% (₦500,000 → ₦2,500, ₦1,000,000 → ₦5,000).
 MANUAL_FEE_PERCENT = 0.5  # 0.5% of the invoice amount
-MANUAL_MIN_FEE_KOBO = 5000  # ₦50 floor per manual invoice
-MANUAL_CAP_BASE_KOBO = 50000  # ₦500 safety ceiling per ₦100,000 band (≡ 0.5%)
-MANUAL_CAP_TIER_NAIRA = 100000  # manual cap steps every ₦100,000
+MANUAL_MIN_FEE_KOBO = 10000  # ₦100 floor per manual invoice
+MANUAL_MAX_FEE_KOBO = 40000  # ₦400 cap (applies only below the uncap threshold)
+MANUAL_UNCAP_THRESHOLD_NAIRA = 500000  # invoices ≥ this pay uncapped 0.5%
 
-# Tiered fee cap. The cap starts at the channel's base for transactions up to
-# one tier, then steps up by that base for every additional tier of transaction
-# value the amount CROSSES into (exact multiples stay in the lower band).
-# E.g. for manual (₦100 base, ₦100,000 tier):
-#   ≤ ₦100,000            → ₦100 cap
-#   ₦100,000–₦200,000     → ₦200 cap
-#   ₦200,000–₦300,000     → ₦300 cap  … (₦100 more per ₦100,000)
-FEE_CAP_TIER_NAIRA = STOREFRONT_CAP_TIER_NAIRA  # default tier (₦500,000)
+# Tiered fee cap (storefront). ``base_kobo`` for the first ₦500,000, then
+# +``base_kobo`` for every additional ₦500,000 band the amount crosses into.
+FEE_CAP_TIER_NAIRA = STOREFRONT_CAP_TIER_NAIRA  # storefront tier (₦500,000)
 
 # ── Backward-compatible aliases (existing imports keep working) ──
 PLATFORM_FEE_PERCENT = STOREFRONT_FEE_PERCENT
 FEE_CAP_BASE_KOBO = STOREFRONT_CAP_BASE_KOBO
 # Wallet affordability floor: the smallest wallet balance that can fund one
-# manual invoice (now ₦50, matching the manual fee floor).
+# manual invoice (₦100, matching the manual fee floor).
 MANUAL_INVOICE_MIN_FEE_KOBO = MANUAL_MIN_FEE_KOBO
-MANUAL_INVOICE_MAX_FEE_KOBO = MANUAL_CAP_BASE_KOBO
+MANUAL_INVOICE_MAX_FEE_KOBO = MANUAL_MAX_FEE_KOBO
 
 # Wallet top-up tiers (Naira) sold to fund manual invoicing.
 WALLET_TOPUP_TIERS = [1250, 5000, 20000]
@@ -99,7 +96,8 @@ def fee_cap_kobo(
 def platform_fee_kobo(amount, channel: str = "storefront") -> int:
     """Platform commission in kobo for ``amount`` Naira.
 
-    ``channel="manual"``     → 0.5%, floor ₦50 (≡ ₦500 per ₦100,000).
+    ``channel="manual"``     → 0.5%, floor ₦100, ₦400 cap below ₦500,000, then
+    uncapped 0.5% at/above ₦500,000 (₦500k → ₦2,500, ₦1M → ₦5,000).
     ``channel="storefront"`` → 3%, floor ₦20, cap ₦2,000 per ₦500,000 band
     (default, also used for any online/Paystack commission).
 
@@ -107,22 +105,24 @@ def platform_fee_kobo(amount, channel: str = "storefront") -> int:
     """
     from decimal import ROUND_HALF_UP, Decimal
 
-    if channel == "manual":
-        pct = MANUAL_FEE_PERCENT
-        min_kobo = MANUAL_MIN_FEE_KOBO
-        cap_base = MANUAL_CAP_BASE_KOBO
-        cap_tier = MANUAL_CAP_TIER_NAIRA
-    else:
-        pct = STOREFRONT_FEE_PERCENT
-        min_kobo = STOREFRONT_MIN_FEE_KOBO
-        cap_base = STOREFRONT_CAP_BASE_KOBO
-        cap_tier = STOREFRONT_CAP_TIER_NAIRA
-
     amt = Decimal(str(amount or 0))
-    fee_kobo = (amt * Decimal(str(pct))).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+
+    if channel == "manual":
+        fee_kobo = int(
+            (amt * Decimal(str(MANUAL_FEE_PERCENT))).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
+        # Flat ₦400 cap for invoices under ₦500,000; ≥ ₦500,000 pays uncapped 0.5%.
+        if amt < MANUAL_UNCAP_THRESHOLD_NAIRA:
+            fee_kobo = min(fee_kobo, MANUAL_MAX_FEE_KOBO)
+        return max(fee_kobo, MANUAL_MIN_FEE_KOBO)
+
+    # Storefront / online (default): 3% with a tiered ₦2,000-per-₦500,000 cap.
+    fee_kobo = (amt * Decimal(str(STOREFRONT_FEE_PERCENT))).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
     return min(
-        max(int(fee_kobo), min_kobo),
-        fee_cap_kobo(amount, cap_base, cap_tier),
+        max(int(fee_kobo), STOREFRONT_MIN_FEE_KOBO),
+        fee_cap_kobo(amount, STOREFRONT_CAP_BASE_KOBO, STOREFRONT_CAP_TIER_NAIRA),
     )
 
 
