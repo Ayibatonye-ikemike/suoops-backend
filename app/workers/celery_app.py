@@ -130,6 +130,10 @@ def _create_celery() -> Celery:
                 "task": "growth.send_payment_upsells",
                 "schedule": crontab(minute=0, hour=14),  # 14:00 UTC = 15:00 WAT
             },
+            "weekly-storefront-completion-nudges": {
+                "task": "growth.send_storefront_completion_nudges",
+                "schedule": crontab(minute=0, hour=10, day_of_week=5),  # Fri 10:00 UTC = 11:00 WAT
+            },
             "daily-activation-nudges": {
                 "task": "maintenance.nudge_zero_invoice_users",
                 "schedule": crontab(minute=0, hour=9),  # 09:00 UTC = 10:00 WAT

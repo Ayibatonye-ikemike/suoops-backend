@@ -585,3 +585,195 @@ def send_payment_upsells() -> dict[str, Any]:
     except Exception as exc:
         logger.error("Payment upsell task failed: %s", exc)
         raise
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TASK 4: STOREFRONT COMPLETION / ENABLE NUDGES
+# ═══════════════════════════════════════════════════════════════════════
+
+# One dedup key per milestone → each owner gets each nudge at most once.
+STOREFRONT_NUDGE_TYPES = {
+    "enable": "nudge_enable_storefront",
+    "payments": "nudge_enable_payments",
+    "profile": "nudge_complete_storefront",
+}
+
+
+def _storefront_nudge_for(db, user):
+    """The single highest-priority storefront nudge this owner needs.
+
+    Returns ``(type_key, whatsapp_msg, email_subject, email_plain)`` or ``None``
+    when the store is already complete & live. Priority: open the store → turn on
+    online payments → finish a thin profile (matches the live-search gate).
+    """
+    from app.models.inventory_models import Product
+
+    name = (user.name or "").split()[0] or "there"
+    dash = "https://suoops.com/dashboard/settings"
+
+    if not user.storefront_enabled:
+        return (
+            "enable",
+            f"🛍️ *Open your free shop*\n\nHi {name}, turn on your SuoOps storefront so "
+            f"customers can browse your products and order — no website needed.\n👉 {dash}\n\n"
+            f"_It's free._",
+            "Open your free SuoOps shop",
+            f"Hi {name},\n\nTurn on your SuoOps storefront so customers can browse and order — "
+            f"no website needed. It's free.\n\n{dash}\n\n— SuoOps",
+        )
+
+    if not user.paystack_subaccount_active:
+        return (
+            "payments",
+            f"💳 *Get paid online*\n\nHi {name}, turn on online payments so customers can pay "
+            f"you by card or transfer right on your store — money lands in your bank.\n👉 {dash}",
+            "Turn on online payments for your shop",
+            f"Hi {name},\n\nTurn on online payments so customers can pay you by card or transfer "
+            f"on your store — money lands in your bank.\n\n{dash}\n\n— SuoOps",
+        )
+
+    # Enabled + payments on — is it complete enough to show up in search?
+    missing = []
+    if not user.logo_url:
+        missing.append("a logo")
+    if not (user.storefront_description or "").strip():
+        missing.append("a short description")
+    if not user.storefront_state:
+        missing.append("your location")
+    listable = (
+        db.query(Product.id)
+        .filter(
+            Product.user_id == user.id,
+            Product.is_active.is_(True),
+            Product.description.isnot(None),
+            Product.description != "",
+            Product.image_url.isnot(None),
+            Product.image_url != "",
+        )
+        .first()
+    )
+    if not listable:
+        missing.append("a product with a photo & description")
+    if not missing:
+        return None
+
+    missing_str = ", ".join(missing)
+    return (
+        "profile",
+        f"✨ *Finish your shop to show up in search*\n\nHi {name}, add {missing_str} so your "
+        f"store appears when customers search SuoOps.\n👉 {dash}",
+        "Finish your shop to appear in search",
+        f"Hi {name},\n\nAdd {missing_str} so your store appears when customers search SuoOps.\n\n"
+        f"{dash}\n\n— SuoOps",
+    )
+
+
+@celery_app.task(
+    name="growth.send_storefront_completion_nudges",
+    soft_time_limit=300,
+    time_limit=360,
+)
+def send_storefront_completion_nudges() -> dict[str, Any]:
+    """Weekly nudge to owners to open a storefront, turn on online payments, or
+    finish a thin storefront so it appears in search.
+
+    Only targets engaged owners (have a product OR an invoice), reachable
+    (WhatsApp-verified or email), older than 24h. One message per user per
+    milestone (UserEmailLog dedup); WhatsApp only inside the 24h window and
+    within budget, otherwise email.
+    """
+    from app.models.inventory_models import Product
+    from app.models.models import Invoice, User, UserEmailLog
+
+    stats = {"whatsapp_sent": 0, "email_sent": 0, "skipped": 0, "failed": 0}
+    try:
+        with session_scope() as db:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            product_owners = db.query(Product.user_id).distinct().subquery()
+            invoice_owners = db.query(Invoice.issuer_id).distinct().subquery()
+            candidates = (
+                db.query(User)
+                .filter(
+                    User.created_at <= cutoff,
+                    or_(User.phone_verified.is_(True), User.email.isnot(None)),
+                    or_(
+                        User.id.in_(db.query(product_owners)),
+                        User.id.in_(db.query(invoice_owners)),
+                    ),
+                )
+                .all()
+            )
+            if not candidates:
+                return {"success": True, **stats}
+
+            from app.bot.conversation_window import is_window_open
+            from app.core.whatsapp import get_whatsapp_client
+            from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
+
+            client = get_whatsapp_client()
+
+            for user in candidates:
+                nudge = _storefront_nudge_for(db, user)
+                if not nudge:
+                    continue
+                type_key, wa_msg, subject, plain = nudge
+                email_type = STOREFRONT_NUDGE_TYPES[type_key]
+
+                # Dedup: at most once per user per milestone (ever).
+                already = (
+                    db.query(UserEmailLog.id)
+                    .filter(
+                        UserEmailLog.user_id == user.id,
+                        UserEmailLog.email_type == email_type,
+                    )
+                    .first()
+                )
+                if already:
+                    stats["skipped"] += 1
+                    continue
+
+                # Claim the dedup slot BEFORE sending (crash/retry-safe).
+                dedup_row = UserEmailLog(user_id=user.id, email_type=email_type)
+                db.add(dedup_row)
+                try:
+                    db.commit()
+                except Exception:  # noqa: BLE001
+                    db.rollback()
+                    stats["skipped"] += 1
+                    continue
+
+                sent = False
+                if (
+                    _is_valid_phone(user.phone)
+                    and is_window_open(user.phone)
+                    and can_send_whatsapp()
+                ):
+                    if client.send_text(user.phone, wa_msg):
+                        record_whatsapp_send()
+                        stats["whatsapp_sent"] += 1
+                        sent = True
+
+                if not sent and user.email:
+                    if _send_smtp_email(user.email, subject, None, plain):
+                        stats["email_sent"] += 1
+                        sent = True
+
+                if not sent:
+                    # Free the dedup claim so a later run can retry.
+                    try:
+                        db.delete(dedup_row)
+                        db.commit()
+                    except Exception:  # noqa: BLE001
+                        db.rollback()
+                    stats["failed"] += 1
+
+        logger.info(
+            "Storefront completion nudges: wa=%d email=%d skipped=%d failed=%d",
+            stats["whatsapp_sent"], stats["email_sent"],
+            stats["skipped"], stats["failed"],
+        )
+        return {"success": True, **stats}
+
+    except Exception as exc:
+        logger.error("Storefront completion nudges failed: %s", exc)
+        raise
