@@ -818,7 +818,7 @@ class WhatsAppHandler:
         msg = (
             "👛 *Your invoice wallet*\n\n"
             f"Balance: *₦{wallet_naira:,}*\n\n"
-            "Manual invoices cost just 1% (min ₦100, ₦500 cap up to ₦500k) from your wallet at "
+            "Manual invoices cost just 1% (min ₦50, ₦100 cap up to ₦100k) from your wallet at "
             "creation. Storefront orders are free — the customer pays 3% online.\n\n"
         )
         if wallet_naira < 500:

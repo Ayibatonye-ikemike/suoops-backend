@@ -62,7 +62,7 @@ async def create_invoice(
             detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
         )
 
-    # The manual-invoice commission (1%, min ₦100, tiered ₦500-per-₦500k cap)
+    # The manual-invoice commission (1%, min ₦50, tiered ₦100-per-₦100k cap)
     # is charged from the wallet at creation for every business-created invoice
     # (check_invoice_limit enforces the balance). If the
     # business has online payments enabled, the customer pays via the Paystack
