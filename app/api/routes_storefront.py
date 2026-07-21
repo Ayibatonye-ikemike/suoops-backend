@@ -126,6 +126,11 @@ class StorefrontOut(BaseModel):
     hours: dict | None = None
     announcement: str | None = None
     views: int = 0
+    # Owner-facing profile completeness (drives the dashboard nudge).
+    has_logo: bool = False
+    online_payments: bool = False
+    listable_product_count: int = 0
+    suggestions: list[str] = Field(default_factory=list)
 
 
 def _storefront_out(db: Session, user) -> StorefrontOut:
@@ -144,6 +149,10 @@ def _storefront_out(db: Session, user) -> StorefrontOut:
         hours=user.storefront_hours,
         announcement=user.storefront_announcement,
         views=user.storefront_views or 0,
+        has_logo=bool(user.logo_url),
+        online_payments=bool(getattr(user, "paystack_subaccount_active", False)),
+        listable_product_count=_listable_product_count(db, user.id),
+        suggestions=_storefront_suggestions(db, user),
     )
 
 
@@ -180,6 +189,46 @@ def _product_count(db: Session, user_id: int) -> int:
         .filter(Product.user_id == user_id, Product.is_active.is_(True))
         .scalar()
     ) or 0
+
+
+def _listable_product_count(db: Session, user_id: int) -> int:
+    """Products a shopper can actually see & buy (active + description + photo)."""
+    return (
+        db.query(func.count(Product.id))
+        .filter(Product.user_id == user_id, *_listable_product_conditions())
+        .scalar()
+    ) or 0
+
+
+def _storefront_suggestions(db: Session, user) -> list[str]:
+    """Prioritised, friendly nudges to help an owner complete their store.
+
+    Gating items (needed to appear in marketplace search) come first, then
+    quality boosts (description, location, hours).
+    """
+    tips: list[str] = []
+    active = _product_count(db, user.id)
+    listable = _listable_product_count(db, user.id)
+    if not user.logo_url:
+        tips.append("Add a shop logo — it's needed to show up in marketplace search.")
+    if not getattr(user, "paystack_subaccount_active", False):
+        tips.append("Turn on online payments so customers can pay on your store.")
+    if listable == 0:
+        tips.append("Add at least one product with a photo and a description.")
+    elif listable < active:
+        hidden = active - listable
+        tips.append(
+            f"{hidden} product{'s' if hidden != 1 else ''} "
+            f"{'are' if hidden != 1 else 'is'} hidden — add a photo and description to show "
+            f"{'them' if hidden != 1 else 'it'}."
+        )
+    if not (user.storefront_description or "").strip():
+        tips.append("Add a short description of what you sell.")
+    if not any([user.storefront_address, user.storefront_city, user.storefront_state]):
+        tips.append("Add your location so nearby shoppers can find you.")
+    if not user.storefront_hours:
+        tips.append("Set your opening hours.")
+    return tips
 
 
 _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
