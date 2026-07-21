@@ -57,6 +57,21 @@ def _unique_slug(db: Session, base: str, user_id: int) -> str:
         candidate = f"{base}-{n}"[:60]
 
 
+def _listable_product_conditions() -> list:
+    """A product is publicly listable only when it's active AND has a description
+    AND a photo — the exact rule the store page uses to display items. The
+    directory + 'live in search' gate reuse this, so a store counted as live
+    always has at least one item a shopper can actually see and buy.
+    """
+    return [
+        Product.is_active.is_(True),
+        Product.description.isnot(None),
+        Product.description != "",
+        Product.image_url.isnot(None),
+        Product.image_url != "",
+    ]
+
+
 def _presign(url: str | None) -> str | None:
     if not url:
         return None
@@ -794,14 +809,11 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
         .options(joinedload(Product.category))
         .filter(
             Product.user_id == owner.id,
-            Product.is_active.is_(True),
             # Buyer protection: only list items that show a description AND a
             # photo, so buyers (and dispute reviews) can see exactly what was
-            # ordered. Incomplete items are hidden until both are added.
-            Product.description.isnot(None),
-            Product.description != "",
-            Product.image_url.isnot(None),
-            Product.image_url != "",
+            # ordered. Same rule as the live-search gate
+            # (_listable_product_conditions) so a listed store is never empty.
+            *_listable_product_conditions(),
         )
         .order_by(Product.name.asc())
         .all()
@@ -875,7 +887,7 @@ def live_storefronts_query(db: Session):
     sync so admin metrics never disagree with what customers can see.
     """
     product_owner_ids = (
-        db.query(Product.user_id).filter(Product.is_active.is_(True)).distinct().subquery()
+        db.query(Product.user_id).filter(*_listable_product_conditions()).distinct().subquery()
     )
     return db.query(models.User).filter(
         models.User.storefront_enabled.is_(True),
@@ -917,10 +929,10 @@ def list_public_stores(
     page_size = min(max(1, page_size), 48)
     term = (q or "").strip()
 
-    # Owners with at least one active product.
+    # Owners with at least one publicly listable product (active + description + photo).
     product_owner_ids = (
         db.query(Product.user_id)
-        .filter(Product.is_active.is_(True))
+        .filter(*_listable_product_conditions())
         .distinct()
         .subquery()
     )
