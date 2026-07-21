@@ -27,20 +27,22 @@ REGISTER_RATE_LIMIT = "5/minute" if settings.ENV.lower() == "prod" else "50/minu
 @router.post("/signup/request", response_model=schemas.MessageOut)
 @limiter.limit(RATE_LIMITS["signup_request"])
 def request_signup(request: Request, payload: schemas.SignupStart, svc: AuthServiceDep):
-    """Request signup OTP via WhatsApp.
+    """Request signup OTP.
 
-    Phone is required — OTP is always sent to WhatsApp.
-    Email can be provided as optional profile data.
+    The code is delivered to the user's EMAIL (WhatsApp only as a fallback). The
+    WhatsApp number is verified separately after signup, before the dashboard.
     """
     from app.core.admin_security import get_client_ip
 
     try:
-        svc.start_signup(
+        channel = svc.start_signup(
             payload,
             ip=get_client_ip(request),
             user_agent=request.headers.get("user-agent"),
         )
         metrics.otp_signup_requested()
+        if channel == "email":
+            return schemas.MessageOut(detail="OTP sent to email")
         return schemas.MessageOut(detail="OTP sent to WhatsApp")
 
     except ValueError as exc:

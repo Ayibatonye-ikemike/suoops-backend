@@ -369,12 +369,18 @@ Powered by SuoOps
             logger.error("Unexpected error sending email OTP: %s: %s", type(e).__name__, e)
             raise ValueError(f"Failed to send OTP email: {e}") from e
 
-    def request_signup(self, identifier: str, payload: dict[str, Any]) -> None:
-        """Start signup by persisting user-provided data and sending OTP."""
+    def request_signup(self, identifier: str, payload: dict[str, Any], deliver_to: str | None = None) -> str:
+        """Start signup by persisting user-provided data and sending OTP.
+
+        The OTP is keyed under ``identifier`` (the phone) so verification is
+        unchanged, but delivered to ``deliver_to`` (the email) when given — the
+        signup code verifies the account by email; the WhatsApp number is proven
+        separately when the user first messages the bot. Returns the channel used.
+        """
         now = datetime.now(timezone.utc)
         enriched = {**payload, "_requested_at": now.isoformat()}
         self._store.set(self._signup_key(identifier), json.dumps(enriched), self.SIGNUP_SESSION_TTL)
-        self._send_otp(identifier, purpose="signup")
+        return self._send_otp(identifier, purpose="signup", deliver_to=deliver_to)
 
     def complete_signup(self, identifier: str, otp: str) -> dict[str, Any]:
         """Validate OTP and return stored signup data."""
@@ -464,6 +470,15 @@ Powered by SuoOps
             elapsed = datetime.now(timezone.utc).timestamp() - record.created_at
             if elapsed < self.RESEND_COOLDOWN:
                 raise ValueError("Please wait before requesting another code")
+        # For a signup resend, recover the email delivery target from the pending
+        # signup session (the user doesn't exist yet) so the code still emails.
+        if deliver_to is None and purpose == "signup":
+            raw_signup = self._store.get(self._signup_key(identifier))
+            if raw_signup:
+                try:
+                    deliver_to = json.loads(raw_signup).get("email") or None
+                except ValueError:
+                    deliver_to = None
         channel = self._send_otp(identifier, purpose, deliver_to=deliver_to)
         # Mark that a resend occurred (ephemeral flag used for conversion metric)
         self._store.set(f"otp:resend-used:{purpose}:{identifier}", "1", self.OTP_TTL)

@@ -43,11 +43,14 @@ class AuthService:
         *,
         ip: str | None = None,
         user_agent: str | None = None,
-    ) -> None:
+    ) -> str:
         """Start signup with WhatsApp phone number.
 
-        Phone is required — OTP is always sent via WhatsApp.
-        Email is stored as optional profile data but never used for OTP.
+        The verification OTP is delivered to the user's EMAIL (so we don't pay
+        for a WhatsApp message), but keyed by phone. The WhatsApp number itself
+        is verified separately — the account is created unverified and the
+        dashboard gate requires the user to message the bot before onboarding
+        can finish. Returns the delivery channel used ("email"/"whatsapp").
 
         Captures anti-fraud context (IP, user-agent, device fingerprint) and
         hard-blocks clearly abusive signups before an OTP is ever sent.
@@ -100,14 +103,16 @@ class AuthService:
         data = payload.model_dump()
         logger.info(f"start_signup: payload data keys={list(data.keys())}, referral_code={data.get('referral_code')}")
         data["phone"] = identifier
-        # Store email too if provided (but phone is the OTP identifier)
-        if payload.email:
-            data["email"] = payload.email.lower().strip()
+        # Email is required and used as the OTP delivery target.
+        email = (payload.email or "").lower().strip()
+        if email:
+            data["email"] = email
         # Stash anti-fraud context so it survives until OTP verification.
         data["_signup_ip"] = ip
         data["_signup_user_agent"] = user_agent
 
-        self.otp.request_signup(identifier, data)
+        # Deliver the code to email (keyed by phone); WhatsApp only if email fails.
+        return self.otp.request_signup(identifier, data, deliver_to=email or None)
 
     def complete_signup(self, payload: schemas.SignupVerify) -> TokenBundle:
         """Complete signup with WhatsApp OTP verification."""
@@ -124,9 +129,8 @@ class AuthService:
         )
             
         if existing:
-            if not existing.phone_verified:
-                existing.phone_verified = True
-                self.db.commit()
+            # Race: account already created. Leave its verification state as-is
+            # (the WhatsApp gate will prompt verification if still unverified).
             return self._issue_tokens(existing)
 
         # Create new user — signup is always phone-based (WhatsApp)
@@ -142,7 +146,10 @@ class AuthService:
             "name": stored_data.get("name", identifier),
             "business_name": stored_data.get("business_name"),
             "phone": stored_data.get("phone") or identifier,
-            "phone_verified": True,
+            # Email verified the account; the WhatsApp NUMBER is proven when the
+            # user first messages the bot. Start unverified so the dashboard gate
+            # forces that step before onboarding can finish.
+            "phone_verified": False,
             "signup_source": raw_source,
             "bank_name": payload.bank_name,
             "account_number": payload.account_number,
