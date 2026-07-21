@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Date,
     DateTime,
     Enum,
@@ -222,7 +223,7 @@ class Invoice(Base):
     # Persisted so commission reports read the fee that was really charged instead
     # of recomputing at the current rate (which would rewrite history when rates
     # change). NULL only for legacy rows created before this column / for expenses.
-    platform_fee_kobo: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    platform_fee_kobo: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     verified: Mapped[bool | None] = mapped_column(default=False, nullable=True)  # For expense verification
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Additional notes
     

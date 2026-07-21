@@ -35,7 +35,7 @@ PRO_FEATURES_PRICE = 1500  # ₦1,500/month (legacy recurring plan, not sold)
 # ── Commission billing model ──
 # The platform takes a percentage per invoice, but the rate/caps differ by
 # channel:
-#   • Manual invoices     → 1%, floor ₦50, cap ₦100 per ₦100,000 band.
+#   • Manual invoices     → 0.1%, floor ₦50 (≡ ₦100 per ₦100,000).
 #     Charged from the business's prepaid wallet at creation (the business pays
 #     it), so the rate is kept low.
 #   • Storefront / online → 3%, floor ₦20, cap ₦2,000 per ₦500,000 band.
@@ -48,9 +48,9 @@ STOREFRONT_CAP_BASE_KOBO = 200000  # ₦2,000 cap per ₦500,000 band
 STOREFRONT_CAP_TIER_NAIRA = 500000  # storefront cap steps every ₦500,000
 
 # Manual-invoice commission (wallet fee).
-MANUAL_FEE_PERCENT = 1
+MANUAL_FEE_PERCENT = 0.1  # 0.1% of the invoice amount
 MANUAL_MIN_FEE_KOBO = 5000  # ₦50 floor per manual invoice
-MANUAL_CAP_BASE_KOBO = 10000  # ₦100 cap per ₦100,000 band
+MANUAL_CAP_BASE_KOBO = 10000  # ₦100 safety ceiling per ₦100,000 band (≡ 0.1%)
 MANUAL_CAP_TIER_NAIRA = 100000  # manual cap steps every ₦100,000
 
 # Tiered fee cap. The cap starts at the channel's base for transactions up to
@@ -99,7 +99,7 @@ def fee_cap_kobo(
 def platform_fee_kobo(amount, channel: str = "storefront") -> int:
     """Platform commission in kobo for ``amount`` Naira.
 
-    ``channel="manual"``     → 1%, floor ₦50, cap ₦100 per ₦100,000 band.
+    ``channel="manual"``     → 0.1%, floor ₦50 (≡ ₦100 per ₦100,000).
     ``channel="storefront"`` → 3%, floor ₦20, cap ₦2,000 per ₦500,000 band
     (default, also used for any online/Paystack commission).
 
@@ -119,7 +119,7 @@ def platform_fee_kobo(amount, channel: str = "storefront") -> int:
         cap_tier = STOREFRONT_CAP_TIER_NAIRA
 
     amt = Decimal(str(amount or 0))
-    fee_kobo = (amt * pct).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    fee_kobo = (amt * Decimal(str(pct))).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     return min(
         max(int(fee_kobo), min_kobo),
         fee_cap_kobo(amount, cap_base, cap_tier),

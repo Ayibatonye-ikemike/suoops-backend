@@ -30,12 +30,15 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "invoice",
-        sa.Column("platform_fee_kobo", sa.Integer(), nullable=True),
+        sa.Column("platform_fee_kobo", sa.BigInteger(), nullable=True),
     )
 
     bind = op.get_bind()
     # Backfill historical revenue invoices at the OLD flat rate (3%, min ₦20,
     # ₦2,000 cap per ₦500,000 band). amount is Naira, so amount*3 = 3% in kobo.
+    # Only stamp invoices with a sane amount — junk/test rows with astronomically
+    # large amounts (whose tiered cap can exceed the column range) are left NULL;
+    # reports exclude them anyway.
     if bind.dialect.name == "postgresql":
         op.execute(
             """
@@ -47,6 +50,7 @@ def upgrade() -> None:
              WHERE invoice_type = 'revenue'
                AND platform_fee_kobo IS NULL
                AND amount > 0
+               AND amount <= 50000000
             """
         )
     elif bind.dialect.name == "sqlite":
@@ -61,6 +65,7 @@ def upgrade() -> None:
              WHERE invoice_type = 'revenue'
                AND platform_fee_kobo IS NULL
                AND amount > 0
+               AND amount <= 50000000
             """
         )
 
