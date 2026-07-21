@@ -223,9 +223,9 @@ def _storefront_suggestions(db: Session, user) -> list[str]:
             f"{'them' if hidden != 1 else 'it'}."
         )
     if not (user.storefront_description or "").strip():
-        tips.append("Add a short description of what you sell.")
-    if not any([user.storefront_address, user.storefront_city, user.storefront_state]):
-        tips.append("Add your location so nearby shoppers can find you.")
+        tips.append("Add a short description of what you sell — it's needed to appear in search.")
+    if not user.storefront_state:
+        tips.append("Add your location so nearby shoppers can find you — it's needed to appear in search.")
     if not user.storefront_hours:
         tips.append("Set your opening hours.")
     return tips
@@ -929,11 +929,15 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
 def live_storefronts_query(db: Session):
     """Query for storefronts that are actually LIVE in the public directory.
 
-    "Live" means a shopper can find the store via the global marketplace search:
-    it must be opted-in, not suspended/delisted, have a logo, accept online
-    payments (active Paystack subaccount) AND list at least one active product.
-    This is the SAME trust gate used by ``list_public_stores`` — keep them in
-    sync so admin metrics never disagree with what customers can see.
+    "Live" means a shopper can find the store via the global marketplace search.
+    A store must be opted-in, not suspended/delisted, and have ALL of:
+      • a logo
+      • online payments (active Paystack subaccount)
+      • at least one shopper-visible product (active + photo + description)
+      • a store description
+      • a location (state, captured via GPS)
+    ``list_public_stores`` REUSES this exact query, so the admin "Live in search"
+    metric and what customers actually see on the landing page can never differ.
     """
     product_owner_ids = (
         db.query(Product.user_id).filter(*_listable_product_conditions()).distinct().subquery()
@@ -944,6 +948,10 @@ def live_storefronts_query(db: Session):
         models.User.storefront_slug.isnot(None),
         models.User.logo_url.isnot(None),
         models.User.paystack_subaccount_active.is_(True),
+        models.User.storefront_description.isnot(None),
+        models.User.storefront_description != "",
+        models.User.storefront_state.isnot(None),
+        models.User.storefront_state != "",
         models.User.id.in_(db.query(product_owner_ids)),
     )
 
@@ -965,10 +973,11 @@ def list_public_stores(
     """Public marketplace directory + global search across ALL stores.
 
     Trust gate: only businesses that opted in AND have a logo AND verified bank
-    (active Paystack subaccount) AND at least one active product are listed.
-    When ``q`` is given it searches business name, description, city/state and
-    product names + categories across every store, so a shopper can find an item
-    and pick which store to buy it from.
+    (active Paystack subaccount) AND a shopper-visible product AND a description
+    AND a location are listed — the SAME gate as the admin "Live in search"
+    metric (``live_storefronts_query``). When ``q`` is given it searches business
+    name, description, city/state and product names + categories across every
+    store, so a shopper can find an item and pick which store to buy it from.
     """
     from sqlalchemy import or_
 
@@ -978,25 +987,9 @@ def list_public_stores(
     page_size = min(max(1, page_size), 48)
     term = (q or "").strip()
 
-    # Owners with at least one publicly listable product (active + description + photo).
-    product_owner_ids = (
-        db.query(Product.user_id)
-        .filter(*_listable_product_conditions())
-        .distinct()
-        .subquery()
-    )
-
-    base = (
-        db.query(models.User)
-        .filter(
-            models.User.storefront_enabled.is_(True),
-            models.User.store_status == "active",
-            models.User.storefront_slug.isnot(None),
-            models.User.logo_url.isnot(None),
-            models.User.paystack_subaccount_active.is_(True),
-            models.User.id.in_(db.query(product_owner_ids)),
-        )
-    )
+    # Single source of truth: the exact same gate as the "Live in search" count,
+    # so the directory and the admin metric always agree.
+    base = live_storefronts_query(db)
 
     if term:
         like = f"%{term}%"

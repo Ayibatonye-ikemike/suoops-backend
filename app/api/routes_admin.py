@@ -4566,21 +4566,19 @@ def list_storefronts(
         )
 
     # Aggregate status counts across the (unpaginated) matched set.
+    from app.api.routes_storefront import count_live_storefronts
+
     counts = {
         "total": len(items),
         "active": sum(1 for i in items if i.store_status == "active"),
         "suspended": sum(1 for i in items if i.store_status == "suspended"),
         "delisted": sum(1 for i in items if i.store_status == "delisted"),
         "low_quality": sum(1 for i in items if i.quality_score < 40),
-        # Live = discoverable in public global search (same gate as the marketplace).
-        "live": sum(
-            1
-            for i in items
-            if i.store_status == "active"
-            and i.has_logo
-            and i.online_payments_enabled
-            and i.products_active >= 1
-        ),
+        # Live = discoverable in public global search. Use the SAME query the
+        # marketplace/landing page uses (live_storefronts_query) so this metric
+        # always matches what customers actually see — never the inline
+        # approximation, which over-counted disabled/incomplete stores.
+        "live": count_live_storefronts(db),
     }
 
     if criteria:
