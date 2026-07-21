@@ -747,28 +747,9 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
     else:
         stats["failed"] += 1
 
-    # Also send corresponding WhatsApp template
-    if user.phone:
-        if email_type == EMAIL_LIMIT_REACHED:
-            if _send_wa_template(
-                user.phone,
-                settings.WHATSAPP_TEMPLATE_INVOICE_PACK_PROMO,
-                [name],
-                "wa_monetization_limit",
-                db,
-                user.id,
-            ):
-                stats["whatsapp_sent"] += 1
-        elif email_type == EMAIL_80PCT_LIMIT:
-            if _send_wa_template(
-                user.phone,
-                settings.WHATSAPP_TEMPLATE_LOW_BALANCE,
-                [name, str(wallet_naira)],
-                "wa_monetization_80pct",
-                db,
-                user.id,
-            ):
-                stats["whatsapp_sent"] += 1
+    # Email already delivered this nudge — no duplicate WhatsApp send. Owners
+    # have an email on file; WhatsApp is reserved for customer-facing collection
+    # (which drives payment) so we don't pay for redundant owner nudges.
 
     return True
 

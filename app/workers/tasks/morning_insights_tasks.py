@@ -472,8 +472,34 @@ def send_morning_insights() -> dict[str, Any]:
 
                     delivered = False
 
-                    # ── WhatsApp ──
-                    if has_phone and template_name:
+                    # ── Email first (free primary channel) ──
+                    if user.email:
+                        try:
+                            template = _jinja_env.get_template("morning_insight.html")
+                            html = template.render(
+                                name=name,
+                                headline=tip["headline"],
+                                body_text=tip["body"],
+                                tip_text=tip["tip"],
+                            )
+                            plain = (
+                                f"Good morning {name}! ☀️\n\n"
+                                f"{tip['headline']}\n\n"
+                                f"{tip['body']}\n\n"
+                                f"💡 {tip['tip']}\n\n"
+                                "Have a great day!\n"
+                                "— Your SuoOps Team"
+                            )
+                            if _send_smtp_email(user.email, tip["subject"], html, plain):
+                                stats["email_sent"] += 1
+                                delivered = True
+                        except Exception as e:
+                            logger.warning(
+                                "Morning insight email failed for user %s: %s", user.id, e
+                            )
+
+                    # ── WhatsApp fallback: only when there's no email on file ──
+                    if not delivered and not user.email and has_phone and template_name:
                         try:
                             from app.core.whatsapp import get_whatsapp_client
 
@@ -500,32 +526,6 @@ def send_morning_insights() -> dict[str, Any]:
                         except Exception as e:
                             logger.warning(
                                 "Morning insight WA failed for user %s: %s", user.id, e
-                            )
-
-                    # ── Email ──
-                    if user.email:
-                        try:
-                            template = _jinja_env.get_template("morning_insight.html")
-                            html = template.render(
-                                name=name,
-                                headline=tip["headline"],
-                                body_text=tip["body"],
-                                tip_text=tip["tip"],
-                            )
-                            plain = (
-                                f"Good morning {name}! ☀️\n\n"
-                                f"{tip['headline']}\n\n"
-                                f"{tip['body']}\n\n"
-                                f"💡 {tip['tip']}\n\n"
-                                "Have a great day!\n"
-                                "— Your SuoOps Team"
-                            )
-                            if _send_smtp_email(user.email, tip["subject"], html, plain):
-                                stats["email_sent"] += 1
-                                delivered = True
-                        except Exception as e:
-                            logger.warning(
-                                "Morning insight email failed for user %s: %s", user.id, e
                             )
 
                     if delivered:

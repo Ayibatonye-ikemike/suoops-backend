@@ -147,8 +147,22 @@ def send_aggregate_unpaid_alerts() -> dict[str, Any]:
                 sent = False
                 has_phone = _is_valid_phone(user.phone)
 
-                # Try WhatsApp (budget-gated — unpaid alerts are high value)
-                if has_phone:
+                # Email first (free primary channel for owner alerts).
+                if user.email:
+                    subject = f"You have ₦{total:,.0f} unpaid across {count} invoice{s}"
+                    plain = (
+                        f"Hi {name},\n\n"
+                        f"You have ₦{total:,.0f} unpaid across {count} invoice{s}.\n\n"
+                        f"Send reminders to collect faster: https://suoops.com/dashboard\n\n"
+                        f"— SuoOps"
+                    )
+                    if _send_smtp_email(user.email, subject, None, plain):
+                        stats["email_sent"] += 1
+                        sent = True
+
+                # WhatsApp fallback (no email, or email failed) — budget-gated,
+                # unpaid alerts are high value.
+                if not sent and has_phone:
                     from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
                     if can_send_whatsapp(priority=True):
                         template_name = getattr(settings, "WHATSAPP_TEMPLATE_UNPAID_ALERT", None)
@@ -178,19 +192,7 @@ def send_aggregate_unpaid_alerts() -> dict[str, Any]:
                                 stats["whatsapp_sent"] += 1
                                 sent = True
 
-                # Email fallback
-                if not sent and user.email:
-                    subject = f"You have ₦{total:,.0f} unpaid across {count} invoice{s}"
-                    plain = (
-                        f"Hi {name},\n\n"
-                        f"You have ₦{total:,.0f} unpaid across {count} invoice{s}.\n\n"
-                        f"Send reminders to collect faster: https://suoops.com/dashboard\n\n"
-                        f"— SuoOps"
-                    )
-                    if _send_smtp_email(user.email, subject, None, plain):
-                        stats["email_sent"] += 1
-                        sent = True
-
+                # Email fallback already attempted first above.
                 if sent:
                     pass  # dedup row already committed above
                 else:

@@ -277,7 +277,8 @@ def test_send_monetization_email_fails(db_session, monkeypatch):
     assert stats["failed"] == 1
 
 
-def test_send_monetization_with_whatsapp_limit(db_session, monkeypatch):
+def test_send_monetization_no_duplicate_whatsapp_limit(db_session, monkeypatch):
+    """Owners get the nudge by email only — no duplicate paid WhatsApp send."""
     u = _make_user(db_session, phone="+2348090002222", wallet_balance_kobo=0)
     monkeypatch.setattr(et, "_send_smtp_email", lambda *a, **k: True)
     monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_INVOICE_PACK_PROMO", "pack_promo")
@@ -285,10 +286,12 @@ def test_send_monetization_with_whatsapp_limit(db_session, monkeypatch):
     stats = _new_stats()
     et._send_monetization(db_session, u, "Jane", 5, stats)
     db_session.commit()
-    assert stats["whatsapp_sent"] == 1
+    assert stats["monetization_sent"] == 1
+    assert stats["whatsapp_sent"] == 0
 
 
-def test_send_monetization_with_whatsapp_low(db_session, monkeypatch):
+def test_send_monetization_no_duplicate_whatsapp_low(db_session, monkeypatch):
+    """Owners get the low-balance nudge by email only — no duplicate WhatsApp."""
     u = _make_user(db_session, phone="+2348090003333", wallet_balance_kobo=3000)
     monkeypatch.setattr(et, "_send_smtp_email", lambda *a, **k: True)
     monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_LOW_BALANCE", "low_bal")
@@ -296,7 +299,8 @@ def test_send_monetization_with_whatsapp_low(db_session, monkeypatch):
     stats = _new_stats()
     et._send_monetization(db_session, u, "Jane", 5, stats)
     db_session.commit()
-    assert stats["whatsapp_sent"] == 1
+    assert stats["monetization_sent"] == 1
+    assert stats["whatsapp_sent"] == 0
 
 
 # ─────────────────────────────────────────────────────────────────────

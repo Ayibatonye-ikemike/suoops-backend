@@ -1116,9 +1116,20 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                 try:
                     delivered = False
 
-                    # 1) Try template first (works outside 24h window)
+                    # 1) Email first — the primary, free channel (owners have an
+                    #    email on file, so this keeps nudges off paid WhatsApp).
+                    if user.email:
+                        delivered = _send_mark_paid_email(
+                            user.email, user.name, pending_count,
+                            pending_total, days_oldest, oldest_invoices, today,
+                        )
+                        if delivered:
+                            sent += 1
+
+                    # 2) WhatsApp fallback (no email, or email failed): template
+                    #    first (works outside the 24h window), then plain text.
                     nudge_tpl = settings.WHATSAPP_TEMPLATE_MARK_PAID_NUDGE
-                    if nudge_tpl and has_phone:
+                    if not delivered and nudge_tpl and has_phone:
                         tpl_lang = settings.WHATSAPP_TEMPLATE_LANGUAGE or "en"
                         delivered = client.send_template(
                             user.phone,
@@ -1136,30 +1147,21 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                         if delivered:
                             sent += 1
 
-                    # 2) Fallback to plain text (only within 24h window)
                     if not delivered and has_phone and is_window_open(user.phone):
                         delivered = client.send_text(user.phone, msg)
                         if delivered:
                             sent += 1
 
-                    # 3) Email fallback if WhatsApp didn't deliver
-                    if not delivered and user.email:
-                        email_ok = _send_mark_paid_email(
-                            user.email, user.name, pending_count,
-                            pending_total, days_oldest, oldest_invoices, today,
-                        )
-                        if email_ok:
-                            sent += 1
-                        else:
+                    if not delivered:
+                        if user.email or has_phone:
                             failed += 1
-                    elif not delivered and not user.email:
-                        skipped_window += 1
-                        continue  # no channel available, skip cooldown
+                        else:
+                            skipped_window += 1
+                        continue  # nothing delivered — don't start the cooldown
 
-                    if delivered or user.email:
-                        # Set 7-day cooldown
-                        if redis:
-                            redis.set(cooldown_key, "1", ex=7 * 86400)
+                    # Set 7-day cooldown after a successful send
+                    if redis:
+                        redis.set(cooldown_key, "1", ex=7 * 86400)
                 except Exception as e:
                     logger.warning(
                         "Mark-paid nudge failed for user %s: %s", issuer_id, e
@@ -1539,7 +1541,25 @@ def send_daily_summaries() -> dict[str, Any]:
                         revenue_today, expenses_today, outstanding, overdue_count
                     )
 
-                    # Try WhatsApp first (template → plain text), then email
+                    # Email is the primary channel (free). WhatsApp is only used
+                    # for users with no email on file — this keeps the daily
+                    # summary off paid WhatsApp templates for (almost) everyone.
+                    if user.email:
+                        email_ok = _send_daily_summary_email(
+                            to_email=user.email,
+                            name=user.name or user.business_name,
+                            revenue=rev,
+                            expenses=exp,
+                            net=net,
+                            outstanding=out,
+                            overdue_count=overdue_count,
+                        )
+                        if email_ok:
+                            email_sent += 1
+                            continue
+                        # Email failed — fall through to the WhatsApp fallback.
+
+                    # ── WhatsApp fallback (no email, or email delivery failed) ──
                     wa_success = False
 
                     if has_phone:
@@ -1573,37 +1593,20 @@ def send_daily_summaries() -> dict[str, Any]:
                             else:
                                 skipped_window += 1
                                 logger.debug(
-                                    "Daily summary outside 24h window for user %s, trying email",
-                                    user.id,
+                                    "Daily summary outside 24h window for user %s", user.id,
                                 )
 
                     if wa_success:
                         sent += 1
                         # Follow up with the visual cash snapshot. Images, like
                         # plain text, are only deliverable inside the 24h window.
-                        if has_phone:
-                            try:
-                                _send_daily_cash_image(db, client, user, is_window_open)
-                            except Exception as img_err:  # noqa: BLE001
-                                logger.warning(
-                                    "Daily cash image failed for user %s: %s", user.id, img_err
-                                )
+                        try:
+                            _send_daily_cash_image(db, client, user, is_window_open)
+                        except Exception as img_err:  # noqa: BLE001
+                            logger.warning(
+                                "Daily cash image failed for user %s: %s", user.id, img_err
+                            )
                         continue
-
-                    # ── Email fallback ──────────────────────────────
-                    if user.email:
-                        email_ok = _send_daily_summary_email(
-                            to_email=user.email,
-                            name=user.name or user.business_name,
-                            revenue=rev,
-                            expenses=exp,
-                            net=net,
-                            outstanding=out,
-                            overdue_count=overdue_count,
-                        )
-                        if email_ok:
-                            email_sent += 1
-                            continue
 
                     # Neither channel succeeded
                     failed += 1
