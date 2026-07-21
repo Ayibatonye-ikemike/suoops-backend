@@ -14,7 +14,7 @@ def _signup_and_get_token(client: TestClient):
     """
     phone = "+234" + secrets.token_hex(4)
     # Request signup OTP
-    req = client.post("/auth/signup/request", json={"phone": phone, "name": "SmokeUser", "business_name": "Smoke Biz", "accept_terms": True})
+    req = client.post("/auth/signup/request", json={"phone": phone, "email": f"{phone.lstrip('+')}@example.com", "name": "SmokeUser", "business_name": "Smoke Biz", "accept_terms": True})
     assert req.status_code == 200, req.text
     # Retrieve OTP directly from in-memory store (test environment convenience)
     key = f"otp:signup:{phone}"

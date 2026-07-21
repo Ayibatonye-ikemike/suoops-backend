@@ -21,6 +21,7 @@ def _signup_with_bank(phone: str) -> str:
         "/auth/signup/request",
         json={
             "phone": phone,
+            "email": f"{phone.lstrip('+')}@example.com",
             "name": "BankUser",
             "business_name": "Bank Biz",
             "accept_terms": True,

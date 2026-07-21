@@ -14,7 +14,7 @@ def _auth_headers(client: TestClient) -> dict[str, str]:
     phone = "+234" + secrets.token_hex(4)
     r = client.post(
         "/auth/signup/request",
-        json={"phone": phone, "name": "Resolver", "business_name": "Biz", "accept_terms": True},
+        json={"phone": phone, "email": f"{phone.lstrip('+')}@example.com", "name": "Resolver", "business_name": "Biz", "accept_terms": True},
     )
     assert r.status_code == 200, r.text
     raw = OTPService()._store.get(f"otp:signup:{phone}")  # type: ignore[attr-defined]

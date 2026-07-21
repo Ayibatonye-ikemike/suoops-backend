@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class OTPPhoneRequest(BaseModel):
@@ -19,13 +19,23 @@ class OTPEmailRequest(BaseModel):
 class SignupStart(BaseModel):
     """Start signup with WhatsApp phone number."""
     phone: str
-    email: str | None = None
+    # Email is REQUIRED: login verification codes are delivered by email (WhatsApp
+    # is reserved for the one-time number verification), so every account needs one.
+    email: str = Field(..., min_length=5, max_length=255, description="Email address (required — used for login verification codes)")
     name: str
     business_name: str = Field(..., min_length=2, max_length=255, description="Business or brand name (required)")
     accept_terms: bool = Field(False, description="Whether the business accepted the Terms & Conditions (incl. buyer-protection/escrow policy). Must be true to sign up.")
     referral_code: str | None = Field(None, min_length=3, max_length=50, description="Referral code or influencer vanity slug from another user")
     signup_source: str | None = Field(None, max_length=50, description="Attribution source: google_ads, instagram, whatsapp_ad, social_media, referral, google_oauth, organic")
     device_fingerprint: str | None = Field(None, max_length=64, description="Client-generated device fingerprint (anti-fraud; hashed on the client)")
+
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("Please enter a valid email address.")
+        return v
 
 
 class SignupVerify(BaseModel):

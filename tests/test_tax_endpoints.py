@@ -21,7 +21,7 @@ def _auth_client() -> tuple[TestClient, str]:
     phone = "+234" + secrets.token_hex(4)
     # signup
     # Provide business_name to satisfy non-null constraints if any and ensure phone persists
-    r = client.post("/auth/signup/request", json={"phone": phone, "name": "TaxUser", "business_name": "Test Biz", "accept_terms": True})
+    r = client.post("/auth/signup/request", json={"phone": phone, "email": f"{phone.lstrip('+')}@example.com", "name": "TaxUser", "business_name": "Test Biz", "accept_terms": True})
     assert r.status_code == 200, r.text
     otp = _extract_otp(phone, "signup")
     v = client.post(

@@ -12,7 +12,7 @@ def _signup_and_get_token():
     phone = "+2349990001112"
     r = client.post(
         "/auth/signup/request",
-        json={"phone": phone, "name": "InvUser", "business_name": "Test Biz", "accept_terms": True},
+        json={"phone": phone, "email": f"{phone.lstrip('+')}@example.com", "name": "InvUser", "business_name": "Test Biz", "accept_terms": True},
     )
     assert r.status_code == 200, r.text
     # Extract OTP from in-memory store

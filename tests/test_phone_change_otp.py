@@ -24,7 +24,7 @@ def _otp(identifier: str, purpose: str) -> str:
 def _signup(phone: str) -> str:
     client.post(
         "/auth/signup/request",
-        json={"phone": phone, "name": "PhoneUser", "business_name": "Phone Biz", "accept_terms": True},
+        json={"phone": phone, "email": f"{phone.lstrip('+')}@example.com", "name": "PhoneUser", "business_name": "Phone Biz", "accept_terms": True},
     )
     v = client.post(
         "/auth/signup/verify",

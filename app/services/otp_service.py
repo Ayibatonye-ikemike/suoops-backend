@@ -490,44 +490,51 @@ Powered by SuoOps
         self._store.delete(self._delivery_failure_key(identifier, purpose))
 
         target = deliver_to or identifier
-        delivery_method = self._get_delivery_method(target)
-
-        if delivery_method == "email":
+        # Prefer email delivery when the target is an email address.
+        if self._get_delivery_method(target) == "email":
             try:
                 self._send_email_otp(target, code, purpose)
                 metrics.otp_email_delivery_success()
+                return "email"
             except Exception:
                 metrics.otp_email_delivery_failure()
-                raise
-            return "email"
-        else:
-            # WhatsApp OTP using approved authentication template
-            try:
-                wamid = self._delivery.send_otp_template(
-                    to=target,
-                    otp_code=code,
-                    template_name="otp_verifications",  # Approved authentication template
-                    language="en",
+                # Fall back to WhatsApp ONLY when email was a cheaper delivery for
+                # a phone-keyed code (i.e. we can still reach the user by phone).
+                # When email is the primary identifier there is no phone to fall
+                # back to, so re-raise.
+                if not (deliver_to and self._get_delivery_method(identifier) == "whatsapp"):
+                    raise
+                logger.warning(
+                    "Email OTP delivery failed; falling back to WhatsApp for %s", identifier
                 )
-                # send_otp_template returns the wamid on success, "" in test/
-                # unconfigured mode, or None on failure.
-                if wamid is None:
-                    metrics.otp_whatsapp_delivery_failure()
-                    raise ValueError("Failed to send OTP via WhatsApp template")
-                metrics.otp_whatsapp_delivery_success()
-                logger.info("OTP template sent successfully to %s (wamid=%s)", target, wamid or "<none>")
-                if wamid:
-                    # Map wamid -> (purpose, identifier) so the delivery-status
-                    # webhook can flag failures back to the waiting user.
-                    self._store.set(
-                        self._wamid_key(wamid),
-                        json.dumps({"purpose": purpose, "identifier": identifier}),
-                        self.OTP_TTL,
-                    )
-            except Exception:
+
+        # WhatsApp delivery — primary phone OTP, or fallback after an email failure.
+        try:
+            wamid = self._delivery.send_otp_template(
+                to=identifier,
+                otp_code=code,
+                template_name="otp_verifications",  # Approved authentication template
+                language="en",
+            )
+            # send_otp_template returns the wamid on success, "" in test/
+            # unconfigured mode, or None on failure.
+            if wamid is None:
                 metrics.otp_whatsapp_delivery_failure()
-                raise
-            return "whatsapp"
+                raise ValueError("Failed to send OTP via WhatsApp template")
+            metrics.otp_whatsapp_delivery_success()
+            logger.info("OTP template sent successfully to %s (wamid=%s)", identifier, wamid or "<none>")
+            if wamid:
+                # Map wamid -> (purpose, identifier) so the delivery-status
+                # webhook can flag failures back to the waiting user.
+                self._store.set(
+                    self._wamid_key(wamid),
+                    json.dumps({"purpose": purpose, "identifier": identifier}),
+                    self.OTP_TTL,
+                )
+        except Exception:
+            metrics.otp_whatsapp_delivery_failure()
+            raise
+        return "whatsapp"
 
     def _generate_code(self) -> str:
         return "".join(secrets.choice(string.digits) for _ in range(self._otp_length))
