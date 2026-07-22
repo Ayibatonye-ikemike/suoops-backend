@@ -208,6 +208,7 @@ def calculate_customer_metrics(
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= datetime.combine(start_date, datetime.min.time()),
             models.Invoice.created_at <= datetime.combine(end_date, datetime.max.time()),
+            exclude_abandoned_storefront(),
         )
         .scalar()
     ) or 0
@@ -218,6 +219,7 @@ def calculate_customer_metrics(
         .filter(
             models.Invoice.issuer_id == user_id,
             models.Invoice.invoice_type == "revenue",
+            exclude_abandoned_storefront(),
         )
         .scalar()
     ) or 0
@@ -230,6 +232,7 @@ def calculate_customer_metrics(
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= datetime.combine(start_date, datetime.min.time()),
             models.Invoice.created_at <= datetime.combine(end_date, datetime.max.time()),
+            exclude_abandoned_storefront(),
         )
         .group_by(models.Invoice.customer_id)
         .having(func.count(models.Invoice.id) > 1)
@@ -264,6 +267,7 @@ def calculate_aging_report(
         models.Invoice.issuer_id == user_id,
         models.Invoice.invoice_type == "revenue",
         models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
+        exclude_abandoned_storefront(),
     ]
 
     row = (
@@ -390,6 +394,7 @@ def calculate_monthly_trends(
             models.Invoice.invoice_type.in_(["revenue", "expense"]),
             models.Invoice.created_at >= start_dt,
             models.Invoice.created_at <= end_dt,
+            exclude_abandoned_storefront(),
         )
         .group_by(yr_col, mo_col, models.Invoice.invoice_type)
         .all()
@@ -640,6 +645,7 @@ def calculate_cash_position(db: Session, user_id: int) -> dict:
     base = [
         models.Invoice.issuer_id == user_id,
         models.Invoice.invoice_type == "revenue",
+        exclude_abandoned_storefront(),
     ]
 
     # Cash collected this week

@@ -370,3 +370,34 @@ def test_revenue_metrics_excludes_abandoned_storefront(
     assert metrics.pending_revenue == pytest.approx(500.0)
     assert metrics.total_revenue == pytest.approx(500.0)
 
+
+def test_aging_report_excludes_abandoned_storefront(db_session, test_user, test_customer):
+    """A manual pending invoice is a receivable; an abandoned storefront cart is
+    not — it must not inflate Total Outstanding / accounts receivable."""
+    today = datetime.now(timezone.utc)
+    create_invoice(
+        db_session,
+        test_user.id,
+        test_customer.id,
+        Decimal("700"),
+        "pending",
+        due_date=today - timedelta(days=5),
+    )
+    ghost = create_invoice(
+        db_session,
+        test_user.id,
+        test_customer.id,
+        Decimal("2500"),
+        "pending",
+        due_date=today - timedelta(days=5),
+    )
+    ghost.channel = "storefront"
+    db_session.commit()
+
+    report = calculate_aging_report(
+        db_session, test_user.id, date.today(), Decimal("1.0")
+    )
+    assert report.total_outstanding == pytest.approx(700.0)
+    assert report.current == pytest.approx(700.0)
+
+
