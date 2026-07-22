@@ -1,5 +1,6 @@
-"""Buyer-pays-delivery money math: the delivery fee is added to the amount
-charged but excluded from the seller's escrow gross/payout."""
+"""Buyer-pays money math: the platform service fee AND any delivery fee are
+charged to the BUYER on top, while the seller's invoice.amount and escrow
+gross/payout stay the goods value only."""
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
@@ -93,13 +94,14 @@ def test_delivery_fee_added_and_excluded_from_payout(db_session, client, monkeyp
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["delivery_fee"] == 1500.0
+    assert body["service_fee"] == 300.0  # 3% of goods (10,000)
 
     inv = (
         db_session.query(models.Invoice)
         .filter_by(invoice_id=body["invoice_id"])
         .one()
     )
-    assert inv.amount == Decimal("11500")  # goods 10,000 + delivery 1,500
+    assert inv.amount == Decimal("10000")  # goods only — fee + delivery charged on top
 
     escrow = (
         db_session.query(models.StorefrontOrderEscrow)
@@ -173,11 +175,13 @@ def test_trusted_seller_courier_order_forces_escrow(db_session, client, monkeypa
     inv = (
         db_session.query(models.Invoice).filter_by(invoice_id=body["invoice_id"]).one()
     )
-    assert inv.amount == Decimal("11500")  # goods + delivery charged to buyer
+    assert inv.amount == Decimal("10000")  # goods only — fee + delivery charged on top
 
     # The order was routed through escrow despite the seller being trusted, and
     # the payment was collected on the HOLD rail (fee retained by the platform).
     assert start.await_args.kwargs.get("hold") is True
+    # Buyer charged goods + service fee + delivery = 1,000,000 + 30,000 + 150,000.
+    assert start.await_args.kwargs.get("charge_amount_kobo") == 1_180_000
     escrow = (
         db_session.query(models.StorefrontOrderEscrow).filter_by(invoice_id=inv.id).one()
     )
@@ -225,6 +229,8 @@ def test_all_storefront_orders_escrow_no_instant_payout(db_session, client, monk
 
     # Held through escrow (no instant split), even though the seller is trusted.
     assert start.await_args.kwargs.get("hold") is True
+    # Buyer charged goods + service fee (no delivery) = 1,000,000 + 30,000.
+    assert start.await_args.kwargs.get("charge_amount_kobo") == 1_030_000
     escrow = (
         db_session.query(models.StorefrontOrderEscrow).filter_by(invoice_id=inv.id).one()
     )

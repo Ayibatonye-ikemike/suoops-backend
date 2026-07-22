@@ -1714,8 +1714,12 @@ def get_platform_metrics(
 class MetricsSummary(BaseModel):
     period: str  # week | month | year | all
     label: str
-    commission: float  # Suoops 3% earnings in the window (Naira)
+    commission: float  # Suoops earnings in the window (Naira)
+    commission_storefront: float = 0.0  # storefront/online 3% earnings
+    commission_manual: float = 0.0  # manual/wallet earnings
     gmv: float  # paid revenue volume in the window
+    gmv_storefront: float = 0.0  # paid STOREFRONT goods volume
+    gmv_manual: float = 0.0  # paid MANUAL (non-storefront) revenue volume
     invoices: int  # revenue invoices created in the window
     new_users: int  # signups in the window
     active_users: int  # distinct businesses that invoiced in the window
@@ -1784,32 +1788,36 @@ def get_metrics_summary(
         ),
         Invoice.amount,
     )
-    commission = (
-        sum(
-            f if f is not None else platform_fee_kobo(a, channel="manual")
-            for (f, a) in wallet_q.all()
-        )
-        + sum(
-            f if f is not None else platform_fee_kobo(a)
-            for (f, a) in online_q.all()
-        )
+    commission_manual = sum(
+        f if f is not None else platform_fee_kobo(a, channel="manual")
+        for (f, a) in wallet_q.all()
     ) / 100
+    commission_storefront = sum(
+        f if f is not None else platform_fee_kobo(a)
+        for (f, a) in online_q.all()
+    ) / 100
+    commission = commission_manual + commission_storefront
 
-    # GMV = paid revenue volume in window (by paid_at)
-    gmv = _cap_amount(
-        _exclude_users(
-            _win(
-                db.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(
-                    Invoice.invoice_type == "revenue",
-                    Invoice.status == "paid",
-                ),
-                Invoice.paid_at,
-            ),
-            Invoice.issuer_id,
-            excluded_ids,
-        ),
-        Invoice.amount,
-    ).scalar() or 0
+    # GMV = paid revenue volume in window (by paid_at), split by channel so
+    # storefront goods sales and manual invoice revenue are never mixed together.
+    def _gmv(storefront: bool):
+        q = db.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(
+            Invoice.invoice_type == "revenue",
+            Invoice.status == "paid",
+        )
+        q = (
+            q.filter(Invoice.channel == "storefront")
+            if storefront
+            else q.filter(or_(Invoice.channel != "storefront", Invoice.channel.is_(None)))
+        )
+        return _cap_amount(
+            _exclude_users(_win(q, Invoice.paid_at), Invoice.issuer_id, excluded_ids),
+            Invoice.amount,
+        ).scalar() or 0
+
+    gmv_storefront = _gmv(True)
+    gmv_manual = _gmv(False)
+    gmv = gmv_storefront + gmv_manual
 
     invoices = _win(
         db.query(func.count(Invoice.id)).filter(Invoice.invoice_type == "revenue"),
@@ -1831,7 +1839,11 @@ def get_metrics_summary(
         period=period,
         label=label,
         commission=float(commission),
+        commission_storefront=float(commission_storefront),
+        commission_manual=float(commission_manual),
         gmv=float(gmv),
+        gmv_storefront=float(gmv_storefront),
+        gmv_manual=float(gmv_manual),
         invoices=int(invoices),
         new_users=int(new_users),
         active_users=int(active_users),

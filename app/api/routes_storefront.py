@@ -1412,7 +1412,14 @@ async def create_store_order(
     # blast-radius caps — trusted sellers hold too, but keep their higher limits.)
     held = settings.ESCROW_ENABLED
 
-    grand_total = total + delivery_fee
+    # The seller's invoice records the GOODS value only (P). The platform service
+    # fee and any delivery are charged to the BUYER on top at the payment layer,
+    # so the seller's revenue/tax figures (which read invoice.amount) are never
+    # inflated by our fee. Buyer's total charge = goods + service fee + delivery.
+    from app.utils.feature_gate import platform_fee_kobo
+
+    service_fee_kobo = platform_fee_kobo(total)
+    charge_kobo = int(total * 100) + service_fee_kobo + int(delivery_fee * 100)
 
     svc = build_invoice_service(db)
     invoice = svc.create_invoice(
@@ -1420,7 +1427,7 @@ async def create_store_order(
         {
             "customer_name": payload.customer_name.strip(),
             "customer_phone": payload.customer_phone.strip(),
-            "amount": grand_total,
+            "amount": total,
             "currency": "NGN",
             "lines": lines,
             "channel": "storefront",
@@ -1452,7 +1459,9 @@ async def create_store_order(
         db.commit()
 
     try:
-        pay = await start_invoice_payment(db, invoice, owner, hold=held)
+        pay = await start_invoice_payment(
+            db, invoice, owner, hold=held, charge_amount_kobo=charge_kobo
+        )
     except PaymentInitError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
@@ -1514,6 +1523,8 @@ async def create_store_order(
     resp = {"invoice_id": invoice.invoice_id, **pay}
     if delivery_code:
         resp["delivery_code"] = delivery_code
+    if service_fee_kobo > 0:
+        resp["service_fee"] = float(service_fee_kobo) / 100
     if delivery_fee > 0:
         resp["delivery_fee"] = float(delivery_fee)
     return resp

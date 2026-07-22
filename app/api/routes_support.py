@@ -604,10 +604,13 @@ def get_dashboard_stats(
         SupportTicket.created_at >= today_start
     ).count()
 
-    # Invoice stats
+    # Invoice stats. "This month" counts REVENUE invoices only (matches the
+    # /admin/metrics/summary definition) so the Dashboard and Metrics pages agree
+    # — expenses are business bookkeeping, not platform invoice activity.
     total_invoices = db.query(models.Invoice).count()
     invoices_this_month = db.query(models.Invoice).filter(
-        models.Invoice.created_at >= month_start
+        models.Invoice.invoice_type == "revenue",
+        models.Invoice.created_at >= month_start,
     ).count()
     paid_invoices = db.query(models.Invoice).filter(
         models.Invoice.status == "paid"

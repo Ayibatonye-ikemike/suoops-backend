@@ -325,15 +325,15 @@ class InvoiceStatusMixin:
         # Settlement copy differs for held (buyer-protection) vs normal orders.
         if held_escrow is not None:
             settle_line = (
-                "💰 Payment is HELD under buyer protection. Your payout (amount less "
-                f"the 3% fee) is released to {settle_to} on our next daily settlement "
-                "run once the buyer-protection window passes — sooner if the buyer "
-                "confirms delivery.\n\n"
+                "💰 Payment is HELD under buyer protection. Your FULL payout is "
+                f"released to {settle_to} on our next daily settlement run once the "
+                "buyer-protection window passes — sooner if the buyer confirms "
+                "delivery. (The service fee was paid by the buyer.)\n\n"
             )
         else:
             settle_line = (
-                f"💰 Your money (less the 3% fee) settles to {settle_to} by the next "
-                "business day.\n\n"
+                f"💰 Your full payment settles to {settle_to} by the next business "
+                "day. (The service fee was paid by the buyer.)\n\n"
             )
         # Delivery details (GPS maps link + landmark note) are stored on the
         # invoice notes at order time — surface them so the business knows where

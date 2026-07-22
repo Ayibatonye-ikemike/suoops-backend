@@ -149,18 +149,30 @@ async def initialize_invoice_payment(
     # escrow row means "this order is held".
     from app.models import models as _models
 
-    held = (
+    held_escrow = (
         db.query(_models.StorefrontOrderEscrow)
         .filter(
             _models.StorefrontOrderEscrow.invoice_id == invoice.id,
             _models.StorefrontOrderEscrow.status == "pending",
         )
         .first()
-        is not None
     )
+    held = held_escrow is not None
+    # Re-derive the buyer's full charge (goods + service fee + delivery) from the
+    # held escrow so a retry charges exactly what the first attempt did. The
+    # invoice itself only records the seller's goods value.
+    charge_kobo: int | None = None
+    if held_escrow is not None:
+        charge_kobo = (
+            int(held_escrow.gross_kobo or 0)
+            + int(getattr(held_escrow, "fee_kobo", 0) or 0)
+            + int(getattr(held_escrow, "delivery_fee_kobo", 0) or 0)
+        )
 
     try:
-        return await start_invoice_payment(db, invoice, issuer, hold=held)
+        return await start_invoice_payment(
+            db, invoice, issuer, hold=held, charge_amount_kobo=charge_kobo
+        )
     except PaymentInitError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 

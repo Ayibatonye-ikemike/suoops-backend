@@ -32,15 +32,26 @@ class PaymentInitError(Exception):
         self.status_code = status_code
 
 
-async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False) -> dict:
+async def start_invoice_payment(
+    db: Session,
+    invoice,
+    issuer,
+    hold: bool = False,
+    charge_amount_kobo: int | None = None,
+) -> dict:
     """
     Initialize a Paystack payment for ``invoice`` via ``issuer``'s subaccount.
 
     When ``hold`` is True (storefront escrow for an untrusted seller), the payment
     is collected to the SuoOps balance WITHOUT the subaccount split, so the
     seller's share is held until the buyer-protection window releases it (paid
-    out later via a Transfer, minus commission). Otherwise it splits to the
-    seller's subaccount and settles normally.
+    out later via a Transfer). Otherwise it splits to the seller's subaccount and
+    settles normally.
+
+    ``charge_amount_kobo`` lets the caller charge the buyer MORE than
+    ``invoice.amount`` — storefront orders add the platform service fee (and any
+    delivery) on top, while ``invoice.amount`` stays the seller's goods value so
+    revenue/tax reporting is never inflated. Defaults to ``invoice.amount``.
 
     Returns ``{authorization_url, reference, amount}``. Raises PaymentInitError
     with a user-safe message + HTTP status on any failure.
@@ -57,6 +68,16 @@ async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False
     amount = invoice.amount
     if amount is None or amount <= 0:
         raise PaymentInitError("Invoice has no payable amount", 400)
+
+    # The buyer's charge can exceed the invoice's merchandise value: a storefront
+    # order adds the platform service fee (+ any delivery) on top, while
+    # invoice.amount stays the seller's goods value so revenue/tax reporting is
+    # never inflated. Ordinary payments charge exactly invoice.amount.
+    charge_kobo = (
+        int(charge_amount_kobo)
+        if charge_amount_kobo is not None and int(charge_amount_kobo) > 0
+        else int(amount * 100)
+    )
 
     if not settings.PAYSTACK_SECRET:
         raise PaymentInitError("Online payments are not configured", 503)
@@ -89,7 +110,7 @@ async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False
     transaction = PaymentTransaction(
         user_id=issuer.id,
         reference=reference,
-        amount=int(amount * 100),  # kobo
+        amount=charge_kobo,  # kobo — the total the buyer is charged
         currency=getattr(invoice, "currency", "NGN") or "NGN",
         plan_before=issuer_plan,
         plan_after=issuer_plan,
@@ -120,7 +141,7 @@ async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False
         db.commit()
         try:
             charge = collector.initialize_hold_charge(
-                amount_kobo=int(amount * 100),
+                amount_kobo=charge_kobo,
                 reference=reference,
                 customer_email=customer_email,
                 customer_phone=customer.phone if customer else None,
@@ -143,7 +164,7 @@ async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False
         return {
             "authorization_url": charge.authorization_url,
             "reference": reference,
-            "amount": float(amount),
+            "amount": float(charge_kobo) / 100,
         }
 
     # Normal (non-hold) path: split to the seller's Paystack subaccount — they bear
@@ -152,7 +173,7 @@ async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False
         async with httpx.AsyncClient(timeout=15.0) as client:
             init_payload = {
                 "email": customer_email,
-                "amount": int(amount * 100),
+                "amount": charge_kobo,
                 "reference": reference,
                 "callback_url": f"{settings.FRONTEND_URL}/pay/{invoice.invoice_id}?ref={reference}",
                 "metadata": {
@@ -189,5 +210,5 @@ async def start_invoice_payment(db: Session, invoice, issuer, hold: bool = False
     return {
         "authorization_url": data["data"]["authorization_url"],
         "reference": reference,
-        "amount": float(amount),
+        "amount": float(charge_kobo) / 100,
     }

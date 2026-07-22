@@ -321,7 +321,10 @@ def create_order_escrow(
 
     gross_kobo = int(Decimal(str(gross_naira)) * 100)
     fee_kobo = platform_fee_kobo(gross_naira)
-    payout_kobo = max(0, gross_kobo - fee_kobo)
+    # The buyer pays the platform fee ON TOP at checkout (goods + fee + delivery),
+    # so the seller is paid the FULL goods value. The fee is retained by the
+    # platform out of the buyer's payment — it is never deducted from the seller.
+    payout_kobo = gross_kobo
 
     escrow = models.StorefrontOrderEscrow(
         invoice_id=invoice.id,
@@ -642,8 +645,13 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
     try:
         data = collector.refund(
             reference=escrow.charge_reference,
-            # Make the buyer whole: refund goods PLUS the delivery fee they paid.
-            amount_kobo=int(escrow.gross_kobo) + int(getattr(escrow, "delivery_fee_kobo", 0) or 0),
+            # Make the buyer whole: refund everything they paid — goods, the
+            # platform service fee (charged on top at checkout) and delivery.
+            amount_kobo=(
+                int(escrow.gross_kobo)
+                + int(getattr(escrow, "fee_kobo", 0) or 0)
+                + int(getattr(escrow, "delivery_fee_kobo", 0) or 0)
+            ),
             note=f"Storefront buyer protection ({reason}) — invoice {escrow.invoice_id}",
         )
     except CollectionError as exc:  # network/timeout / provider error → retry later
@@ -661,9 +669,14 @@ def refund_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reason
         _settle_refunded_delivery_fee(db, escrow)
     except Exception:  # noqa: BLE001 — never let fee recovery undo the refund
         logger.exception("Delivery-fee settlement failed for escrow %s", getattr(escrow, "id", None))
+    refunded_kobo = (
+        int(escrow.gross_kobo)
+        + int(getattr(escrow, "fee_kobo", 0) or 0)
+        + int(getattr(escrow, "delivery_fee_kobo", 0) or 0)
+    )
     logger.info(
         "Escrow %s refunded via %s — %s kobo returned to buyer (charge=%s)",
-        escrow.id, collector.name, escrow.gross_kobo, escrow.charge_reference,
+        escrow.id, collector.name, refunded_kobo, escrow.charge_reference,
     )
     return True
 
