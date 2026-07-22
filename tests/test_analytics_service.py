@@ -253,3 +253,120 @@ def test_calculate_monthly_trends(db_session, test_user, test_customer):
     assert len(trends) == 12
     assert all(isinstance(trend.month, str) for trend in trends)
     assert all(trend.revenue >= Decimal("0") for trend in trends)
+
+
+# ── Storefront insights + abandoned-cart consistency ─────────────────
+
+
+def _seed_storefront_order(
+    db_session, seller, customer, *, gross_naira, status="held", desc="Widget", qty=2
+):
+    from app.models.models import InvoiceLine, StorefrontOrderEscrow
+
+    inv = create_invoice(
+        db_session, seller.id, customer.id, Decimal(str(gross_naira)), status="paid"
+    )
+    inv.channel = "storefront"
+    db_session.add(
+        InvoiceLine(
+            invoice_id=inv.id,
+            description=desc,
+            quantity=qty,
+            unit_price=Decimal(str(gross_naira)) / qty,
+        )
+    )
+    gross_kobo = int(Decimal(str(gross_naira)) * 100)
+    esc = StorefrontOrderEscrow(
+        invoice_id=inv.id,
+        seller_id=seller.id,
+        status=status,
+        gross_kobo=gross_kobo,
+        fee_kobo=int(gross_kobo * 0.03),
+        payout_kobo=gross_kobo,
+    )
+    db_session.add(esc)
+    db_session.commit()
+    return inv, esc
+
+
+def test_storefront_insights_disabled_for_non_store(db_session, test_user):
+    from app.services.analytics_service import calculate_storefront_insights
+
+    out = calculate_storefront_insights(
+        db_session,
+        test_user.id,
+        date.today() - timedelta(days=30),
+        date.today(),
+        Decimal("1.0"),
+    )
+    assert out["enabled"] is False
+    assert out["orders"] == 0
+    assert out["top_products"] == []
+
+
+def test_storefront_insights_counts_orders_views_and_top_products(
+    db_session, test_user, test_customer
+):
+    from app.services.analytics_service import calculate_storefront_insights
+
+    test_user.storefront_enabled = True
+    test_user.storefront_slug = "teststore"
+    test_user.storefront_views = 200
+    db_session.commit()
+
+    _seed_storefront_order(
+        db_session, test_user, test_customer, gross_naira=10000, status="held", desc="Cake", qty=2
+    )
+    _seed_storefront_order(
+        db_session, test_user, test_customer, gross_naira=5000, status="released", desc="Bread", qty=1
+    )
+    # An abandoned cart (pending) must NOT count as paid / GMV / a top product.
+    _seed_storefront_order(
+        db_session, test_user, test_customer, gross_naira=9999, status="pending", desc="Ghost", qty=1
+    )
+
+    out = calculate_storefront_insights(
+        db_session,
+        test_user.id,
+        date.today() - timedelta(days=30),
+        date.today(),
+        Decimal("1.0"),
+    )
+
+    assert out["enabled"] is True
+    assert out["views"] == 200
+    assert out["orders"] == 3
+    assert out["paid_orders"] == 2
+    assert out["abandoned_orders"] == 1
+    assert out["gmv"] == pytest.approx(15000.0)  # 10,000 + 5,000 goods
+    assert out["awaiting_release"] == pytest.approx(10000.0)  # held payout only
+    assert out["conversion_rate"] == pytest.approx(1.0)  # 2 paid / 200 views
+    names = [p["name"] for p in out["top_products"]]
+    assert names[0] == "Cake"  # 2 units beats Bread's 1
+    assert "Ghost" not in names
+
+
+def test_revenue_metrics_excludes_abandoned_storefront(
+    db_session, test_user, test_customer
+):
+    """Abandoned storefront carts (channel=storefront + pending) must not inflate
+    total/pending revenue — consistent with the conversion funnel."""
+    # A normal manual pending invoice DOES count as pending revenue.
+    create_invoice(db_session, test_user.id, test_customer.id, Decimal("500"), "pending")
+    # An abandoned storefront cart must be excluded from the metrics.
+    ghost = create_invoice(
+        db_session, test_user.id, test_customer.id, Decimal("999"), "pending"
+    )
+    ghost.channel = "storefront"
+    db_session.commit()
+
+    metrics = calculate_revenue_metrics(
+        db_session,
+        test_user.id,
+        date.today() - timedelta(days=30),
+        date.today(),
+        Decimal("1.0"),
+    )
+    assert metrics.pending_revenue == pytest.approx(500.0)
+    assert metrics.total_revenue == pytest.approx(500.0)
+

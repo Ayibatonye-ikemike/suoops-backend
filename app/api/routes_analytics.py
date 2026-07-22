@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_data_owner_id
@@ -27,6 +27,8 @@ from app.services.analytics_service import (
     calculate_monthly_trends,
     calculate_professionalism_score,
     calculate_revenue_metrics,
+    calculate_storefront_insights,
+    exclude_abandoned_storefront,
     get_conversion_rate,
     get_date_range,
 )
@@ -232,11 +234,7 @@ def get_conversion_funnel(
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= datetime.combine(start_date, datetime.min.time()),
             # Exclude abandoned/unpaid storefront orders from the funnel.
-            or_(
-                models.Invoice.channel.is_(None),
-                models.Invoice.channel != "storefront",
-                models.Invoice.status != "pending",
-            ),
+            exclude_abandoned_storefront(),
         )
         .first()
     )
@@ -400,3 +398,60 @@ def get_margin_insights(
     require_plan_feature(db, current_user_id, "margin_insights", "Margin & Discount Insights")
     start_date, end_date = get_date_range(period)
     return calculate_margin_insights(db, data_owner_id, start_date, end_date)
+
+
+# ── Storefront Insights ──────────────────────────────────────────────
+
+
+class StorefrontTopProduct(BaseModel):
+    name: str
+    units: int
+    revenue: float
+
+
+class StorefrontInsightsOut(BaseModel):
+    enabled: bool
+    slug: str | None = None
+    store_url: str | None = None
+    # Store-lifetime counters
+    views: int = 0
+    reviews: int = 0
+    avg_rating: float | None = None
+    conversion_rate: float = 0.0  # lifetime paid orders / views (%)
+    # Period-scoped order metrics
+    period: str
+    orders: int = 0
+    paid_orders: int = 0
+    abandoned_orders: int = 0
+    gmv: float = 0.0
+    avg_order_value: float = 0.0
+    awaiting_release: float = 0.0
+    refunds: int = 0
+    disputes: int = 0
+    restock_requests: int = 0
+    top_products: list[StorefrontTopProduct] = []
+
+
+@router.get("/storefront-insights", response_model=StorefrontInsightsOut)
+def get_storefront_insights(
+    current_user_id: CurrentUserDep,
+    data_owner_id: DataOwnerDep,
+    db: DbDep,
+    period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
+    currency: str = Query("NGN", pattern="^(NGN|USD)$"),
+):
+    """Storefront performance: views, orders, GMV, ratings, top products, demand.
+
+    Store-lifetime counters (views, rating, conversion) plus period-scoped order
+    metrics (orders, GMV of goods, avg order value, refunds/disputes, top
+    products, restock demand). Returns ``enabled=false`` when the business has no
+    storefront so the UI can prompt setup.
+    """
+    require_plan_feature(db, current_user_id, "cash_dashboard", "Storefront Insights")
+    start_date, end_date = get_date_range(period)
+    conversion_rate = get_conversion_rate(currency)
+    result = calculate_storefront_insights(
+        db, data_owner_id, start_date, end_date, conversion_rate
+    )
+    result["period"] = period
+    return result

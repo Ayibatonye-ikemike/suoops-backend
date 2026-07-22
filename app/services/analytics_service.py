@@ -18,6 +18,22 @@ from app.models.schemas import (
 )
 
 
+def exclude_abandoned_storefront():
+    """SQLAlchemy filter clause that drops unpaid/abandoned storefront carts.
+
+    A storefront checkout that was started but never paid stays as a
+    ``channel=='storefront'`` invoice in ``'pending'``. Those are drop-offs, not
+    real receivables, so every Insights metric excludes them — the same rule the
+    conversion funnel uses — keeping revenue, invoice counts and the funnel
+    consistent with one another.
+    """
+    return or_(
+        models.Invoice.channel.is_(None),
+        models.Invoice.channel != "storefront",
+        models.Invoice.status != "pending",
+    )
+
+
 def calculate_revenue_metrics(
     db: Session,
     user_id: int,
@@ -83,12 +99,7 @@ def calculate_revenue_metrics(
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= start_dt,
             models.Invoice.created_at <= end_dt,
-            # Exclude abandoned/unpaid storefront orders (never a real sale).
-            or_(
-                models.Invoice.channel.is_(None),
-                models.Invoice.channel != "storefront",
-                models.Invoice.status != "pending",
-            ),
+            exclude_abandoned_storefront(),
         )
         .first()
     )
@@ -155,6 +166,7 @@ def calculate_invoice_metrics(
             models.Invoice.invoice_type == "revenue",
             models.Invoice.created_at >= datetime.combine(start_date, datetime.min.time()),
             models.Invoice.created_at <= datetime.combine(end_date, datetime.max.time()),
+            exclude_abandoned_storefront(),
         )
         .first()
     )
@@ -252,15 +264,6 @@ def calculate_aging_report(
         models.Invoice.issuer_id == user_id,
         models.Invoice.invoice_type == "revenue",
         models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
-        # Accounts receivable = money customers actually owe. An unpaid/abandoned
-        # storefront cart (status "pending", online-pay only) is NOT receivable,
-        # so exclude it — consistent with the cash-position Outstanding figure.
-        # A storefront order still counts once it's awaiting_confirmation/paid.
-        or_(
-            models.Invoice.channel.is_(None),
-            models.Invoice.channel != "storefront",
-            models.Invoice.status != "pending",
-        ),
     ]
 
     row = (
@@ -462,6 +465,162 @@ def get_conversion_rate(currency: str) -> Decimal:
     return _get_rate(currency)
 
 
+def calculate_storefront_insights(
+    db: Session,
+    user_id: int,
+    start_date: date,
+    end_date: date,
+    conversion_rate: Decimal,
+) -> dict:
+    """Storefront performance: views, orders, GMV, ratings, top products, demand.
+
+    Store-lifetime counters (views, reviews, rating, conversion) sit alongside
+    period-scoped order metrics so a seller sees both the big picture and the
+    selected window. Money is in the requested currency and reflects goods value
+    only (the buyer pays the service fee on top, so the seller keeps the full
+    listed price). Returns ``enabled=False`` when the business has no storefront.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None or not getattr(user, "storefront_enabled", False):
+        return {
+            "enabled": False,
+            "slug": None,
+            "store_url": None,
+            "views": 0,
+            "reviews": 0,
+            "avg_rating": None,
+            "conversion_rate": 0.0,
+            "orders": 0,
+            "paid_orders": 0,
+            "abandoned_orders": 0,
+            "gmv": 0.0,
+            "avg_order_value": 0.0,
+            "awaiting_release": 0.0,
+            "refunds": 0,
+            "disputes": 0,
+            "restock_requests": 0,
+            "top_products": [],
+        }
+
+    start_dt = datetime.combine(start_date, datetime.min.time())
+    end_dt = datetime.combine(end_date, datetime.max.time())
+    Escrow = models.StorefrontOrderEscrow
+    PAID = ("held", "released")  # payment collected & not refunded
+
+    # ── Period order metrics ──
+    row = (
+        db.query(
+            func.count(Escrow.id).label("orders"),
+            func.coalesce(func.sum(case((Escrow.status.in_(PAID), 1), else_=0)), 0).label("paid"),
+            func.coalesce(func.sum(case((Escrow.status == "pending", 1), else_=0)), 0).label("abandoned"),
+            func.coalesce(func.sum(case((Escrow.status == "refunded", 1), else_=0)), 0).label("refunds"),
+            func.coalesce(func.sum(case((Escrow.status == "disputed", 1), else_=0)), 0).label("disputes"),
+            func.coalesce(func.sum(case((Escrow.status.in_(PAID), Escrow.gross_kobo), else_=0)), 0).label("gmv_kobo"),
+            func.coalesce(func.sum(case((Escrow.status == "held", Escrow.payout_kobo), else_=0)), 0).label("held_kobo"),
+        )
+        .filter(
+            Escrow.seller_id == user_id,
+            Escrow.created_at >= start_dt,
+            Escrow.created_at <= end_dt,
+        )
+        .first()
+    )
+
+    paid_orders = int(row.paid or 0)
+    gmv = (Decimal(str(row.gmv_kobo or 0)) / 100) / conversion_rate
+    awaiting_release = (Decimal(str(row.held_kobo or 0)) / 100) / conversion_rate
+    avg_order_value = (gmv / paid_orders) if paid_orders else Decimal("0")
+
+    # ── Lifetime store stats ──
+    views = int(getattr(user, "storefront_views", 0) or 0)
+    lifetime_paid = (
+        db.query(func.count(Escrow.id))
+        .filter(Escrow.seller_id == user_id, Escrow.status.in_(PAID))
+        .scalar()
+    ) or 0
+    conversion = (lifetime_paid / views * 100) if views > 0 else 0.0
+
+    rating_row = (
+        db.query(
+            func.count(models.StorefrontReview.id).label("cnt"),
+            func.avg(models.StorefrontReview.rating).label("avg"),
+        )
+        .filter(
+            models.StorefrontReview.user_id == user_id,
+            models.StorefrontReview.approved.is_(True),
+        )
+        .first()
+    )
+    reviews = int(rating_row.cnt or 0)
+    avg_rating = round(float(rating_row.avg), 2) if rating_row.avg is not None else None
+
+    restock_requests = (
+        db.query(func.count(models.StorefrontStockNotification.id))
+        .filter(
+            models.StorefrontStockNotification.user_id == user_id,
+            models.StorefrontStockNotification.notified.is_(False),
+        )
+        .scalar()
+    ) or 0
+
+    # ── Top products (units + revenue from paid orders in the period) ──
+    top_rows = (
+        db.query(
+            models.InvoiceLine.description.label("name"),
+            func.coalesce(func.sum(models.InvoiceLine.quantity), 0).label("units"),
+            func.coalesce(
+                func.sum(models.InvoiceLine.quantity * models.InvoiceLine.unit_price), 0
+            ).label("revenue"),
+        )
+        .join(models.Invoice, models.InvoiceLine.invoice_id == models.Invoice.id)
+        .join(Escrow, Escrow.invoice_id == models.Invoice.id)
+        .filter(
+            Escrow.seller_id == user_id,
+            Escrow.status.in_(PAID),
+            Escrow.created_at >= start_dt,
+            Escrow.created_at <= end_dt,
+        )
+        .group_by(models.InvoiceLine.description)
+        .order_by(func.sum(models.InvoiceLine.quantity).desc())
+        .limit(5)
+        .all()
+    )
+    top_products = [
+        {
+            "name": r.name,
+            "units": int(r.units or 0),
+            "revenue": float(Decimal(str(r.revenue or 0)) / conversion_rate),
+        }
+        for r in top_rows
+    ]
+
+    slug = getattr(user, "storefront_slug", None)
+    from app.core.config import settings
+
+    base = (getattr(settings, "FRONTEND_URL", "") or "").rstrip("/")
+    store_url = f"{base}/store/{slug}" if (slug and base) else None
+
+    return {
+        "enabled": True,
+        "slug": slug,
+        "store_url": store_url,
+        "views": views,
+        "reviews": reviews,
+        "avg_rating": avg_rating,
+        "conversion_rate": round(conversion, 2),
+        "orders": int(row.orders or 0),
+        "paid_orders": paid_orders,
+        "abandoned_orders": int(row.abandoned or 0),
+        "gmv": float(gmv),
+        "avg_order_value": float(avg_order_value),
+        "awaiting_release": float(awaiting_release),
+        "refunds": int(row.refunds or 0),
+        "disputes": int(row.disputes or 0),
+        "restock_requests": int(restock_requests),
+        "top_products": top_products,
+    }
+
+
 # ── Cash-First Dashboard ─────────────────────────────────────────────
 
 
@@ -505,39 +664,22 @@ def calculate_cash_position(db: Session, user_id: int) -> dict:
         .scalar()
     )
 
-    # Total outstanding (unpaid revenue invoices).
-    # Exclude abandoned/unpaid storefront orders — a storefront order only
-    # becomes real money owed once the buyer has paid (awaiting_confirmation)
-    # or the seller confirms. A `pending` storefront order is just an
-    # unpaid/abandoned cart and must not inflate "Outstanding".
+    # Total outstanding (unpaid revenue invoices)
     outstanding = (
         db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
         .filter(
             *base,
             models.Invoice.status.in_(["pending", "awaiting_confirmation"]),
-            or_(
-                models.Invoice.channel.is_(None),
-                models.Invoice.channel != "storefront",
-                models.Invoice.status != "pending",
-            ),
         )
         .scalar()
     )
 
-    # Overdue amount + count.
-    # Same storefront guard as Outstanding: a `pending` storefront order is an
-    # unpaid/abandoned cart, never "overdue money owed" the seller should chase
-    # with reminders. (Storefront orders normally carry no due date at all, but
-    # guard defensively so any legacy row can't leak into the overdue figure.)
+    # Overdue amount + count
     overdue_filters = [
         *base,
         models.Invoice.status == "pending",
         models.Invoice.due_date != None,  # noqa: E711
         models.Invoice.due_date < start_of_today,
-        or_(
-            models.Invoice.channel.is_(None),
-            models.Invoice.channel != "storefront",
-        ),
     ]
     overdue_amount = (
         db.query(func.coalesce(func.sum(models.Invoice.amount), 0))
@@ -559,11 +701,6 @@ def calculate_cash_position(db: Session, user_id: int) -> dict:
             models.Invoice.due_date != None,  # noqa: E711
             models.Invoice.due_date >= start_of_today,
             models.Invoice.due_date <= end_of_next_week,
-            or_(
-                models.Invoice.channel.is_(None),
-                models.Invoice.channel != "storefront",
-                models.Invoice.status != "pending",
-            ),
         )
         .scalar()
     )
@@ -775,43 +912,7 @@ def calculate_professionalism_score(db: Session, user_id: int) -> dict:
     if not checks["sends_receipts"]:
         tips.append("Send receipts when customers pay — it builds trust and repeat business.")
 
-    # 6. Has an inventory/catalog (unlocks the shareable storefront)
-    from app.models.inventory_models import Product
-
-    product_count = (
-        db.query(Product)
-        .filter(Product.user_id == user_id, Product.is_active.is_(True))
-        .count()
-    )
-    checks["has_inventory"] = product_count > 0
-    if not checks["has_inventory"]:
-        tips.append(
-            "Add products to your inventory — then share your storefront so "
-            "customers can order and pay online."
-        )
-
-    # 7. Online payments enabled (customers can pay by card/transfer instantly)
-    checks["has_online_payments"] = bool(
-        getattr(user, "paystack_subaccount_active", False)
-        and getattr(user, "paystack_subaccount_code", None)
-    )
-    if not checks["has_online_payments"]:
-        tips.append(
-            "Turn on online payments so customers can pay you instantly by card "
-            "or transfer — you're paid directly, minus a flat 3%."
-        )
-
-    # 8. Public storefront live (shareable catalog customers order from)
-    checks["has_storefront"] = bool(getattr(user, "storefront_enabled", False))
-    if not checks["has_storefront"]:
-        tips.append(
-            "Turn on your storefront and share the link on WhatsApp, Instagram "
-            "or your bio so customers can order and pay online."
-        )
-
-    total_checks = len(checks) or 1
-    passed = sum(1 for v in checks.values() if v)
-    score = round(passed / total_checks * 100)
+    score = sum(20 for v in checks.values() if v)
     if score >= 80:
         level = "Excellent"
     elif score >= 60:
