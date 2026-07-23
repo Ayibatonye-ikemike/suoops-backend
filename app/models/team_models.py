@@ -44,7 +44,7 @@ class Team(Base):
     Team/organization model representing a business account.
     
     The user who creates the account becomes the admin.
-    Admin can invite up to 3 additional team members.
+    Admin can invite up to 5 additional team members.
     """
     __tablename__ = "team"
     
@@ -66,7 +66,7 @@ class Team(Base):
     )
     
     # Maximum number of team members (excluding admin)
-    max_members: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
+    max_members: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     
     # Relationships
     admin_user: Mapped[User] = relationship(
