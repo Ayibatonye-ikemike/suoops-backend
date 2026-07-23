@@ -114,6 +114,27 @@ def _patch_whatsapp_send(monkeypatch):
     yield SimpleNamespace(calls=calls)
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset the slowapi rate limiter between tests.
+
+    All tests share the same TestClient IP (127.0.0.1) and the same in-memory
+    storage, so per-IP quotas accumulate across tests and eventually return 429
+    for endpoints like /auth/signup/request (rate-limited at a few/min). This
+    manifests as flaky assertion failures in tests that call OTP/auth helpers
+    late in the suite. Clearing storage before each test isolates them.
+    """
+    try:
+        from app.api.rate_limit import limiter
+
+        storage = getattr(limiter, "_storage", None)
+        if storage is not None and hasattr(storage, "reset"):
+            storage.reset()
+    except Exception:
+        pass
+    yield
+
+
 @pytest.fixture
 def db_session():
     """Provide a transactional database session for tests."""

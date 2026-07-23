@@ -184,28 +184,16 @@ class InvoiceStatusMixin:
 
     def _handle_manual_payment(self, invoice: models.Invoice, via_online: bool = False) -> None:
         metrics.invoice_paid()
-        
+
         # Capture invoice_id early to avoid DB access issues after potential errors
         invoice_id = invoice.invoice_id
 
-        # Storefront buyer-protection: flip the pre-created escrow row from
-        # 'pending' -> 'held' now that the payment is confirmed. Idempotent —
-        # early-returns when there is no pending row (regular manual invoices,
-        # already-held retries, etc.) so it's safe to call unconditionally, but
-        # we gate on channel to make intent obvious. Manual invoices do NOT use
-        # escrow — only storefront orders do.
-        if getattr(invoice, "channel", None) == "storefront":
-            try:
-                from app.services.escrow_service import activate_escrow_on_payment
-
-                activate_escrow_on_payment(self.db, invoice)
-            except Exception as exc:  # noqa: BLE001
-                # Never let escrow bookkeeping break the payment flow — the money
-                # already reached us; we'll retry activation via the safety net below.
-                logger.exception(
-                    "Escrow activation failed for storefront invoice %s: %s",
-                    invoice_id, exc,
-                )
+        # NOTE: escrow activation (pending -> held) is done by the webhook
+        # handler `_finalize_invoice_payment` in routes_webhooks.py, which has
+        # the charge_reference / card_fingerprint / review_reason context
+        # needed for refunds + card-fraud gating. Do NOT re-activate here —
+        # firing without that context would leave those fields blank and
+        # defeat card-fraud detection on webhook-confirmed orders.
 
         # Process inventory deduction for revenue invoices when paid
         self._process_inventory_on_payment(invoice)
