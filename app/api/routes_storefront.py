@@ -538,7 +538,7 @@ def category_qr(
         )
     link = (
         f"{settings.FRONTEND_URL}/store/{user.storefront_slug}"
-        f"?category={quote_plus(category.name)}"
+        f"?category_id={category.id}"
     )
     return StorefrontQrOut(link=link, qr_png=_qr_data_url(link))
 
@@ -965,6 +965,7 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
                 "price": float(p.selling_price) if p.selling_price is not None else None,
                 "unit": p.unit,
                 "category": p.category.name if p.category else None,
+                "category_id": p.category_id,
                 "image_url": _presign(p.image_url),
                 "in_stock": (not p.track_stock) or (p.quantity_in_stock > 0),
                 "fulfilment_type": getattr(p, "fulfilment_type", "physical"),
