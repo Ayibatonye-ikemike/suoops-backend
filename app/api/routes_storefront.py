@@ -96,18 +96,27 @@ def _presign(url: str | None, *, expires_in: int = 3600) -> str | None:
         now = time.time()
         # Keep it stable for HALF the TTL so a browser cache actually hits.
         if cached and cached[1] > now:
+            # Refresh recency for LRU eviction.
+            _PRESIGN_CACHE.move_to_end(cache_key)
             return cached[0]
         fresh = s3_client.get_presigned_url(key, expires_in=expires_in) or url
         _PRESIGN_CACHE[cache_key] = (fresh, now + max(60, expires_in // 2))
+        _PRESIGN_CACHE.move_to_end(cache_key)
+        # Bound memory: evict oldest when we exceed the cap. 4k entries ≈ a few MB.
+        while len(_PRESIGN_CACHE) > _PRESIGN_CACHE_MAX:
+            _PRESIGN_CACHE.popitem(last=False)
         return fresh
     except Exception:  # noqa: BLE001
         pass
     return url
 
 
-# In-process presign cache. Not persisted — a new process picks its own URL, but
-# that's fine (browsers just re-fetch once, then cache again).
-_PRESIGN_CACHE: dict[tuple[str, int], tuple[str, float]] = {}
+# In-process presign cache (ordered for LRU eviction). Not persisted — a new
+# process picks its own URL and browsers just re-fetch once, then cache again.
+from collections import OrderedDict
+
+_PRESIGN_CACHE: "OrderedDict[tuple[str, int], tuple[str, float]]" = OrderedDict()
+_PRESIGN_CACHE_MAX = 4096
 # AWS presigned URLs max out at 7 days; used for the public storefront so image
 # URLs stay stable long enough for browsers to reuse them across visits.
 _PUBLIC_ASSET_TTL = 7 * 24 * 3600
@@ -1340,8 +1349,13 @@ async def create_store_order(
         )
 
     ids = [i.product_id for i in payload.items]
+    from sqlalchemy.orm import joinedload as _joinedload
+
     products = (
         db.query(Product)
+        # Eager-load category so the pack_price + fulfilment_type loops below
+        # don't fire an N+1 SELECT per item.
+        .options(_joinedload(Product.category))
         .filter(
             Product.user_id == owner.id,
             Product.id.in_(ids),

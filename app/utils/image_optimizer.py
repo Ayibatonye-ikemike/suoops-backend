@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 # gives us 2–3x for retina without paying for megapixel originals.
 _MAX_SIDE_PX = 1080
 _WEBP_QUALITY = 80
+# Decompression-bomb guard: a small on-disk file can decode to gigabytes and
+# OOM the worker. ~24MP covers legitimate DSLR photos with a wide margin; Pillow
+# raises DecompressionBombError above this and we fall back to the original bytes.
+_MAX_IMAGE_PIXELS = 24_000_000
 
 
 def optimize_for_storefront(
@@ -45,6 +49,9 @@ def optimize_for_storefront(
     except Exception:  # noqa: BLE001 — Pillow missing shouldn't break uploads
         logger.warning("Pillow unavailable; serving original image bytes")
         return content, content_type
+
+    # Bomb guard — must be set before Image.open() to take effect.
+    Image.MAX_IMAGE_PIXELS = _MAX_IMAGE_PIXELS
 
     try:
         img = Image.open(io.BytesIO(content))
