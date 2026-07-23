@@ -20,6 +20,9 @@ class ProductCategoryCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
     color: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")  # Hex color
+    # Optional packaging fee (₦) added once to a storefront order containing any
+    # product in this category. None/0 = no packaging.
+    pack_price: Decimal | None = Field(None, ge=0)
 
 
 class ProductCategoryUpdate(BaseModel):
@@ -28,6 +31,7 @@ class ProductCategoryUpdate(BaseModel):
     description: str | None = None
     color: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
     is_active: bool | None = None
+    pack_price: Decimal | None = Field(None, ge=0)
 
 
 class ProductCategoryOut(BaseModel):
@@ -39,6 +43,7 @@ class ProductCategoryOut(BaseModel):
     description: str | None = None
     color: str | None = None
     is_active: bool = True
+    pack_price: Decimal | None = None
     product_count: int = 0  # Computed field
 
 

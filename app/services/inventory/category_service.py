@@ -30,6 +30,7 @@ class CategoryService(BaseInventoryService):
             name=data.name,
             description=data.description,
             color=data.color,
+            pack_price=data.pack_price,
         )
         self._db.add(category)
         self._db.commit()

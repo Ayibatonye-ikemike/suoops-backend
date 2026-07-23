@@ -932,6 +932,13 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
                 "image_url": _presign(p.image_url),
                 "in_stock": (not p.track_stock) or (p.quantity_in_stock > 0),
                 "fulfilment_type": getattr(p, "fulfilment_type", "physical"),
+                # Category pack fee (₦) — one flat pack is added to an order that
+                # contains any packaged item; the frontend shows it in the total.
+                "pack_price": (
+                    float(p.category.pack_price)
+                    if p.category and p.category.pack_price
+                    else None
+                ),
             }
             for p in products
         ],
@@ -1310,6 +1317,29 @@ async def create_store_order(
 
     if total <= 0:
         raise HTTPException(status_code=400, detail="Order total must be greater than zero.")
+
+    # Automatic packaging fee: ONE flat pack per order. If the cart contains any
+    # product whose category carries a pack price, add a single "Packaging" line
+    # using the highest pack price among those items (the biggest pack covers the
+    # whole order). It's part of the seller's goods total, so the seller is paid
+    # for it — the buyer never has to remember to add it themselves.
+    pack_price = Decimal("0")
+    for item in payload.items:
+        prod = pmap.get(item.product_id)
+        cat = getattr(prod, "category", None) if prod else None
+        cat_pack = getattr(cat, "pack_price", None) if cat else None
+        if cat_pack and Decimal(cat_pack) > pack_price:
+            pack_price = Decimal(cat_pack)
+    if pack_price > 0:
+        lines.append(
+            {
+                "description": "Packaging",
+                "quantity": 1,
+                "unit_price": pack_price,
+                "product_id": None,
+            }
+        )
+        total += pack_price
 
     # Service/digital products aren't shipped. An order made up ENTIRELY of them
     # is a "no-delivery" order: no delivery address, no courier, and a faster

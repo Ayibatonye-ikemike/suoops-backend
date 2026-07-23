@@ -65,6 +65,10 @@ class ProductCategory(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)  # Hex color for UI
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Optional packaging/pack fee (₦) added ONCE to a storefront order that
+    # contains any product in this category — e.g. takeaway packs for cooked
+    # food. NULL/0 means the category needs no packaging.
+    pack_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,

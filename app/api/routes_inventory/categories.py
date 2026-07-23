@@ -24,6 +24,7 @@ def create_category(
         description=category.description,
         color=category.color,
         is_active=category.is_active,
+        pack_price=category.pack_price,
         product_count=len(category.products) if category.products else 0,
     )
 
@@ -42,6 +43,7 @@ def list_categories(
             description=c.description,
             color=c.color,
             is_active=c.is_active,
+            pack_price=c.pack_price,
             product_count=len(c.products) if c.products else 0,
         )
         for c in categories
@@ -63,6 +65,7 @@ def get_category(
         description=category.description,
         color=category.color,
         is_active=category.is_active,
+        pack_price=category.pack_price,
         product_count=len(category.products) if category.products else 0,
     )
 
@@ -83,6 +86,7 @@ def update_category(
         description=category.description,
         color=category.color,
         is_active=category.is_active,
+        pack_price=category.pack_price,
         product_count=len(category.products) if category.products else 0,
     )
 
