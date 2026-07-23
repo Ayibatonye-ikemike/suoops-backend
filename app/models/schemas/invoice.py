@@ -209,6 +209,10 @@ class InvoiceVerificationOut(BaseModel):
     business_name: str
     verification_code: str = ""  # Unique, non-guessable authenticity stamp
     items: list[InvoiceVerificationItem] = []
+    # Fulfilment (storefront orders only): whether the seller has rendered the
+    # service / delivered the goods, and where it is in buyer protection.
+    fulfilment_status: str | None = None  # e.g. delivered | rendered | confirmed | released
+    fulfilment_label: str | None = None  # human-readable
     created_at: dt.datetime
     verified_at: dt.datetime
     authentic: bool = True

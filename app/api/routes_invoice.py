@@ -427,6 +427,18 @@ def verify_invoice(invoice_id: str, db: DbDep):
         for line in (invoice.lines or [])
     ]
 
+    # Fulfilment (storefront orders): show whether the seller has rendered the
+    # service / delivered the goods, and where it sits in buyer protection — so
+    # a scan proves more than "paid".
+    from app.models.models import StorefrontOrderEscrow
+
+    escrow = (
+        db.query(StorefrontOrderEscrow)
+        .filter(StorefrontOrderEscrow.invoice_id == invoice.id)
+        .first()
+    )
+    fulfilment_status, fulfilment_label = _fulfilment(escrow)
+
     return schemas.InvoiceVerificationOut(
         invoice_id=invoice_id,
         status=invoice.status,
@@ -435,10 +447,58 @@ def verify_invoice(invoice_id: str, db: DbDep):
         business_name=business_name,
         verification_code=verification_code,
         items=items,
+        fulfilment_status=fulfilment_status,
+        fulfilment_label=fulfilment_label,
         created_at=invoice.created_at,
         verified_at=datetime.now(timezone.utc),
         authentic=True,
     )
+
+
+def _fulfilment(escrow) -> tuple[str | None, str | None]:
+    """Human-readable fulfilment state for a storefront order's escrow.
+
+    Returns (status, label) or (None, None) for a non-storefront invoice (which
+    has no delivery/service lifecycle — it's just paid or not).
+    """
+    if escrow is None:
+        return None, None
+    st = (escrow.status or "").lower()
+    is_service = not bool(getattr(escrow, "requires_delivery", True))
+
+    if st == "refunded":
+        return "refunded", "Refunded to the buyer"
+    if st == "disputed":
+        return "disputed", "A problem was reported — under review"
+    if st in ("canceled", "cancelled"):
+        return "canceled", "Order canceled"
+    if st == "pending":
+        return "unpaid", "Awaiting payment"
+    if st == "released":
+        return "released", (
+            "Service rendered — payment released to the seller"
+            if is_service
+            else "Delivered — payment released to the seller"
+        )
+
+    # 'held' — paid, within the buyer-protection window.
+    if getattr(escrow, "confirmed_at", None):
+        return "confirmed", (
+            "Buyer confirmed the service was rendered"
+            if is_service
+            else "Buyer confirmed delivery"
+        )
+    if is_service:
+        if getattr(escrow, "seller_marked_delivered_at", None):
+            return "rendered", "Seller marked the service as rendered"
+        return "in_progress", "Paid — service in progress"
+    if getattr(escrow, "seller_marked_delivered_at", None) or getattr(
+        escrow, "courier_delivered_at", None
+    ):
+        return "delivered", "Seller marked the order delivered"
+    if getattr(escrow, "seller_dispatched_at", None):
+        return "sent", "Sent out — on the way to the buyer"
+    return "preparing", "Paid — the seller is preparing your order"
 
 
 @router.post("/purchase-pack", response_model=schemas.InvoicePackPurchaseInitOut)
