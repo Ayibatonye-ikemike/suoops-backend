@@ -542,6 +542,7 @@ def _escrow_summary(escrow: "models.StorefrontOrderEscrow", buyer: "models.Custo
         "delivery_status": escrow.delivery_status,
         "delivery_status_label": _delivery_status_label(escrow.delivery_status),
         "delivery_courier": escrow.delivery_courier,
+        "requires_delivery": bool(getattr(escrow, "requires_delivery", True)),
         "delivery_service_type": escrow.delivery_service_type,
         "delivery_dropoff_station": escrow.delivery_dropoff_station,
         "dispatch_proof_url": _presign(escrow.dispatch_proof_url),

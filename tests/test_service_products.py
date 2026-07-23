@@ -75,8 +75,9 @@ def test_service_order_skips_delivery_and_uses_fast_window(db_session, client, m
     escrow = (
         db_session.query(models.StorefrontOrderEscrow).filter_by(invoice_id=inv.id).one()
     )
-    # Nothing ships → fast (same-state) buyer-protection window.
+    # Nothing ships → fast (same-state) buyer-protection window + no delivery.
     assert escrow.same_state is True
+    assert escrow.requires_delivery is False
     assert not escrow.delivery_fee_kobo
 
 

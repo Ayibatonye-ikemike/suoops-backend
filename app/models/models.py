@@ -845,6 +845,12 @@ class StorefrontOrderEscrow(Base):
     delivery_status_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Whether this order ships. False for service/digital orders (no delivery
+    # address, no courier, no dispatch/delivery proof) — buyer protection is by
+    # confirmation + the fast auto-release window instead of a delivery cycle.
+    requires_delivery: Mapped[bool] = mapped_column(
+        default=True, server_default="true", nullable=False
+    )
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

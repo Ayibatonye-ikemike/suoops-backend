@@ -347,6 +347,7 @@ def create_order_escrow(
         # 6-digit buyer-only delivery code (never shown to the seller). Unique
         # among this seller's live orders so a code can never match a wrong order.
         confirmation_code=_unique_confirmation_code(db, seller.id),
+        requires_delivery=not no_delivery,
         held_for_review=bool(review_reason),
         review_reason=review_reason,
     )

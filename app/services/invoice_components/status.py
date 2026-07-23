@@ -303,9 +303,20 @@ class InvoiceStatusMixin:
         # buyer's contact + address it already holds, so the seller doesn't need
         # (and shouldn't receive) the buyer's phone or home address.
         is_courier = bool(held_escrow is not None and held_escrow.delivery_courier)
+        # Service/digital order (nothing ships) — protection is confirm + fast
+        # auto-release, so drop all the deliver/dispatch language.
+        is_service = held_escrow is not None and not getattr(
+            held_escrow, "requires_delivery", True
+        )
         if is_storefront:
             header = "🛒 New paid order — payment confirmed ✅"
-            if held_escrow is not None:
+            if is_service:
+                footer = (
+                    "✅ No delivery needed — this is a service order. You'll be paid your "
+                    "full amount automatically after the buyer-protection window, or "
+                    f"sooner when the buyer confirms.\n🔗 Order details:\n{order_link}"
+                )
+            elif held_escrow is not None:
                 footer = (
                     "📦 Prepare and deliver the order. Mark it “sent out”, then "
                     "“delivered”, in your dashboard to add proof — that protects your "
@@ -324,11 +335,16 @@ class InvoiceStatusMixin:
             )
         # Settlement copy differs for held (buyer-protection) vs normal orders.
         if held_escrow is not None:
+            _confirm_clause = (
+                "sooner when the buyer confirms it's done"
+                if is_service
+                else "sooner if the buyer confirms delivery"
+            )
             settle_line = (
                 "💰 Payment is HELD under buyer protection. Your FULL payout is "
                 f"released to {settle_to} on our next daily settlement run once the "
-                "buyer-protection window passes — sooner if the buyer confirms "
-                "delivery. (The service fee was paid by the buyer.)\n\n"
+                f"buyer-protection window passes — {_confirm_clause}. (The service "
+                "fee was paid by the buyer.)\n\n"
             )
         else:
             settle_line = (
@@ -342,7 +358,9 @@ class InvoiceStatusMixin:
         # buyer's address — tell the seller how to hand off, not where the buyer
         # lives. For self-delivery orders, surface the buyer's address note.
         delivery_block = ""
-        if is_storefront and is_courier:
+        if is_service:
+            pass  # service/digital order — nothing ships
+        elif is_storefront and is_courier:
             courier = held_escrow.delivery_courier
             if held_escrow.delivery_service_type == "dropoff":
                 station = held_escrow.delivery_dropoff_station
