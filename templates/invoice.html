@@ -134,15 +134,21 @@
     .tax-table th { text-align: left; font-weight: 600; color: #0F766E; width: 40%; }
     .tax-table td { color: #0F1E17; }
 
-    /* ── QR + Footer row ─────────────────────── */
+    /* ── Verify (QR + text) + Thank-you row ──── */
     .bottom-row {
-      display: flex; align-items: center; gap: 16px;
+      display: flex; align-items: center; gap: 14px;
       margin-bottom: 8px; padding: 10px 0;
       border-top: 1px dashed rgba(20,181,106,0.25);
     }
-    .bottom-row .qr-area { flex-shrink: 0; text-align: center; }
-    .bottom-row .qr-area img { width: 80px; height: 80px; }
-    .bottom-row .qr-text { font-size: 8px; color: #777; margin-top: 2px; }
+    .bottom-row .verify-card {
+      display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+      padding: 8px 12px; border: 1px solid rgba(20,181,106,0.35);
+      border-radius: 10px; background: #F3FBF6;
+    }
+    .bottom-row .verify-card img { width: 72px; height: 72px; flex-shrink: 0; }
+    .bottom-row .qr-copy { text-align: left; }
+    .bottom-row .qr-title { font-size: 10px; font-weight: 700; color: #0B3318; }
+    .bottom-row .qr-sub { font-size: 8px; color: #0F766E; margin-top: 2px; line-height: 1.4; max-width: 130px; }
     .bottom-row .thank-you { flex: 1; font-size: 11px; color: #555; }
     .bottom-row .thank-you a { color: #14B56A; text-decoration: none; }
 
@@ -319,12 +325,15 @@
       </div>
       {% endif %}
 
-      <!-- QR Code + Thank You (side by side to save space) -->
+      <!-- Verify (QR + text grouped) + Thank You -->
       {% if qr_code %}
       <div class="bottom-row">
-        <div class="qr-area">
+        <div class="verify-card">
           <img src="{{ qr_code }}" alt="QR verification" />
-          <div class="qr-text">Scan to verify</div>
+          <div class="qr-copy">
+            <div class="qr-title">&#x1F510; Verify this invoice</div>
+            <div class="qr-sub">Scan to confirm it&#39;s genuine &amp; see its status.</div>
+          </div>
         </div>
         <div class="thank-you">
           Thank you for your business!
