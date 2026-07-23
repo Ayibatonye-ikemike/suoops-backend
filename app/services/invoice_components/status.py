@@ -187,26 +187,53 @@ class InvoiceStatusMixin:
         
         # Capture invoice_id early to avoid DB access issues after potential errors
         invoice_id = invoice.invoice_id
-        
+
+        # Storefront buyer-protection: flip the pre-created escrow row from
+        # 'pending' -> 'held' now that the payment is confirmed. Idempotent —
+        # early-returns when there is no pending row (regular manual invoices,
+        # already-held retries, etc.) so it's safe to call unconditionally, but
+        # we gate on channel to make intent obvious. Manual invoices do NOT use
+        # escrow — only storefront orders do.
+        if getattr(invoice, "channel", None) == "storefront":
+            try:
+                from app.services.escrow_service import activate_escrow_on_payment
+
+                activate_escrow_on_payment(self.db, invoice)
+            except Exception as exc:  # noqa: BLE001
+                # Never let escrow bookkeeping break the payment flow — the money
+                # already reached us; we'll retry activation via the safety net below.
+                logger.exception(
+                    "Escrow activation failed for storefront invoice %s: %s",
+                    invoice_id, exc,
+                )
+
         # Process inventory deduction for revenue invoices when paid
         self._process_inventory_on_payment(invoice)
         
         # Generate the receipt PDF up front. The WhatsApp receipt/invoice
         # templates have a REQUIRED document (PDF) header, so if the PDF link is
         # missing Meta rejects the template and the free-form fallback is blocked
-        # for a first-time buyer (they never get it). Retry once and log loudly
-        # so a missing PDF — the real reason a receipt silently fails — is visible.
+        # for a first-time buyer. We try ONCE inline (fast path); on failure we
+        # queue the generation via Celery instead of retrying inline — WeasyPrint
+        # can take seconds and a second inline retry under load stacks up on the
+        # request thread. The Celery task has its own retry with backoff.
         try:
             if not invoice.receipt_pdf_url:
                 invoice.receipt_pdf_url = self.pdf_service.generate_receipt_pdf(invoice)
                 self.db.commit()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Receipt PDF generation failed for %s (retrying): %s", invoice_id, exc)
+            logger.warning(
+                "Receipt PDF generation failed for %s (queuing async): %s",
+                invoice_id, exc,
+            )
             try:
-                invoice.receipt_pdf_url = self.pdf_service.generate_receipt_pdf(invoice)
-                self.db.commit()
+                from app.workers.tasks.pdf_tasks import generate_receipt_pdf_async
+
+                generate_receipt_pdf_async.delay(invoice.id)
             except Exception as exc2:  # noqa: BLE001
-                logger.error("Receipt PDF generation failed twice for %s: %s", invoice_id, exc2)
+                logger.error(
+                    "Failed to queue receipt PDF for %s: %s", invoice_id, exc2,
+                )
         if not invoice.receipt_pdf_url:
             logger.error(
                 "No receipt PDF for %s — the WhatsApp receipt template can't attach its "
