@@ -194,6 +194,12 @@ class InvoicePublicOut(BaseModel):
         return format_amount(value) or "0"
 
 
+class InvoiceVerificationItem(BaseModel):
+    """A single line on a verified invoice (what was bought)."""
+    description: str
+    quantity: int = 1
+
+
 class InvoiceVerificationOut(BaseModel):
     """Public invoice verification response (for QR code scanning)."""
     invoice_id: str
@@ -202,6 +208,7 @@ class InvoiceVerificationOut(BaseModel):
     customer_name: str  # Masked for privacy
     business_name: str
     verification_code: str = ""  # Unique, non-guessable authenticity stamp
+    items: list[InvoiceVerificationItem] = []
     created_at: dt.datetime
     verified_at: dt.datetime
     authentic: bool = True

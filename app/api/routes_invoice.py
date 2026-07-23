@@ -418,6 +418,15 @@ def verify_invoice(invoice_id: str, db: DbDep):
     _b32 = base64.b32encode(_digest).decode().rstrip("=")
     verification_code = f"SUP-{_b32[:4]}-{_b32[4:8]}"
 
+    # What was bought (description + quantity), so a scan shows the actual order.
+    items = [
+        schemas.InvoiceVerificationItem(
+            description=(line.description or "Item"),
+            quantity=int(line.quantity or 1),
+        )
+        for line in (invoice.lines or [])
+    ]
+
     return schemas.InvoiceVerificationOut(
         invoice_id=invoice_id,
         status=invoice.status,
@@ -425,6 +434,7 @@ def verify_invoice(invoice_id: str, db: DbDep):
         customer_name=masked_name,
         business_name=business_name,
         verification_code=verification_code,
+        items=items,
         created_at=invoice.created_at,
         verified_at=datetime.now(timezone.utc),
         authentic=True,

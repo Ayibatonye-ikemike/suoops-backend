@@ -89,6 +89,7 @@ def test_create_and_verify_invoice_flow():
     assert vj["authentic"] is True
     assert vj["customer_name"].startswith("A")  # masked
     assert vj["verification_code"].startswith("SUP-")  # unique authenticity stamp
+    assert isinstance(vj["items"], list)  # what was bought
 
 
 @patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
