@@ -25,7 +25,7 @@ from app.api.routes_auth import get_current_user_id
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
-from app.models.inventory_models import Product
+from app.models.inventory_models import Product, ProductCategory
 
 logger = logging.getLogger(__name__)
 
@@ -504,6 +504,42 @@ def storefront_qr(
             detail="Turn on your storefront first to get a shareable QR code.",
         )
     link = _link_for(user.storefront_slug)
+    return StorefrontQrOut(link=link, qr_png=_qr_data_url(link))
+
+
+@router.get("/categories/{category_id}/qr", response_model=StorefrontQrOut)
+def category_qr(
+    category_id: int,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StorefrontQrOut:
+    """Shareable QR code that opens the storefront filtered to ONE category.
+
+    Print it next to a shelf/section (e.g. "Drinks", "Cooked Food") so a customer
+    scans straight to those items and orders. Requires the storefront enabled.
+    """
+    user = db.query(models.User).filter(models.User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    category = (
+        db.query(ProductCategory)
+        .filter(
+            ProductCategory.id == category_id,
+            ProductCategory.user_id == current_user_id,
+        )
+        .first()
+    )
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    if not (user.storefront_enabled and user.storefront_slug):
+        raise HTTPException(
+            status_code=400,
+            detail="Turn on your storefront first — that's where customers browse after scanning.",
+        )
+    link = (
+        f"{settings.FRONTEND_URL}/store/{user.storefront_slug}"
+        f"?category={quote_plus(category.name)}"
+    )
     return StorefrontQrOut(link=link, qr_png=_qr_data_url(link))
 
 
