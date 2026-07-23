@@ -383,7 +383,8 @@ def send_weekly_free_summary() -> dict[str, Any]:
                     message += (
                         "\n🔗 suoops.com/dashboard\n\n"
                         "_Every feature is free — tax reports, inventory, daily "
-                        "summaries & more. You only pay a flat 3% per invoice._"
+                        "summaries & more. Fees as low as 0.5%; on your storefront "
+                        "customers pay the 3%._"
                     )
 
                     sent = False
@@ -514,7 +515,8 @@ def send_payment_upsells() -> dict[str, Any]:
                     f"Hi {name}, you've received {count} payment{'s' if count != 1 else ''} "
                     f"through SuoOps — your business is growing!\n\n"
                     f"Everything's included, free — tax reports, inventory, daily "
-                    f"summaries & customer insights. You only pay a flat 3% per invoice.\n\n"
+                    f"summaries & customer insights. Fees as low as 0.5% — and on your "
+                    f"storefront, customers pay the 3%, so you keep your full price.\n\n"
                     f"💡 Get paid faster: share your storefront so customers order and "
                     f"pay online, or top up your wallet for more manual invoices.\n\n"
                     f"🔗 suoops.com/dashboard"
@@ -562,7 +564,8 @@ def send_payment_upsells() -> dict[str, Any]:
                         f"You've received {count} payment{'s' if count != 1 else ''} "
                         f"totalling ₦{total:,.0f} through SuoOps.\n\n"
                         f"Every feature is free — tax reports, daily summaries, "
-                        f"customer insights & more. You only pay a flat 3% per invoice.\n\n"
+                        f"customer insights & more. Fees as low as 0.5% — and on your "
+                        f"storefront, customers pay the 3%, so you keep your full price.\n\n"
                         f"Keep it flowing: share your storefront or top up your wallet at "
                         f"https://suoops.com/dashboard/billing/purchase\n\n"
                         f"— SuoOps"

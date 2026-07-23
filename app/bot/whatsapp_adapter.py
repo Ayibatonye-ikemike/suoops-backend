@@ -838,7 +838,7 @@ class WhatsAppHandler:
                 sender,
                 "🛒 *Your storefront*\n\n"
                 f"Share this link so customers order & pay you online:\n{link}\n\n"
-                "You only pay 3% when a customer pays — nothing upfront.",
+                "Customers pay a small 3% fee at checkout — you keep your full price, nothing upfront.",
             )
         else:
             self.client.send_text(

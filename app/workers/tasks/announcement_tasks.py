@@ -65,10 +65,11 @@ def _plain_text(name: str) -> str:
     return (
         f"Hi {name},\n\n"
         "We just launched two things that make SuoOps even more useful — "
-        "both included at a flat 3%, no plans to buy.\n\n"
+        "no plans to buy.\n\n"
         "💳 Get paid online — customers pay you by card or bank transfer. "
         "Payment auto-confirms and the money settles to your bank the next "
-        "business day via Paystack. Flat 3% only when you get paid, no monthly fee. "
+        "business day via Paystack. The customer covers the flat 3% at checkout "
+        "— you keep your full price, no monthly fee. "
         "Your manual invoices are unchanged.\n\n"
         "🛍️ Your own storefront — a shareable page of all your products. Post "
         "the link on WhatsApp, Instagram or your bio and customers order and pay online.\n\n"
