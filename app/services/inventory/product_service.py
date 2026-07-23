@@ -88,6 +88,7 @@ class ProductService(BaseInventoryService):
             reorder_quantity=data.reorder_quantity,
             unit=data.unit,
             track_stock=data.track_stock,
+            fulfilment_type=data.fulfilment_type,
             image_url=data.image_url,
         )
         self._db.add(product)

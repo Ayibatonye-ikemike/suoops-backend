@@ -68,6 +68,8 @@ class ProductCreate(BaseModel):
     
     # Flags
     track_stock: bool = True
+    # Fulfilment: physical items are delivered; service/digital are not.
+    fulfilment_type: Literal["physical", "service", "digital"] = "physical"
     
     # Media
     image_url: str | None = None
@@ -90,6 +92,7 @@ class ProductUpdate(BaseModel):
     
     track_stock: bool | None = None
     is_active: bool | None = None
+    fulfilment_type: Literal["physical", "service", "digital"] | None = None
     image_url: str | None = None
 
 
@@ -116,6 +119,7 @@ class ProductOut(BaseModel):
     
     is_active: bool = True
     track_stock: bool = True
+    fulfilment_type: str = "physical"
     
     image_url: str | None = None
     

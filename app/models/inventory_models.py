@@ -127,6 +127,12 @@ class Product(Base):
         default=True,
         server_default="true",
     )  # Whether to track inventory
+    # Fulfilment kind: "physical" (default) needs delivery; "service" / "digital"
+    # do not — no courier, no delivery address, and a faster buyer-protection
+    # window since there's nothing to ship.
+    fulfilment_type: Mapped[str] = mapped_column(
+        String(20), default="physical", server_default="physical", nullable=False
+    )
     
     # Media
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

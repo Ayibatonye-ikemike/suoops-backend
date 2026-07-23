@@ -201,6 +201,7 @@ class InvoiceVerificationOut(BaseModel):
     amount: Decimal
     customer_name: str  # Masked for privacy
     business_name: str
+    verification_code: str = ""  # Unique, non-guessable authenticity stamp
     created_at: dt.datetime
     verified_at: dt.datetime
     authentic: bool = True

@@ -920,6 +920,7 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
                 "category": p.category.name if p.category else None,
                 "image_url": _presign(p.image_url),
                 "in_stock": (not p.track_stock) or (p.quantity_in_stock > 0),
+                "fulfilment_type": getattr(p, "fulfilment_type", "physical"),
             }
             for p in products
         ],
@@ -1299,11 +1300,21 @@ async def create_store_order(
     if total <= 0:
         raise HTTPException(status_code=400, detail="Order total must be greater than zero.")
 
-    # Delivery address is REQUIRED. The buyer's GPS pin may not be where they
-    # want delivery (they could be ordering from elsewhere), so a typed address
-    # + landmark is mandatory for the seller/courier to deliver to the right
-    # place. It's also appended to the courier address when a shipment is booked.
-    if not payload.delivery_note or len(payload.delivery_note.strip()) < 4:
+    # Service/digital products aren't shipped. An order made up ENTIRELY of them
+    # is a "no-delivery" order: no delivery address, no courier, and a faster
+    # buyer-protection window. Any physical item makes it a normal delivery order.
+    no_delivery = all(
+        getattr(pmap.get(i.product_id), "fulfilment_type", "physical") != "physical"
+        for i in payload.items
+    )
+
+    # Delivery address is REQUIRED for physical orders. The buyer's GPS pin may
+    # not be where they want delivery (they could be ordering from elsewhere),
+    # so a typed address + landmark is mandatory for the seller/courier to
+    # deliver to the right place. Service/digital orders skip this entirely.
+    if not no_delivery and (
+        not payload.delivery_note or len(payload.delivery_note.strip()) < 4
+    ):
         raise HTTPException(
             status_code=400,
             detail="Please add your delivery address and a landmark.",
@@ -1366,7 +1377,7 @@ async def create_store_order(
     # path below so the fee is never split to the seller.
     delivery_fee = Decimal("0")
     delivery_sel: dict | None = None
-    if settings.SHIPBUBBLE_CHECKOUT_ENABLED and payload.delivery_courier_id:
+    if settings.SHIPBUBBLE_CHECKOUT_ENABLED and payload.delivery_courier_id and not no_delivery:
         quote = _shipbubble_quote(db, owner, payload) or {}
         token = quote.get("request_token")
         chosen = next(
@@ -1455,7 +1466,8 @@ async def create_store_order(
     if note:
         delivery_lines.append(f"Landmark/note: {note}")
     if delivery_lines:
-        invoice.notes = "Storefront delivery\n" + "\n".join(delivery_lines)
+        header = "Service details" if no_delivery else "Storefront delivery"
+        invoice.notes = header + "\n" + "\n".join(delivery_lines)
         db.commit()
 
     try:
@@ -1495,6 +1507,7 @@ async def create_store_order(
                 customer_lat=payload.customer_lat,
                 customer_lng=payload.customer_lng,
                 review_reason=review_reason,
+                no_delivery=no_delivery,
             )
             delivery_code = escrow.confirmation_code
             if delivery_sel:

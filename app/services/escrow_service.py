@@ -297,6 +297,7 @@ def create_order_escrow(
     customer_lat: float | None,
     customer_lng: float | None,
     review_reason: str | None = None,
+    no_delivery: bool = False,
 ) -> "models.StorefrontOrderEscrow":
     """Create the PENDING escrow hold for a fresh storefront order.
 
@@ -304,7 +305,8 @@ def create_order_escrow(
     matches the seller's state (drives the 12h vs 3-day window). Generates the
     buyer-only delivery code and flags the order for review if it looks like
     self-dealing. The hold is activated (status 'held', release_due_at set) when
-    payment is confirmed.
+    payment is confirmed. ``no_delivery`` (a service/digital order that isn't
+    shipped) uses the fast same-state window since there is nothing in transit.
     """
     from decimal import Decimal
 
@@ -318,6 +320,10 @@ def create_order_escrow(
     business_state = seller.storefront_state
     bs, cs = _norm_state(business_state), _norm_state(customer_state)
     same_state: bool | None = (bs == cs) if (bs and cs) else None
+    if no_delivery:
+        # Nothing ships, so distance is irrelevant — use the fast (same-state)
+        # buyer-protection window rather than defaulting to the 3-day one.
+        same_state = True
 
     gross_kobo = int(Decimal(str(gross_naira)) * 100)
     fee_kobo = platform_fee_kobo(gross_naira)

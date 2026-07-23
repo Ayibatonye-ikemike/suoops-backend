@@ -606,9 +606,10 @@ class PDFService:
         Returns:
             Base64 encoded QR code image as data URI
         """
-        # Generate verification URL
-        api_base = settings.BACKEND_URL.rstrip("/")
-        verify_url = f"{api_base}/invoices/{invoice_id}/verify"
+        # QR points at the branded verification PAGE (not the raw API), so a scan
+        # opens a human-readable "Verified by SuoOps" card, not JSON.
+        frontend = settings.FRONTEND_URL.rstrip("/")
+        verify_url = f"{frontend}/verify/{invoice_id}"
         
         # Create QR code
         qr = qrcode.QRCode(

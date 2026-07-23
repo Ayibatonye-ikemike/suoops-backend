@@ -20,6 +20,7 @@ def product_to_out(product) -> schemas.ProductOut:
         unit=product.unit,
         is_active=product.is_active,
         track_stock=product.track_stock,
+        fulfilment_type=getattr(product, "fulfilment_type", "physical"),
         image_url=product.image_url,
         is_low_stock=product.is_low_stock,
         is_out_of_stock=product.is_out_of_stock,

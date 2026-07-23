@@ -15,7 +15,6 @@ from app.models import models, schemas
 from app.services.invoice_service import InvoiceService, build_invoice_service
 from app.storage.s3_client import S3Client
 from app.utils.feature_gate import FeatureGate, check_invoice_limit
-from app.utils.pii import mask_email, mask_phone
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -52,25 +51,18 @@ async def create_invoice(
               Defaults to True for better user experience. When an invoice email is requested,
               the system automatically forces synchronous generation so the attachment is present.
     """
-    is_revenue = not (hasattr(data, 'invoice_type') and data.invoice_type == 'expense')
-    user = db.query(models.User).filter(models.User.id == data_owner_id).one_or_none()
-
     # Require bank details before creating revenue invoices
-    if is_revenue and user and (not user.bank_name or not user.account_number):
-        raise HTTPException(
-            status_code=400,
-            detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
-        )
+    if not hasattr(data, 'invoice_type') or data.invoice_type != 'expense':
+        user = db.query(models.User).filter(models.User.id == data_owner_id).one_or_none()
+        if user and (not user.bank_name or not user.account_number):
+            raise HTTPException(
+                status_code=400,
+                detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
+            )
 
-    # The manual-invoice commission (0.5%, min ₦100, ₦400 cap under ₦500k, uncapped above)
-    # is charged from the wallet at creation for every business-created invoice
-    # (check_invoice_limit enforces the balance). If the
-    # business has online payments enabled, the customer pays via the Paystack
-    # link instead of bank transfer — but the commission was already taken from
-    # the wallet here, so Paystack collects nothing extra (see
-    # invoice_payment_service.start_invoice_payment).
+    # Check invoice creation limit based on data owner's subscription plan
     check_invoice_limit(db, data_owner_id)
-
+    
     svc = get_invoice_service_for_user(data_owner_id, db)
 
     # Ensure PDF exists before sending notifications so it's available when customer replies
@@ -83,15 +75,11 @@ async def create_invoice(
             data_owner_id,
         )
     try:
-        invoice_data = data.model_dump()
-        if not invoice_data.get("channel"):
-            invoice_data["channel"] = "dashboard"
         invoice = svc.create_invoice(
             issuer_id=data_owner_id,
-            data=invoice_data,
+            data=data.model_dump(),
             async_pdf=effective_async,
             created_by_user_id=current_user_id,  # Track actual creator for confirmation permissions
-            consume_balance=True,
         )
         
         # Send notifications via available channels (Email, WhatsApp) - ONLY for revenue invoices
@@ -99,8 +87,8 @@ async def create_invoice(
         logger.info(
             "[INVOICE CREATE] invoice_type=%s, customer_email=%s, customer_phone=%s, invoice_id=%s",
             invoice.invoice_type,
-            mask_email(data.customer_email),
-            mask_phone(data.customer_phone),
+            data.customer_email,
+            data.customer_phone,
             invoice.invoice_id,
         )
         if invoice.invoice_type == "revenue" and (data.customer_email or data.customer_phone):
@@ -110,8 +98,8 @@ async def create_invoice(
             logger.info(
                 "[INVOICE NOTIFY] Sending notification for %s to email=%s, phone=%s",
                 invoice.invoice_id,
-                mask_email(data.customer_email),
-                mask_phone(data.customer_phone),
+                data.customer_email,
+                data.customer_phone,
             )
 
             results = await notification_service.send_invoice_notification(
@@ -234,22 +222,10 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
     
     gate = FeatureGate(db, data_owner_id)
     plan = gate.user.effective_plan  # Uses effective_plan to respect pro_override
-    invoice_balance = getattr(gate.user, "invoice_balance", 0) or 0
+    invoice_balance = gate.get_invoice_balance()  # Safe access
     can_create, _ = gate.can_create_invoice()
     purchase_url = "/invoices/purchase-pack" if not can_create else None
-
-    # Count revenue invoices so the onboarding gate knows the user is activated
-    # (e.g. after creating their first invoice via WhatsApp).
-    from app.models.models import Invoice
-    total_invoices = (
-        db.query(Invoice.id)
-        .filter(
-            Invoice.issuer_id == data_owner_id,
-            Invoice.invoice_type == "revenue",
-        )
-        .count()
-    )
-
+    
     return schemas.InvoiceQuotaOut(
         invoice_balance=invoice_balance,
         current_plan=plan.value,
@@ -257,7 +233,6 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
         pack_price=INVOICE_PACK_PRICE,
         pack_size=INVOICE_PACK_SIZE,
         purchase_url=purchase_url,
-        total_invoices=total_invoices,
     )
 
 
@@ -428,13 +403,28 @@ def verify_invoice(invoice_id: str, db: DbDep):
         business_name = invoice.issuer.business_name or invoice.issuer.name
     else:
         business_name = "Business"
-    
+
+    # Unique, non-guessable authenticity stamp derived from the invoice + issuer
+    # with the server secret — anyone can read it off the QR/receipt, but only
+    # SuoOps can produce it, so a forged receipt can't fake a matching code.
+    import base64
+    import hashlib
+    import hmac
+
+    from app.core.config import settings
+
+    _raw = f"{invoice.invoice_id}:{invoice.issuer_id}:{invoice.created_at.isoformat()}"
+    _digest = hmac.new(settings.JWT_SECRET.encode(), _raw.encode(), hashlib.sha256).digest()
+    _b32 = base64.b32encode(_digest).decode().rstrip("=")
+    verification_code = f"SUP-{_b32[:4]}-{_b32[4:8]}"
+
     return schemas.InvoiceVerificationOut(
         invoice_id=invoice_id,
         status=invoice.status,
         amount=invoice.amount,
         customer_name=masked_name,
         business_name=business_name,
+        verification_code=verification_code,
         created_at=invoice.created_at,
         verified_at=datetime.now(timezone.utc),
         authentic=True,
@@ -447,20 +437,21 @@ async def initialize_invoice_pack_purchase(
     request: Request,
     current_user_id: CurrentUserDep,
     db: DbDep,
-    amount: int = 1250,
+    quantity: int = 1,
+    pack_type: str = "standard",
 ):
     """
-    Initialize a Paystack payment to top up the prepaid invoice wallet.
-
+    Initialize Paystack payment for invoice pack purchase.
+    
     **Parameters:**
-    - amount: Top-up amount in Naira. Must be one of the offered tiers
-      (₦1,250 / ₦5,000 / ₦20,000).
-
+    - quantity: Number of packs to purchase (default 1)
+    - pack_type: \"standard\" (50 for ₦1,250) or \"small\" (25 for ₦625)
+    
     **Returns:**
     - authorization_url: Paystack checkout URL
     - reference: Payment reference for tracking
-    - amount: Total charged in Naira (includes Paystack fees)
-    - wallet_credit_naira: Amount credited to the wallet
+    - amount: Amount in kobo (₦ x 100)
+    - invoices_to_add: Number of invoices that will be added
     """
     import uuid
 
@@ -469,26 +460,31 @@ async def initialize_invoice_pack_purchase(
     from app.core.config import settings
     from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
     from app.services.payment_providers import calculate_amount_with_paystack_fee
-    from app.utils.feature_gate import WALLET_TOPUP_TIERS
-
-    if amount not in WALLET_TOPUP_TIERS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid top-up amount. Choose one of: {WALLET_TOPUP_TIERS}",
-        )
-
+    from app.utils.feature_gate import PACK_OPTIONS
+    
+    if quantity < 1 or quantity > 10:
+        raise HTTPException(status_code=400, detail="Quantity must be between 1 and 10 packs")
+    
+    pack = PACK_OPTIONS.get(pack_type)
+    if not pack:
+        raise HTTPException(status_code=400, detail="Invalid pack_type. Use 'standard' or 'small'")
+    
     user = db.query(models.User).filter(models.User.id == current_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-
-    wallet_credit_kobo = amount * 100
-    # Customer pays the tier amount plus Paystack fees.
-    total_amount = calculate_amount_with_paystack_fee(amount)
-
+    
+    pack_price = pack["price"]
+    pack_size = pack["size"]
+    
+    # Calculate total - add Paystack fees so customer pays them
+    base_amount = pack_price * quantity
+    total_amount = calculate_amount_with_paystack_fee(base_amount)
+    invoices_to_add = pack_size * quantity
+    
     # Generate unique reference
     reference = f"INVPACK-{current_user_id}-{uuid.uuid4().hex[:8].upper()}"
-
-    # Record transaction (wallet top-up - plan unchanged)
+    
+    # Record transaction (invoice pack - plan stays the same)
     current_plan = user.plan.value if user.plan else "free"
     transaction = PaymentTransaction(
         user_id=current_user_id,
@@ -498,12 +494,13 @@ async def initialize_invoice_pack_purchase(
         provider=PaymentProvider.PAYSTACK,
         status=PaymentStatus.PENDING,
         plan_before=current_plan,
-        plan_after=current_plan,
+        plan_after=current_plan,  # Invoice pack doesn't change plan
         customer_email=user.email or (f"{user.phone}@suoops.com" if user.phone else None),
         customer_phone=user.phone,
         payment_metadata={
-            "payment_type": "wallet_topup",
-            "wallet_credit_kobo": wallet_credit_kobo,
+            "payment_type": "invoice_pack",
+            "quantity": quantity,
+            "invoices_to_add": invoices_to_add,
         },
     )
     db.add(transaction)
@@ -524,9 +521,10 @@ async def initialize_invoice_pack_purchase(
                     "reference": reference,
                     "callback_url": f"{settings.FRONTEND_URL}/dashboard/billing/success?reference={reference}",
                     "metadata": {
-                        "payment_type": "wallet_topup",
+                        "payment_type": "invoice_pack",
                         "user_id": current_user_id,
-                        "wallet_credit_kobo": wallet_credit_kobo,
+                        "quantity": quantity,
+                        "invoices_to_add": invoices_to_add,
                     },
                 },
             )
@@ -546,77 +544,13 @@ async def initialize_invoice_pack_purchase(
     auth_url = data["data"]["authorization_url"]
     
     logger.info(
-        "Wallet top-up initialized | user=%s credit=₦%d charged=₦%d ref=%s",
-        current_user_id, amount, total_amount, reference
+        "Invoice pack payment initialized | user=%s quantity=%d invoices=%d amount=%d ref=%s",
+        current_user_id, quantity, invoices_to_add, total_amount, reference
     )
-
+    
     return schemas.InvoicePackPurchaseInitOut(
         authorization_url=auth_url,
         reference=reference,
         amount=total_amount,
-        wallet_credit_naira=amount,
-        invoices_to_add=0,
+        invoices_to_add=invoices_to_add,
     )
-
-
-@router.post("/enable-online-payments")
-async def enable_online_payments(
-    current_user_id: CurrentUserDep,
-    db: DbDep,
-) -> dict:
-    """
-    Create (or refresh) this business's Paystack subaccount so customers can
-    pay their invoices online and payment is auto-confirmed.
-
-    Uses the bank details already on file. Returns once the subaccount is
-    verified and active.
-    """
-    from app.services.paystack_subaccount_service import (
-        PaystackSubaccountService,
-        SubaccountError,
-    )
-
-    user = db.query(models.User).filter(models.User.id == current_user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    try:
-        code = await PaystackSubaccountService(db).ensure_subaccount(user)
-    except SubaccountError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-    return {
-        "enabled": True,
-        "subaccount_code": code,
-        "message": "Online payments enabled. Invoices can now be paid online.",
-    }
-
-
-@router.post("/disable-online-payments")
-def disable_online_payments(current_user_id: CurrentUserDep, db: DbDep) -> dict:
-    """Turn off online payments.
-
-    New storefront orders can't be paid online until re-enabled. The Paystack
-    subaccount is kept on file so re-enabling later is instant.
-    """
-    user = db.query(models.User).filter(models.User.id == current_user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.paystack_subaccount_active = False
-    db.commit()
-    return {"enabled": False, "message": "Online payments turned off."}
-
-
-@router.get("/online-payments-status")
-def online_payments_status(current_user_id: CurrentUserDep, db: DbDep) -> dict:
-    """Whether the current business has online payments (Paystack subaccount) enabled."""
-    user = db.query(models.User).filter(models.User.id == current_user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {
-        "enabled": bool(
-            getattr(user, "paystack_subaccount_active", False)
-            and getattr(user, "paystack_subaccount_code", None)
-        ),
-        "has_bank_details": bool(user.bank_name and user.account_number),
-    }
