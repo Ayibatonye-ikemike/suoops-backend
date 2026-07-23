@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_data_owner_id
 from app.api.rate_limit import limiter
 from app.api.routes_auth import get_current_user_id
 from app.core.config import settings
@@ -576,11 +577,15 @@ def _load_owner_escrow(db: Session, user_id: int, invoice_public_id: str):
 @router.get("/storefront/orders/{invoice_id}")
 def get_order_escrow(
     invoice_id: str,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    data_owner_id: Annotated[int, Depends(get_data_owner_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
-    """Business: buyer-protection status for one of your storefront orders."""
-    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    """Business: buyer-protection status for one of your storefront orders.
+
+    Scoped to the account owner so invited team members (shared workspace) see
+    and manage the same orders, mirroring the invoice endpoints.
+    """
+    row = _load_owner_escrow(db, data_owner_id, invoice_id)
     if not row:
         return {"escrow": None}
     escrow, buyer = row
@@ -626,7 +631,7 @@ async def _save_proof_photo(escrow: "models.StorefrontOrderEscrow", file: "Uploa
 async def mark_order_delivered(
     request: Request,
     invoice_id: str,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    data_owner_id: Annotated[int, Depends(get_data_owner_id)],
     db: Annotated[Session, Depends(get_db)],
     note: Annotated[str | None, Form()] = None,
     file: Annotated[UploadFile | None, File()] = None,
@@ -635,8 +640,9 @@ async def mark_order_delivered(
 
     This is your evidence if the buyer later falsely claims non-delivery — it
     does NOT release funds (only the buyer's code or the window does that).
+    Scoped to the account owner so invited team members can act on shared orders.
     """
-    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    row = _load_owner_escrow(db, data_owner_id, invoice_id)
     if not row:
         raise HTTPException(status_code=404, detail="Order not found.")
     escrow, buyer = row
@@ -653,7 +659,7 @@ async def mark_order_delivered(
     escrow.delivery_proof_url = proof_url
     db.commit()
     db.refresh(escrow)
-    logger.info("Seller %s marked order %s delivered", current_user_id, invoice_id)
+    logger.info("Seller %s marked order %s delivered", data_owner_id, invoice_id)
     return {"escrow": _escrow_summary(escrow, buyer)}
 
 
@@ -725,6 +731,7 @@ async def mark_order_sent(
     request: Request,
     invoice_id: str,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
+    data_owner_id: Annotated[int, Depends(get_data_owner_id)],
     db: Annotated[Session, Depends(get_db)],
     background_tasks: BackgroundTasks,
     tracking: Annotated[str | None, Form()] = None,
@@ -740,8 +747,11 @@ async def mark_order_sent(
     This is seller protection: timestamped proof you shipped a quality item,
     before the buyer confirms delivery. It also tells the buyer who's bringing
     their order and when to expect it. It does NOT release funds.
+
+    Scoped to the account owner (data_owner_id) so invited team members can act
+    on shared orders; current_user_id is still logged as the actual actor.
     """
-    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    row = _load_owner_escrow(db, data_owner_id, invoice_id)
     if not row:
         raise HTTPException(status_code=404, detail="Order not found.")
     escrow, buyer = row
@@ -2177,11 +2187,11 @@ def buyer_list_messages(
 @router.get("/storefront/orders/{invoice_id}/messages")
 def seller_list_messages(
     invoice_id: str,
-    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    data_owner_id: Annotated[int, Depends(get_data_owner_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Seller reads the thread for one of their storefront orders."""
-    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    row = _load_owner_escrow(db, data_owner_id, invoice_id)
     if not row:
         raise HTTPException(status_code=404, detail="Order not found")
     escrow, _buyer = row
@@ -2194,11 +2204,13 @@ def seller_send_message(
     invoice_id: str,
     payload: SellerMessageIn,
     current_user_id: Annotated[int, Depends(get_current_user_id)],
+    data_owner_id: Annotated[int, Depends(get_data_owner_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Seller replies on one of their storefront orders. Circumvention attempts
-    (masked contact/account or off-platform pushes) flag the store."""
-    row = _load_owner_escrow(db, current_user_id, invoice_id)
+    (masked contact/account or off-platform pushes) flag the store. Scoped to the
+    account owner so team members can reply; current_user_id records who sent it."""
+    row = _load_owner_escrow(db, data_owner_id, invoice_id)
     if not row:
         raise HTTPException(status_code=404, detail="Order not found")
     escrow, _buyer = row
