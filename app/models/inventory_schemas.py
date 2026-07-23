@@ -86,6 +86,9 @@ class ProductUpdate(BaseModel):
     cost_price: Decimal | None = Field(None, ge=0)
     selling_price: Decimal | None = Field(None, ge=0)
     
+    # Direct quantity edits apply to services/digital only (physical stock is
+    # adjusted via stock movements to keep an audit trail).
+    quantity_in_stock: int | None = Field(None, ge=0)
     reorder_level: int | None = Field(None, ge=0)
     reorder_quantity: int | None = Field(None, ge=1)
     unit: str | None = Field(None, max_length=20)

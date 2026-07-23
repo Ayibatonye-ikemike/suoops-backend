@@ -223,6 +223,16 @@ class ProductService(BaseInventoryService):
             if not category:
                 raise ValueError(f"Category with ID {update_data['category_id']} not found")
 
+        # quantity_in_stock is normally managed via stock movements (audit trail)
+        # for PHYSICAL products, so it isn't editable inline. Services/digital have
+        # no such audit need — allow setting their available quantity directly.
+        if "quantity_in_stock" in update_data:
+            resulting_type = update_data.get(
+                "fulfilment_type", getattr(product, "fulfilment_type", "physical")
+            )
+            if resulting_type == "physical":
+                update_data.pop("quantity_in_stock")
+
         for key, value in update_data.items():
             setattr(product, key, value)
 
