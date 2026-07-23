@@ -73,18 +73,44 @@ def _listable_product_conditions() -> list:
     ]
 
 
-def _presign(url: str | None) -> str | None:
+def _presign(url: str | None, *, expires_in: int = 3600) -> str | None:
+    """Presign an S3 URL, optionally with a longer TTL for public/cacheable assets.
+
+    We cache the presigned URL in-process for half the TTL so repeat requests
+    (page loads, refreshes) return the SAME URL — browsers and CDNs can then
+    cache the image across visits instead of re-fetching it every render.
+    """
     if not url:
         return None
     try:
         from app.storage.s3_client import s3_client
 
         key = s3_client.extract_key_from_url(url)
-        if key:
-            return s3_client.get_presigned_url(key, expires_in=3600) or url
+        if not key:
+            return url
+        # Serve from the tiny in-process cache when a fresh-enough URL exists.
+        import time
+
+        cache_key = (key, expires_in)
+        cached = _PRESIGN_CACHE.get(cache_key)
+        now = time.time()
+        # Keep it stable for HALF the TTL so a browser cache actually hits.
+        if cached and cached[1] > now:
+            return cached[0]
+        fresh = s3_client.get_presigned_url(key, expires_in=expires_in) or url
+        _PRESIGN_CACHE[cache_key] = (fresh, now + max(60, expires_in // 2))
+        return fresh
     except Exception:  # noqa: BLE001
         pass
     return url
+
+
+# In-process presign cache. Not persisted — a new process picks its own URL, but
+# that's fine (browsers just re-fetch once, then cache again).
+_PRESIGN_CACHE: dict[tuple[str, int], tuple[str, float]] = {}
+# AWS presigned URLs max out at 7 days; used for the public storefront so image
+# URLs stay stable long enough for browsers to reuse them across visits.
+_PUBLIC_ASSET_TTL = 7 * 24 * 3600
 
 
 def _wa_url(user) -> str | None:
@@ -935,7 +961,7 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
         "slug": slug.lower(),
         "business_name": owner.business_name or owner.name,
         "description": owner.storefront_description,
-        "logo_url": _presign(owner.logo_url),
+        "logo_url": _presign(owner.logo_url, expires_in=_PUBLIC_ASSET_TTL),
         "online_payments_enabled": bool(
             owner.paystack_subaccount_active and owner.paystack_subaccount_code
         ),
@@ -966,7 +992,7 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
                 "unit": p.unit,
                 "category": p.category.name if p.category else None,
                 "category_id": p.category_id,
-                "image_url": _presign(p.image_url),
+                "image_url": _presign(p.image_url, expires_in=_PUBLIC_ASSET_TTL),
                 "in_stock": (not p.track_stock) or (p.quantity_in_stock > 0),
                 "fulfilment_type": getattr(p, "fulfilment_type", "physical"),
                 # Category pack fee (₦) — one flat pack is added to an order that

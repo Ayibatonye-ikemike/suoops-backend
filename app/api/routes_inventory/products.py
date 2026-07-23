@@ -138,9 +138,14 @@ async def upload_product_image(
     if not validate_file_magic_bytes(content, file.content_type):
         raise HTTPException(status_code=400, detail="File content does not match its type.")
 
-    ext = get_safe_extension(file.filename, file.content_type)
+    # Shrink to a storefront-sized WebP so the catalog stays snappy on mobile
+    # (original can be up to 5MB; storefront cards render at ~256px).
+    from app.utils.image_optimizer import optimize_for_storefront
+
+    content, optimized_type = optimize_for_storefront(content, file.content_type)
+    ext = get_safe_extension(file.filename, optimized_type)
     key = f"products/product_{product_id}.{ext}"
-    image_url = await s3_client.upload_file(content, key, content_type=file.content_type)
+    image_url = await s3_client.upload_file(content, key, content_type=optimized_type)
 
     updated = service.update_product(product_id, schemas.ProductUpdate(image_url=image_url))
     if not updated:

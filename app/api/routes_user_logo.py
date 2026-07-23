@@ -52,9 +52,16 @@ async def upload_logo(
             raise HTTPException(status_code=404, detail="User not found")
         
         ext = get_safe_extension(file.filename, file.content_type)
+        # Shrink logos to a WebP the browser can render instantly (SVGs are left
+        # alone by the optimizer since they can't be resized as bitmaps).
+        from app.utils.image_optimizer import optimize_for_storefront
+
+        optimized, optimized_type = optimize_for_storefront(content, file.content_type)
+        if optimized_type != file.content_type:
+            ext = get_safe_extension(file.filename, optimized_type)
         key = f"logos/user_{current_user_id}.{ext}"
-        logger.info("Uploading logo for user %s: %s bytes, type: %s", current_user_id, len(content), file.content_type)
-        logo_url = await s3_client.upload_file(content, key, content_type=file.content_type)
+        logger.info("Uploading logo for user %s: %s bytes, type: %s", current_user_id, len(optimized), optimized_type)
+        logo_url = await s3_client.upload_file(optimized, key, content_type=optimized_type)
         user.logo_url = logo_url
         db.commit()
         logger.info("Logo uploaded successfully for user %s: %s", current_user_id, logo_url)
