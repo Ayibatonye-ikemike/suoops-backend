@@ -191,13 +191,28 @@ class InvoiceStatusMixin:
         # Process inventory deduction for revenue invoices when paid
         self._process_inventory_on_payment(invoice)
         
-        # Generate receipt PDF first
+        # Generate the receipt PDF up front. The WhatsApp receipt/invoice
+        # templates have a REQUIRED document (PDF) header, so if the PDF link is
+        # missing Meta rejects the template and the free-form fallback is blocked
+        # for a first-time buyer (they never get it). Retry once and log loudly
+        # so a missing PDF — the real reason a receipt silently fails — is visible.
         try:
             if not invoice.receipt_pdf_url:
                 invoice.receipt_pdf_url = self.pdf_service.generate_receipt_pdf(invoice)
                 self.db.commit()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to generate receipt PDF for %s: %s", invoice_id, exc)
+            logger.warning("Receipt PDF generation failed for %s (retrying): %s", invoice_id, exc)
+            try:
+                invoice.receipt_pdf_url = self.pdf_service.generate_receipt_pdf(invoice)
+                self.db.commit()
+            except Exception as exc2:  # noqa: BLE001
+                logger.error("Receipt PDF generation failed twice for %s: %s", invoice_id, exc2)
+        if not invoice.receipt_pdf_url:
+            logger.error(
+                "No receipt PDF for %s — the WhatsApp receipt template can't attach its "
+                "required document header, so it may not deliver to a first-time buyer.",
+                invoice_id,
+            )
 
         # Send receipt notification (do this BEFORE low stock check to ensure receipt is sent)
         logger.info("Invoice %s manually marked as paid, sending receipt", invoice_id)

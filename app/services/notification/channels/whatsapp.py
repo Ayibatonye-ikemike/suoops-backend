@@ -359,7 +359,19 @@ class WhatsAppChannel:
             template_name = getattr(settings, "WHATSAPP_TEMPLATE_RECEIPT", None)
             has_pdf = bool(pdf_url and pdf_url.startswith("http"))
 
-            if template_name:
+            # The approved receipt template has a REQUIRED document header, so we
+            # can only use it when we have a PDF link. Sending it without the
+            # header makes Meta reject the message (params mismatch) AND dings the
+            # template's quality rating — so skip straight to the text path when
+            # the PDF isn't ready rather than send a malformed template.
+            if template_name and not has_pdf:
+                logger.warning(
+                    "[WHATSAPP] Receipt PDF missing for %s — skipping the %s template "
+                    "(it needs a document header); trying a text message instead.",
+                    recipient_phone, template_name,
+                )
+
+            if template_name and has_pdf:
                 # Use payment_receipt template
                 customer_name = invoice.customer.name if invoice.customer else "valued customer"
                 amount_text = f"₦{invoice.amount:,.2f}"
