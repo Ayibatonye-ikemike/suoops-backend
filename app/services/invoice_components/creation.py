@@ -22,6 +22,73 @@ class InvoiceCreationMixin:
 
     db: Session
 
+    def _find_recent_duplicate(self, issuer_id: int, data: dict) -> "models.Invoice | None":
+        """Return a just-created identical revenue invoice, if any (idempotency).
+
+        Matches on issuer + amount + customer identity + item descriptions within
+        a short window, so an accidental double-submit reuses the first invoice
+        instead of spawning a duplicate. Deliberately conservative: a genuine
+        re-issue of the exact same invoice can just be created again after the
+        window passes.
+        """
+        try:
+            amount = Decimal(str(data.get("amount")))
+        except Exception:  # noqa: BLE001
+            return None
+        name = str(data.get("customer_name") or "").strip().lower()
+        if not name:
+            return None
+        phone = str(data.get("customer_phone") or "").strip() or None
+        email = str(data.get("customer_email") or "").strip().lower() or None
+        cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=60)
+
+        want_descs = sorted(
+            (str(ld.get("description") or "").strip().lower())
+            for ld in (data.get("lines") or [])
+            if str(ld.get("description") or "").strip()
+        )
+
+        candidates = (
+            self.db.query(models.Invoice)
+            .options(
+                joinedload(models.Invoice.customer),
+                joinedload(models.Invoice.lines),
+            )
+            .filter(
+                models.Invoice.issuer_id == issuer_id,
+                models.Invoice.invoice_type == "revenue",
+                models.Invoice.amount == amount,
+                models.Invoice.created_at >= cutoff,
+            )
+            .order_by(models.Invoice.created_at.desc())
+            .limit(5)
+            .all()
+        )
+
+        for inv in candidates:
+            cust = getattr(inv, "customer", None)
+            if str(getattr(cust, "name", "") or "").strip().lower() != name:
+                continue
+            cphone = str(getattr(cust, "phone", "") or "").strip() or None
+            cemail = str(getattr(cust, "email", "") or "").strip().lower() or None
+            if phone and cphone and phone != cphone:
+                continue
+            if email and cemail and email != cemail:
+                continue
+            # Same set of item descriptions (when the request carried explicit
+            # lines) — guards against deduping two different invoices that merely
+            # share an amount + customer inside the window.
+            if want_descs:
+                have_descs = sorted(
+                    (str(ln.description or "").strip().lower())
+                    for ln in (inv.lines or [])
+                    if str(ln.description or "").strip()
+                )
+                if have_descs != want_descs:
+                    continue
+            return inv
+        return None
+
     def create_invoice(
         self,
         issuer_id: int,
@@ -31,6 +98,22 @@ class InvoiceCreationMixin:
         consume_balance: bool = True,
     ) -> models.Invoice:
         invoice_type = data.get("invoice_type", "revenue")
+
+        # Idempotency safety net. A double-submit — a fast double-tap (the button's
+        # disabled state only applies on the next render), an auto-retried request
+        # after a 401 token refresh, or a flaky mobile network — can hit this path
+        # twice and create duplicate invoices that BOTH go out to the customer. If
+        # an identical revenue invoice for this issuer was created seconds ago,
+        # return it instead of creating a second one.
+        if invoice_type == "revenue":
+            existing = self._find_recent_duplicate(issuer_id, data)
+            if existing is not None:
+                logger.info(
+                    "Deduped duplicate invoice create for issuer %s -> existing %s",
+                    issuer_id, existing.invoice_id,
+                )
+                return existing
+
         if consume_balance:
             self.enforce_quota(issuer_id, invoice_type, amount=data.get("amount"))
 
