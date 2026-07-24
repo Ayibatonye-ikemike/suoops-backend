@@ -303,7 +303,15 @@ class PDFService:
         business_name = None
         if hasattr(invoice, 'issuer') and invoice.issuer:
             business_name = getattr(invoice.issuer, 'business_name', None)
-        
+
+        # Online payments (card/transfer via the pay portal) available? When on,
+        # the buyer pays through the portal link, so the invoice must NOT show a
+        # "bank details missing — contact the business" warning.
+        issuer = getattr(invoice, "issuer", None)
+        online_payments_enabled = bool(
+            issuer is not None and getattr(issuer, "online_payments_active", False)
+        )
+
         # Determine currency symbol from invoice
         currency = getattr(invoice, "currency", "NGN") or "NGN"
         currency_symbol = "$" if currency == "USD" else "₦"
@@ -314,6 +322,7 @@ class PDFService:
             logo_url=logo_url,
             business_name=business_name,
             customer_portal_url=customer_portal_url,
+            online_payments_enabled=online_payments_enabled,
             qr_code=qr_code_data,
             watermark_text=watermark_text,
             receipt_data_url=receipt_data_url,

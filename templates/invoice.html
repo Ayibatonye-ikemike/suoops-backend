@@ -305,6 +305,18 @@
         </a>
         {% endif %}
       </div>
+      {% elif online_payments_enabled and customer_portal_url %}
+      <div class="payment-box">
+        <div class="pay-title">&#x1F4B3; Pay online</div>
+        <div class="payment-grid">
+          <div>
+            <div class="pay-value">Pay securely by card or bank transfer at the payment portal below &mdash; it confirms automatically.</div>
+          </div>
+        </div>
+        <a href="{{ customer_portal_url }}" class="confirm-cta" target="_blank" rel="noopener">
+          &#x1F4B3; Pay this invoice online
+        </a>
+      </div>
       {% else %}
       <div class="payment-warning">
         <div class="warn-title">&#x26A0;&#xFE0F; Payment Details Missing</div>
