@@ -69,10 +69,21 @@ class InvoiceStatusMixin:
         # Offline settlement of an online-only invoice consumes a pack. The
         # business either earns us a commission (paid online via webhook,
         # via_online=True) or pays for a pack (marking it paid manually). This
+        # Offline settlement of an online-only invoice consumes a pack. The
+        # business either earns us a commission (paid online via webhook,
+        # via_online=True) or pays for a pack (marking it paid manually). This
         # closes the "free invoice + bypass the commission" loophole.
+        #
+        # EXCEPTION: an invoice already in `awaiting_confirmation` got there via
+        # the customer's on-platform bank-transfer button, which is ONLY shown
+        # for NON online-only invoices. So it was genuinely a bank-transfer
+        # invoice when the customer paid — confirming it must follow the normal
+        # (no wallet charge) path even if the business enabled online payments
+        # afterward. Otherwise the business gets stuck unable to confirm a real
+        # bank transfer because their wallet is empty.
         if (
             status == "paid"
-            and previous_status != "paid"
+            and previous_status not in ("paid", "awaiting_confirmation")
             and not via_online
             and is_online_only(
                 invoice.issuer,
