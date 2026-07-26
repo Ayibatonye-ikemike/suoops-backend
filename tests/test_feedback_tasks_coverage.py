@@ -38,13 +38,18 @@ class _FrozenDateTime(datetime):
 
     On SQLite ``created_at`` round-trips as a naive datetime, but the task
     computes ``thirty_days_ago`` with ``datetime.now(tz=timezone.utc)`` (aware),
-    so the comparison raises ``TypeError``. Freezing now() to a naive value keeps
-    both sides naive — matching the behavior on a tz-consistent DB (Postgres).
+    so the comparison raises ``TypeError``. Returning a naive value keeps both
+    sides naive — matching the behavior on a tz-consistent DB (Postgres).
+
+    Anchored to the ACTUAL current time (naive UTC), NOT a hardcoded date, so the
+    relative offsets in the test data (``days_ago=...``) always mean what they
+    say regardless of the calendar date the suite runs on. A hardcoded date made
+    this test flaky once real time drifted past it.
     """
 
     @classmethod
     def now(cls, tz=None):  # noqa: D401 - signature match
-        return datetime(2026, 7, 5, 12, 0, 0)
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @pytest.fixture
