@@ -257,3 +257,8 @@ class PaginatedResponse(BaseModel, Generic[T]):
     skip: int = Field(description="Number of records skipped")
     limit: int = Field(description="Maximum records returned per page")
     has_more: bool = Field(description="Whether more records exist beyond this page")
+    # Optional per-status counts (used by the invoice list filter chips). None on
+    # endpoints that don't compute them.
+    status_counts: dict[str, int] | None = Field(
+        default=None, description="Counts per status across all matching records"
+    )

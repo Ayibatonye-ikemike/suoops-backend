@@ -244,6 +244,8 @@ def list_invoices(
     invoice_type: str | None = None,  # Optional filter: "revenue", "expense", or None for all
     start_date: str | None = None,  # Optional date filter (YYYY-MM-DD)
     end_date: str | None = None,  # Optional date filter (YYYY-MM-DD)
+    status: str | None = None,  # Optional status filter (server-side, spans all pages)
+    search: str | None = None,  # Optional free-text search (id / amount / customer)
     skip: int = 0,
     limit: int = 50,
 ):
@@ -276,14 +278,26 @@ def list_invoices(
         limit=limit,
         start_date=parsed_start,
         end_date=parsed_end,
+        status=status,
+        search=search,
     )
-    
+    # Per-status counts (across all pages) so the filter chips stay accurate even
+    # when the current view is filtered/paginated.
+    status_counts = svc.count_invoices_by_status(
+        data_owner_id,
+        invoice_type=invoice_type,
+        start_date=parsed_start,
+        end_date=parsed_end,
+        search=search,
+    )
+
     return schemas.PaginatedResponse[schemas.InvoiceOut](
         items=invoices,
         total=total,
         skip=skip,
         limit=limit,
         has_more=(skip + limit) < total,
+        status_counts=status_counts,
     )
 
 
