@@ -430,6 +430,7 @@ class StorefrontInsightsOut(BaseModel):
     disputes: int = 0
     restock_requests: int = 0
     top_products: list[StorefrontTopProduct] = []
+    top_products_total: int = 0
 
 
 @router.get("/storefront-insights", response_model=StorefrontInsightsOut)
@@ -439,6 +440,7 @@ def get_storefront_insights(
     db: DbDep,
     period: str = Query("30d", pattern="^(7d|30d|90d|1y|all)$"),
     currency: str = Query("NGN", pattern="^(NGN|USD)$"),
+    top_limit: int = Query(5, ge=1, le=100),
 ):
     """Storefront performance: views, orders, GMV, ratings, top products, demand.
 
@@ -451,7 +453,7 @@ def get_storefront_insights(
     start_date, end_date = get_date_range(period)
     conversion_rate = get_conversion_rate(currency)
     result = calculate_storefront_insights(
-        db, data_owner_id, start_date, end_date, conversion_rate
+        db, data_owner_id, start_date, end_date, conversion_rate, top_limit=top_limit
     )
     result["period"] = period
     return result

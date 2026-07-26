@@ -476,6 +476,7 @@ def calculate_storefront_insights(
     start_date: date,
     end_date: date,
     conversion_rate: Decimal,
+    top_limit: int = 5,
 ) -> dict:
     """Storefront performance: views, orders, GMV, ratings, top products, demand.
 
@@ -569,6 +570,7 @@ def calculate_storefront_insights(
     ) or 0
 
     # ── Top products (units + revenue from paid orders in the period) ──
+    top_limit = max(1, min(int(top_limit or 5), 100))
     top_rows = (
         db.query(
             models.InvoiceLine.description.label("name"),
@@ -587,9 +589,23 @@ def calculate_storefront_insights(
         )
         .group_by(models.InvoiceLine.description)
         .order_by(func.sum(models.InvoiceLine.quantity).desc())
-        .limit(5)
+        .limit(top_limit)
         .all()
     )
+    # Total DISTINCT products sold in the period, so the UI knows whether there
+    # are more beyond what it's showing (drives a "Show all" control).
+    top_products_total = (
+        db.query(func.count(func.distinct(models.InvoiceLine.description)))
+        .join(models.Invoice, models.InvoiceLine.invoice_id == models.Invoice.id)
+        .join(Escrow, Escrow.invoice_id == models.Invoice.id)
+        .filter(
+            Escrow.seller_id == user_id,
+            Escrow.status.in_(PAID),
+            Escrow.created_at >= start_dt,
+            Escrow.created_at <= end_dt,
+        )
+        .scalar()
+    ) or 0
     top_products = [
         {
             "name": r.name,
@@ -623,6 +639,7 @@ def calculate_storefront_insights(
         "disputes": int(row.disputes or 0),
         "restock_requests": int(restock_requests),
         "top_products": top_products,
+        "top_products_total": int(top_products_total),
     }
 
 
