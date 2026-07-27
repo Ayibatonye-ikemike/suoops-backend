@@ -448,15 +448,25 @@ def test_release_uses_collecting_rail(monkeypatch):
 
 
 def test_next_settlement_after_is_next_morning():
-    """Payouts settle T+1: the daily 07:00 UTC run on the WAT day after payment."""
-    paid = dt.datetime(2026, 7, 10, 13, 0, tzinfo=dt.timezone.utc)  # 2pm WAT
+    """Payouts settle T+1 BUSINESS day: the 07:00 UTC run on the next weekday.
+
+    Weekends are skipped because the provider's own T+1 settlement doesn't run
+    Sat/Sun — paying out then would draw on funds that haven't landed yet.
+    """
+    # Wednesday 2pm WAT -> Thursday 07:00 UTC.
+    paid = dt.datetime(2026, 7, 8, 13, 0, tzinfo=dt.timezone.utc)
     assert es.next_settlement_after(paid) == dt.datetime(
-        2026, 7, 11, 7, 0, tzinfo=dt.timezone.utc
+        2026, 7, 9, 7, 0, tzinfo=dt.timezone.utc
     )
-    # A late-night WAT payment still settles the very next morning.
-    paid2 = dt.datetime(2026, 7, 10, 22, 30, tzinfo=dt.timezone.utc)  # 11:30pm WAT
+    # A late-night WAT payment still settles the very next business morning.
+    paid2 = dt.datetime(2026, 7, 8, 22, 30, tzinfo=dt.timezone.utc)
     assert es.next_settlement_after(paid2) == dt.datetime(
-        2026, 7, 11, 7, 0, tzinfo=dt.timezone.utc
+        2026, 7, 9, 7, 0, tzinfo=dt.timezone.utc
+    )
+    # A FRIDAY payment skips the weekend -> Monday 07:00 UTC.
+    friday = dt.datetime(2026, 7, 10, 13, 0, tzinfo=dt.timezone.utc)
+    assert es.next_settlement_after(friday) == dt.datetime(
+        2026, 7, 13, 7, 0, tzinfo=dt.timezone.utc
     )
 
 

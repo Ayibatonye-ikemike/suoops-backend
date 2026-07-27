@@ -716,6 +716,12 @@ class StorefrontOrderEscrow(Base):
     """
 
     __tablename__ = "storefront_order_escrow"
+    __table_args__ = (
+        # Trust & Safety queue: filter by status, order by id desc (paginated).
+        Index("ix_escrow_status_id", "status", "id"),
+        # Auto-release worker: scan held orders due for settlement.
+        Index("ix_escrow_status_release", "status", "release_due_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # The storefront order this hold belongs to (one-to-one with the invoice).

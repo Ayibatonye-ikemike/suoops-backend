@@ -123,12 +123,12 @@ def test_payout_status_live_poll_normalizes_successful(monkeypatch):
         db.close()
 
 
-def test_high_value_resolve_requires_stepup_otp():
-    """A refund/release above the step-up threshold is rejected without an OTP."""
+def test_resolve_always_requires_stepup_otp():
+    """EVERY refund/release (even a small amount) is rejected without an OTP."""
     client = TestClient(app)
     db = next(get_db())
     admin = _admin(db)
-    esc = _order(db, status="held", gross_kobo=20_000_000)  # ₦200k > threshold
+    esc = _order(db, status="held", gross_kobo=300000)  # ₦3,000 (small)
     app.dependency_overrides[get_current_admin] = lambda: admin
     try:
         r = client.post(
@@ -176,6 +176,11 @@ def test_retry_payout_resends_on_correct_rail_and_finalizes(monkeypatch):
 
     monkeypatch.setattr(escrow_mod, "_collector_for_charge", lambda db, ref: "flutterwave")
     monkeypatch.setattr(payouts, "get_payout_provider_named", lambda name: _FW())
+    # OTP step-up is exercised separately; bypass it here to focus on the
+    # retry/reconcile behavior.
+    import app.api.routes_admin as routes_admin
+
+    monkeypatch.setattr(routes_admin, "_require_money_stepup", lambda *a, **k: None)
     app.dependency_overrides[get_current_admin] = lambda: admin
     try:
         r = client.post(f"/admin/disputes/{esc.id}/retry-payout")

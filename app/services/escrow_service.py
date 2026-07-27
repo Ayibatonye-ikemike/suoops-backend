@@ -238,16 +238,20 @@ _WAT = dt.timezone(dt.timedelta(hours=1))
 def next_settlement_after(paid_at: dt.datetime) -> dt.datetime:
     """Earliest time a payout may execute for a payment made at ``paid_at``.
 
-    Sellers settle on a T+1 cadence: the daily settlement run (07:00 UTC / 08:00
-    WAT) on the WAT day AFTER the payment. By then Flutterwave's own T+1
-    settlement has landed, so the payout is funded by settled collections, never
-    same-day float. Returns a tz-aware UTC datetime.
+    Sellers settle on a T+1 **business-day** cadence: the daily settlement run
+    (07:00 UTC / 08:00 WAT) on the next BUSINESS day after the payment. Weekends
+    are skipped because the collection provider's own T+1 settlement doesn't run
+    Sat/Sun — a Friday order's funds only land in our balance on Monday, so
+    paying out Saturday would draw on money that hasn't settled yet (stuck
+    "processing"). Returns a tz-aware UTC datetime.
     """
     if paid_at.tzinfo is None:
         paid_at = paid_at.replace(tzinfo=dt.timezone.utc)
     hour = settings.ESCROW_SETTLEMENT_HOUR_UTC
-    # The settlement run always fires on the WAT calendar day after the payment.
-    wat_day = (paid_at.astimezone(_WAT) + dt.timedelta(days=1)).date()
+    # Next BUSINESS day (skips Sat/Sun) in WAT — matches the provider's T+1
+    # business-day settlement so we never pay out before the funds have landed.
+    wat_next_biz = add_business_days(paid_at.astimezone(_WAT), 1)
+    wat_day = wat_next_biz.date()
     run_utc = dt.datetime.combine(wat_day, dt.time(hour=hour), tzinfo=dt.timezone.utc)
     # Guard: never before the payment itself (paranoia around DST-free WAT).
     return max(run_utc, paid_at + dt.timedelta(hours=1))

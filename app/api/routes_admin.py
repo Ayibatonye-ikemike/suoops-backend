@@ -630,7 +630,7 @@ def get_referral_payouts(
     """
     import re
 
-    from app.models.referral_models import ReferralReward, RewardStatus
+    from app.models.referral_models import ReferralReward
 
     log_audit_event("admin.referrals.payouts", user_id=admin_user.id, month=month, year=year)
 
@@ -806,7 +806,7 @@ def create_influencer(
     """Create a new influencer partnership linked to an existing user account."""
     import re
 
-    from app.models.referral_models import ReferralCode, Referral, ReferralStatus, ReferralType, generate_referral_code
+    from app.models.referral_models import ReferralCode, generate_referral_code
 
     log_audit_event("admin.influencer.create", user_id=admin_user.id, slug=payload.custom_slug)
 
@@ -919,7 +919,7 @@ def list_influencers(
 
     from app.models.referral_models import (
         Referral, ReferralCode, ReferralReward,
-        ReferralStatus, ReferralType, RewardStatus,
+        ReferralType,
     )
 
     log_audit_event("admin.influencer.list", user_id=admin_user.id)
@@ -984,11 +984,6 @@ def list_influencers(
 
         # Total commission earned (sum of all reward descriptions with amounts)
         total_commission = 0
-        rewards = (
-            db.query(ReferralReward)
-            .filter(ReferralReward.user_id == code.user_id)
-            .all()
-        )
         # Calculate from the commission structure
         total_commission = pro_conversions * code.commission_first
         # Add recurring commissions
@@ -2735,7 +2730,6 @@ def get_business_intelligence(
 
     now = dt.datetime.now(dt.timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    thirty_days_ago = now - dt.timedelta(days=30)
 
     excluded_ids = _excluded_metric_user_ids(db)
 
@@ -3911,7 +3905,6 @@ def purge_low_quality_accounts(
     )
 
     if dry_run:
-        zero = sum(1 for _ in candidates if not hasattr(_, "_cnt"))
         return {
             "dry_run": True,
             "would_delete": len(candidates),
@@ -5456,15 +5449,13 @@ def _require_super_admin(admin_user) -> None:
 
 
 def _require_money_stepup(admin_user, amount_naira: float, otp: str | None) -> None:
-    """Require a fresh step-up OTP for money moves above the configured threshold.
+    """Require a fresh step-up OTP for EVERY admin money move (release/refund).
 
-    Defends against a stolen admin session/cookie moving large sums: even with a
-    valid session, a big refund/release needs a code sent to the admin's email.
+    Defends against a stolen admin session/cookie moving funds: even with a valid
+    session, any refund/release needs a code sent to the admin's email. Applies to
+    all amounts (no low-value bypass) so a hijacked session can't script many
+    small payouts/refunds to drain funds.
     """
-    from app.core.config import settings
-
-    if amount_naira < settings.ESCROW_ADMIN_STEPUP_NAIRA:
-        return
     email = getattr(admin_user, "email", None)
     from app.services.otp_service import OTPService
 
