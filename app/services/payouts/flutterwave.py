@@ -32,6 +32,16 @@ _fw_bank_cache: dict[str, str] = {}
 _fw_bank_cache_at: float = 0.0
 _BANK_CACHE_TTL = 24 * 60 * 60  # 24h
 
+# Short-lived {reference -> normalized status} map of RECENT transfers. FW v3 has
+# no get-by-reference, so we page through recent transfers once and reuse the map
+# for a burst of status checks (e.g. reconciling a whole business's held orders)
+# instead of re-scanning per order. Successful is terminal, so a brief cache is
+# safe; a not-yet-cached success just confirms on the next reconcile pass.
+_fw_transfer_cache: dict[str, str] = {}
+_fw_transfer_cache_at: float = 0.0
+_TRANSFER_CACHE_TTL = 20  # seconds
+_TRANSFER_MAX_PAGES = 40  # scan deep enough to find same-day transfers
+
 
 def _normalize_bank_name(name: str) -> str:
     return "".join(ch for ch in name.lower() if ch.isalnum())
@@ -240,11 +250,23 @@ class FlutterwavePayoutProvider(PayoutProvider):
         )
 
     def transfer_status(self, reference: str) -> str:
-        """Normalized disbursement status. FW v3 has no get-by-reference, so scan
-        the first pages of recent transfers for a matching reference."""
+        """Normalized disbursement status. FW v3 has no get-by-reference, so we
+        build a {reference -> status} map from recent transfers (paged deeply and
+        briefly cached) and look this reference up in it. Returns ``unknown`` only
+        when the reference truly isn't among recent transfers."""
+        return self._recent_transfer_map().get(reference, "unknown")
+
+    def _recent_transfer_map(self) -> dict[str, str]:
+        global _fw_transfer_cache, _fw_transfer_cache_at
+
+        now = time.time()
+        if _fw_transfer_cache and (now - _fw_transfer_cache_at) < _TRANSFER_CACHE_TTL:
+            return _fw_transfer_cache
+
+        mapping: dict[str, str] = {}
         try:
-            with self._http_client(15) as client:
-                for page in (1, 2, 3):
+            with self._http_client(20) as client:
+                for page in range(1, _TRANSFER_MAX_PAGES + 1):
                     resp = client.get(
                         f"{self._base()}/v3/transfers",
                         headers=self._headers(),
@@ -252,11 +274,17 @@ class FlutterwavePayoutProvider(PayoutProvider):
                     )
                     data = resp.json()
                     rows = data.get("data") or []
-                    for t in rows:
-                        if t.get("reference") == reference:
-                            return _normalize_transfer_status(t.get("status"))
                     if not rows:
                         break
-        except Exception:  # noqa: BLE001 — transport error → indeterminate
-            return "unknown"
-        return "unknown"
+                    for t in rows:
+                        ref = t.get("reference")
+                        # First (most recent) status for a reference wins.
+                        if ref and ref not in mapping:
+                            mapping[ref] = _normalize_transfer_status(t.get("status"))
+        except Exception:  # noqa: BLE001 — transport error → keep last-known map
+            return _fw_transfer_cache or {}
+
+        _fw_transfer_cache = mapping
+        _fw_transfer_cache_at = now
+        return mapping
+

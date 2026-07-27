@@ -150,6 +150,8 @@ def test_flutterwave_transfer_status_scans(monkeypatch):
     import app.services.payouts.flutterwave as fw
 
     monkeypatch.setattr(settings, "FLUTTERWAVE_SECRET", "FLWSECK_test")
+    monkeypatch.setattr(fw, "_fw_transfer_cache", {})
+    monkeypatch.setattr(fw, "_fw_transfer_cache_at", 0.0)
 
     def handler(method, url, body):
         return _Resp(
