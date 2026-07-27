@@ -884,6 +884,23 @@ def get_buyer_reputation(db: Session, phone: str | None) -> "models.BuyerReputat
     return rep
 
 
+def get_buyer_reputations_bulk(db: Session, phones) -> dict[str, "models.BuyerReputation"]:
+    """Map normalized phone -> BuyerReputation for many phones in ONE query.
+
+    Read-only (no flag decay) — for admin list/queue views, so rendering N rows
+    doesn't fire N reputation queries. Decay still happens on the per-order path.
+    """
+    norm = {p for p in (_norm_phone(x) for x in phones) if p}
+    if not norm:
+        return {}
+    rows = (
+        db.query(models.BuyerReputation)
+        .filter(models.BuyerReputation.phone.in_(norm))
+        .all()
+    )
+    return {r.phone: r for r in rows}
+
+
 def record_seller_circumvention(db: Session, seller: "models.User") -> None:
     """Count a seller order-message that tried to move the deal off-platform
     (masked contact/account, or an off-platform payment push). Enough of them

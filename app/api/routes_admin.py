@@ -5207,6 +5207,12 @@ class DisputeItem(BaseModel):
 class DisputeListResponse(BaseModel):
     disputes: list[DisputeItem]
     total: int
+    # `total` is capped for scalability (huge held/released/all tabs never trigger
+    # a full billion-row COUNT). When capped, the UI shows e.g. "1000+".
+    total_capped: bool = False
+    skip: int = 0
+    limit: int = 0
+    has_more: bool = False
 
 
 def _derive_payout_state(e: "models.StorefrontOrderEscrow") -> str:
@@ -5299,13 +5305,21 @@ def list_disputes(
     db: Session = Depends(get_db),
     admin_user=Depends(get_current_admin),
     status_filter: str = Query("disputed", pattern="^(disputed|held|refunded|released|review|all)$"),
-    limit: int = Query(200, ge=1, le=ADMIN_LIST_CAP),
+    search: str | None = Query(None, max_length=120),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
 ) -> DisputeListResponse:
     """List storefront escrow orders for the Trust & Safety review queue.
 
     Defaults to open disputes; ``status_filter=review`` shows collusion/anomaly
-    holds; ``status_filter=all`` shows every escrow.
+    holds; ``status_filter=all`` shows every escrow. Paginated (skip/limit) with
+    a bounded count so the large browse tabs (held/released/all) never run a full
+    COUNT over the whole table. NOTE: 'held' orders AUTO-RELEASE on schedule via
+    the escrow worker — the tabs needing human action are 'disputed' and 'review'.
     """
+    from sqlalchemy import func as _sa_func
+    from sqlalchemy import or_ as _sa_or
+
     q = (
         db.query(models.StorefrontOrderEscrow, models.User, models.Invoice, models.Customer)
         .join(models.User, models.StorefrontOrderEscrow.seller_id == models.User.id)
@@ -5326,21 +5340,52 @@ def list_disputes(
     else:
         q = q.filter(models.StorefrontOrderEscrow.status == status_filter)
 
-    total = q.count()
-    rows = (
+    # Server-side search so an admin can find ONE specific order in a huge tab
+    # instead of paging blindly (invoice id / seller / customer).
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        q = q.filter(
+            _sa_or(
+                models.Invoice.invoice_id.ilike(like),
+                models.User.name.ilike(like),
+                models.User.business_name.ilike(like),
+                models.Customer.name.ilike(like),
+                models.Customer.phone.ilike(like),
+            )
+        )
+
+    # Bounded count: count at most _COUNT_CAP+1 rows so a billion-row held/all
+    # tab can't trigger a full-table COUNT. Shown as e.g. "1000+" when capped.
+    _COUNT_CAP = 1000
+    count_sub = q.order_by(None).limit(_COUNT_CAP + 1).subquery()
+    raw_total = db.query(_sa_func.count()).select_from(count_sub).scalar() or 0
+    total_capped = raw_total > _COUNT_CAP
+    total = min(int(raw_total), _COUNT_CAP)
+
+    # Fetch one extra row to know if there's a next page without a second query.
+    rows_plus = (
         q.order_by(desc(models.StorefrontOrderEscrow.disputed_at), desc(models.StorefrontOrderEscrow.id))
-        .limit(limit)
+        .offset(skip)
+        .limit(limit + 1)
         .all()
     )
+    has_more = len(rows_plus) > limit
+    rows = rows_plus[:limit]
 
     log_audit_event("admin.disputes.list", user_id=admin_user.id, status_filter=status_filter)
 
-    from app.services.escrow_service import get_buyer_reputation
+    from app.services.escrow_service import get_buyer_reputations_bulk
+    from app.services.escrow_service import _norm_phone
     from app.api.routes_storefront import _presign
+
+    # Batch buyer reputations in ONE query (was an N+1 per row).
+    reps = get_buyer_reputations_bulk(
+        db, [cust.phone for (_e, _s, _i, cust) in rows if cust and cust.phone]
+    )
 
     disputes = []
     for (e, seller, inv, cust) in rows:
-        rep = get_buyer_reputation(db, cust.phone) if cust else None
+        rep = reps.get(_norm_phone(cust.phone)) if cust and cust.phone else None
         disputes.append(
             DisputeItem(
                 escrow_id=e.id,
@@ -5377,7 +5422,14 @@ def list_disputes(
                 created_at=e.created_at,
             )
         )
-    return DisputeListResponse(disputes=disputes, total=total)
+    return DisputeListResponse(
+        disputes=disputes,
+        total=total,
+        total_capped=total_capped,
+        skip=skip,
+        limit=limit,
+        has_more=has_more,
+    )
 
 
 class DisputeResolveAction(BaseModel):
