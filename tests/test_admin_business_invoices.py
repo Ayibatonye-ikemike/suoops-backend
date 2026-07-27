@@ -144,3 +144,46 @@ def test_storefronts_expose_owner_contact():
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
         db.close()
+
+
+def test_business_intelligence_caps_outlier_revenue():
+    """A junk invoice above the ₦50M ceiling is excluded from total_revenue and
+    the business row is flagged has_outlier_invoice — so BI matches the platform
+    metrics' cap instead of showing billions."""
+    client = TestClient(app)
+    db = next(get_db())
+    admin = _admin(db)
+    seller = models.User(name="Outlier Biz", phone="+2349555777888")
+    db.add(seller)
+    db.commit()
+    db.refresh(seller)
+    cust = models.Customer(name="Buyer", phone="+2348123777888")
+    db.add(cust)
+    db.commit()
+    db.refresh(cust)
+    # One normal ₦5,000 paid invoice + one ₦100,000,000 junk invoice (> ₦50M cap).
+    for iid, amt, status in [("INV-OUT-1", "5000", "paid"), ("INV-OUT-2", "100000000", "pending")]:
+        db.add(
+            models.Invoice(
+                invoice_id=iid,
+                issuer_id=seller.id,
+                customer_id=cust.id,
+                amount=Decimal(amt),
+                status=status,
+                invoice_type="revenue",
+            )
+        )
+    db.commit()
+
+    app.dependency_overrides[get_current_admin] = lambda: admin
+    try:
+        r = client.get("/admin/businesses?search=Outlier%20Biz")
+        assert r.status_code == 200, r.text
+        mine = [b for b in r.json()["businesses"] if b["id"] == seller.id]
+        assert mine, "business not returned"
+        b = mine[0]
+        assert b["total_revenue"] == 5000.0  # ₦100M junk invoice excluded
+        assert b["has_outlier_invoice"] is True
+    finally:
+        app.dependency_overrides.pop(get_current_admin, None)
+        db.close()

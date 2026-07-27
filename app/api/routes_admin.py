@@ -2495,6 +2495,9 @@ class BusinessHealthItem(BaseModel):
     # Risk / Opportunity
     health_score: int  # 0-100
     risk_flags: list[str]
+    # True when a revenue invoice exceeds the ₦ ceiling (its amount is excluded
+    # from total_revenue/avg above; the flag says "this row has a junk/outlier").
+    has_outlier_invoice: bool = False
 
 
 class BusinessSummary(BaseModel):
@@ -2742,10 +2745,30 @@ def get_business_intelligence(
     db: Session = Depends(get_db),
 ):
     """Business-level intelligence — per-business health metrics."""
+    from app.core.config import settings as _settings
     from app.models.models import Invoice
 
     now = dt.datetime.now(dt.timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Same ₦-per-invoice ceiling as the platform metrics/dashboard, so a single
+    # junk invoice can't make a business show billions here while the platform
+    # totals cap it. 0 disables. Rows with an over-cap invoice get an outlier flag.
+    ceiling = _settings.METRICS_MAX_INVOICE_NAIRA or 0
+
+    # Billed revenue = revenue invoices minus abandoned storefront carts
+    # (storefront + pending), optionally capped at the ceiling.
+    _rev_billed = and_(
+        Invoice.invoice_type == "revenue",
+        or_(
+            Invoice.channel.is_(None),
+            Invoice.channel != "storefront",
+            Invoice.status != "pending",
+        ),
+    )
+    _rev_billed_capped = and_(_rev_billed, Invoice.amount <= ceiling) if ceiling > 0 else _rev_billed
+    _rev_any = Invoice.invoice_type == "revenue"
+    _rev_any_capped = and_(_rev_any, Invoice.amount <= ceiling) if ceiling > 0 else _rev_any
 
     excluded_ids = _excluded_metric_user_ids(db)
 
@@ -2773,22 +2796,8 @@ def get_business_intelligence(
             func.count(case((Invoice.status == "pending", 1))).label("pending"),
             # Invoiced revenue volume — exclude abandoned/unpaid storefront carts
             # (channel=storefront + status=pending), which are not real sales.
-            func.sum(
-                case(
-                    (
-                        and_(
-                            Invoice.invoice_type == "revenue",
-                            or_(
-                                Invoice.channel.is_(None),
-                                Invoice.channel != "storefront",
-                                Invoice.status != "pending",
-                            ),
-                        ),
-                        Invoice.amount,
-                    ),
-                    else_=0,
-                )
-            ).label("revenue"),
+            # Capped per-invoice (ceiling) so a junk mega-invoice can't inflate it.
+            func.sum(case((_rev_billed_capped, Invoice.amount), else_=0)).label("revenue"),
             func.sum(
                 case((Invoice.invoice_type == "expense", Invoice.amount), else_=0)
             ).label("expenses"),
@@ -2806,9 +2815,11 @@ def get_business_intelligence(
                     )
                 )
             ).label("this_month"),
-            func.avg(
-                case((Invoice.invoice_type == "revenue", Invoice.amount))
-            ).label("avg_value"),
+            func.avg(case((_rev_any_capped, Invoice.amount))).label("avg_value"),
+            # Count of over-cap revenue invoices → flag the row as an outlier.
+            func.count(
+                case((and_(_rev_any, Invoice.amount > ceiling), 1))
+            ).label("outliers") if ceiling > 0 else func.count(case((and_(_rev_any, Invoice.id.is_(None)), 1))).label("outliers"),
             func.count(
                 case(
                     (
@@ -2867,6 +2878,7 @@ def get_business_intelligence(
         paid_rev = inv.paid_revenue if inv else 0
         total_rev_count = inv.total_revenue_count if inv else 0
         last_inv = inv.last_invoice if inv else None
+        has_outlier = bool(inv and (getattr(inv, "outliers", 0) or 0) > 0)
         customers = cust_map.get(u.id, 0)
 
         collection = (
@@ -2966,6 +2978,7 @@ def get_business_intelligence(
             avg_invoice_value=avg_val,
             health_score=score,
             risk_flags=flags,
+            has_outlier_invoice=has_outlier,
         )
 
         items.append(item)
