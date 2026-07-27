@@ -6004,6 +6004,7 @@ class BulkRetryResult(BaseModel):
     in_flight: int  # already pending on the rail — left untouched
     skipped: int    # not eligible (under review / zero payout)
     failed: int
+    errors: list[str] = []  # distinct provider failure reasons (why some failed)
     message: str
 
 
@@ -6084,6 +6085,7 @@ def retry_held_payouts_for_business(
     # Pass 2 — ONE consolidated transfer per (seller, rail): the seller sees a
     # single credit and we pay one fee, instead of one transfer per order.
     retried = transfers = 0
+    errors: list[str] = []
     for rail, group in to_batch.items():
         try:
             rel = release_seller_batch(
@@ -6092,9 +6094,14 @@ def retry_held_payouts_for_business(
             released += rel
             retried += len(group) - rel  # queued/settling — confirms next run
             transfers += 1
-        except EscrowError:
+        except EscrowError as exc:
             db.rollback()
             failed += len(group)
+            # Surface WHY (e.g. 'Flutterwave payout balance too low: have ₦X,
+            # need ₦Y') so the admin knows it's a provider/balance issue, not a bug.
+            reason = str(exc)
+            if reason not in errors:
+                errors.append(reason)
 
     skipped = len(held) - len(payable)
     log_audit_event(
@@ -6123,6 +6130,8 @@ def retry_held_payouts_for_business(
     if skipped:
         parts.append(f"{skipped} skipped (under review/empty)")
     message = ", ".join(parts) or "No held orders to retry."
+    if errors:
+        message += " — " + "; ".join(errors[:3])
     return BulkRetryResult(
         seller_id=user_id,
         total_held=len(held),
@@ -6132,6 +6141,7 @@ def retry_held_payouts_for_business(
         in_flight=in_flight,
         skipped=skipped,
         failed=failed,
+        errors=errors,
         message=message,
     )
 
