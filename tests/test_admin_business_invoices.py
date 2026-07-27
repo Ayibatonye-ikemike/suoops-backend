@@ -134,6 +134,13 @@ def test_storefronts_expose_owner_contact():
         s = mine[0]
         assert s["owner_phone"] == "+2349555111222"
         assert s["owner_email"] == "owner@example.com"
+        # Bare store (no logo/pay/product/description/location) → not-live reasons.
+        reasons = s["not_live_reasons"]
+        assert "No logo" in reasons
+        assert "Online payments not set up" in reasons
+        assert "No store description" in reasons
+        assert "No location set" in reasons
+        assert any("shopper-ready product" in r for r in reasons)
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
         db.close()

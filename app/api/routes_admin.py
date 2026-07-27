@@ -4486,6 +4486,8 @@ class StorefrontMetricItem(BaseModel):
     # Derived
     quality_score: int  # 0-100
     risk_flags: list[str]
+    # Exactly which live-search requirements this store is missing (empty = live).
+    not_live_reasons: list[str]
 
 
 class StorefrontListResponse(BaseModel):
@@ -4543,6 +4545,23 @@ def list_storefronts(
 
     owners = q.limit(ADMIN_LIST_CAP).all()
     owner_ids = [u.id for u in owners]
+
+    # Owners with at least one SHOPPER-READY product (active + photo + description)
+    # — the exact rule the public live-search gate uses. Distinct from "active"
+    # products (which may lack a photo/description and so aren't listable).
+    from app.api.routes_storefront import _listable_product_conditions
+
+    listable_owner_ids: set[int] = set()
+    if owner_ids:
+        listable_owner_ids = {
+            r[0]
+            for r in (
+                db.query(Product.user_id)
+                .filter(Product.user_id.in_(owner_ids), *_listable_product_conditions())
+                .distinct()
+                .all()
+            )
+        }
 
     # ── Aggregate products per owner ──
     prod_map: dict[int, Any] = {}
@@ -4633,6 +4652,27 @@ def list_storefronts(
         if u.flagged_for_review:
             flags.append("flagged_owner")
 
+        # ── Exactly why this store is NOT live in public search ──
+        # Mirrors live_storefronts_query one-for-one so the reasons always match
+        # what the marketplace actually gates on. Empty list == live.
+        has_live_description = bool((u.storefront_description or "").strip())
+        has_live_location = bool((u.storefront_state or "").strip())
+        not_live_reasons: list[str] = []
+        if not u.storefront_enabled:
+            not_live_reasons.append("Storefront turned off")
+        if u.store_status != "active":
+            not_live_reasons.append(f"Store {u.store_status}")
+        if not has_logo:
+            not_live_reasons.append("No logo")
+        if not online:
+            not_live_reasons.append("Online payments not set up")
+        if u.id not in listable_owner_ids:
+            not_live_reasons.append("No shopper-ready product (needs a photo + description)")
+        if not has_live_description:
+            not_live_reasons.append("No store description")
+        if not has_live_location:
+            not_live_reasons.append("No location set")
+
         # ── Quality score (0-100) ──
         score = 50
         score += 15 if products_active >= 3 else (5 if products_active >= 1 else -20)
@@ -4683,6 +4723,7 @@ def list_storefronts(
                 owner_email=u.email,
                 quality_score=score,
                 risk_flags=flags,
+                not_live_reasons=not_live_reasons,
             )
         )
 
