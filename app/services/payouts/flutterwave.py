@@ -120,6 +120,16 @@ class FlutterwavePayoutProvider(PayoutProvider):
     def _base(self) -> str:
         return settings.FLUTTERWAVE_BASE.rstrip("/")
 
+    def _http_client(self, timeout: int) -> httpx.Client:
+        """httpx client for Flutterwave calls, routed through the static-IP proxy
+        when configured. FW only bypasses transfer 2FA from a WHITELISTED IP, so
+        on dynamic Render IPs the proxy (a cheap static-IP egress) is what makes
+        payouts work. No proxy set → direct connection (unchanged behaviour)."""
+        proxy = settings.FLUTTERWAVE_TRANSFER_PROXY
+        if proxy:
+            return httpx.Client(timeout=timeout, proxy=proxy)
+        return httpx.Client(timeout=timeout)
+
     def _headers(self) -> dict[str, str]:
         if not settings.FLUTTERWAVE_SECRET:
             raise PayoutError("FLUTTERWAVE_SECRET is not configured")
@@ -133,7 +143,7 @@ class FlutterwavePayoutProvider(PayoutProvider):
 
         now = time.time()
         if not _fw_bank_cache or (now - _fw_bank_cache_at) > _BANK_CACHE_TTL:
-            with httpx.Client(timeout=20) as client:
+            with self._http_client(20) as client:
                 resp = client.get(f"{self._base()}/v3/banks/NG", headers=self._headers())
             data = resp.json()
             if data.get("status") != "success":
@@ -156,7 +166,7 @@ class FlutterwavePayoutProvider(PayoutProvider):
     def _available_balance_naira(self) -> float | None:
         """Available NGN payout-wallet balance in Naira, or None if unreadable."""
         try:
-            with httpx.Client(timeout=15) as client:
+            with self._http_client(15) as client:
                 resp = client.get(
                     f"{self._base()}/v3/balances/NGN", headers=self._headers()
                 )
@@ -202,7 +212,7 @@ class FlutterwavePayoutProvider(PayoutProvider):
             )
 
         try:
-            with httpx.Client(timeout=20) as client:
+            with self._http_client(20) as client:
                 resp = client.post(
                     f"{self._base()}/v3/transfers",
                     headers=self._headers(),
@@ -233,7 +243,7 @@ class FlutterwavePayoutProvider(PayoutProvider):
         """Normalized disbursement status. FW v3 has no get-by-reference, so scan
         the first pages of recent transfers for a matching reference."""
         try:
-            with httpx.Client(timeout=15) as client:
+            with self._http_client(15) as client:
                 for page in (1, 2, 3):
                     resp = client.get(
                         f"{self._base()}/v3/transfers",

@@ -227,6 +227,13 @@ class BaseAppSettings(BaseSettings):
     # ESCROW_PAYOUT_PROVIDER="flutterwave".
     FLUTTERWAVE_SECRET: str | None = None
     FLUTTERWAVE_BASE: str = "https://api.flutterwave.com"
+    # Static-IP egress proxy for Flutterwave payout calls. FW only bypasses
+    # transfer 2FA (OTP/PIN) when the request comes from a WHITELISTED IP. On
+    # Render's dynamic shared IPs that's impossible, so route FW payout traffic
+    # through a cheap static-IP forward proxy (e.g. a $5 VPS running tinyproxy,
+    # or QuotaGuard/Fixie) and whitelist THAT proxy's IP on Flutterwave. Format:
+    # "http://user:pass@host:port". Unset = direct (no proxy). Only affects FW.
+    FLUTTERWAVE_TRANSFER_PROXY: str | None = None
     # Secret hash configured in the Flutterwave dashboard (Settings → Webhooks).
     # Flutterwave echoes it in the `verif-hash` header; we reject any webhook whose
     # header doesn't match. Required for the Flutterwave collection webhook.
