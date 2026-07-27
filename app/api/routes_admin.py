@@ -5542,8 +5542,12 @@ def _require_money_stepup(admin_user, amount_naira: float, otp: str | None) -> N
     if not otp or not email or not OTPService().verify_otp(
         email, otp, purpose=_ADMIN_MONEY_OTP_PURPOSE
     ):
+        # 428 (Precondition Required), NOT 401 — a missing step-up code means
+        # "provide OTP", not "your session is invalid". The admin UI logs out on
+        # 401, so using 401 here would nuke the session the moment a payout is
+        # attempted. 428 lets the client run the OTP flow without logging out.
         raise HTTPException(
-            status_code=401,
+            status_code=428,
             detail=(
                 f"This action moves ₦{amount_naira:,.0f}. Request a confirmation "
                 "code (step-up) and include it to proceed."

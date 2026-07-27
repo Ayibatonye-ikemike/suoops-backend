@@ -136,7 +136,7 @@ def test_resolve_always_requires_stepup_otp():
             json={"action": "release"},
             headers={"Authorization": "Bearer test"},
         )
-        assert r.status_code == 401, r.text
+        assert r.status_code == 428, r.text
         assert "code" in r.json()["detail"].lower()
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
