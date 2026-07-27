@@ -602,6 +602,191 @@ def release_escrow(db: Session, escrow: "models.StorefrontOrderEscrow", *, reaso
     raise EscrowError(f"Transfer failed for escrow {escrow.id}: {result.message}")
 
 
+def payout_rail_for(db: Session, escrow: "models.StorefrontOrderEscrow") -> str:
+    """The payout provider name :func:`release_escrow` would use for this order —
+    the rail that COLLECTED it (funds sit there), else the configured default.
+
+    Used to group a seller's due orders by rail before a consolidated payout, so
+    a batch only ever sums orders that can be paid from the same balance.
+    """
+    from app.services.payouts import get_payout_provider, get_payout_provider_named
+
+    if escrow.charge_reference:
+        return get_payout_provider_named(_collector_for_charge(db, escrow.charge_reference)).name
+    return get_payout_provider().name
+
+
+def release_seller_batch(
+    db: Session,
+    escrows: list["models.StorefrontOrderEscrow"],
+    *,
+    provider_name: str,
+    reason: str = "auto",
+) -> int:
+    """Pay a seller ONE consolidated transfer for several due held orders that all
+    collected on the SAME rail (``provider_name``).
+
+    Mirrors :func:`release_escrow`'s idempotent state machine, but sums the
+    payouts and sends a single provider transfer whose reference is stamped on
+    EVERY order in the batch — so the seller sees one credit instead of dozens and
+    we pay one transfer fee. Same money-safety guarantees as the per-order path:
+
+    * Row-locks the whole set and re-reads status under the lock.
+    * Reconciles any already-initiated transfer FIRST (grouped by its shared
+      reference) and never re-sends while one is in flight; ``unknown`` waits.
+    * Honors the T+1 ``settle_at`` gate and the seller payout freeze.
+    * Records intent (reference + rail) on all rows BEFORE the provider call, so a
+      crash is recoverable and no reference is ever reconciled cross-rail.
+    * Finalizes a batch only once the transfer is confirmed ``successful``.
+
+    Returns the number of orders actually released in this run (0 while a payout is
+    in flight / not yet settle-eligible). Raises EscrowError on a genuine failure
+    so the caller can retry later (the rows stay 'held').
+    """
+    from app.services.payouts import PayoutError, get_payout_provider_named
+
+    if not escrows:
+        return 0
+    ids = [e.id for e in escrows if getattr(e, "id", None) is not None]
+    if not ids:
+        return 0
+
+    # Serialize against the per-order worker / admin actions / retries.
+    locked = (
+        db.query(models.StorefrontOrderEscrow)
+        .filter(models.StorefrontOrderEscrow.id.in_(ids))
+        .with_for_update()
+        .all()
+    )
+    now = dt.datetime.now(dt.timezone.utc)
+
+    # Only genuinely releasable rows: still held, not flagged, something to pay.
+    eligible = [
+        e
+        for e in locked
+        if e.status == "held" and not e.held_for_review and (e.payout_kobo or 0) > 0
+    ]
+    if not eligible:
+        return 0
+
+    seller = db.query(models.User).filter(models.User.id == eligible[0].seller_id).first()
+    if not seller:
+        raise EscrowError(f"Seller {eligible[0].seller_id} not found for batch payout")
+
+    frozen = seller.payout_frozen_until
+    if frozen is not None:
+        if frozen.tzinfo is None:
+            frozen = frozen.replace(tzinfo=dt.timezone.utc)
+        if frozen > now:
+            raise EscrowError(
+                f"Payouts frozen for seller {seller.id} until {frozen.isoformat()}"
+            )
+
+    provider = get_payout_provider_named(provider_name)
+
+    def _finalize(group: list["models.StorefrontOrderEscrow"], ref: str) -> None:
+        for e in group:
+            e.status = "released"
+            e.released_at = dt.datetime.now(dt.timezone.utc)
+        db.commit()
+        logger.info(
+            "Escrow batch released via %s — %s kobo to seller %s over %d orders (ref=%s)",
+            provider.name,
+            sum(int(e.payout_kobo) for e in group),
+            seller.id,
+            len(group),
+            ref,
+        )
+
+    released = 0
+
+    # ── 1. Reconcile any already-initiated transfers first ────────────────
+    # Group stamped rows by their shared reference. A batch sent on a prior run
+    # (or a leftover per-order ESCROWREL ref) is confirmed/cleared before we send
+    # anything new, so an in-flight transfer is never double-paid. A rail change
+    # voids the old reference (unknown on the new provider) → treat as fresh.
+    stamped: dict[str, list["models.StorefrontOrderEscrow"]] = {}
+    fresh: list["models.StorefrontOrderEscrow"] = []
+    for e in eligible:
+        ref = e.transfer_reference
+        rail_changed = bool(ref and e.transfer_provider and e.transfer_provider != provider.name)
+        if ref and not rail_changed:
+            stamped.setdefault(ref, []).append(e)
+        else:
+            if rail_changed:
+                e.transfer_reference = None
+            fresh.append(e)
+
+    for ref, group in stamped.items():
+        prior = provider.transfer_status(ref)
+        if prior == "successful":
+            _finalize(group, ref)
+            released += len(group)
+        elif prior in ("pending", "unknown"):
+            continue  # in flight / indeterminate — wait for a later run
+        else:  # failed → burn the reference, retry these in the fresh batch
+            for e in group:
+                e.transfer_reference = None
+            fresh.extend(group)
+
+    if not fresh:
+        db.commit()
+        return released
+
+    # ── 2. Settlement gate — only pay orders whose collection has settled ──
+    payable: list["models.StorefrontOrderEscrow"] = []
+    for e in fresh:
+        settle_at = getattr(e, "settle_at", None)
+        if settle_at is not None:
+            if settle_at.tzinfo is None:
+                settle_at = settle_at.replace(tzinfo=dt.timezone.utc)
+            if settle_at > now:
+                continue  # cleared but not settle-eligible — pay in a later run
+        payable.append(e)
+
+    if not payable:
+        db.commit()
+        return released
+
+    # ── 3. One transfer for the summed payout, stamped on every order ─────
+    total_kobo = sum(int(e.payout_kobo) for e in payable)
+    batch_ref = (
+        f"ESCROWBATCH-{seller.id}-{min(e.id for e in payable)}-"
+        f"{int(now.timestamp())}-{secrets.token_hex(3)}"
+    )
+    payout_reason = f"Storefront payout ({reason}) — {len(payable)} orders for seller {seller.id}"
+
+    # Record intent on ALL rows before the provider call (crash-recoverable).
+    for e in payable:
+        e.transfer_reference = batch_ref
+        e.transfer_provider = provider.name
+    db.commit()
+
+    try:
+        result = provider.transfer(
+            db,
+            seller=seller,
+            amount_kobo=total_kobo,
+            reference=batch_ref,
+            reason=payout_reason,
+        )
+    except PayoutError as exc:  # network/transport failure → retry later
+        raise EscrowError(f"Batch transfer request failed: {exc}") from exc
+
+    status = (result.status or "").lower()
+    if status == "successful" or provider.transfer_exists(batch_ref):
+        _finalize(payable, batch_ref)
+        return released + len(payable)
+    if result.ok or status in ("pending", "queued", "new"):
+        db.commit()  # keep the stamped intent; confirm/finalize on the next run
+        return released  # accepted/in-flight — do NOT re-send
+    # Genuine failure — burn the batch reference so a later run retries cleanly.
+    for e in payable:
+        e.transfer_reference = None
+    db.commit()
+    raise EscrowError(f"Batch transfer failed for seller {seller.id}: {result.message}")
+
+
 # ── Refund (return money to the buyer) ─────────────────────────────────
 
 def _collector_for_charge(db: Session, charge_reference: str) -> str:

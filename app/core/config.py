@@ -218,6 +218,11 @@ class BaseAppSettings(BaseSettings):
     # settle through the issuer's Paystack subaccount. Refunds follow the
     # provider that collected each order.
     ESCROW_COLLECTOR_PROVIDER: str = "paystack"
+    # Consolidate a seller's multiple due held orders into ONE payout transfer
+    # per settlement run (fewer provider fees; the seller sees a single credit
+    # instead of dozens). OFF by default — enable only after verifying batched
+    # release on staging, since it changes the money path.
+    ESCROW_BATCH_PAYOUTS: bool = False
     # Flutterwave (alternative payout rail). Off unless the secret is set AND
     # ESCROW_PAYOUT_PROVIDER="flutterwave".
     FLUTTERWAVE_SECRET: str | None = None

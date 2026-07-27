@@ -30,6 +30,7 @@ def release_due_escrow_orders(self: Task) -> dict[str, Any]:
     """Release all 'held' escrow orders whose window has elapsed."""
     from sqlalchemy import and_, or_
 
+    from app.core.config import settings
     from app.models.models import StorefrontOrderEscrow, User
     from app.services.escrow_service import release_escrow
 
@@ -79,14 +80,40 @@ def release_due_escrow_orders(self: Task) -> dict[str, Any]:
             .limit(200)
             .all()
         )
-        for escrow in due:
-            try:
-                if release_escrow(db, escrow, reason="window elapsed"):
-                    released += 1
-            except Exception as exc:  # noqa: BLE001 — keep going; retry next run
-                failed += 1
-                db.rollback()
-                logger.warning("Escrow release failed for %s: %s", escrow.id, exc)
+        if settings.ESCROW_BATCH_PAYOUTS:
+            # Consolidate each seller's due orders into ONE payout per rail — the
+            # seller sees a single credit and we pay one transfer fee. Orders must
+            # share a rail (funds sit in the collecting provider's balance), so we
+            # group by (seller, payout rail) before releasing.
+            from app.services.escrow_service import payout_rail_for, release_seller_batch
+
+            groups: dict[tuple[int, str], list[StorefrontOrderEscrow]] = {}
+            for escrow in due:
+                try:
+                    rail = payout_rail_for(db, escrow)
+                except Exception:  # noqa: BLE001 — fall back to default rail
+                    rail = "paystack"
+                groups.setdefault((escrow.seller_id, rail), []).append(escrow)
+            for (seller_id, rail), group in groups.items():
+                try:
+                    released += release_seller_batch(
+                        db, group, provider_name=rail, reason="window elapsed"
+                    )
+                except Exception as exc:  # noqa: BLE001 — keep going; retry next run
+                    failed += len(group)
+                    db.rollback()
+                    logger.warning(
+                        "Escrow batch release failed for seller %s: %s", seller_id, exc
+                    )
+        else:
+            for escrow in due:
+                try:
+                    if release_escrow(db, escrow, reason="window elapsed"):
+                        released += 1
+                except Exception as exc:  # noqa: BLE001 — keep going; retry next run
+                    failed += 1
+                    db.rollback()
+                    logger.warning("Escrow release failed for %s: %s", escrow.id, exc)
 
         # Courier orders that never reported delivery within the SLA (their
         # release_due_at cap) → flag for admin review (lost parcel / courier
