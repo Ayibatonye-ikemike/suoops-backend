@@ -2508,6 +2508,10 @@ class BusinessSummary(BaseModel):
     inactive: int  # never_invoiced OR inactive_30d
     never_invoiced: int
     upgrade_candidates: int
+    # Accounts hidden from these counts because they're configured internal/test
+    # accounts (METRICS_EXCLUDED_EMAILS). total + excluded = the raw user count,
+    # so the "313 vs 314" gap is explained rather than looking like a bug.
+    excluded_count: int = 0
 
 
 class BusinessListResponse(BaseModel):
@@ -2996,6 +3000,7 @@ def get_business_intelligence(
         ),
         never_invoiced=sum(1 for i in items if "never_invoiced" in i.risk_flags),
         upgrade_candidates=0,  # retired: no plans/upgrades under commission model
+        excluded_count=len(excluded_ids),
     )
 
     # ── Risk filter ──
