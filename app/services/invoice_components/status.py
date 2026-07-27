@@ -15,6 +15,56 @@ from app.utils.invoice_delivery import invoice_has_contact, is_online_only
 logger = logging.getLogger(__name__)
 
 
+def _manual_confirm_needs_review(db: Session, invoice: "models.Invoice") -> bool:
+    """True when a SELF 'mark as paid' on this large MANUAL invoice should be held
+    for review — i.e. the amount is over the review ceiling AND the confirming
+    account looks low-trust (flagged, brand-new, dormant, or with no prior paid
+    invoice). Gated by settings.MANUAL_CONFIRM_REVIEW_NAIRA (0 disables)."""
+    from app.core.config import settings
+
+    ceiling = settings.MANUAL_CONFIRM_REVIEW_NAIRA or 0
+    if ceiling <= 0 or float(invoice.amount or 0) <= ceiling:
+        return False
+
+    issuer = invoice.issuer or (
+        db.query(models.User).filter(models.User.id == invoice.issuer_id).first()
+    )
+    if issuer is None:
+        return True  # unknown issuer → hold to be safe
+
+    now = dt.datetime.now(dt.timezone.utc)
+
+    def _aware(v):
+        return v.replace(tzinfo=dt.timezone.utc) if (v is not None and v.tzinfo is None) else v
+
+    # Flagged for review → always hold.
+    if getattr(issuer, "flagged_for_review", False):
+        return True
+
+    # Brand-new account.
+    created = _aware(getattr(issuer, "created_at", None))
+    if created is not None and (now - created).days < settings.MANUAL_CONFIRM_MIN_ACCOUNT_AGE_DAYS:
+        return True
+
+    # Dormant (no recent login) — the ELECTRIFY pattern: big invoices then gone.
+    last_login = _aware(getattr(issuer, "last_login", None))
+    if last_login is None or (now - last_login).days > settings.MANUAL_CONFIRM_DORMANT_DAYS:
+        return True
+
+    # No prior PAID revenue invoice (this one excluded) → unproven payer.
+    prior_paid = (
+        db.query(models.Invoice.id)
+        .filter(
+            models.Invoice.issuer_id == issuer.id,
+            models.Invoice.invoice_type == "revenue",
+            models.Invoice.status == "paid",
+            models.Invoice.id != invoice.id,
+        )
+        .first()
+    )
+    return prior_paid is None
+
+
 class InvoiceStatusMixin:
     db: Session
 
@@ -25,6 +75,7 @@ class InvoiceStatusMixin:
         status: str,
         updated_by_user_id: int | None = None,
         via_online: bool = False,
+        force: bool = False,
     ) -> models.Invoice:
         if status not in {"pending", "awaiting_confirmation", "paid", "cancelled"}:
             raise InvalidInvoiceStatusError(new_status=status)
@@ -64,6 +115,26 @@ class InvoiceStatusMixin:
         if status not in allowed:
             raise ValueError(
                 f"Cannot change invoice from '{previous_status}' to '{status}'"
+            )
+
+        # ── Anti-GMV-bloat: hold a large SELF manual confirmation for review ──
+        # A low-trust account marking a big MANUAL invoice paid ITSELF (not an
+        # online payment) is the classic way junk/fake invoices bloat GMV. Block
+        # that confirmation (it stays unpaid, out of GMV) unless it's a real
+        # online payment (via_online) or a super-admin force-confirm.
+        if (
+            status == "paid"
+            and previous_status != "paid"
+            and not via_online
+            and not force
+            and invoice.invoice_type == "revenue"
+            and (invoice.channel is None or invoice.channel != "storefront")
+            and _manual_confirm_needs_review(self.db, invoice)
+        ):
+            raise ValueError(
+                "This invoice is too large to mark paid from a new or inactive "
+                "account. For your protection it's been held for review — please "
+                "contact SuoOps support to verify the payment."
             )
 
         # Offline settlement of an online-only invoice consumes a pack. The

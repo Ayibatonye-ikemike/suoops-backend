@@ -47,6 +47,23 @@ def _excluded_metric_user_ids(db: Session) -> list[int]:
     return [r[0] for r in rows]
 
 
+def _money_excluded_user_ids(db: Session) -> list[int]:
+    """User IDs to drop from platform MONEY aggregates (GMV / commission / active
+    users): the configured test accounts PLUS anyone ``flagged_for_review``.
+
+    A flagged (suspected junk/fraud) account must not inflate platform revenue,
+    so flagging one instantly removes its numbers from GMV. Flagged users still
+    appear in the admin business list — only their MONEY is excluded here."""
+    ids = set(_excluded_metric_user_ids(db))
+    flagged = (
+        db.query(models.User.id)
+        .filter(models.User.flagged_for_review.is_(True))
+        .all()
+    )
+    ids.update(r[0] for r in flagged)
+    return list(ids)
+
+
 def _exclude_users(query, column, excluded_ids: list[int]):
     """Apply a NOT-IN filter only when there are IDs to exclude (avoids an empty
     IN() clause). ``column`` is the user-id column to filter on (e.g.
@@ -1534,7 +1551,7 @@ def get_platform_metrics(
     week_start = today_start - dt.timedelta(days=today_start.weekday())
     month_start = today_start.replace(day=1)
 
-    excluded_ids = _excluded_metric_user_ids(db)
+    excluded_ids = _money_excluded_user_ids(db)
 
     # Invoice counts
     total_invoices = db.query(Invoice).count()
@@ -1747,7 +1764,7 @@ def get_metrics_summary(
     else:
         start, label = today.replace(day=1), "This month"
 
-    excluded_ids = _excluded_metric_user_ids(db)
+    excluded_ids = _money_excluded_user_ids(db)
 
     def _win(q, col):
         return q.filter(col >= start) if start is not None else q
@@ -1901,7 +1918,7 @@ def get_growth_metrics(
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = today_start.replace(day=1)
 
-    excluded_ids = _excluded_metric_user_ids(db)
+    excluded_ids = _money_excluded_user_ids(db)
 
     def _month_starts(count: int) -> list[dt.datetime]:
         """Return the first-of-month datetimes for the last `count` months (oldest first)."""
@@ -5990,4 +6007,41 @@ def retry_held_payouts_for_business(
         failed=failed,
         message=message,
     )
+
+
+@router.post("/invoices/{invoice_id}/force-confirm")
+def force_confirm_invoice(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Super-admin: confirm a large MANUAL invoice that the anti-GMV-bloat guard
+    held for review. Bypasses the low-trust confirmation block — use only after
+    verifying the payment actually landed."""
+    _require_super_admin(admin_user)
+    from app.services.invoice_service import build_invoice_service
+
+    inv = (
+        db.query(models.Invoice)
+        .filter(models.Invoice.invoice_id == invoice_id)
+        .first()
+    )
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    svc = build_invoice_service(db, user_id=inv.issuer_id)
+    try:
+        updated = svc.update_status(
+            inv.issuer_id, invoice_id, "paid", updated_by_user_id=None, force=True
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    log_audit_event(
+        "admin.invoices.force_confirm",
+        user_id=admin_user.id,
+        invoice_id=invoice_id,
+        amount=float(inv.amount or 0),
+    )
+    return {"ok": True, "invoice_id": invoice_id, "status": updated.status}
 

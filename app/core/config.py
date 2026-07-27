@@ -309,6 +309,17 @@ class BaseAppSettings(BaseSettings):
     # still see outliers there to investigate them).
     METRICS_MAX_INVOICE_NAIRA: int = 50_000_000
 
+    # Anti-GMV-bloat: block a SELF "mark as paid" on a large MANUAL revenue
+    # invoice (Naira) from a LOW-TRUST account (flagged / <30d old / no prior
+    # paid invoice / dormant 30d+). Such a confirmation is held for review so
+    # junk/fake invoices can't be self-confirmed into GMV. Online-paid invoices
+    # (webhook) and super-admin force-confirm bypass this. Set 0 to disable.
+    MANUAL_CONFIRM_REVIEW_NAIRA: int = 500_000
+    # A confirming account is "new" below this age; "dormant" if no login within
+    # the dormancy window. Reused from the escrow trust thresholds' spirit.
+    MANUAL_CONFIRM_MIN_ACCOUNT_AGE_DAYS: int = 30
+    MANUAL_CONFIRM_DORMANT_DAYS: int = 30
+
     # Number of trusted reverse-proxy hops in front of the app (Render = 1). The
     # real client IP is read this many entries from the RIGHT of X-Forwarded-For,
     # since a client can only PREPEND fake entries on the left. Prevents XFF

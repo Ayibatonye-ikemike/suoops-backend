@@ -635,6 +635,15 @@ def get_dashboard_stats(
                 .filter(func.lower(models.User.email).in_(_emails))
                 .all()
             ]
+    # Also drop flagged (suspected junk/fraud) accounts so they can't inflate GMV.
+    _flagged = {
+        uid
+        for (uid,) in db.query(models.User.id)
+        .filter(models.User.flagged_for_review.is_(True))
+        .all()
+    }
+    if _flagged:
+        _excluded_ids = list(set(_excluded_ids) | _flagged)
     _ceiling = _settings.METRICS_MAX_INVOICE_NAIRA or 0
 
     def _guard(q):
