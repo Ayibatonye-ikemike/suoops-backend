@@ -3,7 +3,9 @@ User Engagement Email Tasks.
 
 Celery tasks for lifecycle email notifications:
 - Activation: Push new users to create their first invoice (Day 0, 1, 3)
-- Monetization: Nudge toward Starter plan after value is felt (3+ invoices, 80% limit, limit hit)
+- Monetization: Nudge to keep the prepaid wallet topped up once value is felt
+  (3+ invoices, wallet low, wallet empty). Every feature is free — users only pay
+  commission (manual 0.5%, storefront 3%). No plans/subscriptions.
 - Education: Tips every 2 days for active users
 """
 from __future__ import annotations
@@ -208,7 +210,7 @@ def send_engagement_emails() -> dict[str, Any]:
     2. Monetization — active users approaching or at invoice limits
     3. Tips — every-2-days education for active FREE-tier users
     """
-    from app.models.models import Invoice, User, UserEmailLog
+    from app.models.models import Invoice, User
 
     now = datetime.now(timezone.utc)
     stats: dict[str, int] = {
@@ -320,7 +322,6 @@ def _process_user(db, user, now: datetime, stats: dict[str, int], invoice_count_
 
     # ── 2. FIRST INVOICE FOLLOW-UP (WhatsApp-only, email fallback) ─────
     if invoice_count >= 1 and not _was_sent(db, user.id, "wa_first_invoice"):
-        sent_any = False
         # WhatsApp first — this is a celebration, single channel is enough.
         wa_sent = _send_wa_template(
             user.phone,
@@ -332,7 +333,6 @@ def _process_user(db, user, now: datetime, stats: dict[str, int], invoice_count_
         )
         if wa_sent:
             stats["whatsapp_sent"] += 1
-            sent_any = True
         # Email ONLY as a fallback when WhatsApp couldn't be delivered
         # (no phone, missing template, or send failure) — avoids double-send.
         if not wa_sent and user.email and not _was_sent(db, user.id, "email_first_invoice"):
@@ -357,29 +357,15 @@ def _process_user(db, user, now: datetime, stats: dict[str, int], invoice_count_
                 if _send_smtp_email(user.email, "Congrats on your first invoice! 🎊", html, plain):
                     _record_sent(db, user.id, "email_first_invoice")
                     stats["emails_sent"] = stats.get("emails_sent", 0) + 1
-                    sent_any = True
             except Exception as e:
                 logger.warning("First-invoice email failed for user %s: %s", user.id, e)
 
-    # ── 3. MONETIZATION (FREE users with invoices) ───────────────────
+    # ── 3. MONETIZATION (keep the prepaid wallet topped up) ──────────
     if user.plan.value == "free" and invoice_count > 0:
         if _send_monetization(db, user, name, invoice_count, stats):
             return
 
-    # ── 4. PRO UPGRADE (FREE users with 10+ invoices, WhatsApp) ────
-    if user.plan.value == "free" and invoice_count >= 10:
-        if not _was_sent(db, user.id, "wa_pro_upgrade"):
-            if _send_wa_template(
-                user.phone,
-                settings.WHATSAPP_TEMPLATE_PRO_UPGRADE,
-                [name, str(invoice_count)],
-                "wa_pro_upgrade",
-                db,
-                user.id,
-            ):
-                stats["whatsapp_sent"] += 1
-
-    # ── 5. EDUCATION TIPS — DISABLED (cut email volume) ──────────
+    # ── 4. EDUCATION TIPS — DISABLED (cut email volume) ──────────
     # Tips are now delivered via WhatsApp morning insights only.
     if invoice_count > 0 and user.plan.value == "free":
         stats["skipped"] += 1
@@ -723,7 +709,7 @@ def _send_monetization(db, user, name: str, invoice_count: int, stats: dict[str,
         body = (
             f"You've already sent {invoice_count} invoices through SuoOps. "
             "You're building a real record of your business — and every feature is "
-            "included, so you only pay 0.1% per invoice."
+            "included, so you only pay 0.5% per manual invoice."
         )
         tip = None
         cta_url = "https://suoops.com/dashboard"

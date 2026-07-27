@@ -2719,7 +2719,6 @@ def get_business_intelligence(
     page_size: int = Query(25, ge=5, le=100),
     sort_by: str = Query("health_score", pattern="^(health_score|total_revenue|invoices_total|created_at|last_login|name|collection_rate)$"),
     sort_order: str = Query("asc", pattern="^(asc|desc)$"),
-    plan_filter: str | None = Query(None, pattern="^(free|starter|pro)$"),
     risk_filter: str | None = Query(None, pattern="^(at_risk|healthy|inactive|churned)$"),
     search: str | None = Query(None, max_length=100),
     _admin: Any = Depends(get_current_admin),
@@ -2736,14 +2735,6 @@ def get_business_intelligence(
     # ── Base query: all registered users ──
     q = db.query(models.User)
     q = _exclude_users(q, models.User.id, excluded_ids)
-
-    if plan_filter:
-        plan_enum = {
-            "free": SubscriptionPlan.FREE,
-            "starter": SubscriptionPlan.FREE,  # Legacy: STARTER mapped to FREE
-            "pro": SubscriptionPlan.PRO,
-        }.get(plan_filter, SubscriptionPlan.FREE)
-        q = q.filter(models.User.plan == plan_enum)
 
     if search:
         term = f"%{search.strip()}%"
@@ -2865,21 +2856,10 @@ def get_business_intelligence(
             round(paid_rev / total_rev_count * 100, 1) if total_rev_count > 0 else 0
         )
 
-        # Subscription status
+        # Plans/subscriptions are retired (commission-only model). These fields
+        # are kept as neutral defaults for response back-compat only.
         sub_status = "free"
         days_until = None
-        if u.plan == SubscriptionPlan.PRO:
-            if u.subscription_expires_at:
-                if u.subscription_expires_at < now:
-                    sub_status = "expired"
-                elif u.subscription_expires_at <= now + dt.timedelta(days=7):
-                    sub_status = "expiring_soon"
-                    days_until = (u.subscription_expires_at - now).days
-                else:
-                    sub_status = "active"
-                    days_until = (u.subscription_expires_at - now).days
-            else:
-                sub_status = "active"
 
         # Days since last invoice
         days_since = None
@@ -2926,14 +2906,6 @@ def get_business_intelligence(
         elif inv_total == 0:
             score -= 5
 
-        # Paid plan bonus
-        if u.plan == SubscriptionPlan.PRO:
-            score += 10
-
-        # Subscription expired penalty
-        if sub_status == "expired":
-            score -= 15
-
         score = max(0, min(100, score))
 
         # Risk flags
@@ -2944,14 +2916,8 @@ def get_business_intelligence(
             flags.append("inactive_30d")
         if days_since is not None and days_since > 60:
             flags.append("inactive_60d")
-        if sub_status == "expired":
-            flags.append("subscription_expired")
-        if sub_status == "expiring_soon":
-            flags.append("subscription_expiring")
         if total_rev_count >= 5 and collection < 30:
             flags.append("low_collection")
-        if u.plan == SubscriptionPlan.FREE and inv_total >= 3 and u.invoice_balance <= 1:
-            flags.append("upgrade_candidate")
         if inv_this_month >= 10:
             flags.append("power_user")
 
@@ -2999,7 +2965,7 @@ def get_business_intelligence(
             if "never_invoiced" in i.risk_flags or "inactive_30d" in i.risk_flags
         ),
         never_invoiced=sum(1 for i in items if "never_invoiced" in i.risk_flags),
-        upgrade_candidates=sum(1 for i in items if "upgrade_candidate" in i.risk_flags),
+        upgrade_candidates=0,  # retired: no plans/upgrades under commission model
     )
 
     # ── Risk filter ──
@@ -3035,6 +3001,98 @@ def get_business_intelligence(
         page=page,
         page_size=page_size,
         summary=summary,
+    )
+
+
+class AdminInvoiceItem(BaseModel):
+    id: int
+    invoice_id: str
+    amount: float
+    status: str
+    invoice_type: str
+    channel: str | None
+    customer_name: str | None
+    created_at: str
+    due_date: str | None
+    paid_at: str | None
+
+
+class AdminInvoiceListResponse(BaseModel):
+    invoices: list[AdminInvoiceItem]
+    total: int  # count across the whole (type-filtered) set
+    total_amount: float
+    paid_amount: float
+    pending_amount: float
+
+
+@router.get("/businesses/{user_id}/invoices", response_model=AdminInvoiceListResponse)
+def get_business_invoices(
+    user_id: int,
+    invoice_type: str = Query("revenue", pattern="^(revenue|expense|all)$"),
+    limit: int = Query(50, ge=1, le=200),
+    _admin: Any = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Recent invoices (with amounts) for one business — admin drill-down so an
+    admin can see exactly what a user has billed and how much is outstanding."""
+    from app.models.models import Customer, Invoice
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Business not found")
+
+    q = db.query(Invoice).filter(Invoice.issuer_id == user_id)
+    if invoice_type != "all":
+        q = q.filter(Invoice.invoice_type == invoice_type)
+
+    total = q.count()
+    rows = q.order_by(Invoice.created_at.desc()).limit(limit).all()
+
+    cust_ids = [r.customer_id for r in rows if r.customer_id]
+    cust_names: dict[int, str] = {}
+    if cust_ids:
+        for c in (
+            db.query(Customer.id, Customer.name)
+            .filter(Customer.id.in_(cust_ids))
+            .all()
+        ):
+            cust_names[c.id] = c.name
+
+    # Amount rollups across the whole (type-filtered) set, not just this page.
+    agg = db.query(
+        func.coalesce(func.sum(Invoice.amount), 0),
+        func.coalesce(
+            func.sum(case((Invoice.status == "paid", Invoice.amount), else_=0)), 0
+        ),
+        func.coalesce(
+            func.sum(case((Invoice.status == "pending", Invoice.amount), else_=0)), 0
+        ),
+    ).filter(Invoice.issuer_id == user_id)
+    if invoice_type != "all":
+        agg = agg.filter(Invoice.invoice_type == invoice_type)
+    total_amount, paid_amount, pending_amount = agg.one()
+
+    items = [
+        AdminInvoiceItem(
+            id=r.id,
+            invoice_id=r.invoice_id,
+            amount=float(r.amount or 0),
+            status=r.status,
+            invoice_type=r.invoice_type,
+            channel=r.channel,
+            customer_name=cust_names.get(r.customer_id),
+            created_at=r.created_at.isoformat() if r.created_at else "",
+            due_date=r.due_date.isoformat() if r.due_date else None,
+            paid_at=r.paid_at.isoformat() if r.paid_at else None,
+        )
+        for r in rows
+    ]
+    return AdminInvoiceListResponse(
+        invoices=items,
+        total=total,
+        total_amount=float(total_amount or 0),
+        paid_amount=float(paid_amount or 0),
+        pending_amount=float(pending_amount or 0),
     )
 
 
@@ -4404,6 +4462,9 @@ class StorefrontMetricItem(BaseModel):
     # Owner trust (link to anti-fraud)
     owner_flagged: bool
     owner_risk_score: int
+    # Owner identity (so admins can trace who runs the store)
+    owner_phone: str | None
+    owner_email: str | None
 
     # Derived
     quality_score: int  # 0-100
@@ -4601,6 +4662,8 @@ def list_storefronts(
                 created_at=u.created_at.isoformat(),
                 owner_flagged=bool(u.flagged_for_review),
                 owner_risk_score=int(u.risk_score or 0),
+                owner_phone=u.phone,
+                owner_email=u.email,
                 quality_score=score,
                 risk_flags=flags,
             )

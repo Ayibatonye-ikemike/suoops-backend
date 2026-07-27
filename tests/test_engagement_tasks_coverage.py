@@ -582,31 +582,6 @@ def test_process_user_monetization(db_session, monkeypatch):
     assert stats["monetization_sent"] == 1
 
 
-def test_process_user_pro_upgrade(db_session, monkeypatch):
-    # FREE user with 10+ invoices, high wallet (no monetization) -> pro upgrade WA
-    now = _now()
-    u = _make_user(
-        db_session,
-        phone="+2348090007777",
-        plan=SubscriptionPlan.FREE,
-        wallet_balance_kobo=500000,  # ₦5000 -> no monetization threshold
-        created_at=now - dt.timedelta(days=40),
-    )
-    cust = _make_customer(db_session)
-    for _ in range(10):
-        _make_invoice(db_session, u, cust)
-    et._record_sent(db_session, u.id, "wa_first_invoice")
-    et._record_sent(db_session, u.id, et.EMAIL_3_INVOICES_SENT)  # skip 3-invoice monet
-    db_session.commit()
-    monkeypatch.setattr(et, "_send_smtp_email", lambda *a, **k: True)
-    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_PRO_UPGRADE", "pro_up")
-    _patch_wa(monkeypatch, ok=True)
-    stats = _new_stats()
-    et._process_user(db_session, u, now, stats)
-    db_session.commit()
-    assert stats["whatsapp_sent"] >= 1
-
-
 def test_process_user_tips_disabled_skip(db_session, monkeypatch):
     # FREE user with invoices, high wallet, already monetized -> tips-disabled skip
     now = _now()
