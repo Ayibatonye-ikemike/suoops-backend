@@ -5505,6 +5505,101 @@ def list_disputes(
     )
 
 
+class BusinessHeldGroup(BaseModel):
+    seller_id: int
+    seller_name: str | None
+    seller_business: str | None
+    seller_store_status: str | None
+    held_count: int
+    disputed_count: int
+    review_count: int
+    held_total_naira: float
+    oldest_created_at: str | None
+
+
+class DisputesByBusinessResponse(BaseModel):
+    businesses: list[BusinessHeldGroup]
+    total_businesses: int
+    total_capped: bool
+
+
+@router.get("/disputes/by-business", response_model=DisputesByBusinessResponse)
+def disputes_by_business(
+    admin_user=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+    limit: int = Query(200, ge=1, le=500),
+):
+    """Per-business rollup of escrow orders that need attention — so an admin can
+    see EACH business and how many of its orders are held / disputed / under review
+    without scrolling one big mixed per-order list. Sorted busiest-first (most
+    held), then most disputed. Only real (paid) held/disputed orders are counted."""
+    E = models.StorefrontOrderEscrow
+
+    held_expr = func.count(
+        case((and_(E.status == "held", E.held_for_review.is_(False)), 1))
+    )
+    disputed_expr = func.count(case((E.status == "disputed", 1)))
+    review_expr = func.count(case((E.held_for_review.is_(True), 1)))
+    held_kobo_expr = func.coalesce(
+        func.sum(
+            case(
+                (and_(E.status == "held", E.held_for_review.is_(False)), E.payout_kobo),
+                else_=0,
+            )
+        ),
+        0,
+    )
+    oldest_expr = func.min(E.created_at)
+
+    rows = (
+        db.query(
+            E.seller_id,
+            models.User.name,
+            models.User.business_name,
+            models.User.store_status,
+            held_expr.label("held"),
+            disputed_expr.label("disputed"),
+            review_expr.label("review"),
+            held_kobo_expr.label("held_kobo"),
+            oldest_expr.label("oldest"),
+        )
+        .join(models.User, E.seller_id == models.User.id)
+        # Only real orders that need eyes: held (incl. review) or disputed.
+        .filter(E.status.in_(["held", "disputed"]))
+        .group_by(
+            E.seller_id,
+            models.User.name,
+            models.User.business_name,
+            models.User.store_status,
+        )
+        .order_by(held_expr.desc(), disputed_expr.desc())
+        .limit(limit + 1)
+        .all()
+    )
+    total_capped = len(rows) > limit
+    rows = rows[:limit]
+
+    groups = [
+        BusinessHeldGroup(
+            seller_id=r.seller_id,
+            seller_name=r.name,
+            seller_business=r.business_name,
+            seller_store_status=r.store_status,
+            held_count=int(r.held or 0),
+            disputed_count=int(r.disputed or 0),
+            review_count=int(r.review or 0),
+            held_total_naira=round(float(r.held_kobo or 0) / 100, 2),
+            oldest_created_at=r.oldest.isoformat() if r.oldest else None,
+        )
+        for r in rows
+    ]
+    return DisputesByBusinessResponse(
+        businesses=groups,
+        total_businesses=len(groups),
+        total_capped=total_capped,
+    )
+
+
 class DisputeResolveAction(BaseModel):
     action: str = Field(..., pattern="^(refund|release)$")
     suspend_seller: bool = False
@@ -5570,6 +5665,22 @@ def request_dispute_stepup_otp(
 
     OTPService().send_code(email, purpose=_ADMIN_MONEY_OTP_PURPOSE)
     log_audit_event("admin.disputes.stepup_requested", user_id=admin_user.id, escrow_id=escrow_id)
+    return {"ok": True, "detail": "Confirmation code sent to your admin email."}
+
+
+@router.post("/money/step-up-otp")
+def request_money_stepup_otp(
+    admin_user=Depends(get_current_admin),
+) -> dict:
+    """Send a step-up confirmation code for a high-value money action that isn't
+    tied to a single order (e.g. bulk 'retry all held for a business')."""
+    email = getattr(admin_user, "email", None)
+    if not email:
+        raise HTTPException(status_code=400, detail="Admin has no email for step-up.")
+    from app.services.otp_service import OTPService
+
+    OTPService().send_code(email, purpose=_ADMIN_MONEY_OTP_PURPOSE)
+    log_audit_event("admin.money.stepup_requested", user_id=admin_user.id)
     return {"ok": True, "detail": "Confirmation code sent to your admin email."}
 
 
@@ -5913,12 +6024,15 @@ def retry_held_payouts_for_business(
     rail (Flutterwave); the reconciliation uses each order's own rail.
     """
     _require_super_admin(admin_user)
+    from collections import defaultdict
+
     from app.services.escrow_service import (
         EscrowError,
-        _collector_for_charge,
+        payout_rail_for,
         release_escrow,
+        release_seller_batch,
     )
-    from app.services.payouts import get_payout_provider, get_payout_provider_named
+    from app.services.payouts import get_payout_provider_named
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
@@ -5938,18 +6052,15 @@ def retry_held_payouts_for_business(
     # One step-up OTP authorizes the whole batch (defends a hijacked session).
     _require_money_stepup(admin_user, total_amount, payload.otp if payload else None)
 
-    released = retried = in_flight = failed = 0
+    # Pass 1 — reconcile each order's CURRENT rail first (never double-pay an
+    # in-flight/paid transfer), and queue the rest for a CONSOLIDATED transfer.
+    released = in_flight = failed = 0
+    to_batch: dict[str, list] = defaultdict(list)
     for escrow in payable:
         try:
-            if escrow.charge_reference:
-                provider = get_payout_provider_named(
-                    _collector_for_charge(db, escrow.charge_reference)
-                )
-            else:
-                provider = get_payout_provider()
-
-            # Never resend an in-flight/paid transfer on the current rail.
-            if escrow.transfer_reference and escrow.transfer_provider == provider.name:
+            rail = payout_rail_for(db, escrow)
+            if escrow.transfer_reference and escrow.transfer_provider == rail:
+                provider = get_payout_provider_named(rail)
                 try:
                     cur = (provider.transfer_status(escrow.transfer_reference) or "unknown").lower()
                 except Exception:  # noqa: BLE001
@@ -5961,21 +6072,29 @@ def retry_held_payouts_for_business(
                 if cur == "pending":
                     in_flight += 1
                     continue
-
-            # Clear a void/failed reference and (re)send fresh on the correct rail.
+            # Clear a void/failed reference and queue for one consolidated transfer.
             escrow.transfer_reference = None
             escrow.transfer_provider = None
-            db.commit()
-            if release_escrow(db, escrow, reason="admin bulk retry payout"):
-                released += 1
-            else:
-                retried += 1  # queued/settling — confirms on the next run
-        except EscrowError:
-            db.rollback()
-            failed += 1
+            to_batch[rail].append(escrow)
         except Exception:  # noqa: BLE001 — keep going; one bad order won't stop the batch
             db.rollback()
             failed += 1
+    db.commit()  # persist the cleared references before batching
+
+    # Pass 2 — ONE consolidated transfer per (seller, rail): the seller sees a
+    # single credit and we pay one fee, instead of one transfer per order.
+    retried = transfers = 0
+    for rail, group in to_batch.items():
+        try:
+            rel = release_seller_batch(
+                db, group, provider_name=rail, reason="admin bulk retry (consolidated)"
+            )
+            released += rel
+            retried += len(group) - rel  # queued/settling — confirms next run
+            transfers += 1
+        except EscrowError:
+            db.rollback()
+            failed += len(group)
 
     skipped = len(held) - len(payable)
     log_audit_event(
@@ -5983,6 +6102,7 @@ def retry_held_payouts_for_business(
         user_id=admin_user.id,
         target_user_id=user_id,
         total_held=len(held),
+        transfers=transfers,
         released=released,
         retried=retried,
         in_flight=in_flight,
@@ -5992,7 +6112,10 @@ def retry_held_payouts_for_business(
     if released:
         parts.append(f"{released} released")
     if retried:
-        parts.append(f"{retried} re-sent (settling)")
+        parts.append(
+            f"{retried} sent in {transfers} consolidated transfer"
+            f"{'s' if transfers != 1 else ''} (settling)"
+        )
     if in_flight:
         parts.append(f"{in_flight} already in flight")
     if failed:

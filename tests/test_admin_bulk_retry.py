@@ -40,7 +40,7 @@ def _fake_provider(status="successful"):
             self.sent = []
 
         def transfer(self, db, *, seller, amount_kobo, reference, reason):
-            self.sent.append(reference)
+            self.sent.append((reference, amount_kobo))
             return PayoutResult(ok=True, reference=reference, provider=self.name, status=status)
 
         def transfer_status(self, reference):
@@ -113,6 +113,9 @@ def test_bulk_retry_releases_all_held(monkeypatch):
         assert body["released"] == 3
         assert body["failed"] == 0
         assert body["total_amount"] == 15000.0  # 3 × ₦5,000
+        # CONSOLIDATED: 3 orders → ONE transfer, not three.
+        assert len(fake.sent) == 1
+        assert fake.sent[0][1] == 1500000  # summed payout kobo (3 × 500000)
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
         db.close()
@@ -150,6 +153,28 @@ def test_bulk_retry_404_unknown_business(monkeypatch):
     try:
         r = client.post("/admin/businesses/99999999/retry-held-payouts", json={"otp": "x"})
         assert r.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_current_admin, None)
+        db.close()
+
+
+def test_disputes_by_business_groups_held_counts():
+    client = TestClient(app)
+    db = next(get_db())
+    admin = _admin(db)
+    seller = _seller_with_held(db, 4)  # 4 held orders for one business
+
+    app.dependency_overrides[get_current_admin] = lambda: admin
+    try:
+        r = client.get("/admin/disputes/by-business")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        mine = [g for g in body["businesses"] if g["seller_id"] == seller.id]
+        assert mine, "business not grouped"
+        g = mine[0]
+        assert g["held_count"] == 4
+        assert g["disputed_count"] == 0
+        assert g["held_total_naira"] == 20000.0  # 4 × ₦5,000
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
         db.close()
