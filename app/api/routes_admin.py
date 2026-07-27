@@ -5862,3 +5862,132 @@ def retry_dispute_payout(
         )
     return {"state": state, "escrow_status": escrow.status, "provider": provider.name, "message": message}
 
+
+class BulkRetryResult(BaseModel):
+    seller_id: int
+    total_held: int
+    total_amount: float
+    released: int   # confirmed paid now
+    retried: int    # fresh transfer sent, awaiting confirmation on the next run
+    in_flight: int  # already pending on the rail — left untouched
+    skipped: int    # not eligible (under review / zero payout)
+    failed: int
+    message: str
+
+
+@router.post("/businesses/{user_id}/retry-held-payouts", response_model=BulkRetryResult)
+def retry_held_payouts_for_business(
+    user_id: int,
+    payload: RetryPayoutIn | None = Body(default=None),
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_current_admin),
+) -> BulkRetryResult:
+    """Reconcile + (re)send payouts for ALL of a seller's held orders in one go.
+
+    A safe bulk version of the per-order retry-payout: for each held order it
+    reconciles the CURRENT rail first (successful → finalize, pending → leave in
+    flight) and only clears a void reference and resends when the rail reports
+    failed/unknown — so an in-flight transfer is never double-paid. One step-up
+    OTP authorizes the whole batch. Storefront orders pay out on their collecting
+    rail (Flutterwave); the reconciliation uses each order's own rail.
+    """
+    _require_super_admin(admin_user)
+    from app.services.escrow_service import (
+        EscrowError,
+        _collector_for_charge,
+        release_escrow,
+    )
+    from app.services.payouts import get_payout_provider, get_payout_provider_named
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Business not found")
+
+    held = (
+        db.query(models.StorefrontOrderEscrow)
+        .filter(
+            models.StorefrontOrderEscrow.seller_id == user_id,
+            models.StorefrontOrderEscrow.status == "held",
+        )
+        .all()
+    )
+    payable = [e for e in held if not e.held_for_review and (e.payout_kobo or 0) > 0]
+    total_amount = round(sum(int(e.payout_kobo or 0) for e in payable) / 100, 2)
+
+    # One step-up OTP authorizes the whole batch (defends a hijacked session).
+    _require_money_stepup(admin_user, total_amount, payload.otp if payload else None)
+
+    released = retried = in_flight = failed = 0
+    for escrow in payable:
+        try:
+            if escrow.charge_reference:
+                provider = get_payout_provider_named(
+                    _collector_for_charge(db, escrow.charge_reference)
+                )
+            else:
+                provider = get_payout_provider()
+
+            # Never resend an in-flight/paid transfer on the current rail.
+            if escrow.transfer_reference and escrow.transfer_provider == provider.name:
+                try:
+                    cur = (provider.transfer_status(escrow.transfer_reference) or "unknown").lower()
+                except Exception:  # noqa: BLE001
+                    cur = "unknown"
+                if cur == "successful":
+                    release_escrow(db, escrow, reason="admin bulk retry (already paid)")
+                    released += 1
+                    continue
+                if cur == "pending":
+                    in_flight += 1
+                    continue
+
+            # Clear a void/failed reference and (re)send fresh on the correct rail.
+            escrow.transfer_reference = None
+            escrow.transfer_provider = None
+            db.commit()
+            if release_escrow(db, escrow, reason="admin bulk retry payout"):
+                released += 1
+            else:
+                retried += 1  # queued/settling — confirms on the next run
+        except EscrowError:
+            db.rollback()
+            failed += 1
+        except Exception:  # noqa: BLE001 — keep going; one bad order won't stop the batch
+            db.rollback()
+            failed += 1
+
+    skipped = len(held) - len(payable)
+    log_audit_event(
+        "admin.disputes.bulk_retry_payout",
+        user_id=admin_user.id,
+        target_user_id=user_id,
+        total_held=len(held),
+        released=released,
+        retried=retried,
+        in_flight=in_flight,
+        failed=failed,
+    )
+    parts: list[str] = []
+    if released:
+        parts.append(f"{released} released")
+    if retried:
+        parts.append(f"{retried} re-sent (settling)")
+    if in_flight:
+        parts.append(f"{in_flight} already in flight")
+    if failed:
+        parts.append(f"{failed} failed")
+    if skipped:
+        parts.append(f"{skipped} skipped (under review/empty)")
+    message = ", ".join(parts) or "No held orders to retry."
+    return BulkRetryResult(
+        seller_id=user_id,
+        total_held=len(held),
+        total_amount=total_amount,
+        released=released,
+        retried=retried,
+        in_flight=in_flight,
+        skipped=skipped,
+        failed=failed,
+        message=message,
+    )
+
