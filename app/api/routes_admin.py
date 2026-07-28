@@ -2867,6 +2867,29 @@ def get_business_intelligence(
     )
     cust_map: dict[int, int] = {row.issuer_id: row.cust_count for row in cust_stats}
 
+    # Suspicious-duplicate detection: businesses with ≥2 PAID revenue invoices
+    # sharing the SAME customer AND the SAME (large) amount — a self-inflation
+    # pattern (e.g. two identical ₦8M "paid" invoices to one customer). Surfaced
+    # as a flag so an admin can review and, if junk, flag the business (which then
+    # drops it from GMV).
+    _DUP_INVOICE_NAIRA = 1_000_000
+    dup_issuer_ids: set[int] = set()
+    if all_users:
+        dup_rows = (
+            db.query(Invoice.issuer_id)
+            .filter(
+                Invoice.issuer_id.in_([u.id for u in all_users]),
+                Invoice.invoice_type == "revenue",
+                Invoice.status == "paid",
+                Invoice.customer_id.isnot(None),
+                Invoice.amount >= _DUP_INVOICE_NAIRA,
+            )
+            .group_by(Invoice.issuer_id, Invoice.customer_id, Invoice.amount)
+            .having(func.count(Invoice.id) >= 2)
+            .all()
+        )
+        dup_issuer_ids = {r[0] for r in dup_rows}
+
     # ── Build business items ──
     items: list[BusinessHealthItem] = []
 
@@ -2953,6 +2976,8 @@ def get_business_intelligence(
             flags.append("low_collection")
         if inv_this_month >= 10:
             flags.append("power_user")
+        if u.id in dup_issuer_ids:
+            flags.append("duplicate_invoices")
 
         item = BusinessHealthItem(
             id=u.id,
@@ -3050,6 +3075,10 @@ class AdminInvoiceItem(BaseModel):
     created_at: str
     due_date: str | None
     paid_at: str | None
+    # How it was paid: storefront (online order) / online (invoice link paid via
+    # webhook) / manual (a human marked it paid) / "" (not paid). Lets an admin
+    # spot a big invoice that was self-marked paid rather than actually collected.
+    payment_method: str = ""
 
 
 class AdminInvoiceListResponse(BaseModel):
@@ -3107,6 +3136,16 @@ def get_business_invoices(
         agg = agg.filter(Invoice.invoice_type == invoice_type)
     total_amount, paid_amount, pending_amount = agg.one()
 
+    def _pay_method(r) -> str:
+        # Only meaningful for a paid revenue invoice.
+        if r.invoice_type != "revenue" or r.status != "paid":
+            return ""
+        if r.channel == "storefront":
+            return "storefront"  # online storefront order (escrow rail)
+        # An invoice paid via the payment link is flipped by the webhook with NO
+        # human updater; a self-marked "paid" carries the user who clicked it.
+        return "manual" if r.status_updated_by_user_id else "online"
+
     items = [
         AdminInvoiceItem(
             id=r.id,
@@ -3119,6 +3158,7 @@ def get_business_invoices(
             created_at=r.created_at.isoformat() if r.created_at else "",
             due_date=r.due_date.isoformat() if r.due_date else None,
             paid_at=r.paid_at.isoformat() if r.paid_at else None,
+            payment_method=_pay_method(r),
         )
         for r in rows
     ]

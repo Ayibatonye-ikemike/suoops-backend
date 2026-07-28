@@ -187,3 +187,89 @@ def test_business_intelligence_caps_outlier_revenue():
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
         db.close()
+
+
+def test_business_invoices_payment_method():
+    """Drill-down shows how each paid invoice was collected: online (webhook),
+    manual (self-marked), or storefront."""
+    client = TestClient(app)
+    db = next(get_db())
+    admin = _admin(db)
+    seller = models.User(name="PM Biz", phone="+2349555444333")
+    db.add(seller)
+    db.commit()
+    db.refresh(seller)
+    cust = models.Customer(name="PM Buyer", phone="+2348123444333")
+    db.add(cust)
+    db.commit()
+    db.refresh(cust)
+    specs = [
+        # (invoice_id, channel, status_updated_by, expected method)
+        ("INV-PM-ONLINE", None, None, "online"),
+        ("INV-PM-MANUAL", None, seller.id, "manual"),
+        ("INV-PM-STORE", "storefront", None, "storefront"),
+    ]
+    for iid, channel, updater, _exp in specs:
+        db.add(
+            models.Invoice(
+                invoice_id=iid,
+                issuer_id=seller.id,
+                customer_id=cust.id,
+                amount=Decimal("2000000"),
+                status="paid",
+                invoice_type="revenue",
+                channel=channel,
+                status_updated_by_user_id=updater,
+            )
+        )
+    db.commit()
+
+    app.dependency_overrides[get_current_admin] = lambda: admin
+    try:
+        r = client.get(f"/admin/businesses/{seller.id}/invoices")
+        assert r.status_code == 200, r.text
+        by_id = {inv["invoice_id"]: inv["payment_method"] for inv in r.json()["invoices"]}
+        assert by_id["INV-PM-ONLINE"] == "online"
+        assert by_id["INV-PM-MANUAL"] == "manual"
+        assert by_id["INV-PM-STORE"] == "storefront"
+    finally:
+        app.dependency_overrides.pop(get_current_admin, None)
+        db.close()
+
+
+def test_business_intelligence_flags_duplicate_invoices():
+    """Two identical large paid invoices to the same customer → duplicate flag."""
+    client = TestClient(app)
+    db = next(get_db())
+    admin = _admin(db)
+    seller = models.User(name="Dup Biz", phone="+2349555888777")
+    db.add(seller)
+    db.commit()
+    db.refresh(seller)
+    cust = models.Customer(name="Mariam", phone="+2348123888777")
+    db.add(cust)
+    db.commit()
+    db.refresh(cust)
+    for iid in ("INV-DUP-1", "INV-DUP-2"):
+        db.add(
+            models.Invoice(
+                invoice_id=iid,
+                issuer_id=seller.id,
+                customer_id=cust.id,
+                amount=Decimal("8000000"),  # ₦8M each, same customer
+                status="paid",
+                invoice_type="revenue",
+            )
+        )
+    db.commit()
+
+    app.dependency_overrides[get_current_admin] = lambda: admin
+    try:
+        r = client.get("/admin/businesses?search=Dup%20Biz")
+        assert r.status_code == 200, r.text
+        mine = [b for b in r.json()["businesses"] if b["id"] == seller.id]
+        assert mine, "business not returned"
+        assert "duplicate_invoices" in mine[0]["risk_flags"]
+    finally:
+        app.dependency_overrides.pop(get_current_admin, None)
+        db.close()
