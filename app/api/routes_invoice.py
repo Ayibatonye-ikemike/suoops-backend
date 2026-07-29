@@ -222,7 +222,7 @@ def get_invoice_quota(current_user_id: CurrentUserDep, data_owner_id: DataOwnerD
     
     gate = FeatureGate(db, data_owner_id)
     plan = gate.user.effective_plan  # Uses effective_plan to respect pro_override
-    invoice_balance = gate.get_invoice_balance()  # Safe access
+    invoice_balance = int(getattr(gate.user, "invoice_balance", 0) or 0)  # field on User
     can_create, _ = gate.can_create_invoice()
     purchase_url = "/invoices/purchase-pack" if not can_create else None
     

@@ -116,3 +116,16 @@ def test_update_invoice_status():
     assert li.status_code == 200
     listed = li.json()["items"]
     assert any(i["invoice_id"] == inv["invoice_id"] and i["status"] == "paid" for i in listed)
+
+
+def test_invoice_quota_endpoint():
+    """Regression: /invoices/quota must not 500 (FeatureGate has no get_invoice_balance)."""
+    token = _signup_and_get_token()
+    headers = _auth_headers(token)
+
+    q = client.get("/invoices/quota", headers=headers)
+    assert q.status_code == 200, q.text
+    body = q.json()
+    assert "invoice_balance" in body
+    assert isinstance(body["invoice_balance"], int)
+    assert "can_create" in body
