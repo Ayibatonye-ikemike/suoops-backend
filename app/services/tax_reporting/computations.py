@@ -311,19 +311,22 @@ def compute_expenses_by_date_range(
         Total expenses for the period
     """
     from app.models.models import Invoice
-    
-    # Convert dates to datetime with timezone
-    start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-    end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
-    
+
+    # Attribute each expense to WHEN IT WAS INCURRED (due_date), falling back to
+    # created_at when no due_date is set. This mirrors the Expenses tab
+    # (expense_summary) and the invoice list, so the tax report's expense total
+    # reconciles with what the user sees on those screens instead of drifting
+    # apart because one uses created_at and the other uses due_date.
+    expense_date = func.coalesce(Invoice.due_date, Invoice.created_at)
+
     result = db.query(func.sum(Invoice.amount)).filter(
         Invoice.issuer_id == user_id,
         Invoice.invoice_type == "expense",  # Only expense invoices
-        Invoice.created_at >= start_dt,
-        Invoice.created_at <= end_dt,
         Invoice.status == "paid",  # Only count paid expenses
+        func.date(expense_date) >= start_date,
+        func.date(expense_date) <= end_date,
     ).scalar()
-    
+
     return result or Decimal("0")
 
 
