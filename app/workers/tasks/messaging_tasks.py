@@ -606,7 +606,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
     from sqlalchemy import or_
     from sqlalchemy.orm import joinedload
 
-    from app.models.models import InvoiceReminderLog, Invoice, User
+    from app.models.models import InvoiceReminderLog, Invoice
 
     stats = {"whatsapp_sent": 0, "email_sent": 0, "skipped": 0, "failed": 0, "wa_skipped_window": 0}
 
@@ -1405,7 +1405,6 @@ def send_daily_summaries() -> dict[str, Any]:
     """
     from sqlalchemy import func as sqlfunc
     from sqlalchemy import or_
-    from sqlalchemy.orm import joinedload
 
     from app.models.models import Invoice, SubscriptionPlan, User
 
