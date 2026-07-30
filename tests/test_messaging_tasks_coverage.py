@@ -78,6 +78,7 @@ def _make_invoice(
     due_date=None,
     paid_at=None,
     created_at=None,
+    channel=None,
 ):
     n = next(_counter)
     inv = models.Invoice(
@@ -90,6 +91,7 @@ def _make_invoice(
         due_date=due_date,
         paid_at=paid_at,
         created_at=created_at or datetime.now(timezone.utc),
+        channel=channel,
     )
     db.add(inv)
     db.commit()
@@ -486,6 +488,28 @@ def test_customer_reminders_14d_notifies_owner(db_session, wa, monkeypatch):
     )
     result = mt.send_customer_payment_reminders()
     assert result["success"] is True
+
+
+def test_customer_reminders_skip_abandoned_storefront(db_session, wa, monkeypatch):
+    """Abandoned storefront carts (channel=='storefront', pending) are online-pay
+    drop-offs, not receivables. They must NOT trigger customer reminders or owner
+    escalations — matching the cash dashboard, which excludes them. Regression for
+    the '0 overdue on dashboard but flood of escalation emails' bug.
+    """
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_PAYMENT_REMINDER", "pay_tpl", raising=False)
+    user = _make_user(db_session)
+    cust = _make_customer(db_session)
+    _make_invoice(
+        db_session, user, cust, amount=30000,
+        due_date=datetime.now(timezone.utc) - timedelta(days=20),
+        channel="storefront",
+    )
+    result = mt.send_customer_payment_reminders()
+    assert result["success"] is True
+    assert result["whatsapp_sent"] == 0
+    assert result["email_sent"] == 0
+    # No reminder rows and no owner escalation should have been logged/sent.
+    assert db_session.query(models.InvoiceReminderLog).count() == 0
 
 
 # ═══════════════════════════════════════════════════════════════════════

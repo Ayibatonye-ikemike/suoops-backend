@@ -603,6 +603,7 @@ def send_customer_payment_reminders() -> dict[str, Any]:
     Each tier is sent only once per invoice per channel (tracked in
     InvoiceReminderLog).  Runs daily at 10:00 WAT (09:00 UTC).
     """
+    from sqlalchemy import or_
     from sqlalchemy.orm import joinedload
 
     from app.models.models import InvoiceReminderLog, Invoice, User
@@ -628,6 +629,14 @@ def send_customer_payment_reminders() -> dict[str, Any]:
                     Invoice.invoice_type == "revenue",
                     Invoice.due_date != None,  # noqa: E711
                     Invoice.due_date <= window_start,
+                    # Never remind/escalate on unpaid/abandoned storefront carts —
+                    # those are online-pay drop-offs, not receivables to chase.
+                    # This keeps reminders consistent with the cash dashboard,
+                    # which excludes them too (exclude_abandoned_storefront()).
+                    or_(
+                        Invoice.channel.is_(None),
+                        Invoice.channel != "storefront",
+                    ),
                 )
                 .all()
             )
