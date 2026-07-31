@@ -1019,6 +1019,7 @@ def send_mark_paid_nudges() -> dict[str, Any]:
     Runs daily at 12:00 WAT (11:00 UTC).
     """
     from sqlalchemy import func as sqlfunc
+    from sqlalchemy import or_
     from sqlalchemy.orm import joinedload
 
     from app.bot.conversation_window import is_window_open
@@ -1048,6 +1049,12 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                     Invoice.status == "pending",
                     Invoice.invoice_type == "revenue",
                     Invoice.created_at < cutoff,
+                    # Exclude unpaid/abandoned storefront carts — online-pay
+                    # drop-offs, not invoices the owner needs to mark paid.
+                    or_(
+                        Invoice.channel.is_(None),
+                        Invoice.channel != "storefront",
+                    ),
                 )
                 .group_by(Invoice.issuer_id)
                 .having(sqlfunc.count(Invoice.id) >= 2)
@@ -1090,6 +1097,10 @@ def send_mark_paid_nudges() -> dict[str, Any]:
                         Invoice.status == "pending",
                         Invoice.invoice_type == "revenue",
                         Invoice.created_at < cutoff,
+                        or_(
+                            Invoice.channel.is_(None),
+                            Invoice.channel != "storefront",
+                        ),
                     )
                     .order_by(Invoice.created_at.asc())
                     .limit(3)

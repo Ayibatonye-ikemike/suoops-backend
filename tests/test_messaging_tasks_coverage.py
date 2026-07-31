@@ -570,6 +570,23 @@ def test_mark_paid_nudges_cooldown_skip(db_session, wa, monkeypatch):
     assert result["skipped_cooldown"] == 1
 
 
+def test_mark_paid_nudges_skip_abandoned_storefront(db_session, wa, redis_mock, monkeypatch):
+    """Abandoned storefront carts (pending, channel=='storefront') must NOT be
+    counted as 'pending invoices to mark paid'. Regression for the '14 Invoices
+    Still Pending' email sent to a user whose dashboard shows 0 pending.
+    """
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_MARK_PAID_NUDGE", "nudge_tpl", raising=False)
+    user = _make_user(db_session)
+    cust = _make_customer(db_session)
+    old = datetime.now(timezone.utc) - timedelta(days=10)
+    _make_invoice(db_session, user, cust, amount=5000, created_at=old, channel="storefront")
+    _make_invoice(db_session, user, cust, amount=6000, created_at=old, channel="storefront")
+    result = mt.send_mark_paid_nudges()
+    assert result["success"] is True
+    assert result["sent"] == 0
+    wa.send_template.assert_not_called()
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # sync_provider_status
 # ═══════════════════════════════════════════════════════════════════════
