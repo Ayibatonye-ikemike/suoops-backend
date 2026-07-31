@@ -513,7 +513,7 @@ def winback_churned_businesses() -> dict[str, Any]:
 
     Runs weekly on Wednesdays.
     """
-    from sqlalchemy import func
+    from sqlalchemy import func, or_
 
     from app.models.models import Invoice, User, UserEmailLog
     from app.utils.smtp import send_smtp_email as _send_smtp_email
@@ -531,7 +531,17 @@ def winback_churned_businesses() -> dict[str, Any]:
                     func.count(Invoice.id).label("cnt"),
                     func.sum(Invoice.amount).label("total_revenue"),
                     func.count(Invoice.id).filter(Invoice.status == "paid").label("paid_cnt"),
-                    func.count(Invoice.id).filter(Invoice.status == "pending").label("pending_cnt"),
+                    # Exclude abandoned storefront carts from the "still pending"
+                    # count so the winback email doesn't overstate unpaid invoices.
+                    func.count(Invoice.id)
+                    .filter(
+                        Invoice.status == "pending",
+                        or_(
+                            Invoice.channel.is_(None),
+                            Invoice.channel != "storefront",
+                        ),
+                    )
+                    .label("pending_cnt"),
                 )
                 .filter(Invoice.invoice_type == "revenue")
                 .group_by(Invoice.issuer_id)
