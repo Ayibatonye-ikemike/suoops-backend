@@ -229,6 +229,22 @@ class S3Client:
             logger.warning("Failed to generate presigned URL for %s: %s", key, exc)
             return None
 
+    def refresh_presigned_url(self, url: str | None, expires_in: int | None = None) -> str | None:
+        """Re-sign a stored (possibly expired) presigned S3 URL from its object key.
+
+        Presigned URLs expire (``S3_PRESIGN_TTL``, ~1h). Persisting one in the DB and
+        serving the stored value later yields "AccessDenied / Request has expired".
+        This extracts the object key and mints a FRESH URL so links are always valid
+        when the user clicks. Non-S3 values (None, ``file://``/local paths, unparseable
+        URLs) and cases where S3 isn't configured are returned unchanged.
+        """
+        if not url or not url.startswith("http"):
+            return url
+        key = self.extract_key_from_url(url)
+        if not key:
+            return url
+        return self.get_presigned_url(key, expires_in=expires_in) or url
+
     def extract_key_from_url(self, url: str) -> str | None:
         """Extract S3 key from a presigned URL or stored URL.
         

@@ -382,9 +382,13 @@ def download_invoice_pdf(invoice_id: str, current_user_id: CurrentUserDep, data_
             filename=f"{invoice_id}.pdf",
         )
     
-    # If it's an HTTP URL (S3 presigned URL), redirect to it
+    # If it's an HTTP URL (S3), re-sign a FRESH presigned URL before redirecting —
+    # the stored one is short-lived and would 'Request has expired' for older invoices.
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=invoice.pdf_url)
+
+    from app.storage.s3_client import s3_client
+    fresh_url = s3_client.refresh_presigned_url(invoice.pdf_url) or invoice.pdf_url
+    return RedirectResponse(url=fresh_url)
 
 
 @router.get("/{invoice_id}/verify", response_model=schemas.InvoiceVerificationOut)

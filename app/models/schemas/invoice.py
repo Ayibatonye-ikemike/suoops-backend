@@ -103,8 +103,16 @@ class InvoiceOut(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def populate_user_names(cls, data: Any) -> Any:
-        """Extract user names and customer info from relationships."""
+        """Extract user names/customer info and refresh short-lived S3 URLs."""
+        from app.storage.s3_client import s3_client
+
         if not hasattr(data, "created_by"):
+            # Already a mapping (e.g. a Redis-cached dict) — the stored presigned
+            # pdf/receipt URLs may be expired, so re-sign them in place.
+            if isinstance(data, dict):
+                for _f in ("pdf_url", "receipt_pdf_url"):
+                    if data.get(_f):
+                        data[_f] = s3_client.refresh_presigned_url(data[_f])
             return data
         
         result = {k: getattr(data, k, None) for k in cls.model_fields.keys() 
@@ -121,6 +129,13 @@ class InvoiceOut(BaseModel):
         # Populate customer_name from relationship
         if hasattr(data, "customer") and data.customer is not None:
             result["customer_name"] = data.customer.name
+
+        # Stored presigned S3 URLs expire (~1h). Re-sign from the object key so
+        # the dashboard's invoice PDF / receipt links don't 'AccessDenied /
+        # Request has expired' for invoices older than the presign TTL.
+        for _f in ("pdf_url", "receipt_pdf_url"):
+            if result.get(_f):
+                result[_f] = s3_client.refresh_presigned_url(result[_f])
         
         return result
 

@@ -1,5 +1,6 @@
 """Helper functions for inventory routes."""
 from app.models import inventory_schemas as schemas
+from app.storage.s3_client import s3_client
 
 
 def product_to_out(product) -> schemas.ProductOut:
@@ -21,7 +22,9 @@ def product_to_out(product) -> schemas.ProductOut:
         is_active=product.is_active,
         track_stock=product.track_stock,
         fulfilment_type=getattr(product, "fulfilment_type", "physical"),
-        image_url=product.image_url,
+        # Stored product image is a short-lived presigned URL; re-sign so the
+        # dashboard inventory thumbnails don't expire (~1h) into broken images.
+        image_url=s3_client.refresh_presigned_url(product.image_url),
         is_low_stock=product.is_low_stock,
         is_out_of_stock=product.is_out_of_stock,
         stock_value=product.stock_value,
