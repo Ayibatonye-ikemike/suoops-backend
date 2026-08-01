@@ -54,3 +54,40 @@ def test_monthly_tax_report_csv_export(monkeypatch):
     payload = rcsv.json()
     assert "csv_url" in payload
     assert payload["basis"] == "paid"
+
+
+def test_fresh_pdf_url_resigns_from_key(monkeypatch):
+    """Download must re-sign from the S3 key so the emailed/stored presigned URL
+    (which expires ~1h) never surfaces to the user as 'Request has expired'."""
+    from app.api.routes_tax import reports as tax_reports
+
+    seen = {}
+    monkeypatch.setattr(
+        "app.storage.s3_client.s3_client.extract_key_from_url",
+        lambda url: "tax-reports/1/2025-10.pdf",
+    )
+
+    def fake_presign(key, expires_in=None):
+        seen["key"] = key
+        return "https://s3.example.com/tax-reports/1/2025-10.pdf?X-Amz-Signature=FRESH"
+
+    monkeypatch.setattr(
+        "app.storage.s3_client.s3_client.get_presigned_url", fake_presign
+    )
+
+    stale = "https://s3.example.com/tax-reports/1/2025-10.pdf?X-Amz-Signature=STALE"
+    fresh = tax_reports._fresh_pdf_url(stale)
+    assert "FRESH" in fresh and "STALE" not in fresh
+    assert seen["key"] == "tax-reports/1/2025-10.pdf"
+
+
+def test_fresh_pdf_url_falls_back(monkeypatch):
+    """Falls back to the stored value when S3 can't re-sign (local dev / bad key)."""
+    from app.api.routes_tax import reports as tax_reports
+
+    monkeypatch.setattr(
+        "app.storage.s3_client.s3_client.extract_key_from_url", lambda url: None
+    )
+    stored = "http://localhost/storage/tax-reports/1/2025-10.pdf"
+    assert tax_reports._fresh_pdf_url(stored) == stored
+    assert tax_reports._fresh_pdf_url(None) is None

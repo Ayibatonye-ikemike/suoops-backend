@@ -28,6 +28,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _fresh_pdf_url(stored_url: str | None) -> str | None:
+    """Return a freshly-signed download URL for a stored tax-report PDF.
+
+    ``report.pdf_url`` is a SHORT-LIVED presigned S3 URL (``S3_PRESIGN_TTL``, ~1h).
+    Returning the stored value directly yields "AccessDenied / Request has expired"
+    once it goes stale — which broke both the emailed link and the dashboard
+    Download button. Re-sign from the object key on every download so the link is
+    always valid when the user actually clicks it. Falls back to the stored value
+    when S3 isn't configured (local dev) or the key can't be parsed.
+    """
+    if not stored_url:
+        return stored_url
+    from app.storage.s3_client import s3_client
+
+    key = s3_client.extract_key_from_url(stored_url)
+    if not key:
+        return stored_url
+    return s3_client.get_presigned_url(key) or stored_url
+
+
 @router.post("/reports/generate", response_model=TaxReportOut)
 def generate_tax_report(
     period_type: Literal["day", "week", "month", "year"] = Query(
@@ -188,7 +208,7 @@ def download_tax_report_by_id(
             raise HTTPException(status_code=500, detail="Failed to generate PDF.")
 
     return {
-        "pdf_url": report.pdf_url,
+        "pdf_url": _fresh_pdf_url(report.pdf_url),
         "period_type": report.period_type,
         "start_date": report.start_date.isoformat() if report.start_date else None,
         "end_date": report.end_date.isoformat() if report.end_date else None,
@@ -213,7 +233,7 @@ def download_monthly_tax_report(
     if not report or not report.pdf_url:
         raise HTTPException(status_code=404, detail="Report or PDF not found.")
 
-    return {"pdf_url": report.pdf_url}
+    return {"pdf_url": _fresh_pdf_url(report.pdf_url)}
 
 
 @router.get("/reports/{report_id}/csv", response_model=ReportCsvOut)

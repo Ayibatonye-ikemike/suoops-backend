@@ -279,7 +279,7 @@ def _notify_tax_report_whatsapp(
             msg = (
                 f"\U0001f4ca Your *{period} Tax Report* is ready!\n\n"
                 "View and download it from your dashboard:\n"
-                "\U0001f517 suoops.com/dashboard/tax-reports"
+                "\U0001f517 suoops.com/dashboard/tax"
             )
             ok = client.send_text(user.phone, msg)
             if ok:
@@ -299,12 +299,13 @@ def _send_tax_report_email(
     display_name = (name or "").split()[0] if name else "there"
 
     headline = f"Your {period} Tax Report Is Ready"
+    # NOTE: don't embed a presigned S3 URL here — it expires (~1h) long before the
+    # user opens the email ("AccessDenied / Request has expired"). Send them to the
+    # dashboard, which mints a fresh download link on demand.
     body_html = (
         f"Your monthly tax report for <b>{period}</b> has been generated "
-        "and is ready to view on your dashboard."
+        "and is ready to view and download on your dashboard."
     )
-    if pdf_url:
-        body_html += f'<br><br><a href="{pdf_url}">Download PDF</a>'
 
     tpl_path = os.path.join(
         os.path.dirname(__file__), "..", "..", "..", "templates", "email", "engagement_tip.html"
@@ -317,7 +318,7 @@ def _send_tax_report_email(
             name=display_name,
             body_text=body_html,
             tip_text="Keep your records tidy — download and store your reports monthly.",
-            cta_url="https://suoops.com/dashboard/tax-reports",
+            cta_url="https://suoops.com/dashboard/tax",
             cta_label="View Tax Report \u2192",
         )
     except Exception:
@@ -326,10 +327,8 @@ def _send_tax_report_email(
     plain_body = (
         f"Hi {display_name},\n\n"
         f"Your {period} tax report has been generated.\n\n"
-        f"View it at https://suoops.com/dashboard/tax-reports"
+        f"View and download it at https://suoops.com/dashboard/tax"
     )
-    if pdf_url:
-        plain_body += f"\nDirect download: {pdf_url}"
 
     subject = f"\U0001f4ca Your {period} Tax Report Is Ready \u2014 SuoOps"
 
