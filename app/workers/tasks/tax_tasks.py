@@ -22,7 +22,7 @@ from jinja2 import Template
 
 from app.core.config import settings
 from app.db.session import session_scope
-from app.models.models import Invoice, User
+from app.models.models import Invoice, User, UserEmailLog
 from app.models.tax_models import FiscalInvoice
 from app.services.pdf_service import PDFService
 from app.services.tax_reporting_service import TaxReportingService
@@ -104,12 +104,32 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
                     user_id, year, prev_month,
                 )
 
-                # ── Notify user that report is ready ─────────────
+                # ── Notify user that report is ready (ONCE per period) ─────
+                # Idempotency guard: this task can run more than once for the
+                # same month (manual admin trigger, Celery retry, or beat
+                # re-firing after a worker restart). Without this check it
+                # re-sent the "Tax Report Is Ready" email on every run. Scope the
+                # dedup key to the period so next month still notifies.
+                notify_key = f"tax_report_ready:{year}-{prev_month:02d}"
+                already_notified = (
+                    db.query(UserEmailLog.id)
+                    .filter(
+                        UserEmailLog.user_id == user_id,
+                        UserEmailLog.email_type == notify_key,
+                    )
+                    .first()
+                )
+                if already_notified:
+                    db.expire_all()
+                    continue
+
                 wa_ok = _notify_tax_report_whatsapp(
                     user, period_label, report.pdf_url,
                 )
+                notified = False
                 if wa_ok:
                     notified_wa += 1
+                    notified = True
                 elif user.email:
                     email_ok = _send_tax_report_email(
                         to_email=user.email,
@@ -119,6 +139,12 @@ def generate_previous_month_reports(self: Task, basis: str = "paid") -> None:
                     )
                     if email_ok:
                         notified_email += 1
+                        notified = True
+
+                # Record the send so re-runs don't re-notify for this period.
+                if notified:
+                    db.add(UserEmailLog(user_id=user_id, email_type=notify_key))
+                    db.commit()
 
             except Exception as e:
                 failures += 1

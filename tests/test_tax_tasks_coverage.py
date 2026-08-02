@@ -20,7 +20,7 @@ import pytest
 from jinja2 import Template as _JinjaTemplate
 
 from app.models import models
-from app.models.alert_models import AlertEvent  # ensure table registered in metadata
+from app.models.alert_models import AlertEvent  # noqa: F401 - ensure table registered in metadata
 from app.models.tax_models import FiscalInvoice
 from app.workers.tasks import tax_tasks
 
@@ -160,6 +160,26 @@ def test_generate_reports_email_fallback_path(monkeypatch, db_session):
     assert sent["count"] == 1
 
 
+def test_generate_reports_notifies_once_per_period(monkeypatch, db_session):
+    """Idempotency: re-running the monthly task in the same period must NOT
+    re-send the 'Tax Report Is Ready' email (regression for repeated sends)."""
+    _inject_service_fakes(monkeypatch, reporting_cls=_FakeReportingWithPdf)
+    _make_user(db_session, 1)
+
+    monkeypatch.setattr(tax_tasks, "_notify_tax_report_whatsapp", lambda *a, **k: False)
+    sent = {"count": 0}
+    monkeypatch.setattr(
+        tax_tasks, "_send_tax_report_email",
+        lambda **k: sent.__setitem__("count", sent["count"] + 1) or True,
+    )
+
+    tax_tasks.generate_previous_month_reports.run(basis="paid")
+    assert sent["count"] == 1
+    # Second run (e.g. manual trigger / beat re-fire) — no duplicate email.
+    tax_tasks.generate_previous_month_reports.run(basis="paid")
+    assert sent["count"] == 1
+
+
 def test_generate_reports_failure_records_alerts(monkeypatch, db_session):
     _inject_service_fakes(monkeypatch, reporting_cls=_FakeReporting)
     _FakeReporting.raise_generate = True
@@ -248,7 +268,6 @@ def test_transmit_invoice_failure_records_alert(monkeypatch, db_session):
     finally:
         _FakeTransmitter.raise_error = False
 
-    from app.models.alert_models import AlertEvent
     events = db_session.query(AlertEvent).filter_by(category="fiscal.transmit").all()
     assert len(events) == 1
 
@@ -282,7 +301,6 @@ def test_update_fiscal_invoice_non_validated_keeps_status(db_session):
 
 def test_record_transmission_failure_adds_alert(db_session):
     tax_tasks._record_transmission_failure(db_session, "FC-X", RuntimeError("nope"))
-    from app.models.alert_models import AlertEvent
     events = db_session.query(AlertEvent).filter_by(category="fiscal.transmit").all()
     assert len(events) == 1
     assert "FC-X" in events[0].message
