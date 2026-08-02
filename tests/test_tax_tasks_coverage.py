@@ -461,6 +461,48 @@ def test_send_tax_email_success(monkeypatch):
     assert len(_FakeSMTP.sent) == 1
 
 
+def test_tax_email_links_dashboard_and_omits_presigned_url(monkeypatch):
+    """End-to-end guard for the two reported bugs:
+    1. NO expiring presigned S3 URL is embedded (was 'Request has expired').
+    2. The CTA points to the REAL /dashboard/tax route (was 404 /dashboard/tax-reports).
+    Passing a presigned pdf_url must NOT leak it into the email.
+    """
+    _FakeSMTP.sent = []
+    fake_settings = SimpleNamespace(
+        SMTP_HOST="smtp.example.com",
+        SMTP_PORT=587,
+        SMTP_USER="user",
+        SMTP_PASSWORD="pass",
+        FROM_EMAIL="noreply@suoops.com",
+    )
+    _inject_email_globals(monkeypatch, fake_settings)
+    monkeypatch.setattr("smtplib.SMTP", _FakeSMTP)
+
+    presigned = (
+        "https://suoops-s3-bucket.s3.amazonaws.com/tax-reports/1/2026-07.pdf"
+        "?X-Amz-Signature=EXPIRESOON&X-Amz-Expires=3600"
+    )
+    ok = tax_tasks._send_tax_report_email(
+        to_email="a@b.com", name="Ada", period="July 2026", pdf_url=presigned,
+    )
+    assert ok is True
+
+    msg = _FakeSMTP.sent[-1]
+    bodies = []
+    for part in msg.walk():
+        if part.get_content_type() in ("text/plain", "text/html"):
+            bodies.append(part.get_payload(decode=True).decode())
+    blob = "\n".join(bodies)
+
+    # 1. No expiring presigned link anywhere in the email.
+    assert presigned not in blob
+    assert "X-Amz-Signature" not in blob
+    assert "Download PDF" not in blob
+    # 2. CTA uses the real dashboard route, never the 404 one.
+    assert "suoops.com/dashboard/tax" in blob
+    assert "/dashboard/tax-reports" not in blob
+
+
 def test_send_tax_email_smtp_raises(monkeypatch):
     fake_settings = SimpleNamespace(
         SMTP_HOST="smtp.example.com",
