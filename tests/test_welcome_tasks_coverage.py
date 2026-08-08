@@ -80,11 +80,28 @@ def test_instant_welcome_already_sent(db_session):
 
 def test_instant_welcome_email_only(monkeypatch, db_session):
     user = _make_user(db_session, 1, phone=None)
-    monkeypatch.setattr(welcome_tasks, "_send_email", lambda *a, **k: True)
+    sent_emails = []
+    monkeypatch.setattr(
+        welcome_tasks,
+        "_send_email",
+        lambda *args, **kwargs: sent_emails.append(args) or True,
+    )
 
     result = welcome_tasks.send_instant_welcome(user.id)
     assert result["email_sent"] is True
     assert result["whatsapp_sent"] is False
+    _, subject, html, plain = sent_emails[0]
+    assert subject == "Welcome to SuoOps — Here’s How It Works"
+    for expected in (
+        "I created SuoOps",
+        "Set up your business",
+        "Create an invoice",
+        "Send it to your customer",
+        "Track the payment",
+        "Founder & CEO, SuoOps",
+    ):
+        assert expected in plain
+    assert "Founder &amp; CEO, SuoOps" in html
     # Log recorded so the daily activation sequence skips a duplicate welcome.
     logged = (
         db_session.query(models.UserEmailLog)

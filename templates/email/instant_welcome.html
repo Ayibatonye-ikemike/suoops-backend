@@ -11,9 +11,9 @@
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;">
 
   <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:32px 40px;text-align:center;">
-    <h1 style="color:#ffffff;margin:0;font-size:26px;font-weight:700;">Welcome to SuoOps! 🎉</h1>
-    <p style="color:rgba(255,255,255,0.9);margin:10px 0 0;font-size:14px;">You're all set — let's get started</p>
+  <tr><td style="background:#0b3318;padding:32px 40px;text-align:center;">
+    <h1 style="color:#ffffff;margin:0;font-size:26px;font-weight:700;">Welcome to SuoOps</h1>
+    <p style="color:#e8f5ec;margin:10px 0 0;font-size:14px;">A quick note from our Founder &amp; CEO</p>
   </td></tr>
 
   <!-- Body -->
@@ -21,9 +21,13 @@
     <p style="color:#334155;font-size:16px;line-height:1.7;margin:0 0 20px;">
       Hi {{ name }},
     </p>
+    <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 16px;">
+      I created SuoOps because running a business is already hard enough. Creating invoices,
+      following up with customers, and keeping track of who has paid should not make it harder.
+    </p>
     <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 20px;">
-      Your account is ready! SuoOps makes it easy to send professional invoices,
-      track payments, and manage your business — all from your phone or laptop.
+      SuoOps puts that work in one simple place, on your phone or laptop, so you can spend less
+      time on paperwork and more time growing your business.
     </p>
   </td></tr>
 
@@ -31,36 +35,46 @@
   <tr><td style="padding:0 40px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;padding:20px;">
       <tr><td>
-        <p style="color:#1e293b;font-size:15px;font-weight:600;margin:0 0 14px;">Get started in 3 steps:</p>
+        <p style="color:#1e293b;font-size:15px;font-weight:600;margin:0 0 14px;">Here is how it works:</p>
 
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
             <td width="36" style="vertical-align:top;padding:0 0 12px;">
-              <div style="background:#6366f1;color:#ffffff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:14px;font-weight:700;">1</div>
+              <div style="background:#14b56a;color:#ffffff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:14px;font-weight:700;">1</div>
             </td>
             <td style="padding:2px 0 12px;">
               <p style="color:#334155;font-size:14px;margin:0;line-height:1.5;">
-                <strong>Create your first invoice</strong> — takes under 60 seconds
+                <strong>Set up your business</strong> — add your business name, logo, bank details, and WhatsApp number.
               </p>
             </td>
           </tr>
           <tr>
             <td width="36" style="vertical-align:top;padding:0 0 12px;">
-              <div style="background:#6366f1;color:#ffffff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:14px;font-weight:700;">2</div>
+              <div style="background:#14b56a;color:#ffffff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:14px;font-weight:700;">2</div>
             </td>
             <td style="padding:2px 0 12px;">
               <p style="color:#334155;font-size:14px;margin:0;line-height:1.5;">
-                <strong>Share it with your customer</strong> — via WhatsApp, email, or link
+                <strong>Create an invoice</strong> — use your dashboard, or message us on WhatsApp with the customer, item, and amount.
               </p>
             </td>
           </tr>
           <tr>
-            <td width="36" style="vertical-align:top;padding:0 0 0;">
-              <div style="background:#6366f1;color:#ffffff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:14px;font-weight:700;">3</div>
+            <td width="36" style="vertical-align:top;padding:0 0 12px;">
+              <div style="background:#14b56a;color:#ffffff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:14px;font-weight:700;">3</div>
+            </td>
+            <td style="padding:2px 0 12px;">
+              <p style="color:#334155;font-size:14px;margin:0;line-height:1.5;">
+                <strong>Send it to your customer</strong> — share the professional invoice by WhatsApp, email, or payment link.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td width="36" style="vertical-align:top;padding:0;">
+              <div style="background:#14b56a;color:#ffffff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-size:14px;font-weight:700;">4</div>
             </td>
             <td style="padding:2px 0 0;">
               <p style="color:#334155;font-size:14px;margin:0;line-height:1.5;">
-                <strong>Get paid</strong> — SuoOps tracks everything for you
+                <strong>Track the payment</strong> — see what is pending or paid, then keep your records up to date.
               </p>
             </td>
           </tr>
@@ -72,9 +86,9 @@
   <!-- CTA -->
   <tr><td style="padding:24px 40px 0;text-align:center;">
     <a href="{{ dashboard_url }}/invoices/new"
-       style="display:inline-block;background:#6366f1;color:#ffffff;text-decoration:none;
+      style="display:inline-block;background:#14b56a;color:#ffffff;text-decoration:none;
               padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">
-      Create Your First Invoice →
+          Create Your First Invoice →
     </a>
   </td></tr>
 
@@ -90,7 +104,16 @@
   <!-- Free invoices note -->
   <tr><td style="padding:20px 40px 0;text-align:center;">
     <p style="color:#64748b;font-size:13px;margin:0;">
-      You have <strong style="color:#6366f1;">2 free invoices</strong> to get started — no credit card needed.
+      Start with <strong style="color:#0b3318;">2 free invoices</strong> — no credit card needed.
+    </p>
+  </td></tr>
+
+  <!-- CEO sign-off -->
+  <tr><td style="padding:24px 40px 0;">
+    <p style="color:#334155;font-size:14px;line-height:1.6;margin:0;">
+      Welcome aboard. I am glad you are here.<br><br>
+      <strong>Ayibatonye</strong><br>
+      Founder &amp; CEO, SuoOps
     </p>
   </td></tr>
 

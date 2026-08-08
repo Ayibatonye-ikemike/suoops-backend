@@ -89,19 +89,25 @@ def send_instant_welcome(user_id: int) -> dict:
                     whatsapp_number="+234 818 376 3636",
                 )
                 plain = (
-                    f"Hi {name}! 🎉\n\n"
-                    "Welcome to SuoOps — you're all set!\n\n"
-                    "You can now:\n"
-                    "📄 Create and send invoices in under 60 seconds\n"
-                    "💬 Or just message us on WhatsApp: +234 818 376 3636\n\n"
-                    "Your first 2 invoices are free. Go ahead and send one now:\n"
+                    f"Hi {name},\n\n"
+                    "I created SuoOps because running a business is already hard enough. "
+                    "Creating invoices, following up with customers, and tracking who has "
+                    "paid should not make it harder.\n\n"
+                    "Here is how it works:\n"
+                    "1. Set up your business with your name, logo, bank details, and WhatsApp number.\n"
+                    "2. Create an invoice from your dashboard, or message us on WhatsApp with the customer, item, and amount.\n"
+                    "3. Send it to your customer by WhatsApp, email, or payment link.\n"
+                    "4. Track the payment, see what is pending or paid, and keep your records up to date.\n\n"
+                    "Create your first invoice:\n"
                     "https://suoops.com/dashboard/invoices/new\n\n"
-                    "We're here if you need anything.\n\n"
-                    "— The SuoOps Team"
+                    "Prefer WhatsApp? Send 'Hi' to +234 818 376 3636.\n\n"
+                    "Welcome aboard. I am glad you are here.\n\n"
+                    "Ayibatonye\n"
+                    "Founder & CEO, SuoOps"
                 )
                 result["email_sent"] = _send_email(
                     user.email,
-                    "Welcome to SuoOps — You're All Set! 🎉",
+                    "Welcome to SuoOps — Here’s How It Works",
                     html,
                     plain,
                 )
