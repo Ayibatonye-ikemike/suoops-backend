@@ -190,6 +190,16 @@ def test_tasks_schedule(admin_client, seeded):
     assert r.status_code < 500
 
 
+def test_metrics_summary_includes_expense_adoption(admin_client, seeded):
+    response = admin_client.get("/admin/metrics/summary?period=month")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["expense_amount"] >= 0
+    assert data["expense_entries"] >= 0
+    assert data["expense_users"] >= 0
+
+
 # ---------------------------------------------------------------------------
 # POST endpoints (safe / mocked)
 # ---------------------------------------------------------------------------

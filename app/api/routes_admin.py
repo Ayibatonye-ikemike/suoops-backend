@@ -1733,6 +1733,9 @@ class MetricsSummary(BaseModel):
     gmv_storefront: float = 0.0  # paid STOREFRONT goods volume
     gmv_manual: float = 0.0  # paid MANUAL (non-storefront) revenue volume
     invoices: int  # revenue invoices created in the window
+    expense_amount: float  # paid business expenses recorded in the window
+    expense_entries: int  # expense records created in the window
+    expense_users: int  # distinct businesses recording expenses in the window
     new_users: int  # signups in the window
     active_users: int  # distinct businesses that invoiced in the window
 
@@ -1835,6 +1838,35 @@ def get_metrics_summary(
         db.query(func.count(Invoice.id)).filter(Invoice.invoice_type == "revenue"),
         Invoice.created_at,
     ).scalar() or 0
+    expense_date = func.coalesce(Invoice.due_date, Invoice.created_at)
+    expense_base = [
+        Invoice.invoice_type == "expense",
+        Invoice.status == "paid",
+    ]
+    expense_amount = _cap_amount(
+        _exclude_users(
+            _win(
+                db.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(*expense_base),
+                expense_date,
+            ),
+            Invoice.issuer_id,
+            excluded_ids,
+        ),
+        Invoice.amount,
+    ).scalar() or 0
+    expense_entries = _exclude_users(
+        _win(db.query(func.count(Invoice.id)).filter(*expense_base), expense_date),
+        Invoice.issuer_id,
+        excluded_ids,
+    ).scalar() or 0
+    expense_users = _exclude_users(
+        _win(
+            db.query(func.count(func.distinct(Invoice.issuer_id))).filter(*expense_base),
+            expense_date,
+        ),
+        Invoice.issuer_id,
+        excluded_ids,
+    ).scalar() or 0
     new_users = _win(db.query(func.count(User.id)), User.created_at).scalar() or 0
     active_users = _exclude_users(
         _win(
@@ -1857,6 +1889,9 @@ def get_metrics_summary(
         gmv_storefront=float(gmv_storefront),
         gmv_manual=float(gmv_manual),
         invoices=int(invoices),
+        expense_amount=float(expense_amount),
+        expense_entries=int(expense_entries),
+        expense_users=int(expense_users),
         new_users=int(new_users),
         active_users=int(active_users),
     )

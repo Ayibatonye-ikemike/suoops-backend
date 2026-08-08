@@ -99,63 +99,129 @@ def send_expense_summary(
     max_retries=2,
 )
 def send_expense_reminders(self: Task) -> dict[str, Any]:
-    """
-    Send reminders to users who haven't recorded expenses recently.
+    """Nudge active businesses that recorded no expense in the past week.
 
-    Targets users with no expenses in past 7 days.
-
-    Returns:
-        Statistics on reminders sent
+    Email is the free primary channel. WhatsApp is used only when the user has
+    no working email and their free-form 24-hour conversation window is open.
     """
-    from app.core.whatsapp import get_whatsapp_client
-    from app.models.models import Invoice
+    from sqlalchemy import or_
+
+    from app.models.models import Invoice, UserEmailLog
+    from app.utils.smtp import send_smtp_batch
 
     with session_scope() as db:
-        seven_days_ago = date.today() - timedelta(days=7)
+        today = date.today()
+        seven_days_ago = today - timedelta(days=7)
+        active_since = today - timedelta(days=30)
+        iso_year, iso_week, _ = today.isocalendar()
+        email_type = f"expense_habit_{iso_year}_{iso_week:02d}"
 
         expense_date_col = func.coalesce(Invoice.due_date, Invoice.created_at)
-        users_with_old_expenses = (
-            db.query(User.id)
-            .join(Invoice, Invoice.issuer_id == User.id)
-            .filter(Invoice.invoice_type == "expense")
-            .group_by(User.id)
-            .having(func.max(func.date(expense_date_col)) < seven_days_ago)
-        ).subquery()
-
-        users = db.query(User).filter(User.id.in_(users_with_old_expenses)).all()
-
-        message = (
-            "👋 Hi! Don't forget to send your weekly expenses to stay compliant "
-            "and maximize your deductions!\n\n"
-            "You can:\n"
-            "📸 Snap a photo of receipts\n"
-            "🎤 Send a voice note\n"
-            "✍️ Or type: 'Expense ₦1000 for data'\n\n"
-            "Tracking expenses helps you pay less tax legally! 💰"
+        recent_expense_users = db.query(Invoice.issuer_id).filter(
+            Invoice.invoice_type == "expense",
+            Invoice.status == "paid",
+            func.date(expense_date_col) >= seven_days_ago,
+        )
+        active_revenue_users = db.query(Invoice.issuer_id).filter(
+            Invoice.invoice_type == "revenue",
+            func.date(Invoice.created_at) >= active_since,
+        )
+        already_reminded = db.query(UserEmailLog.user_id).filter(
+            UserEmailLog.email_type == email_type,
         )
 
-        sent_count = 0
-        client = get_whatsapp_client()
+        users = (
+            db.query(User)
+            .filter(
+                User.id.in_(active_revenue_users),
+                ~User.id.in_(recent_expense_users),
+                ~User.id.in_(already_reminded),
+                or_(User.email.isnot(None), User.phone.isnot(None)),
+            )
+            .all()
+        )
+        if not users:
+            return {
+                "success": True,
+                "email_sent": 0,
+                "whatsapp_sent": 0,
+                "users_targeted": 0,
+                "failed": 0,
+            }
 
+        pending_email: list[tuple[User, str]] = []
+        whatsapp_candidates: list[User] = []
+        for user in users:
+            name = (user.name or "there").split()[0]
+            plain = (
+                f"Hi {name},\n\nSales are not the same as profit. Record this week's "
+                "transport, data, stock, supplies and other business costs so SuoOps "
+                "can show what you truly earned and keep your tax records accurate.\n\n"
+                "Quick add on your dashboard: https://suoops.com/dashboard/expenses\n\n"
+                "Or send this on WhatsApp: Expense ₦5000 for transport\n\n— SuoOps"
+            )
+            if user.email:
+                pending_email.append((user, plain))
+            else:
+                whatsapp_candidates.append(user)
+
+        email_sent = 0
+        whatsapp_sent = 0
+        failed = 0
+        if pending_email:
+            results = send_smtp_batch([
+                (user.email, "Know what you actually earned this week", None, plain)
+                for user, plain in pending_email
+            ])
+            for (user, _), sent in zip(pending_email, results):
+                if sent:
+                    db.add(UserEmailLog(user_id=user.id, email_type=email_type))
+                    email_sent += 1
+                else:
+                    whatsapp_candidates.append(user)
+
+        from app.bot.conversation_window import is_window_open
+        from app.core.whatsapp import get_whatsapp_client
         from app.utils.whatsapp_budget import can_send_whatsapp, record_whatsapp_send
 
-        for user in users:
-            if user.phone:
-                if not can_send_whatsapp(priority=False):
-                    break
-                try:
-                    ok = client.send_text(user.phone, message)
-                    if ok:
-                        record_whatsapp_send(priority=False)
-                        sent_count += 1
-                    logger.info("Sent expense reminder to user %s", user.id)
-                except Exception as e:
-                    logger.error("Failed to send reminder to user %s: %s", user.id, e)
+        client = get_whatsapp_client()
+        for user in whatsapp_candidates:
+            if not user.phone or not is_window_open(user.phone):
+                failed += 1
+                continue
+            if not can_send_whatsapp(priority=False):
+                failed += 1
+                continue
+            name = (user.name or "there").split()[0]
+            message = (
+                f"Hi {name} 👋 Sales are not the same as profit. Add this week's costs "
+                "so your profit and tax records stay accurate.\n\n"
+                "Reply like: *Expense ₦5000 for transport*\n"
+                "Or use: suoops.com/dashboard/expenses"
+            )
+            try:
+                if client.send_text(user.phone, message):
+                    record_whatsapp_send(priority=False)
+                    db.add(UserEmailLog(user_id=user.id, email_type=email_type))
+                    whatsapp_sent += 1
+                else:
+                    failed += 1
+            except Exception as exc:
+                logger.warning("Expense habit nudge failed for user %s: %s", user.id, exc)
+                failed += 1
+
+        db.commit()
+        logger.info(
+            "Expense habit reminders: targeted=%d email=%d whatsapp=%d failed=%d",
+            len(users), email_sent, whatsapp_sent, failed,
+        )
 
         return {
             "success": True,
-            "reminders_sent": sent_count,
+            "email_sent": email_sent,
+            "whatsapp_sent": whatsapp_sent,
             "users_targeted": len(users),
+            "failed": failed,
         }
 
 
