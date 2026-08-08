@@ -41,6 +41,7 @@ from .growth_tasks import (
     send_weekly_free_summary,
 )
 from .welcome_tasks import (
+    broadcast_welcome,
     send_activation_followup,
     send_instant_welcome,
 )
@@ -97,6 +98,7 @@ __all__ = [
     "send_dormant_customer_nudges",
     "send_post_payment_referrals",
     # Instant welcome
+    "broadcast_welcome",
     "send_instant_welcome",
     "send_activation_followup",
     # Maintenance

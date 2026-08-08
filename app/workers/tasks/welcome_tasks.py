@@ -26,6 +26,8 @@ from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
+WELCOME_BROADCAST_LOG_TYPE = "welcome_broadcast_v1"
+
 # Jinja2 template setup
 _template_dir = Path(__file__).parent.parent.parent.parent / "templates" / "email"
 _jinja_env = Environment(
@@ -42,7 +44,7 @@ _jinja_env = Environment(
     soft_time_limit=60,
     time_limit=90,
 )
-def send_instant_welcome(user_id: int) -> dict:
+def send_instant_welcome(user_id: int, *, broadcast: bool = False) -> dict:
     """Send an instant welcome message right after signup.
 
     Called asynchronously from ``AuthService.complete_signup()``
@@ -66,12 +68,14 @@ def send_instant_welcome(user_id: int) -> dict:
 
         name = user.name.split()[0] if user.name else "there"
 
+        log_type = WELCOME_BROADCAST_LOG_TYPE if broadcast else "instant_welcome"
+
         # ── De-dup: don't re-send if task retries after success ──────
         already = (
             db.query(UserEmailLog.id)
             .filter(
                 UserEmailLog.user_id == user_id,
-                UserEmailLog.email_type == "instant_welcome",
+            UserEmailLog.email_type == log_type,
             )
             .first()
         )
@@ -158,7 +162,7 @@ def send_instant_welcome(user_id: int) -> dict:
                 logger.warning("Instant welcome WhatsApp failed for user %s: %s", user_id, e)
 
         # ── 3. Guided onboarding (start first-invoice flow on WhatsApp) ──
-        if user.phone and result.get("whatsapp_sent"):
+        if not broadcast and user.phone and result.get("whatsapp_sent"):
             try:
                 import time
                 time.sleep(3)  # Brief pause so welcome template arrives first
@@ -200,13 +204,13 @@ def send_instant_welcome(user_id: int) -> dict:
 
         # ── Record so Daily activation skips duplicate welcome ───────
         if result["email_sent"] or result["whatsapp_sent"]:
-            db.add(UserEmailLog(user_id=user_id, email_type="instant_welcome"))
+            db.add(UserEmailLog(user_id=user_id, email_type=log_type))
             db.flush()
 
         # ── 4. Schedule 1-hour activation check ─────────────────────
         #    If they haven't created an invoice within 1 hour, re-engage
         #    with a shorter, action-focused follow-up.
-        if user.phone:
+        if not broadcast and user.phone:
             try:
                 send_activation_followup.apply_async(
                     args=[user_id], countdown=3600,
@@ -223,6 +227,45 @@ def send_instant_welcome(user_id: int) -> dict:
         )
 
     return result
+
+
+@celery_app.task(
+    name="welcome.broadcast_welcome",
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=300,
+    time_limit=360,
+)
+def broadcast_welcome() -> dict:
+    """Queue the current welcome message once for every reachable account.
+
+    Each per-user task uses a versioned broadcast dedup key and suppresses the
+    signup-only onboarding demo and one-hour activation follow-up.
+    """
+    from app.models.models import User
+
+    queued = 0
+    with session_scope() as db:
+        user_ids = [
+            user_id
+            for (user_id,) in (
+                db.query(User.id)
+                .filter((User.email.isnot(None)) | (User.phone.isnot(None)))
+                .order_by(User.id)
+                .all()
+            )
+        ]
+
+    for user_id in user_ids:
+        send_instant_welcome.apply_async(
+            args=[user_id],
+            kwargs={"broadcast": True},
+        )
+        queued += 1
+
+    logger.info("Welcome broadcast queued for %d accounts", queued)
+    return {"success": True, "queued": queued}
 
 
 def _send_email(to_email: str, subject: str, html_body: str, plain_body: str) -> bool:

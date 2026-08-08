@@ -222,6 +222,21 @@ def test_trigger_task_mocked(admin_client, seeded):
     assert r.status_code < 500
 
 
+def test_trigger_welcome_broadcast(admin_client, seeded):
+    with patch("app.workers.celery_app.celery_app") as celery:
+        result = MagicMock()
+        result.id = "welcome-task"
+        celery.send_task.return_value = result
+        response = admin_client.post("/admin/tasks/welcome/trigger")
+
+    assert response.status_code == 200
+    celery.send_task.assert_called_once_with(
+        "welcome.broadcast_welcome",
+        args=[],
+        kwargs={},
+    )
+
+
 def test_send_testimonial_requests_mocked(admin_client, seeded):
     with patch("app.workers.celery_app.celery_app") as celery:
         result = MagicMock()

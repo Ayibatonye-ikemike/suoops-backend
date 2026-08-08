@@ -167,6 +167,52 @@ def test_instant_welcome_whatsapp_exception(monkeypatch, db_session):
     assert result["whatsapp_sent"] is False  # template raised -> caught
 
 
+def test_broadcast_welcome_queues_all_reachable_accounts(monkeypatch, db_session):
+    first = _make_user(db_session, 1)
+    second = _make_user(db_session, 2, email=None, phone="+2348012345678")
+    _make_user(db_session, 3, email=None, phone=None)
+    queued = []
+    monkeypatch.setattr(
+        welcome_tasks.send_instant_welcome,
+        "apply_async",
+        lambda *, args, kwargs: queued.append((args, kwargs)),
+    )
+
+    result = welcome_tasks.broadcast_welcome()
+
+    assert result == {"success": True, "queued": 2}
+    assert queued == [
+        ([first.id], {"broadcast": True}),
+        ([second.id], {"broadcast": True}),
+    ]
+
+
+def test_broadcast_welcome_skips_signup_onboarding(monkeypatch, db_session):
+    user = _make_user(db_session, 1, phone="+2348012345678")
+    monkeypatch.setattr(welcome_tasks, "_send_email", lambda *a, **k: True)
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_ACTIVATION_WELCOME", "welcome_tpl")
+    client = _FakeClient()
+    monkeypatch.setattr("app.core.whatsapp.get_whatsapp_client", lambda: client)
+    followups = []
+    monkeypatch.setattr(
+        welcome_tasks.send_activation_followup,
+        "apply_async",
+        lambda *a, **k: followups.append((a, k)),
+    )
+
+    result = welcome_tasks.send_instant_welcome(user.id, broadcast=True)
+
+    assert result == {"email_sent": True, "whatsapp_sent": True}
+    assert client.templates
+    assert client.texts == []
+    assert followups == []
+    assert (
+        db_session.query(models.UserEmailLog)
+        .filter_by(user_id=user.id, email_type=welcome_tasks.WELCOME_BROADCAST_LOG_TYPE)
+        .first()
+    ) is not None
+
+
 # ─────────────────────────── _send_email ───────────────────────────
 class _FakeSMTP:
     sent: list = []
