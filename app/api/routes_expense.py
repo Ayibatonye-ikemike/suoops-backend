@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.dependencies import get_data_owner_id
 from app.api.rate_limit import limiter
 from app.api.routes_auth import get_current_user_id
+from app.core.audit import log_audit_event
 from app.db.session import get_db
 from app.models.models import Invoice
 from app.models.expense_schemas import (
@@ -114,7 +115,6 @@ def create_expense(
         expense_date=data.expense_date,
         input_method="manual",
         channel="dashboard",
-        verified=True,  # Manual entries are auto-verified
         notes=data.notes,
         created_by_user_id=current_user_id,
     )
@@ -210,7 +210,20 @@ def update_expense(
         raise HTTPException(status_code=404, detail="Expense not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    old_values = {
+        "amount": str(invoice.amount),
+        "expense_date": (invoice.due_date or invoice.created_at).date().isoformat(),
+        "category": invoice.category,
+        "description": invoice.lines[0].description if invoice.lines else None,
+        "merchant": invoice.merchant or invoice.vendor_name,
+        "notes": invoice.notes,
+    }
     first_line = invoice.lines[0] if invoice.lines else None
+
+    if invoice.receipt_url and any(
+        field in update_data for field in ("amount", "expense_date", "merchant")
+    ):
+        invoice.expense_flag_reason = invoice.expense_flag_reason or "receipt_details_edited"
 
     if update_data.get("amount") is not None:
         invoice.amount = update_data["amount"]
@@ -230,8 +243,6 @@ def update_expense(
     if "merchant" in update_data:
         invoice.merchant = update_data["merchant"]
         invoice.vendor_name = update_data["merchant"]
-    if "verified" in update_data:
-        invoice.verified = update_data["verified"]
     if "notes" in update_data:
         invoice.notes = update_data["notes"]
 
@@ -239,6 +250,26 @@ def update_expense(
 
     db.commit()
     db.refresh(invoice)
+
+    log_audit_event(
+        "expense.updated",
+        user_id=current_user_id,
+        expense_id=invoice.id,
+        data_owner_id=data_owner_id,
+        old_values=old_values,
+        new_values={
+            key: (
+                str(value)
+                if isinstance(value, Decimal)
+                else value.isoformat()
+                if isinstance(value, (date, datetime))
+                else value
+            )
+            for key, value in update_data.items()
+        },
+        documented=bool(invoice.receipt_url),
+        flag_reason=invoice.expense_flag_reason,
+    )
 
     return expense_invoice_to_out(invoice)
 
@@ -260,8 +291,23 @@ def delete_expense(
     if not invoice:
         raise HTTPException(status_code=404, detail="Expense not found")
 
+    deleted_values = {
+        "amount": str(invoice.amount),
+        "expense_date": (invoice.due_date or invoice.created_at).date().isoformat(),
+        "category": invoice.category,
+        "merchant": invoice.merchant or invoice.vendor_name,
+        "documented": bool(invoice.receipt_url),
+        "flag_reason": invoice.expense_flag_reason,
+    }
     db.delete(invoice)
     db.commit()
+    log_audit_event(
+        "expense.deleted",
+        user_id=current_user_id,
+        expense_id=expense_id,
+        data_owner_id=data_owner_id,
+        deleted_values=deleted_values,
+    )
 
     return None
 

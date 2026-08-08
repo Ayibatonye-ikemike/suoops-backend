@@ -1734,6 +1734,9 @@ class MetricsSummary(BaseModel):
     gmv_manual: float = 0.0  # paid MANUAL (non-storefront) revenue volume
     invoices: int  # revenue invoices created in the window
     expense_amount: float  # paid business expenses recorded in the window
+    documented_expense_amount: float
+    self_reported_expense_amount: float
+    flagged_expense_amount: float
     expense_entries: int  # expense records created in the window
     expense_users: int  # distinct businesses recording expenses in the window
     new_users: int  # signups in the window
@@ -1854,6 +1857,32 @@ def get_metrics_summary(
         ),
         Invoice.amount,
     ).scalar() or 0
+
+    def _expense_quality_amount(*quality_filters):
+        return _cap_amount(
+            _exclude_users(
+                _win(
+                    db.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(
+                        *expense_base, *quality_filters
+                    ),
+                    expense_date,
+                ),
+                Invoice.issuer_id,
+                excluded_ids,
+            ),
+            Invoice.amount,
+        ).scalar() or 0
+
+    unflagged_expense = Invoice.expense_flag_reason.is_(None)
+    documented_expense_amount = _expense_quality_amount(
+        unflagged_expense, Invoice.receipt_url.is_not(None)
+    )
+    self_reported_expense_amount = _expense_quality_amount(
+        unflagged_expense, Invoice.receipt_url.is_(None)
+    )
+    flagged_expense_amount = _expense_quality_amount(
+        Invoice.expense_flag_reason.is_not(None)
+    )
     expense_entries = _exclude_users(
         _win(db.query(func.count(Invoice.id)).filter(*expense_base), expense_date),
         Invoice.issuer_id,
@@ -1890,6 +1919,9 @@ def get_metrics_summary(
         gmv_manual=float(gmv_manual),
         invoices=int(invoices),
         expense_amount=float(expense_amount),
+        documented_expense_amount=float(documented_expense_amount),
+        self_reported_expense_amount=float(self_reported_expense_amount),
+        flagged_expense_amount=float(flagged_expense_amount),
         expense_entries=int(expense_entries),
         expense_users=int(expense_users),
         new_users=int(new_users),

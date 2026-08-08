@@ -330,6 +330,36 @@ def compute_expenses_by_date_range(
     return result or Decimal("0")
 
 
+def compute_expense_evidence_breakdown(
+    db: Session,
+    user_id: int,
+    start_date: date,
+    end_date: date,
+) -> dict[str, Decimal]:
+    """Split paid expenses into documented, self-reported, and flagged totals."""
+    from app.models.models import Invoice
+
+    expense_date = func.coalesce(Invoice.due_date, Invoice.created_at)
+    base_filters = (
+        Invoice.issuer_id == user_id,
+        Invoice.invoice_type == "expense",
+        Invoice.status == "paid",
+        func.date(expense_date) >= start_date,
+        func.date(expense_date) <= end_date,
+    )
+
+    def total(*extra_filters) -> Decimal:
+        value = db.query(func.sum(Invoice.amount)).filter(*base_filters, *extra_filters).scalar()
+        return value or Decimal("0")
+
+    unflagged = Invoice.expense_flag_reason.is_(None)
+    return {
+        "documented": total(unflagged, Invoice.receipt_url.is_not(None)),
+        "self_reported": total(unflagged, Invoice.receipt_url.is_(None)),
+        "flagged": total(Invoice.expense_flag_reason.is_not(None)),
+    }
+
+
 def compute_actual_profit_by_date_range(
     db: Session,
     user_id: int,

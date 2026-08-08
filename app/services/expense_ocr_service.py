@@ -98,7 +98,6 @@ class ExpenseOCRService:
                 channel=channel,
                 receipt_url=receipt_url,
                 receipt_text=receipt_data["raw_text"],
-                verified=receipt_data["confidence"] == "high",  # Auto-verify high-confidence
                 notes=f"OCR confidence: {receipt_data['confidence']}",
             )
         except Exception:

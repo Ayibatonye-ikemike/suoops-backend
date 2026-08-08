@@ -82,6 +82,7 @@ def generate_tax_report(
 
         # Compute revenue & expenses separately so the frontend and PDF can display them
         from app.services.tax_reporting.computations import (
+            compute_expense_evidence_breakdown,
             compute_expenses_by_date_range,
             compute_personal_income_tax,
             compute_revenue_by_date_range,
@@ -95,6 +96,9 @@ def generate_tax_report(
             compute_expenses_by_date_range(
                 db, current_user_id, report.start_date, report.end_date
             )
+        )
+        expense_breakdown = compute_expense_evidence_breakdown(
+            db, current_user_id, report.start_date, report.end_date
         )
         cogs_amount = float(report.cogs_amount or 0)
 
@@ -152,6 +156,9 @@ def generate_tax_report(
             "month": report.month,
             "total_revenue": total_revenue,
             "total_expenses": total_expenses,
+            "documented_expenses": float(expense_breakdown["documented"]),
+            "self_reported_expenses": float(expense_breakdown["self_reported"]),
+            "flagged_expenses": float(expense_breakdown["flagged"]),
             "cogs_amount": cogs_amount,
             "assessable_profit": fresh_profit,
             "levy_amount": float(report.levy_amount or 0),

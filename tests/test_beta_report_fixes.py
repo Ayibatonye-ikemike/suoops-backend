@@ -208,3 +208,56 @@ def test_whatsapp_style_expense_shows_on_dashboard():
     legacy_list = client.get("/expenses/", headers=headers)
     assert legacy_list.status_code == 200, legacy_list.text
     assert any(float(e["amount"]) == 4200.0 for e in legacy_list.json())
+
+
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
+def test_public_expense_payload_cannot_self_verify_or_inject_receipt():
+    token = _signup_and_get_token("+2349990002224")
+    headers = _headers(token)
+
+    response = client.post(
+        "/expenses/",
+        json={
+            "amount": 6400,
+            "expense_date": dt.date.today().isoformat(),
+            "category": "utilities",
+            "merchant": "Power Co",
+            "verified": True,
+            "receipt_url": "https://attacker.invalid/fake-receipt.pdf",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 201, response.text
+    expense = response.json()
+    assert expense["verified"] is False
+    assert expense["receipt_url"] is None
+    assert expense["record_status"] == "self_reported"
+
+
+@patch("app.workers.tasks.generate_invoice_pdf_async.delay", MagicMock())
+def test_exact_duplicate_expense_is_accepted_and_flagged():
+    token = _signup_and_get_token("+2349990002225")
+    headers = _headers(token)
+    payload = {
+        "amount": 8500,
+        "expense_date": dt.date.today().isoformat(),
+        "category": "transport",
+        "merchant": "Metro Fuel",
+        "description": "Delivery fuel",
+    }
+
+    first = client.post("/expenses/", json=payload, headers=headers)
+    second = client.post("/expenses/", json=payload, headers=headers)
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["possible_duplicate"] is False
+    assert second.json()["possible_duplicate"] is True
+    assert second.json()["possible_duplicate_of_id"] == first.json()["id"]
+    assert second.json()["record_status"] == "flagged"
+
+    listed = client.get("/expenses/", headers=headers)
+    assert listed.status_code == 200, listed.text
+    duplicate = next(item for item in listed.json() if item["id"] == second.json()["id"])
+    assert duplicate["possible_duplicate"] is True

@@ -206,6 +206,7 @@ class InvoiceCreationMixin:
             input_method=data.get("input_method"),
             channel=data.get("channel"),
             verified=data.get("verified", False),
+            expense_flag_reason=data.get("expense_flag_reason"),
             notes=notes,
             vat_rate=float(vat_result["vat_rate"]),
             vat_amount=vat_result["vat_amount"],

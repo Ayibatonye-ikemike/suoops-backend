@@ -184,6 +184,9 @@ class TaxReportOut(BaseModel):
     month: int | None = None
     total_revenue: float
     total_expenses: float
+    documented_expenses: float
+    self_reported_expenses: float
+    flagged_expenses: float
     cogs_amount: float
     assessable_profit: float
     levy_amount: float

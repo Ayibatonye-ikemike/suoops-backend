@@ -40,11 +40,6 @@ class InvoiceCreate(BaseModel):
     category: str | None = None  # rent, utilities, supplies, etc.
     merchant: str | None = None
     description: str | None = None
-    receipt_url: str | None = None
-    receipt_text: str | None = None
-    input_method: str | None = None  # voice, text, photo, manual
-    channel: str | None = None  # whatsapp, email, dashboard
-    verified: bool = False
     notes: str | None = None
 
     @model_validator(mode="after")

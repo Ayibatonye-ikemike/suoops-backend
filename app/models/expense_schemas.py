@@ -60,7 +60,6 @@ class ExpenseUpdate(BaseModel):
     category: ExpenseCategoryType | None = None
     description: str | None = Field(None, max_length=500)
     merchant: str | None = Field(None, max_length=200)
-    verified: bool | None = None
     notes: str | None = None
 
 
@@ -72,6 +71,9 @@ class ExpenseOut(ExpenseBase):
     channel: str | None
     receipt_url: str | None
     verified: bool
+    record_status: Literal["self_reported", "documented", "flagged"]
+    possible_duplicate: bool
+    possible_duplicate_of_id: int | None = None
     notes: str | None
     created_at: datetime
     updated_at: datetime | None

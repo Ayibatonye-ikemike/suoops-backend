@@ -225,6 +225,7 @@ class Invoice(Base):
     # change). NULL only for legacy rows created before this column / for expenses.
     platform_fee_kobo: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     verified: Mapped[bool | None] = mapped_column(default=False, nullable=True)  # For expense verification
+    expense_flag_reason: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Additional notes
     
     # Track which user actually created the invoice (for team scenarios - allows confirmation only by creator)

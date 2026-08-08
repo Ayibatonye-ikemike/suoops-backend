@@ -51,14 +51,33 @@ async def create_invoice(
               Defaults to True for better user experience. When an invoice email is requested,
               the system automatically forces synchronous generation so the attachment is present.
     """
+    if data.invoice_type == "expense":
+        from app.services.expense_service import record_expense_invoice
+
+        description = data.description
+        if not description and data.lines:
+            description = data.lines[0].description
+        return record_expense_invoice(
+            db,
+            user_id=data_owner_id,
+            amount=data.amount,
+            category=data.category,
+            description=description,
+            merchant=data.merchant or data.vendor_name,
+            expense_date=data.due_date,
+            input_method="manual",
+            channel="dashboard",
+            notes=data.notes,
+            created_by_user_id=current_user_id,
+        )
+
     # Require bank details before creating revenue invoices
-    if not hasattr(data, 'invoice_type') or data.invoice_type != 'expense':
-        user = db.query(models.User).filter(models.User.id == data_owner_id).one_or_none()
-        if user and (not user.bank_name or not user.account_number):
-            raise HTTPException(
-                status_code=400,
-                detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
-            )
+    user = db.query(models.User).filter(models.User.id == data_owner_id).one_or_none()
+    if user and (not user.bank_name or not user.account_number):
+        raise HTTPException(
+            status_code=400,
+            detail="Please add your bank details in Settings before creating invoices. Your customers need to know where to pay.",
+        )
 
     # Check invoice creation limit based on data owner's subscription plan
     check_invoice_limit(db, data_owner_id)

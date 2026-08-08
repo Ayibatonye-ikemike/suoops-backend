@@ -230,7 +230,6 @@ class ExpenseIntentProcessor:
             expense_date=expense_date,
             input_method="text",
             channel="whatsapp",
-            verified=False,  # User should review
         )
 
         # Send confirmation
