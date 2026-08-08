@@ -22,20 +22,21 @@
       Hi {{ name }},
     </p>
     <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 16px;">
-      I created SuoOps because running a business is already hard enough. Creating invoices,
-      following up with customers, and keeping track of who has paid should not make it harder.
+      I created SuoOps because African business owners should not need one app to sell,
+      another to collect payments, another to arrange delivery, and spreadsheets to understand
+      what is happening in their business.
     </p>
     <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 20px;">
-      SuoOps puts that work in one simple place, on your phone or laptop, so you can spend less
-      time on paperwork and more time growing your business.
+      SuoOps is your commerce operating system: one place to sell, get paid, fulfil orders,
+      manage operations, and grow — built for how you already do business on WhatsApp.
     </p>
   </td></tr>
 
-  <!-- Quick start steps -->
+  <!-- Product overview -->
   <tr><td style="padding:0 40px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;padding:20px;">
       <tr><td>
-        <p style="color:#1e293b;font-size:15px;font-weight:600;margin:0 0 14px;">Here is how it works:</p>
+        <p style="color:#1e293b;font-size:15px;font-weight:600;margin:0 0 14px;">What you can do with SuoOps:</p>
 
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
@@ -44,7 +45,7 @@
             </td>
             <td style="padding:2px 0 12px;">
               <p style="color:#334155;font-size:14px;margin:0;line-height:1.5;">
-                <strong>Set up your business</strong> — add your business name, logo, bank details, and WhatsApp number.
+                <a href="{{ dashboard_url }}/settings#online-payments" style="color:#0b3318;font-weight:700;">Sell online</a> — launch a shareable storefront where customers can browse, order, pay online, and choose delivery.
               </p>
             </td>
           </tr>
@@ -54,7 +55,7 @@
             </td>
             <td style="padding:2px 0 12px;">
               <p style="color:#334155;font-size:14px;margin:0;line-height:1.5;">
-                <strong>Create an invoice</strong> — use your dashboard, or message us on WhatsApp with the customer, item, and amount.
+                <a href="{{ dashboard_url }}/invoices" style="color:#0b3318;font-weight:700;">Sell with confidence</a> — buyer protection, courier delivery, order tracking, and secure settlement are built in.
               </p>
             </td>
           </tr>
@@ -64,7 +65,7 @@
             </td>
             <td style="padding:2px 0 12px;">
               <p style="color:#334155;font-size:14px;margin:0;line-height:1.5;">
-                <strong>Send it to your customer</strong> — share the professional invoice by WhatsApp, email, or payment link.
+                <a href="{{ dashboard_url }}/invoices" style="color:#0b3318;font-weight:700;">Invoice your way</a> — create branded, QR-verifiable invoices from your dashboard or by simply sending a <a href="{{ whatsapp_url }}" style="color:#14b56a;font-weight:600;">WhatsApp message</a>.
               </p>
             </td>
           </tr>
@@ -74,7 +75,7 @@
             </td>
             <td style="padding:2px 0 0;">
               <p style="color:#334155;font-size:14px;margin:0;line-height:1.5;">
-                <strong>Track the payment</strong> — see what is pending or paid, then keep your records up to date.
+                <strong>Run your operations</strong> — manage <a href="{{ dashboard_url }}/inventory" style="color:#14b56a;">inventory</a>, customers, payments, <a href="{{ dashboard_url }}/expenses" style="color:#14b56a;">expenses</a>, <a href="{{ dashboard_url }}/settings" style="color:#14b56a;">team access</a>, <a href="{{ dashboard_url }}/analytics" style="color:#14b56a;">business insights</a>, and <a href="{{ dashboard_url }}/tax" style="color:#14b56a;">Nigeria-focused tax reports</a>.
               </p>
             </td>
           </tr>
@@ -83,12 +84,23 @@
     </table>
   </td></tr>
 
+  <!-- Quick start -->
+  <tr><td style="padding:24px 40px 0;">
+    <p style="color:#1e293b;font-size:15px;font-weight:600;margin:0 0 10px;">The simplest way to start:</p>
+    <p style="color:#334155;font-size:14px;line-height:1.7;margin:0;">
+      <strong>1.</strong> Complete your <a href="{{ dashboard_url }}/settings#profile" style="color:#14b56a;">business profile</a> and <a href="{{ dashboard_url }}/settings#bank-details" style="color:#14b56a;">bank details</a>.<br>
+      <strong>2.</strong> <a href="{{ dashboard_url }}/inventory" style="color:#14b56a;">Add your products or services</a> and <a href="{{ dashboard_url }}/settings#online-payments" style="color:#14b56a;">publish your storefront</a>.<br>
+      <strong>3.</strong> Share your store link — or <a href="{{ whatsapp_url }}" style="color:#14b56a;">create a direct invoice on WhatsApp</a>.<br>
+      <strong>4.</strong> Manage <a href="{{ dashboard_url }}/invoices" style="color:#14b56a;">orders and payments</a>, <a href="{{ dashboard_url }}/inventory" style="color:#14b56a;">stock</a>, <a href="{{ dashboard_url }}/expenses" style="color:#14b56a;">expenses</a>, and <a href="{{ dashboard_url }}/analytics" style="color:#14b56a;">reports</a> from your dashboard.
+    </p>
+  </td></tr>
+
   <!-- CTA -->
   <tr><td style="padding:24px 40px 0;text-align:center;">
-    <a href="{{ dashboard_url }}/invoices/new"
+    <a href="{{ dashboard_url }}"
       style="display:inline-block;background:#14b56a;color:#ffffff;text-decoration:none;
               padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">
-          Create Your First Invoice →
+          Open Your Dashboard →
     </a>
   </td></tr>
 
@@ -96,15 +108,15 @@
   <tr><td style="padding:20px 40px 0;text-align:center;">
     <div style="background:#f0fdf4;border-radius:8px;padding:14px 20px;display:inline-block;">
       <p style="color:#166534;font-size:13px;margin:0;">
-        💬 Prefer WhatsApp? Send <strong>"Hi"</strong> to <strong>{{ whatsapp_number }}</strong> to create invoices by chat
+        💬 <a href="{{ whatsapp_url }}" style="color:#166534;font-weight:700;">Send "Hi" to {{ whatsapp_number }}</a> to create invoices and run everyday tasks by chat.
       </p>
     </div>
   </td></tr>
 
-  <!-- Free invoices note -->
+  <!-- Pricing note -->
   <tr><td style="padding:20px 40px 0;text-align:center;">
     <p style="color:#64748b;font-size:13px;margin:0;">
-      Start with <strong style="color:#0b3318;">2 free invoices</strong> — no credit card needed.
+      <strong style="color:#0b3318;">Every feature is included.</strong> No plans or monthly fees — you only pay when you transact.
     </p>
   </td></tr>
 
@@ -120,8 +132,8 @@
   <!-- Footer -->
   <tr><td style="padding:28px 40px;text-align:center;border-top:1px solid #e2e8f0;margin-top:24px;">
     <p style="color:#94a3b8;font-size:12px;margin:0;">
-      SuoOps — Invoice smarter, get paid faster.<br>
-      Questions? Reply to this email or WhatsApp us at {{ whatsapp_number }}
+      SuoOps — Sell, get paid, and grow in one place.<br>
+      Questions? Reply to this email or <a href="{{ whatsapp_url }}" style="color:#14b56a;">WhatsApp us at {{ whatsapp_number }}</a>
     </p>
   </td></tr>
 

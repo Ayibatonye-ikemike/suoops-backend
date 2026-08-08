@@ -91,17 +91,31 @@ def test_instant_welcome_email_only(monkeypatch, db_session):
     assert result["email_sent"] is True
     assert result["whatsapp_sent"] is False
     _, subject, html, plain = sent_emails[0]
-    assert subject == "Welcome to SuoOps — Here’s How It Works"
+    assert subject == "Welcome to SuoOps — Your Business, in One Place"
     for expected in (
         "I created SuoOps",
-        "Set up your business",
-        "Create an invoice",
-        "Send it to your customer",
-        "Track the payment",
+        "commerce operating system",
+        "shareable storefront",
+        "buyer protection",
+        "courier delivery",
+        "QR-verifiable invoices",
+        "inventory",
+        "expenses",
+        "team access",
+        "tax reports",
+        "No plans or monthly fees",
+        "https://suoops.com/dashboard/settings#profile",
+        "https://suoops.com/dashboard/inventory",
+        "https://suoops.com/dashboard/expenses",
+        "https://suoops.com/dashboard/analytics",
+        "https://suoops.com/dashboard/tax",
+        "https://wa.me/2348106865807?text=Hi",
         "Founder & CEO, SuoOps",
     ):
         assert expected in plain
     assert "Founder &amp; CEO, SuoOps" in html
+    assert "https://wa.me/2348106865807?text=Hi" in html
+    assert "+234 818 376 3636" not in html
     # Log recorded so the daily activation sequence skips a duplicate welcome.
     logged = (
         db_session.query(models.UserEmailLog)
