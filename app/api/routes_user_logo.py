@@ -17,18 +17,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
 
 
-@router.post("/me/logo", response_model=schemas.MessageOut)
-@limiter.limit("5/minute")
-async def upload_logo(
-    request: Request,
-    file: UploadFile = File(...),
-    current_user_id: AdminUserDep = None,
-    db: Annotated[Session, Depends(get_db)] = None,
-):
-    """Upload custom logo (Pro+ feature)."""
+async def _upload_branding_image(
+    *,
+    file: UploadFile,
+    current_user_id: int,
+    db: Session,
+    field_name: str,
+    key_prefix: str,
+    label: str,
+    max_side: int = 1080,
+) -> schemas.MessageOut:
     try:
-        # Check if user has Pro or Business plan
-        require_plan_feature(db, current_user_id, "custom_branding", "Custom Logo Branding")
+        require_plan_feature(db, current_user_id, "custom_branding", "Custom Storefront Branding")
         
         if not file.content_type or not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image (PNG, JPG, JPEG, or SVG)")
@@ -52,26 +52,64 @@ async def upload_logo(
             raise HTTPException(status_code=404, detail="User not found")
         
         ext = get_safe_extension(file.filename, file.content_type)
-        # Shrink logos to a WebP the browser can render instantly (SVGs are left
+        # Shrink branding images to a WebP the browser can render instantly (SVGs are left
         # alone by the optimizer since they can't be resized as bitmaps).
         from app.utils.image_optimizer import optimize_for_storefront
 
-        optimized, optimized_type = optimize_for_storefront(content, file.content_type)
+        optimized, optimized_type = optimize_for_storefront(
+            content, file.content_type, max_side=max_side
+        )
         if optimized_type != file.content_type:
             ext = get_safe_extension(file.filename, optimized_type)
-        key = f"logos/user_{current_user_id}.{ext}"
-        logger.info("Uploading logo for user %s: %s bytes, type: %s", current_user_id, len(optimized), optimized_type)
-        logo_url = await s3_client.upload_file(optimized, key, content_type=optimized_type)
-        user.logo_url = logo_url
+        key = f"{key_prefix}/user_{current_user_id}.{ext}"
+        logger.info("Uploading %s for user %s: %s bytes, type: %s", label, current_user_id, len(optimized), optimized_type)
+        image_url = await s3_client.upload_file(optimized, key, content_type=optimized_type)
+        setattr(user, field_name, image_url)
         db.commit()
-        logger.info("Logo uploaded successfully for user %s: %s", current_user_id, logo_url)
-        return schemas.MessageOut(detail="Logo uploaded successfully")
+        logger.info("%s uploaded successfully for user %s: %s", label, current_user_id, image_url)
+        return schemas.MessageOut(detail=f"{label} uploaded successfully")
     except HTTPException:
         raise
     except Exception as e:  # pragma: no cover
-        logger.error("Failed to upload logo for user %s: %s", current_user_id, str(e), exc_info=True)
+        logger.error("Failed to upload %s for user %s: %s", label, current_user_id, str(e), exc_info=True)
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to upload logo. Please try again.")
+        raise HTTPException(status_code=500, detail=f"Failed to upload {label.lower()}. Please try again.")
+
+
+def _delete_branding_image(
+    *,
+    current_user_id: int,
+    db: Session,
+    field_name: str,
+    label: str,
+) -> schemas.MessageOut:
+    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not getattr(user, field_name):
+        raise HTTPException(status_code=404, detail=f"No {label.lower()} configured")
+    setattr(user, field_name, None)
+    db.commit()
+    return schemas.MessageOut(detail=f"{label} removed successfully")
+
+
+@router.post("/me/logo", response_model=schemas.MessageOut)
+@limiter.limit("5/minute")
+async def upload_logo(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user_id: AdminUserDep = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """Upload custom logo (Pro+ feature)."""
+    return await _upload_branding_image(
+        file=file,
+        current_user_id=current_user_id,
+        db=db,
+        field_name="logo_url",
+        key_prefix="logos",
+        label="Logo",
+    )
 
 
 @router.delete("/me/logo", response_model=schemas.MessageOut)
@@ -79,11 +117,42 @@ def delete_logo(
     current_user_id: AdminUserDep,
     db: Annotated[Session, Depends(get_db)],
 ):
-    user = db.query(models.User).filter(models.User.id == current_user_id).one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not user.logo_url:
-        raise HTTPException(status_code=404, detail="No logo configured")
-    user.logo_url = None
-    db.commit()
-    return schemas.MessageOut(detail="Logo removed successfully")
+    return _delete_branding_image(
+        current_user_id=current_user_id,
+        db=db,
+        field_name="logo_url",
+        label="Logo",
+    )
+
+
+@router.post("/me/storefront-cover", response_model=schemas.MessageOut)
+@limiter.limit("5/minute")
+async def upload_storefront_cover(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user_id: AdminUserDep = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """Upload a landscape storefront cover (Pro+ feature)."""
+    return await _upload_branding_image(
+        file=file,
+        current_user_id=current_user_id,
+        db=db,
+        field_name="storefront_cover_url",
+        key_prefix="storefront-covers",
+        label="Storefront cover",
+        max_side=1600,
+    )
+
+
+@router.delete("/me/storefront-cover", response_model=schemas.MessageOut)
+def delete_storefront_cover(
+    current_user_id: AdminUserDep,
+    db: Annotated[Session, Depends(get_db)],
+):
+    return _delete_branding_image(
+        current_user_id=current_user_id,
+        db=db,
+        field_name="storefront_cover_url",
+        label="Storefront cover",
+    )

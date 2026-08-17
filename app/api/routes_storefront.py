@@ -971,6 +971,9 @@ def get_public_storefront(request: Request, slug: str, db: Annotated[Session, De
         "business_name": owner.business_name or owner.name,
         "description": owner.storefront_description,
         "logo_url": _presign(owner.logo_url, expires_in=_PUBLIC_ASSET_TTL),
+        "storefront_cover_url": _presign(
+            owner.storefront_cover_url, expires_in=_PUBLIC_ASSET_TTL
+        ),
         "online_payments_enabled": bool(
             owner.paystack_subaccount_active and owner.paystack_subaccount_code
         ),

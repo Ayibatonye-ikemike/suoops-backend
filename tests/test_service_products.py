@@ -110,9 +110,15 @@ def test_physical_order_still_requires_delivery_address(db_session, client, monk
     assert "delivery address" in resp.json()["detail"].lower()
 
 
-def test_public_storefront_exposes_fulfilment_type(db_session, client):
-    _seed_service_store(db_session)
+def test_public_storefront_exposes_fulfilment_type_and_cover(db_session, client, monkeypatch):
+    owner, _product = _seed_service_store(db_session)
+    owner.storefront_cover_url = "https://cdn.example.com/storefront-cover.webp"
+    db_session.commit()
+    monkeypatch.setattr("app.api.routes_storefront._presign", lambda url, **kwargs: url)
+
     resp = client.get("/public/store/coachstore")
     assert resp.status_code == 200, resp.text
-    products = resp.json()["products"]
+    body = resp.json()
+    assert body["storefront_cover_url"] == owner.storefront_cover_url
+    products = body["products"]
     assert products and products[0]["fulfilment_type"] == "service"

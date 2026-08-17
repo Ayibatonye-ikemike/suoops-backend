@@ -73,15 +73,18 @@ def get_profile(
     # Safely get legacy invoice count (kept for backward compat; frontend uses wallet)
     invoice_balance = getattr(user, "invoice_balance", 0) or 0
     
-    # Generate a fresh presigned URL for the logo (the stored URL expires)
-    fresh_logo_url = None
-    if user.logo_url:
+    # Generate fresh presigned URLs for stored branding assets.
+    def _fresh_branding_url(stored_url: str | None) -> str | None:
+        if not stored_url:
+            return None
         from app.storage.s3_client import s3_client
-        logo_key = s3_client.extract_key_from_url(user.logo_url)
-        if logo_key:
-            fresh_logo_url = s3_client.get_presigned_url(logo_key, expires_in=3600)
-        if not fresh_logo_url:
-            fresh_logo_url = user.logo_url  # fallback to stored URL
+
+        key = s3_client.extract_key_from_url(stored_url)
+        fresh_url = s3_client.get_presigned_url(key, expires_in=3600) if key else None
+        return fresh_url or stored_url
+
+    fresh_logo_url = _fresh_branding_url(user.logo_url)
+    fresh_cover_url = _fresh_branding_url(user.storefront_cover_url)
 
     # Has the user ever created a revenue invoice? Drives the dashboard's
     # first-invoice activation prompt (invoices_this_month is deprecated/0, so
@@ -108,6 +111,7 @@ def get_profile(
         wallet_balance_kobo=getattr(user, "wallet_balance_kobo", 0) or 0,
         invoices_this_month=0,  # Deprecated, kept for backward compat
         logo_url=fresh_logo_url,
+        storefront_cover_url=fresh_cover_url,
         subscription_expires_at=user.subscription_expires_at,
         subscription_started_at=user.usage_reset_at,  # When current billing cycle started
         is_influencer=_check_is_influencer(db, user.id),

@@ -413,6 +413,7 @@ class User(Base):
 
     # Business branding
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    storefront_cover_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Role-based access control (RBAC) role; defaults to 'user'.
     # Values: 'user', 'staff', 'admin'. Additional roles can be added via migration.
     role: Mapped[str] = mapped_column(String(20), default="user", server_default="user", index=True)

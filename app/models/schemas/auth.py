@@ -77,6 +77,7 @@ class UserOut(BaseModel):
     wallet_balance_kobo: int = 0  # Prepaid invoice wallet, in kobo
     invoices_this_month: int = 0  # Deprecated, kept for backward compat
     logo_url: str | None = None
+    storefront_cover_url: str | None = None
     subscription_expires_at: dt.datetime | None = None
     subscription_started_at: dt.datetime | None = None
     is_influencer: bool = False
