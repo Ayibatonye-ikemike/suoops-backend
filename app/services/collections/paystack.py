@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import logging
 
-import httpx
-
 from app.core.config import settings
 from app.services.payouts.paystack import paystack_refund
+from app.services.paystack_http import paystack_client
 
 from .base import ChargeInit, ChargeStatus, CollectionError, CollectionProvider
 
@@ -53,7 +52,7 @@ class PaystackCollectionProvider(CollectionProvider):
         metadata: dict,
     ) -> ChargeInit:
         try:
-            with httpx.Client(timeout=15) as client:
+            with paystack_client(timeout=15) as client:
                 init_body = {
                     "email": customer_email,
                     "amount": int(amount_kobo),  # kobo
@@ -82,7 +81,7 @@ class PaystackCollectionProvider(CollectionProvider):
 
     def verify_charge(self, reference: str) -> ChargeStatus:
         try:
-            with httpx.Client(timeout=15) as client:
+            with paystack_client(timeout=15) as client:
                 resp = client.get(
                     f"{_PAYSTACK_BASE}/transaction/verify/{reference}", headers=_headers()
                 )

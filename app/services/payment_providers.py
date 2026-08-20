@@ -5,9 +5,8 @@ import hmac
 import logging
 from decimal import Decimal, ROUND_UP
 
-import httpx
-
 from app.core.config import settings
+from app.services.paystack_http import paystack_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +84,7 @@ class PaystackProvider:
             "callback_url": f"{settings.FRONTEND_URL}/payments/confirm",
         }
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with paystack_async_client(timeout=10.0) as client:
                 r = await client.post(
                     f"{self.base}/transaction/initialize",
                     headers={"Authorization": f"Bearer {self.secret}"},

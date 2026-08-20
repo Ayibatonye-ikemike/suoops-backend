@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
 from app.models.payment_models import PaymentStatus, PaymentTransaction
+from app.services.paystack_http import paystack_async_client
 
 from .schemas import PaymentVerifyOut
 
@@ -34,7 +35,7 @@ async def verify_subscription_payment(
     If payment successful, upgrade plan immediately.
     """
     try:
-        async with httpx.AsyncClient() as client:
+        async with paystack_async_client() as client:
             response = await client.get(
                 f"https://api.paystack.co/transaction/verify/{reference}",
                 headers={

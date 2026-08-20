@@ -45,6 +45,7 @@ def test_factory_selects_provider(monkeypatch):
 def test_paystack_transfer_uses_cached_recipient(monkeypatch):
     from app.core.config import settings
     import app.services.payouts.paystack as ps
+    import app.services.paystack_http as psh
 
     monkeypatch.setattr(settings, "PAYSTACK_SECRET", "sk_test_x")
     captured = {}
@@ -54,7 +55,7 @@ def test_paystack_transfer_uses_cached_recipient(monkeypatch):
         captured["body"] = body
         return _Resp({"status": True, "message": "ok"})
 
-    monkeypatch.setattr(ps.httpx, "Client", lambda *a, **k: _FakeClient(handler))
+    monkeypatch.setattr(psh.httpx, "Client", lambda *a, **k: _FakeClient(handler))
 
     seller = SimpleNamespace(
         id=1,
@@ -120,13 +121,14 @@ def test_paystack_transfer_status_maps(monkeypatch):
     """verify-by-reference maps to normalized status; exists = successful only."""
     from app.core.config import settings
     import app.services.payouts.paystack as ps
+    import app.services.paystack_http as psh
 
     monkeypatch.setattr(settings, "PAYSTACK_SECRET", "sk_test_x")
     prov = ps.PaystackPayoutProvider()
 
     def use(payload):
         monkeypatch.setattr(
-            ps.httpx, "Client", lambda *a, **k: _FakeClient(lambda m, u, b: _Resp(payload))
+            psh.httpx, "Client", lambda *a, **k: _FakeClient(lambda m, u, b: _Resp(payload))
         )
 
     use({"status": True, "data": {"status": "success"}})

@@ -91,6 +91,15 @@ class BaseAppSettings(BaseSettings):
             return v
         return str(v)
     PAYSTACK_SECRET: str | None = None
+    # Static-IP egress proxy for ALL Paystack API calls. When Paystack's secret
+    # key has an "Allowed IP addresses" restriction, every request must originate
+    # from a whitelisted IP — impossible on Render's dynamic shared IPs, so route
+    # Paystack traffic through a static-IP forward proxy (e.g. a $5 VPS running
+    # tinyproxy) and whitelist THAT IP on Paystack. Format:
+    # "http://user:pass@host:port". Unset = direct (no proxy). Mirrors
+    # FLUTTERWAVE_TRANSFER_PROXY, but covers the whole API (Paystack's allow-list
+    # gates every call, not just transfers).
+    PAYSTACK_PROXY: str | None = None
     # Paystack plan code for the recurring monthly Pro Features subscription
     # (₦1,500/mo). Create with scripts/create_pro_features_plan.py, then set here.
     PAYSTACK_PRO_FEATURES_PLAN_CODE: str | None = None
@@ -406,6 +415,10 @@ class TestSettings(BaseAppSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./storage/test.db"
     WHATSAPP_API_KEY: str = "test-whatsapp-key"
     PAYSTACK_SECRET: str = "test-paystack-secret"
+    # Empty so the OTP store and rate limiter use their in-memory fallbacks —
+    # the suite must not depend on a live Redis. Tests that exercise Redis
+    # behaviour mock ``app.db.redis_client.get_redis_client`` directly instead.
+    REDIS_URL: str = ""
 
 
 class ProdSettings(BaseAppSettings):

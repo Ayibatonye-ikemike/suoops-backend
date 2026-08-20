@@ -567,6 +567,7 @@ async def initialize_invoice_pack_purchase(
     from app.core.config import settings
     from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
     from app.services.payment_providers import calculate_amount_with_paystack_fee
+    from app.services.paystack_http import paystack_async_client
     from app.utils.feature_gate import PACK_OPTIONS
     
     if quantity < 1 or quantity > 10:
@@ -615,7 +616,7 @@ async def initialize_invoice_pack_purchase(
     
     # Initialize Paystack payment
     try:
-        async with httpx.AsyncClient() as client:
+        async with paystack_async_client() as client:
             resp = await client.post(
                 "https://api.paystack.co/transaction/initialize",
                 headers={

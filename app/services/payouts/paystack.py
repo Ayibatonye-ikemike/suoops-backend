@@ -5,10 +5,10 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.services.paystack_http import paystack_client
 
 from .base import PayoutError, PayoutProvider, PayoutResult
 
@@ -55,7 +55,7 @@ def _resolve_bank_code(bank_name: str) -> str:
 
     now = time.time()
     if not _bank_cache or (now - _bank_cache_at) > _BANK_CACHE_TTL:
-        with httpx.Client(timeout=20) as client:
+        with paystack_client(timeout=20) as client:
             resp = client.get(
                 f"{_PAYSTACK_BASE}/bank",
                 headers=_headers(),
@@ -95,7 +95,7 @@ class PaystackPayoutProvider(PayoutProvider):
 
         bank_code = _resolve_bank_code(bank_name)
 
-        with httpx.Client(timeout=20) as client:
+        with paystack_client(timeout=20) as client:
             resp = client.post(
                 f"{_PAYSTACK_BASE}/transferrecipient",
                 headers=_headers(),
@@ -131,7 +131,7 @@ class PaystackPayoutProvider(PayoutProvider):
     ) -> PayoutResult:
         recipient = self._ensure_recipient(db, seller)
         try:
-            with httpx.Client(timeout=20) as client:
+            with paystack_client(timeout=20) as client:
                 resp = client.post(
                     f"{_PAYSTACK_BASE}/transfer",
                     headers=_headers(),
@@ -159,7 +159,7 @@ class PaystackPayoutProvider(PayoutProvider):
     def transfer_status(self, reference: str) -> str:
         """Normalized disbursement status via Paystack's verify-by-reference."""
         try:
-            with httpx.Client(timeout=15) as client:
+            with paystack_client(timeout=15) as client:
                 resp = client.get(
                     f"{_PAYSTACK_BASE}/transfer/verify/{reference}", headers=_headers()
                 )
@@ -174,7 +174,7 @@ class PaystackPayoutProvider(PayoutProvider):
 def paystack_refund(*, charge_reference: str, amount_kobo: int, note: str) -> dict:
     """Refund a Paystack charge (the collector). Raises PayoutError on failure."""
     try:
-        with httpx.Client(timeout=20) as client:
+        with paystack_client(timeout=20) as client:
             resp = client.post(
                 f"{_PAYSTACK_BASE}/refund",
                 headers=_headers(),

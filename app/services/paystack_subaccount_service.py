@@ -19,11 +19,11 @@ from __future__ import annotations
 import logging
 import time
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import models
+from app.services.paystack_http import paystack_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class PaystackSubaccountService:
         global _bank_cache, _bank_cache_at
         if _bank_cache and (time.time() - _bank_cache_at) < _BANK_CACHE_TTL:
             return _bank_cache
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with paystack_async_client(timeout=15.0) as client:
             resp = await client.get(
                 f"{_PAYSTACK_BASE}/bank",
                 headers=self._headers,
@@ -92,7 +92,7 @@ class PaystackSubaccountService:
 
     async def resolve_account(self, account_number: str, bank_code: str) -> str:
         """Verify the account exists and return its real account name."""
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with paystack_async_client(timeout=15.0) as client:
             resp = await client.get(
                 f"{_PAYSTACK_BASE}/bank/resolve",
                 headers=self._headers,
@@ -119,7 +119,7 @@ class PaystackSubaccountService:
         }
         if contact_email:
             payload["primary_contact_email"] = contact_email
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with paystack_async_client(timeout=15.0) as client:
             resp = await client.post(
                 f"{_PAYSTACK_BASE}/subaccount", headers=self._headers, json=payload
             )
@@ -139,7 +139,7 @@ class PaystackSubaccountService:
             "account_number": account_number,
             "percentage_charge": self.commission_percent,
         }
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with paystack_async_client(timeout=15.0) as client:
             resp = await client.put(
                 f"{_PAYSTACK_BASE}/subaccount/{subaccount_code}",
                 headers=self._headers,

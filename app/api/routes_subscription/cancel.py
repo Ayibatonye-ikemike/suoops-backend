@@ -10,6 +10,7 @@ from app.api.routes_auth import get_current_user_id
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import models
+from app.services.paystack_http import paystack_async_client
 
 from .schemas import CancelSubscriptionOut, SubscriptionStatusOut
 
@@ -57,7 +58,7 @@ async def cancel_subscription(
     
     # Disable subscription on Paystack
     try:
-        async with httpx.AsyncClient() as client:
+        async with paystack_async_client() as client:
             # First get subscription details to get the email_token
             sub_response = await client.get(
                 f"https://api.paystack.co/subscription/{subscription_code}",

@@ -1296,6 +1296,7 @@ def sync_provider_status(self: Task, provider: str, reference: str) -> dict[str,
     import requests as http_requests
 
     from app.models.models import Invoice
+    from app.services.paystack_http import paystack_requests_proxies
 
     logger.info("Syncing provider status | provider=%s reference=%s", provider, reference)
 
@@ -1313,6 +1314,7 @@ def sync_provider_status(self: Task, provider: str, reference: str) -> dict[str,
             f"https://api.paystack.co/transaction/verify/{reference}",
             headers={"Authorization": f"Bearer {paystack_key}"},
             timeout=15,
+            proxies=paystack_requests_proxies(),
         )
         resp.raise_for_status()
         data = resp.json()

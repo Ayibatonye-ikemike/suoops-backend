@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -8,6 +7,7 @@ from app.api.rate_limit import limiter
 from app.db.session import get_db
 from app.models import schemas
 from app.services.invoice_service import build_invoice_service
+from app.services.paystack_http import paystack_async_client
 from app.utils.invoice_delivery import invoice_has_contact, is_online_only
 
 router = APIRouter(tags=["invoices-public"])
@@ -222,7 +222,7 @@ async def verify_invoice_payment(
 
     # Ask Paystack directly whether this transaction succeeded.
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with paystack_async_client(timeout=15.0) as client:
             resp = await client.get(
                 f"https://api.paystack.co/transaction/verify/{reference}",
                 headers={"Authorization": f"Bearer {settings.PAYSTACK_SECRET}"},

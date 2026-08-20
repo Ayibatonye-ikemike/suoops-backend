@@ -17,6 +17,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+# Keep the suite hermetic: default the OTP store + rate limiter to their in-memory
+# fallbacks so tests never need a live Redis. A local .env can set REDIS_URL, which
+# pydantic would otherwise apply and push the OTP store onto a real Redis (failing
+# without one running). Env vars outrank .env, and setdefault respects an explicit
+# REDIS_URL if a dev really wants to test against Redis. Must run before app import.
+os.environ.setdefault("REDIS_URL", "")
+
 from app.api.main import app  # noqa: E402
 from app.core.config import settings
 from app.db import session as db_session

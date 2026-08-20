@@ -44,6 +44,7 @@ def test_factory_selects_collection_provider(monkeypatch):
 def test_paystack_collection_init_and_verify(monkeypatch):
     from app.core.config import settings
     import app.services.collections.paystack as pc
+    import app.services.paystack_http as psh
 
     monkeypatch.setattr(settings, "PAYSTACK_SECRET", "sk_test_x")
     captured = {}
@@ -55,7 +56,7 @@ def test_paystack_collection_init_and_verify(monkeypatch):
             return _Resp({"status": True, "data": {"authorization_url": "https://pay/x"}})
         return _Resp({"status": True, "data": {"status": "success", "amount": 50000, "currency": "NGN", "id": 99}})
 
-    monkeypatch.setattr(pc.httpx, "Client", lambda *a, **k: _FakeClient(handler))
+    monkeypatch.setattr(psh.httpx, "Client", lambda *a, **k: _FakeClient(handler))
     prov = pc.PaystackCollectionProvider()
     charge = prov.initialize_hold_charge(
         amount_kobo=50000, reference="INVPAY-1-AB", customer_email="c@x.com",

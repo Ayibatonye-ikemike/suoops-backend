@@ -19,6 +19,7 @@ from app.models.payment_models import (
     PaymentStatus,
     PaymentTransaction,
 )
+from app.services.paystack_http import paystack_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +171,7 @@ async def start_invoice_payment(
     # Normal (non-hold) path: split to the seller's Paystack subaccount — they bear
     # the Paystack fee, SuoOps keeps the commission via transaction_charge.
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with paystack_async_client(timeout=15.0) as client:
             init_payload = {
                 "email": customer_email,
                 "amount": charge_kobo,

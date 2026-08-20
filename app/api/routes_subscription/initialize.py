@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models import models
 from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
 from app.services.payment_providers import calculate_amount_with_paystack_fee
+from app.services.paystack_http import paystack_async_client
 
 from .constants import PLAN_PRICES, PAYSTACK_PLAN_CODES
 from .schemas import PaymentInitOut
@@ -92,7 +93,7 @@ async def initialize_subscription_payment(
     
     # Initialize Paystack subscription
     try:
-        async with httpx.AsyncClient() as client:
+        async with paystack_async_client() as client:
             # First, create or get customer
             customer_response = await client.post(
                 "https://api.paystack.co/customer",
