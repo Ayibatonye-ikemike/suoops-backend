@@ -544,21 +544,21 @@ async def initialize_invoice_pack_purchase(
     request: Request,
     current_user_id: CurrentUserDep,
     db: DbDep,
-    quantity: int = 1,
-    pack_type: str = "standard",
+    amount: int = 1250,
 ):
     """
-    Initialize Paystack payment for invoice pack purchase.
-    
+    Initialize a Paystack payment to top up the prepaid wallet.
+
     **Parameters:**
-    - quantity: Number of packs to purchase (default 1)
-    - pack_type: \"standard\" (50 for ₦1,250) or \"small\" (25 for ₦625)
-    
+    - amount: Top-up amount in Naira; must be an offered tier (1250/5000/20000).
+      The customer additionally covers the Paystack fee at checkout; the wallet
+      is credited the full tier amount.
+
     **Returns:**
     - authorization_url: Paystack checkout URL
     - reference: Payment reference for tracking
-    - amount: Amount in kobo (₦ x 100)
-    - invoices_to_add: Number of invoices that will be added
+    - amount: Total charged in Naira (tier + Paystack fee)
+    - wallet_credit_naira: Amount credited to the wallet (the tier)
     """
     import uuid
 
@@ -568,31 +568,26 @@ async def initialize_invoice_pack_purchase(
     from app.models.payment_models import PaymentProvider, PaymentStatus, PaymentTransaction
     from app.services.payment_providers import calculate_amount_with_paystack_fee
     from app.services.paystack_http import paystack_async_client
-    from app.utils.feature_gate import PACK_OPTIONS
-    
-    if quantity < 1 or quantity > 10:
-        raise HTTPException(status_code=400, detail="Quantity must be between 1 and 10 packs")
-    
-    pack = PACK_OPTIONS.get(pack_type)
-    if not pack:
-        raise HTTPException(status_code=400, detail="Invalid pack_type. Use 'standard' or 'small'")
-    
+    from app.utils.feature_gate import WALLET_TOPUP_TIERS
+
+    if amount not in WALLET_TOPUP_TIERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid amount. Choose a top-up tier: {WALLET_TOPUP_TIERS}",
+        )
+
     user = db.query(models.User).filter(models.User.id == current_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    pack_price = pack["price"]
-    pack_size = pack["size"]
-    
-    # Calculate total - add Paystack fees so customer pays them
-    base_amount = pack_price * quantity
-    total_amount = calculate_amount_with_paystack_fee(base_amount)
-    invoices_to_add = pack_size * quantity
-    
-    # Generate unique reference
+
+    # Customer covers the Paystack fee; the wallet is credited the full tier.
+    wallet_credit_kobo = amount * 100
+    total_amount = int(calculate_amount_with_paystack_fee(amount))
+
+    # Generate unique reference (INVPACK- so the webhook credits the wallet)
     reference = f"INVPACK-{current_user_id}-{uuid.uuid4().hex[:8].upper()}"
-    
-    # Record transaction (invoice pack - plan stays the same)
+
+    # Record transaction (wallet top-up - plan stays the same)
     current_plan = user.plan.value if user.plan else "free"
     transaction = PaymentTransaction(
         user_id=current_user_id,
@@ -602,13 +597,12 @@ async def initialize_invoice_pack_purchase(
         provider=PaymentProvider.PAYSTACK,
         status=PaymentStatus.PENDING,
         plan_before=current_plan,
-        plan_after=current_plan,  # Invoice pack doesn't change plan
+        plan_after=current_plan,  # Wallet top-up doesn't change plan
         customer_email=user.email or (f"{user.phone}@suoops.com" if user.phone else None),
         customer_phone=user.phone,
         payment_metadata={
             "payment_type": "invoice_pack",
-            "quantity": quantity,
-            "invoices_to_add": invoices_to_add,
+            "wallet_credit_kobo": wallet_credit_kobo,
         },
     )
     db.add(transaction)
@@ -631,8 +625,7 @@ async def initialize_invoice_pack_purchase(
                     "metadata": {
                         "payment_type": "invoice_pack",
                         "user_id": current_user_id,
-                        "quantity": quantity,
-                        "invoices_to_add": invoices_to_add,
+                        "wallet_credit_kobo": wallet_credit_kobo,
                     },
                 },
             )
@@ -652,13 +645,14 @@ async def initialize_invoice_pack_purchase(
     auth_url = data["data"]["authorization_url"]
     
     logger.info(
-        "Invoice pack payment initialized | user=%s quantity=%d invoices=%d amount=%d ref=%s",
-        current_user_id, quantity, invoices_to_add, total_amount, reference
+        "Wallet top-up payment initialized | user=%s credit_naira=%d charged_naira=%d ref=%s",
+        current_user_id, amount, total_amount, reference
     )
     
     return schemas.InvoicePackPurchaseInitOut(
         authorization_url=auth_url,
         reference=reference,
         amount=total_amount,
-        invoices_to_add=invoices_to_add,
+        invoices_to_add=0,
+        wallet_credit_naira=amount,
     )
