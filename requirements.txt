@@ -22,7 +22,7 @@ redis==5.0.7
 celery==5.4.0
 celery-redbeat==2.3.3
 reportlab==4.2.0
-Pillow==12.2.0
+Pillow==12.3.0
 pyjwt==2.13.0
 qrcode==7.4.2
 alembic==1.13.2
@@ -32,5 +32,5 @@ weasyprint==68.1
 prometheus-client==0.20.0
 slowapi==0.1.9
 authlib==1.6.12
-cryptography==48.0.1
+cryptography==50.0.0
 sentry-sdk[fastapi]==2.18.0
