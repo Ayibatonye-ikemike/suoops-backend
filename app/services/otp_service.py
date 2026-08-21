@@ -6,13 +6,10 @@ import hmac
 import json
 import logging
 import secrets
-import smtplib
 import string
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -295,79 +292,51 @@ class OTPService:
         return "whatsapp"
     
     def _send_email_otp(self, email: str, otp: str, purpose: str) -> None:
-        """Send OTP via email using SMTP with HTML template."""
-        try:
-            # Provider-agnostic SMTP config (SMTP_* first, Brevo vars as fallback).
-            from app.utils.smtp import get_smtp_config
+        """Send OTP via email, trying every configured provider (ZeptoMail →
+        Brevo) so a single provider's SMTP auth failure doesn't block login."""
+        from app.utils.smtp import get_smtp_configs, send_email_with_fallback
 
-            smtp_host, smtp_port, smtp_user, smtp_password, from_email = get_smtp_config()
-
-            if not all([smtp_user, smtp_password]):
-                logger.error(
-                    "SMTP not configured. Set SMTP_HOST/SMTP_USER/SMTP_PASSWORD (or legacy Brevo vars)."
-                )
-                raise ValueError("Email OTP is not available")
-            
-            # Setup Jinja2 template environment
-            template_dir = Path(__file__).parent.parent.parent / "templates" / "email"
-            jinja_env = Environment(
-                loader=FileSystemLoader(str(template_dir)),
-                autoescape=select_autoescape(['html', 'xml'])
+        if not get_smtp_configs():
+            logger.error(
+                "SMTP not configured. Set SMTP_*_ZEP / SMTP_* / BREVO_SMTP_LOGIN+BREVO_API_KEY."
             )
-            
-            # Render HTML template
-            template = jinja_env.get_template('otp_verification.html')
-            html_body = template.render(
-                otp_code=otp,
-                purpose=purpose,
-                current_year=datetime.now(timezone.utc).year
-            )
-            
-            # Create plain text fallback
-            action = "complete your signup" if purpose == "signup" else "login securely"
-            plain_body = f"""
-SuoOps Verification Code
+            raise ValueError("Email OTP is not available")
 
-Your OTP is {otp}.
+        # Render the HTML template (+ plain-text fallback body).
+        template_dir = Path(__file__).parent.parent.parent / "templates" / "email"
+        jinja_env = Environment(
+            loader=FileSystemLoader(str(template_dir)),
+            autoescape=select_autoescape(['html', 'xml'])
+        )
+        html_body = jinja_env.get_template('otp_verification.html').render(
+            otp_code=otp,
+            purpose=purpose,
+            current_year=datetime.now(timezone.utc).year,
+        )
+        action = "complete your signup" if purpose == "signup" else "login securely"
+        plain_body = (
+            "SuoOps Verification Code\n\n"
+            f"Your OTP is {otp}.\n\n"
+            f"Enter this code to {action}.\n"
+            "This code expires in 10 minutes.\n\n"
+            "If you did not request this code, please ignore this message.\n\n"
+            "---\nPowered by SuoOps\n"
+        )
 
-Enter this code to {action}.
-This code expires in 10 minutes.
+        # OTP is critical transactional mail: skip suppression and use the shared
+        # multi-provider sender so a ZeptoMail 535 falls back to Brevo automatically.
+        sent = send_email_with_fallback(
+            email,
+            "SuoOps Verification Code",
+            html_body,
+            plain_body,
+            check_suppression=False,
+        )
+        if not sent:
+            raise ValueError("Failed to send OTP email. Please try again.")
 
-If you did not request this code, please ignore this message.
+        logger.info("Successfully sent email OTP to %s", mask_email(email))
 
----
-Powered by SuoOps
-"""
-            
-            # Create email message
-            msg = MIMEMultipart('alternative')
-            msg['From'] = from_email or "noreply@suoops.com"
-            msg['To'] = email
-            msg['Subject'] = "SuoOps Verification Code"
-            
-            # Attach plain text and HTML versions
-            msg.attach(MIMEText(plain_body, 'plain'))
-            msg.attach(MIMEText(html_body, 'html'))
-            
-            # Send email via SMTP
-            logger.info("Attempting SMTP connection to %s:%s as %s", smtp_host, smtp_port, smtp_user)
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-                server.set_debuglevel(0)  # Set to 1 for verbose SMTP debugging
-                server.starttls()
-                server.login(smtp_user, smtp_password)
-                server.send_message(msg)
-            
-            logger.info("Successfully sent email OTP to %s", mask_email(email))
-            
-        except smtplib.SMTPAuthenticationError as e:
-            logger.error("SMTP authentication failed for %s: %s", smtp_user, e)
-            raise ValueError("Email authentication failed. Please contact support.") from e
-        except smtplib.SMTPException as e:
-            logger.error("SMTP error sending OTP to %s: %s", email, e)
-            raise ValueError(f"Failed to send OTP email: {e}") from e
-        except Exception as e:
-            logger.error("Unexpected error sending email OTP: %s: %s", type(e).__name__, e)
-            raise ValueError(f"Failed to send OTP email: {e}") from e
 
     def request_signup(self, identifier: str, payload: dict[str, Any], deliver_to: str | None = None) -> str:
         """Start signup by persisting user-provided data and sending OTP.
